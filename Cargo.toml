@@ -2,6 +2,9 @@
 name = "tracexec"
 version = "0.1.0"
 edition = "2021"
+author = "Levi Zim <rsworktech@outlook.com>"
+description = "A small utility to trace command execution."
+license = "GPL-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
