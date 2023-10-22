@@ -1,6 +1,5 @@
-use std::ffi::{c_long, CString};
+use std::ffi::CString;
 
-use byteorder::{LittleEndian, WriteBytesExt};
 use nix::{sys::ptrace, sys::ptrace::AddressType, unistd::Pid};
 
 pub fn read_cstring(pid: Pid, address: AddressType) -> color_eyre::Result<CString> {
