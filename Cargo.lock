@@ -491,7 +491,7 @@ dependencies = [
 
 [[package]]
 name = "tracexec"
-version = "0.1.0"
+version = "0.0.0-experimental.1"
 dependencies = [
  "byteorder",
  "clap",
