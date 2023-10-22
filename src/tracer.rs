@@ -11,6 +11,7 @@ use nix::{
 };
 
 use crate::{
+    arch::{syscall_no_from_regs, syscall_res_from_regs},
     cli::TracingArgs,
     inspect::{read_cstring, read_cstring_array},
     proc::{read_argv, read_comm},
@@ -108,7 +109,7 @@ impl Tracer {
                     }
                     WaitStatus::PtraceSyscall(pid) => {
                         let regs = ptrace::getregs(pid)?;
-                        let syscallno = regs.orig_rax as i64;
+                        let syscallno = syscall_no_from_regs!(regs);
                         let p = self.store.get_current_mut(pid).unwrap();
                         if syscallno == nix::libc::SYS_execve {
                             if p.preexecve {
@@ -122,7 +123,7 @@ impl Tracer {
                                 });
                                 p.preexecve = !p.preexecve;
                             } else {
-                                let result = regs.rax as i64;
+                                let result = syscall_res_from_regs!(regs);
                                 if self.args.successful_only && result != 0 {
                                     p.exec_data = None;
                                     p.preexecve = !p.preexecve;

@@ -3,6 +3,7 @@ mod inspect;
 mod proc;
 mod state;
 mod tracer;
+mod arch;
 
 use std::ffi::CString;
 
