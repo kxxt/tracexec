@@ -11,12 +11,14 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum CliCommand {
+    #[clap(about = "logging mode")]
     Log {
         #[arg(last = true)]
         cmd: Vec<String>,
         #[clap(flatten)]
         tracing_args: TracingArgs,
     },
+    #[clap(about = "tree visualization mode")]
     Tree {
         #[arg(last = true)]
         cmd: Vec<String>,
