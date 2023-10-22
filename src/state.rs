@@ -2,6 +2,8 @@ use std::{collections::HashMap, ffi::CString};
 
 use nix::unistd::Pid;
 
+use crate::proc::{read_argv, read_comm};
+
 pub struct ProcessStateStore {
     processes: HashMap<Pid, Vec<ProcessState>>,
 }
@@ -10,7 +12,8 @@ pub struct ProcessState {
     pub pid: Pid,
     pub status: ProcessStatus,
     pub start_time: u64,
-    pub command: Vec<CString>,
+    pub argv: Vec<CString>,
+    pub comm: String,
     pub preexecve: bool,
     pub exec_data: Option<ExecData>,
 }
@@ -44,5 +47,19 @@ impl ProcessStateStore {
         // The last process in the vector is the current process
         // println!("Getting {pid}");
         self.processes.get_mut(&pid)?.last_mut()
+    }
+}
+
+impl ProcessState {
+    pub fn new(pid: Pid, start_time: u64) -> color_eyre::Result<Self> {
+        Ok(Self {
+            pid,
+            status: ProcessStatus::Running,
+            comm: read_comm(pid)?,
+            argv: read_argv(pid)?,
+            start_time,
+            preexecve: true,
+            exec_data: None,
+        })
     }
 }

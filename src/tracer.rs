@@ -13,7 +13,7 @@ use nix::{
 use crate::{
     cli::TracingArgs,
     inspect::{read_cstring, read_cstring_array},
-    proc::read_argv,
+    proc::{read_argv, read_comm},
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
 
@@ -35,14 +35,7 @@ impl Tracer {
         if let ForkResult::Parent { child: root_child } = unsafe { nix::unistd::fork()? } {
             waitpid(root_child, Some(WaitPidFlag::WSTOPPED))?; // wait for child to stop
             log::trace!("child stopped");
-            self.store.insert(ProcessState {
-                pid: root_child,
-                status: ProcessStatus::Running,
-                start_time: 0,
-                command: args.clone(),
-                preexecve: true,
-                exec_data: None,
-            });
+            self.store.insert(ProcessState::new(root_child, 0)?);
             // restart child
             log::trace!("resuming child");
             ptrace::setoptions(root_child, {
@@ -65,14 +58,7 @@ impl Tracer {
                         match sig {
                             Signal::SIGSTOP => {
                                 log::trace!("fork event, child: {pid}");
-                                self.store.insert(ProcessState {
-                                    pid: pid,
-                                    status: ProcessStatus::Running,
-                                    start_time: 0,
-                                    command: read_argv(pid)?,
-                                    preexecve: true,
-                                    exec_data: None,
-                                });
+                                self.store.insert(ProcessState::new(pid, 0)?);
                                 ptrace::syscall(pid, None)?;
                             }
                             Signal::SIGCHLD => {
@@ -147,9 +133,11 @@ impl Tracer {
                                 let exec_data = p.exec_data.take().unwrap();
 
                                 println!(
-                                    "{}: {:?} {:?} = {}",
-                                    pid, exec_data.filename, exec_data.argv, result
+                                    "{}<{}>: {:?} {:?} = {}",
+                                    pid, p.comm, exec_data.filename, exec_data.argv, result
                                 );
+                                // update comm
+                                p.comm = read_comm(pid)?;
                                 p.preexecve = !p.preexecve;
                             }
                         }
@@ -166,7 +154,6 @@ impl Tracer {
                 exit(-1);
             }
             log::trace!("raise success!");
-            log::trace!("executing...");
             let args = args
                 .into_iter()
                 .map(|s| CString::new(s))

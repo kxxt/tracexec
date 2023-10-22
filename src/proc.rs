@@ -10,3 +10,10 @@ pub fn read_argv(pid: Pid) -> color_eyre::Result<Vec<CString>> {
         .map(CString::new)
         .collect::<Result<Vec<_>, _>>()?)
 }
+
+pub fn read_comm(pid: Pid) -> color_eyre::Result<String> {
+    let filename = format!("/proc/{pid}/comm");
+    let mut buf = std::fs::read(filename)?;
+    buf.pop(); // remove trailing newline
+    Ok(String::from_utf8(buf)?)
+}
