@@ -47,4 +47,6 @@ pub struct TracingArgs {
     pub trace_filename: bool,
     #[clap(long, help = "Only show successful calls")]
     pub successful_only: bool,
+    #[clap(long, help = "Decode errno values")]
+    pub decode_errno: bool,
 }

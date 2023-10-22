@@ -133,10 +133,44 @@ impl Tracer {
                                 // SAFETY: p.preexecve is false, so p.exec_data is Some
                                 let exec_data = p.exec_data.take().unwrap();
 
-                                println!(
-                                    "{}<{}>: {:?} {:?} = {}",
-                                    pid, p.comm, exec_data.filename, exec_data.argv, result
-                                );
+                                match (self.args.successful_only, self.args.decode_errno) {
+                                    (true, true) => {
+                                        println!(
+                                            "{}<{}>: {:?} {:?}",
+                                            pid, p.comm, exec_data.filename, exec_data.argv,
+                                        );
+                                    }
+                                    (true, false) => {
+                                        println!(
+                                            "{}<{}>: {:?} {:?} = {}",
+                                            pid, p.comm, exec_data.filename, exec_data.argv, result
+                                        );
+                                    }
+                                    (false, true) => {
+                                        if result == 0 {
+                                            println!(
+                                                "{}<{}>: {:?} {:?}",
+                                                pid, p.comm, exec_data.filename, exec_data.argv,
+                                            );
+                                        } else {
+                                            println!(
+                                                "{}<{}>: {:?} {:?} = {} ({})",
+                                                pid,
+                                                p.comm,
+                                                exec_data.filename,
+                                                exec_data.argv,
+                                                result,
+                                                nix::errno::Errno::from_i32(-result as i32)
+                                            );
+                                        }
+                                    }
+                                    (false, false) => {
+                                        println!(
+                                            "{}<{}>: {:?} {:?} = {}",
+                                            pid, p.comm, exec_data.filename, exec_data.argv, result
+                                        );
+                                    }
+                                }
                                 // update comm
                                 p.comm = read_comm(pid)?;
                                 p.preexecve = !p.preexecve;
