@@ -17,7 +17,7 @@ pub enum CliCommand {
         #[clap(flatten)]
         tracing_args: TracingArgs,
     },
-    Graph {
+    Tree {
         #[arg(last = true)]
         cmd: Vec<String>,
         #[clap(flatten)]
