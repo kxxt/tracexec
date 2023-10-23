@@ -1,10 +1,10 @@
 mod arch;
 mod cli;
 mod inspect;
+mod printer;
 mod proc;
 mod state;
 mod tracer;
-mod printer;
 
 use std::ffi::CString;
 
@@ -18,15 +18,9 @@ fn main() -> color_eyre::Result<()> {
     pretty_env_logger::init();
     log::trace!("Commandline args: {:?}", cli);
     match cli.cmd {
-        CliCommand::Log {
-            cmd,
-            tracing_args,
-            indent,
-        } => {
-            tracer::Tracer::new(tracing_args).start_root_process(
-                cmd.into_iter().map(|x| CString::new(x).unwrap()).collect(),
-                indent,
-            )?;
+        CliCommand::Log { cmd, tracing_args } => {
+            tracer::Tracer::new(tracing_args)
+                .start_root_process(cmd.into_iter().map(|x| CString::new(x).unwrap()).collect())?;
         }
         CliCommand::Tree { cmd, tracing_args } => {
             unimplemented!("tree mode not implemented yet")

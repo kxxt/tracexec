@@ -11,16 +11,14 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum CliCommand {
-    #[clap(about = "logging mode")]
+    #[clap(about = "Run tracexec in logging mode")]
     Log {
-        #[arg(last = true)]
+        #[arg(last = true, required = true)]
         cmd: Vec<String>,
         #[clap(flatten)]
         tracing_args: TracingArgs,
-        #[clap(long, help = "Indent output", default_value_t = 0)]
-        indent: u8,
     },
-    #[clap(about = "tree visualization mode")]
+    #[clap(about = "Run tracexec in tree visualization mode")]
     Tree {
         #[arg(last = true)]
         cmd: Vec<String>,
@@ -43,6 +41,8 @@ pub struct TracingArgs {
     pub diff_env: bool,
     #[clap(long, help = "Trace environment variables")]
     pub trace_env: bool,
+    #[clap(long, help = "Trace comm")]
+    pub trace_comm: bool,
     #[clap(long, help = "Trace argv")]
     pub trace_argv: bool,
     #[clap(long, help = "Trace filename")]

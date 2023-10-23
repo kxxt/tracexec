@@ -7,7 +7,7 @@ use nix::{
         signal::Signal,
         wait::{waitpid, WaitPidFlag, WaitStatus},
     },
-    unistd::{execvp, ForkResult, Pid},
+    unistd::{execvp, getpid, ForkResult, Pid},
 };
 
 use crate::{
@@ -32,12 +32,14 @@ impl Tracer {
         }
     }
 
-    pub fn start_root_process(&mut self, args: Vec<CString>, indent: u8) -> color_eyre::Result<()> {
+    pub fn start_root_process(&mut self, args: Vec<CString>) -> color_eyre::Result<()> {
         log::trace!("start_root_process: {:?}", args);
         if let ForkResult::Parent { child: root_child } = unsafe { nix::unistd::fork()? } {
             waitpid(root_child, Some(WaitPidFlag::WSTOPPED))?; // wait for child to stop
             log::trace!("child stopped");
-            self.store.insert(ProcessState::new(root_child, 0, 0)?);
+            let mut root_child_state = ProcessState::new(root_child, 0)?;
+            root_child_state.ppid = Some(getpid());
+            self.store.insert(root_child_state);
             // restart child
             log::trace!("resuming child");
             ptrace::setoptions(root_child, {
@@ -70,7 +72,7 @@ impl Tracer {
                                     }
                                 } else {
                                     log::trace!("sigstop event received before ptrace fork event, pid: {pid}");
-                                    let mut state = ProcessState::new(pid, 0, 0)?;
+                                    let mut state = ProcessState::new(pid, 0)?;
                                     state.status = ProcessStatus::SigstopReceived;
                                     self.store.insert(state);
                                 }
@@ -108,25 +110,20 @@ impl Tracer {
                                 log::trace!(
                                     "ptrace fork event, evt {evt}, pid: {pid}, child: {new_child}"
                                 );
-                                let new_indent = self
-                                    .store
-                                    .get_current_mut(pid)
-                                    .ok_or(color_eyre::eyre::anyhow!("no current process"))?
-                                    .indent
-                                    + indent as usize;
                                 if let Some(state) = self.store.get_current_mut(new_child) {
                                     if state.status == ProcessStatus::SigstopReceived {
                                         log::trace!("ptrace fork event received after sigstop, pid: {pid}, child: {new_child}");
                                         state.status = ProcessStatus::Running;
-                                        state.indent = new_indent;
+                                        state.ppid = Some(pid);
                                         ptrace::syscall(new_child, None)?;
                                     } else if new_child != root_child {
                                         log::error!("Unexpected fork event: {state:?}")
                                     }
                                 } else {
                                     log::trace!("ptrace fork event received before sigstop, pid: {pid}, child: {new_child}");
-                                    let mut state = ProcessState::new(new_child, 0, new_indent)?;
+                                    let mut state = ProcessState::new(new_child, 0)?;
                                     state.status = ProcessStatus::PtraceForkEventReceived;
+                                    state.ppid = Some(pid);
                                     self.store.insert(state);
                                 }
                                 // Resume parent
@@ -191,6 +188,7 @@ impl Tracer {
                                 print_execve_trace(p, result, &self.args);
                                 // update comm
                                 p.comm = read_comm(pid)?;
+                                // flip presyscall
                                 p.presyscall = !p.presyscall;
                             }
                         } else if syscallno == SYS_clone || syscallno == SYS_clone3 {

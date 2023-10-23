@@ -11,13 +11,13 @@ pub struct ProcessStateStore {
 #[derive(Debug, Clone)]
 pub struct ProcessState {
     pub pid: Pid,
+    pub ppid: Option<Pid>,
     pub status: ProcessStatus,
     pub start_time: u64,
     pub argv: Vec<CString>,
     pub comm: String,
     pub presyscall: bool,
     pub exec_data: Option<ExecData>,
-    pub indent: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -58,16 +58,16 @@ impl ProcessStateStore {
 }
 
 impl ProcessState {
-    pub fn new(pid: Pid, start_time: u64, indent: usize) -> color_eyre::Result<Self> {
+    pub fn new(pid: Pid, start_time: u64) -> color_eyre::Result<Self> {
         Ok(Self {
             pid,
+            ppid: None,
             status: ProcessStatus::Running,
             comm: read_comm(pid)?,
             argv: read_argv(pid)?,
             start_time,
             presyscall: true,
             exec_data: None,
-            indent,
         })
     }
 }
