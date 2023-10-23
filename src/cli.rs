@@ -17,6 +17,8 @@ pub enum CliCommand {
         cmd: Vec<String>,
         #[clap(flatten)]
         tracing_args: TracingArgs,
+        #[clap(long, help = "Indent output", default_value_t = 0)]
+        indent: u8,
     },
     #[clap(about = "tree visualization mode")]
     Tree {

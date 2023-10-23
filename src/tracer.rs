@@ -1,13 +1,14 @@
 use std::{ffi::CString, process::exit};
 
 use nix::{
-    libc::{raise, SIGSTOP},
+    errno::Errno,
+    libc::{pid_t, raise, SYS_clone, SYS_clone3, SIGSTOP},
     sys::{
         ptrace::{self, traceme, AddressType},
         signal::Signal,
         wait::{wait, waitpid, WaitPidFlag, WaitStatus},
     },
-    unistd::{execvp, ForkResult},
+    unistd::{execvp, getppid, ForkResult, Pid},
 };
 
 use crate::{
@@ -15,7 +16,7 @@ use crate::{
     cli::TracingArgs,
     inspect::{read_cstring, read_cstring_array},
     proc::{read_argv, read_comm},
-    state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
+    state::{self, ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
 
 pub struct Tracer {
@@ -31,12 +32,12 @@ impl Tracer {
         }
     }
 
-    pub fn start_root_process(&mut self, args: Vec<CString>) -> color_eyre::Result<()> {
+    pub fn start_root_process(&mut self, args: Vec<CString>, indent: u8) -> color_eyre::Result<()> {
         log::trace!("start_root_process: {:?}", args);
         if let ForkResult::Parent { child: root_child } = unsafe { nix::unistd::fork()? } {
             waitpid(root_child, Some(WaitPidFlag::WSTOPPED))?; // wait for child to stop
             log::trace!("child stopped");
-            self.store.insert(ProcessState::new(root_child, 0)?);
+            self.store.insert(ProcessState::new(root_child, 0, 0)?);
             // restart child
             log::trace!("resuming child");
             ptrace::setoptions(root_child, {
@@ -51,16 +52,31 @@ impl Tracer {
             })?;
             ptrace::syscall(root_child, None)?; // restart child
             loop {
-                let status = wait()?;
-
+                let status = waitpid(None, Some(WaitPidFlag::__WALL | WaitPidFlag::WNOHANG))?;
+                // log::trace!("waitpid: {:?}", status);
                 match status {
                     WaitStatus::Stopped(pid, sig) => {
                         log::trace!("stopped: {pid}, sig {:?}", sig);
                         match sig {
                             Signal::SIGSTOP => {
-                                log::trace!("fork event, child: {pid}");
-                                self.store.insert(ProcessState::new(pid, 0)?);
-                                ptrace::syscall(pid, None)?;
+                                log::trace!("sigstop event, child: {pid}");
+                                if let Some(state) = self.store.get_current_mut(pid) {
+                                    if state.status == ProcessStatus::PtraceForkEventReceived {
+                                        log::trace!("sigstop event received after ptrace fork event, pid: {pid}");
+                                        state.status = ProcessStatus::Running;
+                                        ptrace::syscall(pid, None)?;
+                                    } else if pid != root_child {
+                                        log::error!("Unexpected SIGSTOP: {state:?}")
+                                    }
+                                } else {
+                                    log::trace!("sigstop event received before ptrace fork event, pid: {pid}");
+                                    let mut state = ProcessState::new(pid, 0, 0)?;
+                                    state.status = ProcessStatus::SigstopReceived;
+                                    self.store.insert(state);
+                                }
+                                // ptrace::syscall(pid, None)?;
+                                // https://stackoverflow.com/questions/29997244/occasionally-missing-ptrace-event-vfork-when-running-ptrace
+                                // DO NOT send PTRACE_SYSCALL until we receive the PTRACE_EVENT_FORK, etc.
                             }
                             Signal::SIGCHLD => {
                                 // From lurk:
@@ -75,7 +91,7 @@ impl Tracer {
                         }
                     }
                     WaitStatus::Exited(pid, code) => {
-                        log::trace!("exited: {:?}", code);
+                        log::trace!("exited: pid {}, code {:?}", pid, code);
                         self.store.get_current_mut(pid).unwrap().status =
                             ProcessStatus::Exited(code);
                         if pid == root_child {
@@ -87,18 +103,48 @@ impl Tracer {
                         match evt {
                             nix::libc::PTRACE_EVENT_FORK
                             | nix::libc::PTRACE_EVENT_VFORK
-                            | nix::libc::PTRACE_EVENT_CLONE => {}
+                            | nix::libc::PTRACE_EVENT_CLONE => {
+                                let new_child = Pid::from_raw(ptrace::getevent(pid)? as pid_t);
+                                log::trace!(
+                                    "ptrace fork event, evt {evt}, pid: {pid}, child: {new_child}"
+                                );
+                                let new_indent = self
+                                    .store
+                                    .get_current_mut(pid)
+                                    .ok_or(color_eyre::eyre::anyhow!("no current process"))?
+                                    .indent
+                                    + indent as usize;
+                                if let Some(state) = self.store.get_current_mut(new_child) {
+                                    if state.status == ProcessStatus::SigstopReceived {
+                                        log::trace!("ptrace fork event received after sigstop, pid: {pid}, child: {new_child}");
+                                        state.status = ProcessStatus::Running;
+                                        state.indent = new_indent;
+                                        ptrace::syscall(new_child, None)?;
+                                    } else if new_child != root_child {
+                                        log::error!("Unexpected fork event: {state:?}")
+                                    }
+                                } else {
+                                    log::trace!("ptrace fork event received before sigstop, pid: {pid}, child: {new_child}");
+                                    let mut state = ProcessState::new(new_child, 0, new_indent)?;
+                                    state.status = ProcessStatus::PtraceForkEventReceived;
+                                    self.store.insert(state);
+                                }
+                                // Resume parent
+                                ptrace::syscall(pid, None)?;
+                            }
                             nix::libc::PTRACE_EVENT_EXEC => {
                                 log::trace!("exec event");
+                                ptrace::syscall(pid, None)?;
                             }
                             nix::libc::PTRACE_EVENT_EXIT => {
                                 log::trace!("exit event");
+                                ptrace::cont(pid, None)?;
                             }
                             _ => {
                                 log::trace!("other event");
+                                ptrace::syscall(pid, None)?;
                             }
                         }
-                        ptrace::syscall(pid, None)?;
                     }
                     WaitStatus::Signaled(pid, sig, _) => {
                         log::trace!("signaled: {pid}, {:?}", sig);
@@ -112,7 +158,7 @@ impl Tracer {
                         let syscallno = syscall_no_from_regs!(regs);
                         let p = self.store.get_current_mut(pid).unwrap();
                         if syscallno == nix::libc::SYS_execve {
-                            if p.preexecve {
+                            if p.presyscall {
                                 let filename = read_cstring(pid, regs.rdi as AddressType)?;
                                 let argv = read_cstring_array(pid, regs.rsi as AddressType)?;
                                 let envp = read_cstring_array(pid, regs.rdx as AddressType)?;
@@ -121,40 +167,51 @@ impl Tracer {
                                     argv,
                                     envp,
                                 });
-                                p.preexecve = !p.preexecve;
+                                p.presyscall = !p.presyscall;
                             } else {
                                 let result = syscall_res_from_regs!(regs);
                                 if self.args.successful_only && result != 0 {
                                     p.exec_data = None;
-                                    p.preexecve = !p.preexecve;
+                                    p.presyscall = !p.presyscall;
                                     ptrace::syscall(pid, None)?;
                                     continue;
                                 }
                                 // SAFETY: p.preexecve is false, so p.exec_data is Some
                                 let exec_data = p.exec_data.take().unwrap();
-
+                                let indent: String =
+                                    std::iter::repeat(" ").take(p.indent).collect();
                                 match (self.args.successful_only, self.args.decode_errno) {
                                     (true, true) => {
                                         println!(
-                                            "{}<{}>: {:?} {:?}",
-                                            pid, p.comm, exec_data.filename, exec_data.argv,
+                                            "{}{}<{}>: {:?} {:?}",
+                                            indent, pid, p.comm, exec_data.filename, exec_data.argv,
                                         );
                                     }
                                     (true, false) => {
                                         println!(
-                                            "{}<{}>: {:?} {:?} = {}",
-                                            pid, p.comm, exec_data.filename, exec_data.argv, result
+                                            "{}{}<{}>: {:?} {:?} = {}",
+                                            indent,
+                                            pid,
+                                            p.comm,
+                                            exec_data.filename,
+                                            exec_data.argv,
+                                            result
                                         );
                                     }
                                     (false, true) => {
                                         if result == 0 {
                                             println!(
-                                                "{}<{}>: {:?} {:?}",
-                                                pid, p.comm, exec_data.filename, exec_data.argv,
+                                                "{}{}<{}>: {:?} {:?}",
+                                                indent,
+                                                pid,
+                                                p.comm,
+                                                exec_data.filename,
+                                                exec_data.argv,
                                             );
                                         } else {
                                             println!(
-                                                "{}<{}>: {:?} {:?} = {} ({})",
+                                                "{}{}<{}>: {:?} {:?} = {} ({})",
+                                                indent,
                                                 pid,
                                                 p.comm,
                                                 exec_data.filename,
@@ -166,15 +223,21 @@ impl Tracer {
                                     }
                                     (false, false) => {
                                         println!(
-                                            "{}<{}>: {:?} {:?} = {}",
-                                            pid, p.comm, exec_data.filename, exec_data.argv, result
+                                            "{}{}<{}>: {:?} {:?} = {}",
+                                            indent,
+                                            pid,
+                                            p.comm,
+                                            exec_data.filename,
+                                            exec_data.argv,
+                                            result
                                         );
                                     }
                                 }
                                 // update comm
                                 p.comm = read_comm(pid)?;
-                                p.preexecve = !p.preexecve;
+                                p.presyscall = !p.presyscall;
                             }
+                        } else if syscallno == SYS_clone || syscallno == SYS_clone3 {
                         }
                         ptrace::syscall(pid, None)?;
                     }
@@ -185,7 +248,7 @@ impl Tracer {
             traceme()?;
             log::trace!("traceme setup!");
             if 0 != unsafe { raise(SIGSTOP) } {
-                log::trace!("raise failed!");
+                log::error!("raise failed!");
                 exit(-1);
             }
             log::trace!("raise success!");

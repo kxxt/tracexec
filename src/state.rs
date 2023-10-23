@@ -8,21 +8,28 @@ pub struct ProcessStateStore {
     processes: HashMap<Pid, Vec<ProcessState>>,
 }
 
+#[derive(Debug, Clone)]
 pub struct ProcessState {
     pub pid: Pid,
     pub status: ProcessStatus,
     pub start_time: u64,
     pub argv: Vec<CString>,
     pub comm: String,
-    pub preexecve: bool,
+    pub presyscall: bool,
     pub exec_data: Option<ExecData>,
+    pub indent: usize,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum ProcessStatus {
+    Initialized,
+    SigstopReceived,
+    PtraceForkEventReceived,
     Running,
     Exited(i32),
 }
 
+#[derive(Debug, Clone)]
 pub struct ExecData {
     pub filename: CString,
     pub argv: Vec<CString>,
@@ -51,15 +58,16 @@ impl ProcessStateStore {
 }
 
 impl ProcessState {
-    pub fn new(pid: Pid, start_time: u64) -> color_eyre::Result<Self> {
+    pub fn new(pid: Pid, start_time: u64, indent: usize) -> color_eyre::Result<Self> {
         Ok(Self {
             pid,
             status: ProcessStatus::Running,
             comm: read_comm(pid)?,
             argv: read_argv(pid)?,
             start_time,
-            preexecve: true,
+            presyscall: true,
             exec_data: None,
+            indent,
         })
     }
 }
