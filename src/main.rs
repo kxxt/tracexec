@@ -4,6 +4,7 @@ mod inspect;
 mod proc;
 mod state;
 mod tracer;
+mod printer;
 
 use std::ffi::CString;
 

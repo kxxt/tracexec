@@ -15,6 +15,7 @@ use crate::{
     arch::{syscall_no_from_regs, syscall_res_from_regs},
     cli::TracingArgs,
     inspect::{read_cstring, read_cstring_array},
+    printer::print_execve_trace,
     proc::{read_argv, read_comm},
     state::{self, ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
@@ -189,63 +190,7 @@ impl Tracer {
                                     continue;
                                 }
                                 // SAFETY: p.preexecve is false, so p.exec_data is Some
-                                let exec_data = p.exec_data.take().unwrap();
-                                let indent: String =
-                                    std::iter::repeat(" ").take(p.indent).collect();
-                                match (self.args.successful_only, self.args.decode_errno) {
-                                    // This is very ugly, TODO: refactor
-                                    (true, true) => {
-                                        println!(
-                                            "{}{}<{}>: {:?} {:?}",
-                                            indent, pid, p.comm, exec_data.filename, exec_data.argv,
-                                        );
-                                    }
-                                    (true, false) => {
-                                        println!(
-                                            "{}{}<{}>: {:?} {:?} = {}",
-                                            indent,
-                                            pid,
-                                            p.comm,
-                                            exec_data.filename,
-                                            exec_data.argv,
-                                            result
-                                        );
-                                    }
-                                    (false, true) => {
-                                        if result == 0 {
-                                            println!(
-                                                "{}{}<{}>: {:?} {:?}",
-                                                indent,
-                                                pid,
-                                                p.comm,
-                                                exec_data.filename,
-                                                exec_data.argv,
-                                            );
-                                        } else {
-                                            println!(
-                                                "{}{}<{}>: {:?} {:?} = {} ({})",
-                                                indent,
-                                                pid,
-                                                p.comm,
-                                                exec_data.filename,
-                                                exec_data.argv,
-                                                result,
-                                                nix::errno::Errno::from_i32(-result as i32)
-                                            );
-                                        }
-                                    }
-                                    (false, false) => {
-                                        println!(
-                                            "{}{}<{}>: {:?} {:?} = {}",
-                                            indent,
-                                            pid,
-                                            p.comm,
-                                            exec_data.filename,
-                                            exec_data.argv,
-                                            result
-                                        );
-                                    }
-                                }
+                                print_execve_trace(p, result, &self.args);
                                 // update comm
                                 p.comm = read_comm(pid)?;
                                 p.presyscall = !p.presyscall;
