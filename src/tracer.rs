@@ -157,8 +157,20 @@ impl Tracer {
                         let regs = ptrace::getregs(pid)?;
                         let syscallno = syscall_no_from_regs!(regs);
                         let p = self.store.get_current_mut(pid).unwrap();
-                        if syscallno == nix::libc::SYS_execve {
+                        if syscallno == nix::libc::SYS_execveat {
+                            log::trace!("execveat {syscallno}");
+                            println!("execveat");
+                        } else if syscallno == nix::libc::SYS_execve {
+                            log::trace!("execve {syscallno}");
                             if p.presyscall {
+                                if regs.rdi == 0 && regs.rsi == 0 && regs.rdx == 0 {
+                                    // Workaround ptrace execveat quirk.
+                                    // After tracing execveat, a strange execve ptrace event will happen, with PTRACE_SYSCALL_INFO_NONE.
+                                    // TODO: make it less hacky.
+                                    log::debug!("execveat quirk");
+                                    ptrace::syscall(pid, None)?;
+                                    continue;
+                                }
                                 let filename = read_cstring(pid, regs.rdi as AddressType)?;
                                 let argv = read_cstring_array(pid, regs.rsi as AddressType)?;
                                 let envp = read_cstring_array(pid, regs.rdx as AddressType)?;
@@ -181,6 +193,7 @@ impl Tracer {
                                 let indent: String =
                                     std::iter::repeat(" ").take(p.indent).collect();
                                 match (self.args.successful_only, self.args.decode_errno) {
+                                    // This is very ugly, TODO: refactor
                                     (true, true) => {
                                         println!(
                                             "{}{}<{}>: {:?} {:?}",
