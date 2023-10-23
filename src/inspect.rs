@@ -7,7 +7,10 @@ pub fn read_cstring(pid: Pid, address: AddressType) -> color_eyre::Result<CStrin
     let mut address = address;
     const WORD_SIZE: usize = 8; // FIXME
     loop {
-        let word = ptrace::read(pid, address)?;
+        let Ok(word) = ptrace::read(pid, address) else { 
+            log::warn!("Cannot read tracee {pid} memory {address:?}");
+            return Ok(CString::new(buf)?)
+        };
         let word_bytes = word.to_ne_bytes();
         for i in 0..WORD_SIZE {
             if word_bytes[i] == 0 {
@@ -23,7 +26,10 @@ pub fn read_cstring_array(pid: Pid, mut address: AddressType) -> color_eyre::Res
     let mut res = Vec::new();
     const WORD_SIZE: usize = 8; // FIXME
     loop {
-        let ptr = ptrace::read(pid, address)?;
+        let Ok(ptr) = ptrace::read(pid, address) else {
+            log::warn!("Cannot read tracee {pid} memory {address:?}");
+            return Ok(res)
+        };
         if ptr == 0 {
             return Ok(res);
         } else {
