@@ -1,14 +1,13 @@
 use std::{ffi::CString, process::exit};
 
 use nix::{
-    errno::Errno,
     libc::{pid_t, raise, SYS_clone, SYS_clone3, SIGSTOP},
     sys::{
         ptrace::{self, traceme, AddressType},
         signal::Signal,
-        wait::{wait, waitpid, WaitPidFlag, WaitStatus},
+        wait::{waitpid, WaitPidFlag, WaitStatus},
     },
-    unistd::{execvp, getppid, ForkResult, Pid},
+    unistd::{execvp, ForkResult, Pid},
 };
 
 use crate::{
@@ -16,8 +15,8 @@ use crate::{
     cli::TracingArgs,
     inspect::{read_cstring, read_cstring_array},
     printer::print_execve_trace,
-    proc::{read_argv, read_comm},
-    state::{self, ExecData, ProcessState, ProcessStateStore, ProcessStatus},
+    proc::read_comm,
+    state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
 
 pub struct Tracer {
@@ -149,10 +148,9 @@ impl Tracer {
                     }
                     WaitStatus::Signaled(pid, sig, _) => {
                         log::trace!("signaled: {pid}, {:?}", sig);
-                        // TODO: this is not correct
-                        // if pid == root_child {
-                        break;
-                        // }
+                        if pid == root_child {
+                            break;
+                        }
                     }
                     WaitStatus::PtraceSyscall(pid) => {
                         let regs = ptrace::getregs(pid)?;
