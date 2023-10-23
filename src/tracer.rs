@@ -185,7 +185,7 @@ impl Tracer {
                                     continue;
                                 }
                                 // SAFETY: p.preexecve is false, so p.exec_data is Some
-                                print_execve_trace(p, result, &self.args);
+                                print_execve_trace(p, result, &self.args)?;
                                 // update comm
                                 p.comm = read_comm(pid)?;
                                 // flip presyscall

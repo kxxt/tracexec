@@ -37,18 +37,47 @@ pub enum Color {
 
 #[derive(Args, Debug)]
 pub struct TracingArgs {
+    #[clap(long, help = "Only show successful calls", default_value_t = false)]
+    pub successful_only: bool,
     #[clap(long, help = "Diff environment variables, implies --trace-env")]
     pub diff_env: bool,
-    #[clap(long, help = "Trace environment variables")]
+    // BEGIN ugly: https://github.com/clap-rs/clap/issues/815
+    #[clap(
+        long,
+        help = "Trace environment variables",
+        conflicts_with = "no_trace_env"
+    )]
     pub trace_env: bool,
-    #[clap(long, help = "Trace comm")]
+    #[clap(
+        long,
+        help = "Do not trace environment variables",
+        conflicts_with = "trace_env"
+    )]
+    pub no_trace_env: bool,
+    #[clap(long, help = "Trace comm", conflicts_with = "no_trace_comm")]
     pub trace_comm: bool,
-    #[clap(long, help = "Trace argv")]
+    #[clap(long, help = "Do not trace comm", conflicts_with = "trace_comm")]
+    pub no_trace_comm: bool,
+    #[clap(long, help = "Trace argv", conflicts_with = "no_trace_argv")]
     pub trace_argv: bool,
-    #[clap(long, help = "Trace filename")]
+    #[clap(long, help = "Do not trace argv", conflicts_with = "trace_argv")]
+    pub no_trace_argv: bool,
+    #[clap(
+        long,
+        help = "Trace filename",
+        default_value_t = true,
+        conflicts_with = "no_trace_filename"
+    )]
     pub trace_filename: bool,
-    #[clap(long, help = "Only show successful calls")]
-    pub successful_only: bool,
-    #[clap(long, help = "Decode errno values")]
+    #[clap(
+        long,
+        help = "Do not trace filename",
+        conflicts_with = "trace_filename"
+    )]
+    pub no_trace_filename: bool,
+    #[clap(long, help = "Decode errno values", conflicts_with = "no_decode_errno")]
     pub decode_errno: bool,
+    #[clap(long, conflicts_with = "decode_errno")]
+    pub no_decode_errno: bool,
+    // END ugly
 }
