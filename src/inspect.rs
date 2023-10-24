@@ -2,14 +2,21 @@ use std::ffi::CString;
 
 use nix::{sys::ptrace, sys::ptrace::AddressType, unistd::Pid};
 
-pub fn read_generic_string<TString>(pid: Pid, address: AddressType, ctor: impl Fn(Vec<u8>) -> TString) -> color_eyre::Result<TString> {
+pub fn read_generic_string<TString>(
+    pid: Pid,
+    address: AddressType,
+    ctor: impl Fn(Vec<u8>) -> TString,
+) -> color_eyre::Result<TString> {
     let mut buf = Vec::new();
     let mut address = address;
     const WORD_SIZE: usize = 8; // FIXME
     loop {
-        let Ok(word) = ptrace::read(pid, address) else { 
-            log::warn!("Cannot read tracee {pid} memory {address:?}");
-            return Ok(ctor(buf))
+        let word = match ptrace::read(pid, address) {
+            Err(e) => {
+                log::warn!("Cannot read tracee {pid} memory {address:?}: {e}");
+                return Ok(ctor(buf));
+            }
+            Ok(word) => word,
         };
         let word_bytes = word.to_ne_bytes();
         for i in 0..WORD_SIZE {
@@ -32,13 +39,20 @@ pub fn read_string(pid: Pid, address: AddressType) -> color_eyre::Result<String>
     read_generic_string(pid, address, |x| String::from_utf8_lossy(&x).to_string())
 }
 
-pub fn read_null_ended_array<TItem>(pid: Pid, mut address: AddressType, reader: impl Fn(Pid, AddressType) -> color_eyre::Result<TItem>) -> color_eyre::Result<Vec<TItem>> {
+pub fn read_null_ended_array<TItem>(
+    pid: Pid,
+    mut address: AddressType,
+    reader: impl Fn(Pid, AddressType) -> color_eyre::Result<TItem>,
+) -> color_eyre::Result<Vec<TItem>> {
     let mut res = Vec::new();
     const WORD_SIZE: usize = 8; // FIXME
     loop {
-        let Ok(ptr) = ptrace::read(pid, address) else {
-            log::warn!("Cannot read tracee {pid} memory {address:?}");
-            return Ok(res)
+        let ptr = match ptrace::read(pid, address) {
+            Err(e) => {
+                log::warn!("Cannot read tracee {pid} memory {address:?}: {e}");
+                return Ok(res);
+            }
+            Ok(ptr) => ptr,
         };
         if ptr == 0 {
             return Ok(res);

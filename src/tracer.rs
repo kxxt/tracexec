@@ -178,7 +178,16 @@ impl Tracer {
                         }
                     }
                     WaitStatus::PtraceSyscall(pid) => {
-                        let regs = ptrace::getregs(pid)?;
+                        let regs = match ptrace::getregs(pid) {
+                            Ok(regs) => regs,
+                            Err(Errno::ESRCH) => {
+                                log::info!(
+                                    "ptrace getregs failed: {pid}, ESRCH, child probably gone!"
+                                );
+                                continue;
+                            }
+                            e => e?,
+                        };
                         let syscallno = syscall_no_from_regs!(regs);
                         let p = self.store.get_current_mut(pid).unwrap();
                         if syscallno == nix::libc::SYS_execveat {
