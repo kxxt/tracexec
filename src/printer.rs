@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    ffi::CString,
     io::{stdout, Write},
 };
 
@@ -103,6 +102,11 @@ pub fn print_execve_trace(
             )?;
         }
         write!(stdout, "]")?;
+        // Avoid trailing color
+        // https://unix.stackexchange.com/questions/212933/background-color-whitespace-when-end-of-the-terminal-reached
+        if owo_colors::control::should_colorize() {
+            write!(stdout, "\x1B[49m\x1B[K")?;
+        }
     } else if trace_env {
         write!(stdout, " {:?}", exec_data.envp)?;
     }
