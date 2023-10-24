@@ -1,6 +1,7 @@
 use std::{collections::HashMap, ffi::CString, process::exit};
 
 use nix::{
+    errno::Errno,
     libc::{pid_t, raise, SYS_clone, SYS_clone3, SIGSTOP},
     sys::{
         ptrace::{self, traceme, AddressType},
@@ -24,6 +25,26 @@ pub struct Tracer {
     args: TracingArgs,
     pub color: Color,
     env: HashMap<String, String>,
+}
+
+fn ptrace_syscall_with_signal(pid: Pid, sig: Signal) -> Result<(), Errno> {
+    match ptrace::syscall(pid, Some(sig)) {
+        Err(Errno::ESRCH) => {
+            log::info!("ptrace syscall failed: {pid}, ESRCH, child probably gone!");
+            Ok(())
+        }
+        other => other,
+    }
+}
+
+fn ptrace_syscall(pid: Pid) -> Result<(), Errno> {
+    match ptrace::syscall(pid, None) {
+        Err(Errno::ESRCH) => {
+            log::info!("ptrace syscall failed: {pid}, ESRCH, child probably gone!");
+            Ok(())
+        }
+        other => other,
+    }
 }
 
 impl Tracer {
@@ -56,9 +77,9 @@ impl Tracer {
                     | Options::PTRACE_O_TRACECLONE
                     | Options::PTRACE_O_TRACEVFORK
             })?;
-            ptrace::syscall(root_child, None)?; // restart child
+            ptrace_syscall(root_child)?; // restart child
             loop {
-                let status = waitpid(None, Some(WaitPidFlag::__WALL | WaitPidFlag::WNOHANG))?;
+                let status = waitpid(None, Some(WaitPidFlag::__WALL))?;
                 // log::trace!("waitpid: {:?}", status);
                 match status {
                     WaitStatus::Stopped(pid, sig) => {
@@ -69,8 +90,8 @@ impl Tracer {
                                 if let Some(state) = self.store.get_current_mut(pid) {
                                     if state.status == ProcessStatus::PtraceForkEventReceived {
                                         log::trace!("sigstop event received after ptrace fork event, pid: {pid}");
+                                        ptrace_syscall(pid)?;
                                         state.status = ProcessStatus::Running;
-                                        ptrace::syscall(pid, None)?;
                                     } else if pid != root_child {
                                         log::error!("Unexpected SIGSTOP: {state:?}")
                                     }
@@ -90,9 +111,12 @@ impl Tracer {
                                 // This means, that if our tracee forked and said fork exits before the parent, the parent will get stopped.
                                 // Therefor issue a PTRACE_SYSCALL request to the parent to continue execution.
                                 // This is also important if we trace without the following forks option.
-                                ptrace::syscall(pid, None)?;
+                                ptrace_syscall(pid)?;
                             }
-                            _ => ptrace::cont(pid, sig)?,
+                            _ => {
+                                // Just deliver the signal to tracee
+                                ptrace_syscall_with_signal(pid, sig)?;
+                            }
                         }
                     }
                     WaitStatus::Exited(pid, code) => {
@@ -118,7 +142,7 @@ impl Tracer {
                                         log::trace!("ptrace fork event received after sigstop, pid: {pid}, child: {new_child}");
                                         state.status = ProcessStatus::Running;
                                         state.ppid = Some(pid);
-                                        ptrace::syscall(new_child, None)?;
+                                        ptrace_syscall(new_child)?;
                                     } else if new_child != root_child {
                                         log::error!("Unexpected fork event: {state:?}")
                                     }
@@ -130,24 +154,24 @@ impl Tracer {
                                     self.store.insert(state);
                                 }
                                 // Resume parent
-                                ptrace::syscall(pid, None)?;
+                                ptrace_syscall(pid)?;
                             }
                             nix::libc::PTRACE_EVENT_EXEC => {
                                 log::trace!("exec event");
-                                ptrace::syscall(pid, None)?;
+                                ptrace_syscall(pid)?;
                             }
                             nix::libc::PTRACE_EVENT_EXIT => {
                                 log::trace!("exit event");
-                                ptrace::cont(pid, None)?;
+                                ptrace_syscall(pid)?;
                             }
                             _ => {
                                 log::trace!("other event");
-                                ptrace::syscall(pid, None)?;
+                                ptrace_syscall(pid)?;
                             }
                         }
                     }
                     WaitStatus::Signaled(pid, sig, _) => {
-                        log::trace!("signaled: {pid}, {:?}", sig);
+                        log::debug!("signaled: {pid}, {:?}", sig);
                         // TODO: correctly handle death under ptrace
                         if pid == root_child {
                             break;
@@ -168,7 +192,7 @@ impl Tracer {
                                     // After tracing execveat, a strange execve ptrace event will happen, with PTRACE_SYSCALL_INFO_NONE.
                                     // TODO: make it less hacky.
                                     log::debug!("execveat quirk");
-                                    ptrace::syscall(pid, None)?;
+                                    ptrace_syscall(pid)?;
                                     continue;
                                 }
                                 let filename = read_string(pid, regs.rdi as AddressType)?;
@@ -185,7 +209,7 @@ impl Tracer {
                                 if self.args.successful_only && result != 0 {
                                     p.exec_data = None;
                                     p.presyscall = !p.presyscall;
-                                    ptrace::syscall(pid, None)?;
+                                    ptrace_syscall(pid)?;
                                     continue;
                                 }
                                 // SAFETY: p.preexecve is false, so p.exec_data is Some
@@ -197,7 +221,7 @@ impl Tracer {
                             }
                         } else if syscallno == SYS_clone || syscallno == SYS_clone3 {
                         }
-                        ptrace::syscall(pid, None)?;
+                        ptrace_syscall(pid)?;
                     }
                     _ => {}
                 }
