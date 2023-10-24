@@ -10,6 +10,37 @@ use crate::{
 
 use owo_colors::OwoColorize;
 
+fn parse_env_entry(item: &str) -> (&str, &str) {
+    let mut sep_loc = item
+        .as_bytes()
+        .iter()
+        .position(|&x| x == b'=')
+        .unwrap_or_else(|| {
+            log::warn!(
+                "Invalid envp entry: {:?}, assuming value to empty string!",
+                item
+            );
+            item.len()
+        });
+    if sep_loc == 0 {
+        // Find the next equal sign
+        sep_loc = item
+            .as_bytes()
+            .iter()
+            .skip(1)
+            .position(|&x| x == b'=')
+            .unwrap_or_else(|| {
+                log::warn!(
+                    "Invalid envp entry staring with '=': {:?}, assuming value to empty string!",
+                    item
+                );
+                item.len()
+            });
+    }
+    let (head, tail) = item.split_at(sep_loc);
+    (head, &tail[1..])
+}
+
 pub fn print_execve_trace(
     state: &ProcessState,
     result: i64,
@@ -22,12 +53,17 @@ pub fn print_execve_trace(
     // 2. state.exec_data is Some
     let exec_data = state.exec_data.as_ref().unwrap();
     let mut stdout = stdout();
-    write!(stdout, "{}", state.pid.yellow())?;
+    // TODO: move these calculations elsewhere
     let trace_comm = !tracing_args.no_trace_comm;
-    let trace_argv = !tracing_args.no_trace_argv;
-    let trace_env = tracing_args.trace_env;
-    let diff_env = !tracing_args.no_diff_env && !trace_env;
-    let trace_filename = !tracing_args.no_trace_filename;
+    let trace_argv = !tracing_args.no_trace_argv && !tracing_args.print_cmdline;
+    let trace_env = tracing_args.trace_env && !tracing_args.print_cmdline;
+    let diff_env = !tracing_args.no_diff_env && !trace_env && !tracing_args.print_cmdline;
+    let trace_filename = !tracing_args.no_trace_filename && !tracing_args.print_cmdline;
+    let successful_only = tracing_args.successful_only || tracing_args.print_cmdline;
+    if successful_only && result != 0 {
+        return Ok(());
+    }
+    write!(stdout, "{}", state.pid.yellow())?;
     if trace_comm {
         write!(stdout, "<{}>", state.comm.cyan())?;
     }
@@ -44,28 +80,7 @@ pub fn print_execve_trace(
         write!(stdout, " [")?;
         let mut env = env.clone();
         for item in exec_data.envp.iter() {
-            let (k, v) = {
-                let mut sep_loc = item
-                    .as_bytes()
-                    .iter()
-                    .position(|&x| x == b'=')
-                    .unwrap_or_else(|| {
-                        log::warn!(
-                            "Invalid envp entry: {:?}, assuming value to empty string!",
-                            item
-                        );
-                        item.len()
-                    });
-                if sep_loc == 0 {
-                    // Find the next equal sign
-                    sep_loc = item.as_bytes().iter().skip(1).position(|&x| x == b'=').unwrap_or_else(|| {
-                        log::warn!("Invalid envp entry staring with '=': {:?}, assuming value to empty string!", item);
-                        item.len()
-                    });
-                }
-                let (head, tail) = item.split_at(sep_loc);
-                (head, &tail[1..])
-            };
+            let (k, v) = parse_env_entry(item);
             // Too bad that we still don't have if- and while-let-chains
             // https://github.com/rust-lang/rust/issues/53667
             if let Some(orig_v) = env.get(k).map(|x| x.as_str()) {
@@ -110,6 +125,38 @@ pub fn print_execve_trace(
         }
     } else if trace_env {
         write!(stdout, " {:?}", exec_data.envp)?;
+    } else if tracing_args.print_cmdline {
+        write!(stdout, " env ")?;
+        let mut env = env.clone();
+        let mut updated = Vec::new();
+        for item in exec_data.envp.iter() {
+            let (k, v) = parse_env_entry(item);
+            // Too bad that we still don't have if- and while-let-chains
+            // https://github.com/rust-lang/rust/issues/53667
+            if let Some(orig_v) = env.get(k).map(|x| x.as_str()) {
+                if orig_v != v {
+                    updated.push((k, v));
+                }
+                // Remove existing entry
+                env.remove(k);
+            } else {
+                updated.push((k, v));
+            }
+        }
+        // Now we have the tracee removed entries in env
+        for (k, _v) in env.iter() {
+            write!(stdout, "-u={:?} ", k)?;
+        }
+        for (k, v) in updated.iter() {
+            write!(stdout, "{:?}={:?} ", k, v)?;
+        }
+        for (idx, arg) in exec_data.argv.iter().enumerate() {
+            if idx == 0 && arg == "/proc/self/exe" {
+                write!(stdout, "{:?} ", exec_data.filename)?;
+                continue;
+            }
+            write!(stdout, "{:?} ", arg)?;
+        }
     }
     if result == 0 {
         writeln!(stdout)?;

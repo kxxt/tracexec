@@ -41,8 +41,8 @@ pub struct TracingArgs {
     pub successful_only: bool,
     #[clap(
         long,
-        help = "Print commandline that reproduces what was executed. Note that when filename and argv[0] differs, it won't give you the correct commandline for now.",
-        conflicts_with_all = ["trace_env", "diff_env"]
+        help = "Print commandline that reproduces what was executed. Note that when filename and argv[0] differs, it won't give you the correct commandline for now. Implies --successful-only",
+        conflicts_with_all = ["trace_filename", "trace_env", "diff_env", "trace_argv"]
     )]
     pub print_cmdline: bool,
     // BEGIN ugly: https://github.com/clap-rs/clap/issues/815
