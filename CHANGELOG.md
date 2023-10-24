@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.0.0-experimental.3
+
+- Warn on bad memory read on tracee.
+- Workaround execveat quirk
+- Remove indent feature.
+- Make CLI trace args work.
+- `diff-env` now works!
+- We now have colors!
+
 ## v0.0.0-experimental.2
 
 - Make children process handling more robust
