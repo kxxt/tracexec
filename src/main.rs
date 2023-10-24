@@ -29,7 +29,7 @@ fn main() -> color_eyre::Result<()> {
     log::trace!("Commandline args: {:?}", cli);
     match cli.cmd {
         CliCommand::Log { cmd, tracing_args } => {
-            tracer::Tracer::new(tracing_args, cli.color)
+            tracer::Tracer::new(tracing_args, cli.color)?
                 .start_root_process(cmd.into_iter().map(|x| x).collect())?;
         }
         CliCommand::Tree { cmd, tracing_args } => {

@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     io::{stdout, Write},
+    path::Path,
 };
 
 use crate::{
@@ -46,6 +47,7 @@ pub fn print_execve_trace(
     result: i64,
     tracing_args: &TracingArgs,
     env: &HashMap<String, String>,
+    cwd: &Path,
     color: Color,
 ) -> color_eyre::Result<()> {
     // Preconditions:
@@ -60,6 +62,7 @@ pub fn print_execve_trace(
     let diff_env = !tracing_args.no_diff_env && !trace_env && !tracing_args.print_cmdline;
     let trace_filename = !tracing_args.no_trace_filename && !tracing_args.print_cmdline;
     let successful_only = tracing_args.successful_only || tracing_args.print_cmdline;
+    let trace_cwd = tracing_args.trace_cwd && !tracing_args.print_cmdline;
     if successful_only && result != 0 {
         return Ok(());
     }
@@ -74,10 +77,13 @@ pub fn print_execve_trace(
     if trace_argv {
         write!(stdout, " {:?}", exec_data.argv)?;
     }
+    if trace_cwd {
+        write!(stdout, " {} {:?}", "at".purple(), exec_data.cwd)?;
+    }
     if diff_env {
         // TODO: make it faster
         //       This is mostly a proof of concept
-        write!(stdout, " [")?;
+        write!(stdout, " {} [", "with".purple())?;
         let mut env = env.clone();
         for item in exec_data.envp.iter() {
             let (k, v) = parse_env_entry(item);
@@ -124,9 +130,12 @@ pub fn print_execve_trace(
             write!(stdout, "\x1B[49m\x1B[K")?;
         }
     } else if trace_env {
-        write!(stdout, " {:?}", exec_data.envp)?;
+        write!(stdout, " {} {:?}", "with".purple(), exec_data.envp)?;
     } else if tracing_args.print_cmdline {
         write!(stdout, " env ")?;
+        if cwd != exec_data.cwd {
+            write!(stdout, "-C {:?} ", exec_data.cwd)?;
+        }
         let mut env = env.clone();
         let mut updated = Vec::new();
         for item in exec_data.envp.iter() {

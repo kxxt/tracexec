@@ -1,4 +1,4 @@
-use std::ffi::CString;
+use std::{ffi::CString, path::PathBuf};
 
 use nix::unistd::Pid;
 
@@ -16,4 +16,10 @@ pub fn read_comm(pid: Pid) -> color_eyre::Result<String> {
     let mut buf = std::fs::read(filename)?;
     buf.pop(); // remove trailing newline
     Ok(String::from_utf8(buf)?)
+}
+
+pub fn read_cwd(pid: Pid) -> color_eyre::Result<PathBuf> {
+    let filename = format!("/proc/{pid}/cwd");
+    let buf = std::fs::read_link(filename)?;
+    Ok(buf)
 }

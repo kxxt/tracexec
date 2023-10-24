@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ffi::CString};
+use std::{collections::HashMap, ffi::CString, path::PathBuf};
 
 use nix::unistd::Pid;
 
@@ -33,6 +33,7 @@ pub struct ExecData {
     pub filename: String,
     pub argv: Vec<String>,
     pub envp: Vec<String>,
+    pub cwd: PathBuf,
 }
 
 impl ProcessStateStore {

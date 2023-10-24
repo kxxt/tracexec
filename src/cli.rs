@@ -92,6 +92,10 @@ pub struct TracingArgs {
         conflicts_with = "trace_filename"
     )]
     pub no_trace_filename: bool,
+    #[clap(long, help = "Trace cwd", conflicts_with = "no_trace_cwd")]
+    pub trace_cwd: bool,
+    #[clap(long, help = "Do not trace cwd", conflicts_with = "trace_cwd")]
+    pub no_trace_cwd: bool,
     #[clap(long, help = "Decode errno values", conflicts_with = "no_decode_errno")]
     pub decode_errno: bool,
     #[clap(long, conflicts_with = "decode_errno")]

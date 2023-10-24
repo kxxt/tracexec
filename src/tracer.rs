@@ -16,7 +16,7 @@ use crate::{
     cli::{Color, TracingArgs},
     inspect::{read_string, read_string_array},
     printer::print_execve_trace,
-    proc::read_comm,
+    proc::{read_comm, read_cwd},
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
 
@@ -25,6 +25,7 @@ pub struct Tracer {
     args: TracingArgs,
     pub color: Color,
     env: HashMap<String, String>,
+    cwd: std::path::PathBuf,
 }
 
 fn ptrace_syscall_with_signal(pid: Pid, sig: Signal) -> Result<(), Errno> {
@@ -48,13 +49,14 @@ fn ptrace_syscall(pid: Pid) -> Result<(), Errno> {
 }
 
 impl Tracer {
-    pub fn new(args: TracingArgs, color: Color) -> Self {
-        Self {
+    pub fn new(args: TracingArgs, color: Color) -> color_eyre::Result<Self> {
+        Ok(Self {
             store: ProcessStateStore::new(),
             env: std::env::vars().collect(),
             color,
             args,
-        }
+            cwd: std::env::current_dir()?,
+        })
     }
 
     pub fn start_root_process(&mut self, args: Vec<String>) -> color_eyre::Result<()> {
@@ -211,6 +213,7 @@ impl Tracer {
                                     filename,
                                     argv,
                                     envp,
+                                    cwd: read_cwd(pid)?,
                                 });
                                 p.presyscall = !p.presyscall;
                             } else {
@@ -222,7 +225,9 @@ impl Tracer {
                                     continue;
                                 }
                                 // SAFETY: p.preexecve is false, so p.exec_data is Some
-                                print_execve_trace(p, result, &self.args, &self.env, self.color)?;
+                                print_execve_trace(
+                                    p, result, &self.args, &self.env, &self.cwd, self.color,
+                                )?;
                                 // update comm
                                 p.comm = read_comm(pid)?;
                                 // flip presyscall
