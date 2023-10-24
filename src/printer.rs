@@ -26,6 +26,7 @@ pub fn print_execve_trace(
     let trace_comm = !tracing_args.no_trace_comm;
     let trace_argv = !tracing_args.no_trace_argv;
     let trace_env = tracing_args.trace_env;
+    let diff_env = !tracing_args.no_diff_env && !trace_env;
     let trace_filename = !tracing_args.no_trace_filename;
     if trace_comm {
         write!(stdout, "<{}>", state.comm.cyan())?;
@@ -37,7 +38,7 @@ pub fn print_execve_trace(
     if trace_argv {
         write!(stdout, " {:?}", exec_data.argv)?;
     }
-    if tracing_args.diff_env {
+    if diff_env {
         // TODO: make it faster
         //       This is mostly a proof of concept
         write!(stdout, " [")?;

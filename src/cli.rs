@@ -39,9 +39,26 @@ pub enum Color {
 pub struct TracingArgs {
     #[clap(long, help = "Only show successful calls", default_value_t = false)]
     pub successful_only: bool,
-    #[clap(long, help = "Diff environment variables, implies --trace-env")]
-    pub diff_env: bool,
+    #[clap(
+        long,
+        help = "Print commandline that reproduces what was executed. Note that when filename and argv[0] differs, it won't give you the correct commandline for now.",
+        conflicts_with_all = ["trace_env", "diff_env"]
+    )]
+    pub print_cmdline: bool,
     // BEGIN ugly: https://github.com/clap-rs/clap/issues/815
+    #[clap(
+        long,
+        help = "Diff environment variables with the original environment",
+        conflicts_with = "no_diff_env",
+        conflicts_with = "trace_env"
+    )]
+    pub diff_env: bool,
+    #[clap(
+        long,
+        help = "Do not diff environment variables",
+        conflicts_with = "diff_env"
+    )]
+    pub no_diff_env: bool,
     #[clap(
         long,
         help = "Trace environment variables",
