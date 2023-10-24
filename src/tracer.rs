@@ -12,7 +12,7 @@ use nix::{
 
 use crate::{
     arch::{syscall_no_from_regs, syscall_res_from_regs},
-    cli::TracingArgs,
+    cli::{Color, TracingArgs},
     inspect::{read_string, read_string_array},
     printer::print_execve_trace,
     proc::read_comm,
@@ -22,14 +22,16 @@ use crate::{
 pub struct Tracer {
     pub store: ProcessStateStore,
     args: TracingArgs,
+    pub color: Color,
     env: HashMap<String, String>,
 }
 
 impl Tracer {
-    pub fn new(args: TracingArgs) -> Self {
+    pub fn new(args: TracingArgs, color: Color) -> Self {
         Self {
             store: ProcessStateStore::new(),
             env: std::env::vars().collect(),
+            color,
             args,
         }
     }
@@ -187,7 +189,7 @@ impl Tracer {
                                     continue;
                                 }
                                 // SAFETY: p.preexecve is false, so p.exec_data is Some
-                                print_execve_trace(p, result, &self.args, &self.env)?;
+                                print_execve_trace(p, result, &self.args, &self.env, self.color)?;
                                 // update comm
                                 p.comm = read_comm(pid)?;
                                 // flip presyscall

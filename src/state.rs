@@ -22,7 +22,6 @@ pub struct ProcessState {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProcessStatus {
-    Initialized,
     SigstopReceived,
     PtraceForkEventReceived,
     Running,

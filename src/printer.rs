@@ -4,26 +4,32 @@ use std::{
     io::{stdout, Write},
 };
 
-use crate::{cli::TracingArgs, state::ProcessState};
+use crate::{
+    cli::{Color, TracingArgs},
+    state::ProcessState,
+};
+
+use owo_colors::OwoColorize;
 
 pub fn print_execve_trace(
     state: &ProcessState,
     result: i64,
     tracing_args: &TracingArgs,
     env: &HashMap<String, String>,
+    color: Color,
 ) -> color_eyre::Result<()> {
     // Preconditions:
     // 1. execve syscall exit, which leads to 2
     // 2. state.exec_data is Some
     let exec_data = state.exec_data.as_ref().unwrap();
     let mut stdout = stdout();
-    write!(stdout, "{}", state.pid)?;
+    write!(stdout, "{}", state.pid.yellow())?;
     let trace_comm = !tracing_args.no_trace_comm;
     let trace_argv = !tracing_args.no_trace_argv;
     let trace_env = tracing_args.trace_env;
     let trace_filename = !tracing_args.no_trace_filename;
     if trace_comm {
-        write!(stdout, "<{}>", state.comm)?;
+        write!(stdout, "<{}>", state.comm.cyan())?;
     }
     write!(stdout, ":")?;
     if trace_filename {
@@ -64,17 +70,37 @@ pub fn print_execve_trace(
             // https://github.com/rust-lang/rust/issues/53667
             if let Some(orig_v) = env.get(k).map(|x| x.as_str()) {
                 if orig_v != v {
-                    write!(stdout, "{:?}={:?}, ", k, v)?;
+                    write!(
+                        stdout,
+                        "{}{:?}={:?}, ",
+                        "M".bright_yellow().bold(),
+                        k,
+                        v.on_blue()
+                    )?;
                 }
                 // Remove existing entry
                 env.remove(k);
             } else {
-                write!(stdout, "+{:?}={:?}, ", k, v)?;
+                write!(
+                    stdout,
+                    "{}{:?}{}{:?}, ",
+                    "+".bright_green().bold(),
+                    k.on_green(),
+                    "=".on_green(),
+                    v.on_green()
+                )?;
             }
         }
         // Now we have the tracee removed entries in env
         for (k, v) in env.iter() {
-            write!(stdout, " -{:?}={:?}, ", k, v)?;
+            write!(
+                stdout,
+                "{}{:?}{}{:?}, ",
+                "-".bright_red().bold(),
+                k.on_red().strikethrough(),
+                "=".on_red().strikethrough(),
+                v.on_red().strikethrough()
+            )?;
         }
         write!(stdout, "]")?;
     } else if trace_env {

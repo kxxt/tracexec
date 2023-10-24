@@ -22,7 +22,7 @@ pub fn read_generic_string<TString>(pid: Pid, address: AddressType, ctor: impl F
     }
 }
 
-
+#[allow(unused)]
 pub fn read_cstring(pid: Pid, address: AddressType) -> color_eyre::Result<CString> {
     read_generic_string(pid, address, |x| CString::new(x).unwrap())
 }
@@ -49,6 +49,7 @@ pub fn read_null_ended_array<TItem>(pid: Pid, mut address: AddressType, reader: 
     }
 }
 
+#[allow(unused)]
 pub fn read_cstring_array(pid: Pid, address: AddressType) -> color_eyre::Result<Vec<CString>> {
     read_null_ended_array(pid, address, read_cstring)
 }
