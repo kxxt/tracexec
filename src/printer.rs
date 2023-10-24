@@ -1,4 +1,8 @@
-use std::io::{stdout, Write};
+use std::{
+    collections::HashMap,
+    ffi::CString,
+    io::{stdout, Write},
+};
 
 use crate::{cli::TracingArgs, state::ProcessState};
 
@@ -6,6 +10,7 @@ pub fn print_execve_trace(
     state: &ProcessState,
     result: i64,
     tracing_args: &TracingArgs,
+    env: &HashMap<String, String>,
 ) -> color_eyre::Result<()> {
     // Preconditions:
     // 1. execve syscall exit, which leads to 2
@@ -27,7 +32,52 @@ pub fn print_execve_trace(
     if trace_argv {
         write!(stdout, " {:?}", exec_data.argv)?;
     }
-    if trace_env {
+    if tracing_args.diff_env {
+        // TODO: make it faster
+        //       This is mostly a proof of concept
+        write!(stdout, " [")?;
+        let mut env = env.clone();
+        for item in exec_data.envp.iter() {
+            let (k, v) = {
+                let mut sep_loc = item
+                    .as_bytes()
+                    .iter()
+                    .position(|&x| x == b'=')
+                    .unwrap_or_else(|| {
+                        log::warn!(
+                            "Invalid envp entry: {:?}, assuming value to empty string!",
+                            item
+                        );
+                        item.len()
+                    });
+                if sep_loc == 0 {
+                    // Find the next equal sign
+                    sep_loc = item.as_bytes().iter().skip(1).position(|&x| x == b'=').unwrap_or_else(|| {
+                        log::warn!("Invalid envp entry staring with '=': {:?}, assuming value to empty string!", item);
+                        item.len()
+                    });
+                }
+                let (head, tail) = item.split_at(sep_loc);
+                (head, &tail[1..])
+            };
+            // Too bad that we still don't have if- and while-let-chains
+            // https://github.com/rust-lang/rust/issues/53667
+            if let Some(orig_v) = env.get(k).map(|x| x.as_str()) {
+                if orig_v != v {
+                    write!(stdout, "{:?}={:?}, ", k, v)?;
+                }
+                // Remove existing entry
+                env.remove(k);
+            } else {
+                write!(stdout, "+{:?}={:?}, ", k, v)?;
+            }
+        }
+        // Now we have the tracee removed entries in env
+        for (k, v) in env.iter() {
+            write!(stdout, " -{:?}={:?}, ", k, v)?;
+        }
+        write!(stdout, "]")?;
+    } else if trace_env {
         write!(stdout, " {:?}", exec_data.envp)?;
     }
     if result == 0 {

@@ -31,9 +31,9 @@ pub enum ProcessStatus {
 
 #[derive(Debug, Clone)]
 pub struct ExecData {
-    pub filename: CString,
-    pub argv: Vec<CString>,
-    pub envp: Vec<CString>,
+    pub filename: String,
+    pub argv: Vec<String>,
+    pub envp: Vec<String>,
 }
 
 impl ProcessStateStore {

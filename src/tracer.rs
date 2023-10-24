@@ -1,4 +1,4 @@
-use std::{ffi::CString, process::exit};
+use std::{collections::HashMap, ffi::CString, process::exit};
 
 use nix::{
     libc::{pid_t, raise, SYS_clone, SYS_clone3, SIGSTOP},
@@ -13,7 +13,7 @@ use nix::{
 use crate::{
     arch::{syscall_no_from_regs, syscall_res_from_regs},
     cli::TracingArgs,
-    inspect::{read_cstring, read_cstring_array},
+    inspect::{read_string, read_string_array},
     printer::print_execve_trace,
     proc::read_comm,
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
@@ -22,17 +22,19 @@ use crate::{
 pub struct Tracer {
     pub store: ProcessStateStore,
     args: TracingArgs,
+    env: HashMap<String, String>,
 }
 
 impl Tracer {
     pub fn new(args: TracingArgs) -> Self {
         Self {
             store: ProcessStateStore::new(),
+            env: std::env::vars().collect(),
             args,
         }
     }
 
-    pub fn start_root_process(&mut self, args: Vec<CString>) -> color_eyre::Result<()> {
+    pub fn start_root_process(&mut self, args: Vec<String>) -> color_eyre::Result<()> {
         log::trace!("start_root_process: {:?}", args);
         if let ForkResult::Parent { child: root_child } = unsafe { nix::unistd::fork()? } {
             waitpid(root_child, Some(WaitPidFlag::WSTOPPED))?; // wait for child to stop
@@ -76,7 +78,6 @@ impl Tracer {
                                     state.status = ProcessStatus::SigstopReceived;
                                     self.store.insert(state);
                                 }
-                                // ptrace::syscall(pid, None)?;
                                 // https://stackoverflow.com/questions/29997244/occasionally-missing-ptrace-event-vfork-when-running-ptrace
                                 // DO NOT send PTRACE_SYSCALL until we receive the PTRACE_EVENT_FORK, etc.
                             }
@@ -145,6 +146,7 @@ impl Tracer {
                     }
                     WaitStatus::Signaled(pid, sig, _) => {
                         log::trace!("signaled: {pid}, {:?}", sig);
+                        // TODO: correctly handle death under ptrace
                         if pid == root_child {
                             break;
                         }
@@ -167,9 +169,9 @@ impl Tracer {
                                     ptrace::syscall(pid, None)?;
                                     continue;
                                 }
-                                let filename = read_cstring(pid, regs.rdi as AddressType)?;
-                                let argv = read_cstring_array(pid, regs.rsi as AddressType)?;
-                                let envp = read_cstring_array(pid, regs.rdx as AddressType)?;
+                                let filename = read_string(pid, regs.rdi as AddressType)?;
+                                let argv = read_string_array(pid, regs.rsi as AddressType)?;
+                                let envp = read_string_array(pid, regs.rdx as AddressType)?;
                                 p.exec_data = Some(ExecData {
                                     filename,
                                     argv,
@@ -185,7 +187,7 @@ impl Tracer {
                                     continue;
                                 }
                                 // SAFETY: p.preexecve is false, so p.exec_data is Some
-                                print_execve_trace(p, result, &self.args)?;
+                                print_execve_trace(p, result, &self.args, &self.env)?;
                                 // update comm
                                 p.comm = read_comm(pid)?;
                                 // flip presyscall
