@@ -67,7 +67,11 @@ pub fn print_execve_trace(
     if successful_only && result != 0 {
         return Ok(());
     }
-    write!(stdout, "{}", state.pid.yellow())?;
+    if result == 0 {
+        write!(stdout, "{}", state.pid.bright_yellow())?;
+    } else {
+        write!(stdout, "{}", state.pid.bright_red())?;
+    }
     if trace_comm {
         write!(stdout, "<{}>", state.comm.cyan())?;
     }
