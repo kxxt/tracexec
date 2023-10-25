@@ -31,7 +31,7 @@ pub enum ProcessStatus {
 
 #[derive(Debug)]
 pub struct ExecData {
-    pub filename: String,
+    pub filename: PathBuf,
     pub argv: Vec<String>,
     pub envp: Vec<String>,
     pub cwd: PathBuf,

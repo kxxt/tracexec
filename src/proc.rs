@@ -4,12 +4,12 @@ use std::{
     ffi::CString,
     fmt::{Display, Formatter},
     io::{self, BufRead, BufReader, Read},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use color_eyre::owo_colors::OwoColorize;
 
-use nix::unistd::Pid;
+use nix::{libc::AT_FDCWD, unistd::Pid};
 
 pub fn read_argv(pid: Pid) -> color_eyre::Result<Vec<CString>> {
     let filename = format!("/proc/{pid}/cmdline");
@@ -27,10 +27,18 @@ pub fn read_comm(pid: Pid) -> color_eyre::Result<String> {
     Ok(String::from_utf8(buf)?)
 }
 
-pub fn read_cwd(pid: Pid) -> color_eyre::Result<PathBuf> {
+pub fn read_cwd(pid: Pid) -> std::io::Result<PathBuf> {
     let filename = format!("/proc/{pid}/cwd");
     let buf = std::fs::read_link(filename)?;
     Ok(buf)
+}
+
+pub fn read_fd(pid: Pid, fd: i32) -> std::io::Result<PathBuf> {
+    if fd == AT_FDCWD {
+        return read_cwd(pid);
+    }
+    let filename = format!("/proc/{pid}/fd/{fd}");
+    Ok(std::fs::read_link(filename)?)
 }
 
 #[derive(Debug)]
@@ -54,19 +62,15 @@ impl Display for Interpreter {
     }
 }
 
-pub fn read_interpreter_recursive(exe: &str) -> Vec<Interpreter> {
-    let mut exe = Cow::Borrowed(exe);
+pub fn read_interpreter_recursive(exe: impl AsRef<Path>) -> Vec<Interpreter> {
+    let mut exe = Cow::Borrowed(exe.as_ref());
     let mut interpreters = Vec::new();
     loop {
-        match read_interpreter(&exe) {
+        match read_interpreter(exe.as_ref()) {
             Interpreter::Shebang(shebang) => {
-                exe = Cow::Owned(
-                    shebang
-                        .split_ascii_whitespace()
-                        .next()
-                        .unwrap_or("")
-                        .to_owned(),
-                );
+                exe = Cow::Owned(PathBuf::from(
+                    shebang.split_ascii_whitespace().next().unwrap_or(""),
+                ));
                 interpreters.push(Interpreter::Shebang(shebang));
             }
             Interpreter::None => break,
@@ -79,7 +83,7 @@ pub fn read_interpreter_recursive(exe: &str) -> Vec<Interpreter> {
     interpreters
 }
 
-pub fn read_interpreter(exe: &str) -> Interpreter {
+pub fn read_interpreter(exe: &Path) -> Interpreter {
     fn err_to_interpreter(e: io::Error) -> Interpreter {
         if e.kind() == io::ErrorKind::PermissionDenied || e.kind() == io::ErrorKind::NotFound {
             Interpreter::ExecutableUnaccessible

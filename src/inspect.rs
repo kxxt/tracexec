@@ -1,4 +1,8 @@
-use std::ffi::CString;
+use std::{
+    ffi::{CString, OsString},
+    os::unix::prelude::OsStringExt,
+    path::PathBuf,
+};
 
 use nix::{sys::ptrace, sys::ptrace::AddressType, unistd::Pid};
 
@@ -32,6 +36,11 @@ pub fn read_generic_string<TString>(
 #[allow(unused)]
 pub fn read_cstring(pid: Pid, address: AddressType) -> color_eyre::Result<CString> {
     read_generic_string(pid, address, |x| CString::new(x).unwrap())
+}
+
+pub fn read_pathbuf(pid: Pid, address: AddressType) -> color_eyre::Result<PathBuf> {
+    // Waiting on https://github.com/rust-lang/libs-team/issues/116
+    read_generic_string(pid, address, |x| PathBuf::from(OsString::from_vec(x)))
 }
 
 pub fn read_string(pid: Pid, address: AddressType) -> color_eyre::Result<String> {

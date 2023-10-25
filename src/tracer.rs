@@ -1,8 +1,8 @@
-use std::{collections::HashMap, ffi::CString, process::exit};
+use std::{collections::HashMap, ffi::CString, path::PathBuf, process::exit};
 
 use nix::{
     errno::Errno,
-    libc::{pid_t, raise, SYS_clone, SYS_clone3, SIGSTOP},
+    libc::{pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP},
     sys::{
         ptrace::{self, traceme, AddressType},
         signal::Signal,
@@ -14,9 +14,9 @@ use nix::{
 use crate::{
     arch::{is_execveat_execve_quirk, syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
     cli::{Color, TracingArgs},
-    inspect::{read_string, read_string_array},
+    inspect::{read_pathbuf, read_string, read_string_array},
     printer::print_execve_trace,
-    proc::{read_comm, read_cwd, read_interpreter_recursive},
+    proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
 
@@ -195,21 +195,51 @@ impl Tracer {
                         let p = self.store.get_current_mut(pid).unwrap();
                         // log::trace!("syscall: {syscallno}");
                         if syscallno == nix::libc::SYS_execveat && p.preexecveat {
-                            log::trace!("execveat {syscallno}");
+                            log::trace!("pre execveat {syscallno}");
                             // int execveat(int dirfd, const char *pathname,
                             //              char *const _Nullable argv[],
                             //              char *const _Nullable envp[],
                             //              int flags);
-                            let dirfd = syscall_arg!(regs, 0) as i64;
+                            let dirfd = syscall_arg!(regs, 0) as i32;
                             let pathname = read_string(pid, syscall_arg!(regs, 1) as AddressType)?;
+                            let pathname_is_empty = pathname.is_empty();
+                            let pathname = PathBuf::from(pathname);
                             let argv =
                                 read_string_array(pid, syscall_arg!(regs, 2) as AddressType)?;
                             let envp =
                                 read_string_array(pid, syscall_arg!(regs, 3) as AddressType)?;
-                            let flags = syscall_arg!(regs, 4);
-                            log::info!(
-                                "pre execveat: {dirfd}, {pathname}, {argv:?}, {envp:?}, {flags}"
-                            );
+                            let flags = syscall_arg!(regs, 4) as i32;
+                            let filename = match (
+                                pathname.is_absolute(),
+                                pathname_is_empty && ((flags & AT_EMPTY_PATH) != 0),
+                            ) {
+                                (true, _) => {
+                                    // If pathname is absolute, then dirfd is ignored.
+                                    pathname
+                                }
+                                (false, true) => {
+                                    // If  pathname  is an empty string and the AT_EMPTY_PATH flag is specified, then the file descriptor dirfd
+                                    // specifies the file to be executed
+                                    read_fd(pid, dirfd)?
+                                }
+                                (false, false) => {
+                                    // pathname is relative to dirfd
+                                    let dir = read_fd(pid, dirfd)?;
+                                    dir.join(pathname)
+                                }
+                            };
+                            let interpreters = if self.args.trace_interpreter {
+                                read_interpreter_recursive(&filename)
+                            } else {
+                                vec![]
+                            };
+                            p.exec_data = Some(ExecData {
+                                filename,
+                                argv,
+                                envp,
+                                cwd: read_cwd(pid)?,
+                                interpreters,
+                            });
                             p.preexecveat = !p.preexecveat;
                         } else if !p.preexecveat
                             && ((is_execveat_execve_quirk!(regs)
@@ -222,20 +252,37 @@ impl Tracer {
                             // and the argument registers are all zero.
                             // If execveat fails, in the syscall exit event, the syscall number from regs will still be SYS_execveat,
                             // and the argument registers are all zero.
-                            log::debug!("post execveat, rax = {:x}", regs.rax);
+                            let result = syscall_res_from_regs!(regs);
+                            log::trace!("post execveat");
+                            if self.args.successful_only && result != 0 {
+                                p.exec_data = None;
+                                p.preexecve = !p.preexecve;
+                                ptrace_syscall(pid)?;
+                                continue;
+                            }
+                            print_execve_trace(
+                                p, result, &self.args, &self.env, &self.cwd, self.color,
+                            )?;
+
+                            p.exec_data = None;
+                            // update comm
+                            p.comm = read_comm(pid)?;
                             p.preexecveat = !p.preexecveat;
                         } else if syscallno == nix::libc::SYS_execve {
-                            log::trace!("execve {syscallno}, preexecve: {}, preexecveat: {}", p.preexecve, p.preexecveat);
+                            log::trace!(
+                                "execve {syscallno}, preexecve: {}, preexecveat: {}",
+                                p.preexecve,
+                                p.preexecveat
+                            );
                             if p.preexecve {
                                 let filename =
-                                    read_string(pid, syscall_arg!(regs, 0) as AddressType)?;
+                                    read_pathbuf(pid, syscall_arg!(regs, 0) as AddressType)?;
                                 let argv =
                                     read_string_array(pid, syscall_arg!(regs, 1) as AddressType)?;
                                 let envp =
                                     read_string_array(pid, syscall_arg!(regs, 2) as AddressType)?;
                                 let interpreters = if self.args.trace_interpreter {
                                     read_interpreter_recursive(&filename)
-                                    // vec![Interpreter::None]
                                 } else {
                                     vec![]
                                 };
@@ -259,6 +306,7 @@ impl Tracer {
                                 print_execve_trace(
                                     p, result, &self.args, &self.env, &self.cwd, self.color,
                                 )?;
+                                p.exec_data = None;
                                 // update comm
                                 p.comm = read_comm(pid)?;
                                 // flip presyscall
