@@ -12,7 +12,7 @@ use nix::{
 };
 
 use crate::{
-    arch::{syscall_no_from_regs, syscall_res_from_regs},
+    arch::{is_execveat_execve_quirk, syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
     cli::{Color, TracingArgs},
     inspect::{read_string, read_string_array},
     printer::print_execve_trace,
@@ -198,7 +198,7 @@ impl Tracer {
                         } else if syscallno == nix::libc::SYS_execve {
                             log::trace!("execve {syscallno}");
                             if p.presyscall {
-                                if regs.rdi == 0 && regs.rsi == 0 && regs.rdx == 0 {
+                                if is_execveat_execve_quirk!(regs) {
                                     // Workaround ptrace execveat quirk.
                                     // After tracing execveat, a strange execve ptrace event will happen, with PTRACE_SYSCALL_INFO_NONE.
                                     // TODO: make it less hacky.
@@ -206,9 +206,12 @@ impl Tracer {
                                     ptrace_syscall(pid)?;
                                     continue;
                                 }
-                                let filename = read_string(pid, regs.rdi as AddressType)?;
-                                let argv = read_string_array(pid, regs.rsi as AddressType)?;
-                                let envp = read_string_array(pid, regs.rdx as AddressType)?;
+                                let filename =
+                                    read_string(pid, syscall_arg!(regs, 0) as AddressType)?;
+                                let argv =
+                                    read_string_array(pid, syscall_arg!(regs, 1) as AddressType)?;
+                                let envp =
+                                    read_string_array(pid, syscall_arg!(regs, 2) as AddressType)?;
                                 let interpreters = if self.args.trace_interpreter {
                                     read_interpreter_recursive(&filename)
                                     // vec![Interpreter::None]
