@@ -191,21 +191,42 @@ impl Tracer {
                             e => e?,
                         };
                         let syscallno = syscall_no_from_regs!(regs);
+                        // let syscall_info = ptrace::get_syscall_info(pid)?;
                         let p = self.store.get_current_mut(pid).unwrap();
-                        if syscallno == nix::libc::SYS_execveat {
+                        // log::trace!("syscall: {syscallno}");
+                        if syscallno == nix::libc::SYS_execveat && p.preexecveat {
                             log::trace!("execveat {syscallno}");
-                            println!("execveat");
+                            // int execveat(int dirfd, const char *pathname,
+                            //              char *const _Nullable argv[],
+                            //              char *const _Nullable envp[],
+                            //              int flags);
+                            let dirfd = syscall_arg!(regs, 0) as i64;
+                            let pathname = read_string(pid, syscall_arg!(regs, 1) as AddressType)?;
+                            let argv =
+                                read_string_array(pid, syscall_arg!(regs, 2) as AddressType)?;
+                            let envp =
+                                read_string_array(pid, syscall_arg!(regs, 3) as AddressType)?;
+                            let flags = syscall_arg!(regs, 4);
+                            log::info!(
+                                "pre execveat: {dirfd}, {pathname}, {argv:?}, {envp:?}, {flags}"
+                            );
+                            p.preexecveat = !p.preexecveat;
+                        } else if !p.preexecveat
+                            && ((is_execveat_execve_quirk!(regs)
+                                && syscallno == nix::libc::SYS_execve)
+                                || syscallno == nix::libc::SYS_execveat)
+                        {
+                            // execveat quirk:
+                            // ------------------
+                            // If execveat succeeds, in the syscall exit event, the syscall number from regs will be SYS_execve instead of SYS_execveat.
+                            // and the argument registers are all zero.
+                            // If execveat fails, in the syscall exit event, the syscall number from regs will still be SYS_execveat,
+                            // and the argument registers are all zero.
+                            log::debug!("post execveat, rax = {:x}", regs.rax);
+                            p.preexecveat = !p.preexecveat;
                         } else if syscallno == nix::libc::SYS_execve {
-                            log::trace!("execve {syscallno}");
-                            if p.presyscall {
-                                if is_execveat_execve_quirk!(regs) {
-                                    // Workaround ptrace execveat quirk.
-                                    // After tracing execveat, a strange execve ptrace event will happen, with PTRACE_SYSCALL_INFO_NONE.
-                                    // TODO: make it less hacky.
-                                    log::debug!("execveat quirk");
-                                    ptrace_syscall(pid)?;
-                                    continue;
-                                }
+                            log::trace!("execve {syscallno}, preexecve: {}, preexecveat: {}", p.preexecve, p.preexecveat);
+                            if p.preexecve {
                                 let filename =
                                     read_string(pid, syscall_arg!(regs, 0) as AddressType)?;
                                 let argv =
@@ -225,12 +246,12 @@ impl Tracer {
                                     cwd: read_cwd(pid)?,
                                     interpreters,
                                 });
-                                p.presyscall = !p.presyscall;
+                                p.preexecve = !p.preexecve;
                             } else {
                                 let result = syscall_res_from_regs!(regs);
                                 if self.args.successful_only && result != 0 {
                                     p.exec_data = None;
-                                    p.presyscall = !p.presyscall;
+                                    p.preexecve = !p.preexecve;
                                     ptrace_syscall(pid)?;
                                     continue;
                                 }
@@ -241,7 +262,7 @@ impl Tracer {
                                 // update comm
                                 p.comm = read_comm(pid)?;
                                 // flip presyscall
-                                p.presyscall = !p.presyscall;
+                                p.preexecve = !p.preexecve;
                             }
                         } else if syscallno == SYS_clone || syscallno == SYS_clone3 {
                         }
