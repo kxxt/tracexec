@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.0.0-experimental.4
+
+- fix: handle ESRCH in ptrace requests
+- feat: diff env by default
+- feat: print_cmdline option
+- feat: trace shebang interpreter
+- feat: even more colors!
+- fix: don't show extra comma in diff-env output
+
 ## v0.0.0-experimental.3
 
 - Warn on bad memory read on tracee.
