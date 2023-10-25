@@ -16,7 +16,7 @@ use crate::{
     cli::{Color, TracingArgs},
     inspect::{read_string, read_string_array},
     printer::print_execve_trace,
-    proc::{read_comm, read_cwd},
+    proc::{read_comm, read_cwd, read_interpreter, read_interpreter_recursive, Interpreter},
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
 
@@ -209,11 +209,18 @@ impl Tracer {
                                 let filename = read_string(pid, regs.rdi as AddressType)?;
                                 let argv = read_string_array(pid, regs.rsi as AddressType)?;
                                 let envp = read_string_array(pid, regs.rdx as AddressType)?;
+                                let interpreters = if self.args.trace_interpreter {
+                                    read_interpreter_recursive(&filename)
+                                    // vec![Interpreter::None]
+                                } else {
+                                    vec![]
+                                };
                                 p.exec_data = Some(ExecData {
                                     filename,
                                     argv,
                                     envp,
                                     cwd: read_cwd(pid)?,
+                                    interpreters,
                                 });
                                 p.presyscall = !p.presyscall;
                             } else {

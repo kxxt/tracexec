@@ -2,13 +2,13 @@ use std::{collections::HashMap, ffi::CString, path::PathBuf};
 
 use nix::unistd::Pid;
 
-use crate::proc::{read_argv, read_comm};
+use crate::proc::{read_argv, read_comm, Interpreter};
 
 pub struct ProcessStateStore {
     processes: HashMap<Pid, Vec<ProcessState>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ProcessState {
     pub pid: Pid,
     pub ppid: Option<Pid>,
@@ -28,12 +28,13 @@ pub enum ProcessStatus {
     Exited(i32),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ExecData {
     pub filename: String,
     pub argv: Vec<String>,
     pub envp: Vec<String>,
     pub cwd: PathBuf,
+    pub interpreters: Vec<Interpreter>,
 }
 
 impl ProcessStateStore {

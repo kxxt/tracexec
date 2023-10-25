@@ -6,6 +6,7 @@ use std::{
 
 use crate::{
     cli::{Color, TracingArgs},
+    proc::Interpreter,
     state::ProcessState,
 };
 
@@ -79,6 +80,27 @@ pub fn print_execve_trace(
     }
     if trace_cwd {
         write!(stdout, " {} {:?}", "at".purple(), exec_data.cwd)?;
+    }
+    if tracing_args.trace_interpreter && result == 0 {
+        write!(stdout, " {} ", "interpreter".purple(),)?;
+        match exec_data.interpreters.len() {
+            0 => {
+                write!(stdout, "{}", Interpreter::None)?;
+            }
+            1 => {
+                write!(stdout, "{}", exec_data.interpreters[0])?;
+            }
+            _ => {
+                write!(stdout, "[")?;
+                for (idx, interpreter) in exec_data.interpreters.iter().enumerate() {
+                    if idx != 0 {
+                        write!(stdout, ", ")?;
+                    }
+                    write!(stdout, "{}", interpreter)?;
+                }
+                write!(stdout, "]")?;
+            }
+        }
     }
     if diff_env {
         // TODO: make it faster

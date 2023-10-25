@@ -45,6 +45,8 @@ pub struct TracingArgs {
         conflicts_with_all = ["trace_filename", "trace_env", "diff_env", "trace_argv"]
     )]
     pub print_cmdline: bool,
+    #[clap(long, help = "Try to trace script interpreter")]
+    pub trace_interpreter: bool,
     // BEGIN ugly: https://github.com/clap-rs/clap/issues/815
     #[clap(
         long,
