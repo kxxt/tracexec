@@ -2,7 +2,7 @@
 name = "tracexec"
 version = "0.0.0-experimental.4"
 edition = "2021"
-author = "Levi Zim <rsworktech@outlook.com>"
+authors = ["Levi Zim <rsworktech@outlook.com>"]
 description = "A small utility to trace command execution."
 license = "GPL-2.0"
 
