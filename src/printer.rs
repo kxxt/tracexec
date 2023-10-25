@@ -197,15 +197,16 @@ pub fn print_execve_trace(
         writeln!(stdout)?;
     } else {
         let decode_errno = !tracing_args.no_decode_errno;
+        write!(stdout, " {} ", "=".purple())?;
         if decode_errno {
             writeln!(
                 stdout,
-                " = {} ({})",
-                result,
-                nix::errno::Errno::from_i32(-result as i32)
+                "{} ({})",
+                result.bright_red().bold(),
+                nix::errno::Errno::from_i32(-result as i32).red()
             )?;
         } else {
-            writeln!(stdout, " = {} ", result)?;
+            writeln!(stdout, "{}", result.bright_red().bold())?;
         }
     }
     Ok(())
