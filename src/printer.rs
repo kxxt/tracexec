@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{self, stdout, Write, Stdout},
+    io::{self, stdout, Stdout, Write},
     path::Path,
 };
 
@@ -57,7 +57,7 @@ pub fn print_execve_trace(
     tracing_args: &TracingArgs,
     env: &HashMap<String, String>,
     cwd: &Path,
-    color: Color,
+    _color: Color,
 ) -> color_eyre::Result<()> {
     // Preconditions:
     // 1. execve syscall exit, which leads to 2

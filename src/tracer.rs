@@ -16,7 +16,7 @@ use crate::{
     cli::{Color, TracingArgs},
     inspect::{read_string, read_string_array},
     printer::print_execve_trace,
-    proc::{read_comm, read_cwd, read_interpreter, read_interpreter_recursive, Interpreter},
+    proc::{read_comm, read_cwd, read_interpreter_recursive},
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
 

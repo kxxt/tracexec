@@ -1,14 +1,14 @@
 use core::fmt;
 use std::{
     borrow::Cow,
-    ffi::{CStr, CString},
+    ffi::CString,
     fmt::{Display, Formatter},
     io::{self, BufRead, BufReader, Read},
     path::PathBuf,
 };
 
 use color_eyre::owo_colors::OwoColorize;
-use log::debug;
+
 use nix::unistd::Pid;
 
 pub fn read_argv(pid: Pid) -> color_eyre::Result<Vec<CString>> {
