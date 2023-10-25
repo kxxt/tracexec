@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{stdout, Write},
+    io::{self, stdout, Write, Stdout},
     path::Path,
 };
 
@@ -119,15 +119,25 @@ pub fn print_execve_trace(
         //       This is mostly a proof of concept
         write!(stdout, " {} [", "with".purple())?;
         let mut env = env.clone();
+        let mut first_item_written = false;
+        let mut write_separator = |out: &mut Stdout| -> io::Result<()> {
+            if first_item_written {
+                write!(out, ", ")?;
+            } else {
+                first_item_written = true;
+            }
+            Ok(())
+        };
         for item in exec_data.envp.iter() {
             let (k, v) = parse_env_entry(item);
             // Too bad that we still don't have if- and while-let-chains
             // https://github.com/rust-lang/rust/issues/53667
             if let Some(orig_v) = env.get(k).map(|x| x.as_str()) {
                 if orig_v != v {
+                    write_separator(&mut stdout)?;
                     write!(
                         stdout,
-                        "{}{:?}={:?}, ",
+                        "{}{:?}={:?}",
                         "M".bright_yellow().bold(),
                         k,
                         v.on_blue()
@@ -136,9 +146,10 @@ pub fn print_execve_trace(
                 // Remove existing entry
                 env.remove(k);
             } else {
+                write_separator(&mut stdout)?;
                 write!(
                     stdout,
-                    "{}{:?}{}{:?}, ",
+                    "{}{:?}{}{:?}",
                     "+".bright_green().bold(),
                     k.on_green(),
                     "=".on_green(),
@@ -148,9 +159,10 @@ pub fn print_execve_trace(
         }
         // Now we have the tracee removed entries in env
         for (k, v) in env.iter() {
+            write_separator(&mut stdout)?;
             write!(
                 stdout,
-                "{}{:?}{}{:?}, ",
+                "{}{:?}{}{:?}",
                 "-".bright_red().bold(),
                 k.on_red().strikethrough(),
                 "=".on_red().strikethrough(),
