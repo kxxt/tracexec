@@ -39,7 +39,6 @@ pub enum Interpreter {
     Shebang(String),
     ExecutableUnaccessible,
     Error(io::Error),
-    NonUTF8,
 }
 
 impl Display for Interpreter {
@@ -51,7 +50,6 @@ impl Display for Interpreter {
                 write!(f, "{}", "executable unaccessible".red().bold())
             }
             Interpreter::Error(e) => write!(f, "({}: {})", "err".red().bold(), e.red().bold()),
-            Interpreter::NonUTF8 => write!(f, "({}: {})", "err".red().bold(), "Not valid UTF-8"),
         }
     }
 }
@@ -61,10 +59,15 @@ pub fn read_interpreter_recursive(exe: &str) -> Vec<Interpreter> {
     let mut interpreters = Vec::new();
     loop {
         match read_interpreter(&exe) {
-            Interpreter::Shebang(path) => {
-                // TODO: maybe we can remove this clone
-                exe = Cow::Owned(path.clone());
-                interpreters.push(Interpreter::Shebang(path));
+            Interpreter::Shebang(shebang) => {
+                exe = Cow::Owned(
+                    shebang
+                        .split_ascii_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .to_owned(),
+                );
+                interpreters.push(Interpreter::Shebang(shebang));
             }
             Interpreter::None => break,
             err => {
@@ -95,7 +98,6 @@ pub fn read_interpreter(exe: &str) -> Interpreter {
     if let Err(e) = reader.read_exact(&mut buf) {
         return Interpreter::Error(e);
     };
-    debug!("File: {exe:?}, Shebang: {:?}", buf);
     if &buf != b"#!" {
         return Interpreter::None;
     }
@@ -105,14 +107,17 @@ pub fn read_interpreter(exe: &str) -> Interpreter {
     if let Err(e) = reader.read_until(b'\n', &mut buf) {
         return Interpreter::Error(e);
     };
-    // Get the interpreter
-    let Ok(buf) = String::from_utf8(buf) else {
-        return Interpreter::NonUTF8;
-    };
-    debug!("Shebang: {:?}", buf);
-    buf.split_ascii_whitespace()
-        .next()
-        .map(|x| x.to_string())
-        .map(Interpreter::Shebang)
-        .unwrap_or(Interpreter::Shebang(String::new()))
+    // Get trimed shebang line [start, end) indices
+    // If the shebang line is empty, we don't care
+    let start = buf
+        .iter()
+        .position(|&c| !c.is_ascii_whitespace())
+        .unwrap_or(0);
+    let end = buf
+        .iter()
+        .rposition(|&c| !c.is_ascii_whitespace())
+        .map(|x| x + 1)
+        .unwrap_or(buf.len());
+    let shebang = String::from_utf8_lossy(&buf[start..end]);
+    Interpreter::Shebang(shebang.into_owned())
 }
