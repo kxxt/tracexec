@@ -2,7 +2,7 @@ use std::{collections::HashMap, ffi::CString, path::PathBuf, process::exit};
 
 use nix::{
     errno::Errno,
-    libc::{pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP},
+    libc::{pid_t, raise, user_regs_struct, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP},
     sys::{
         ptrace::{self, traceme, AddressType},
         signal::Signal,
@@ -180,15 +180,30 @@ impl Tracer {
                         }
                     }
                     WaitStatus::PtraceSyscall(pid) => {
-                        let regs = match ptrace::getregs(pid) {
-                            Ok(regs) => regs,
-                            Err(Errno::ESRCH) => {
+                        let mut regs = std::mem::MaybeUninit::<user_regs_struct>::uninit();
+                        let iovec = nix::libc::iovec {
+                            iov_base: regs.as_mut_ptr() as AddressType,
+                            iov_len: std::mem::size_of::<user_regs_struct>(),
+                        };
+                        let ptrace_result = unsafe {
+                            nix::libc::ptrace(
+                                nix::libc::PTRACE_GETREGSET,
+                                pid.as_raw(),
+                                nix::libc::NT_PRSTATUS,
+                                &iovec as *const _ as *const nix::libc::c_void,
+                            )
+                        };
+                        let regs = if -1 == ptrace_result {
+                            let errno = nix::errno::Errno::last();
+                            if errno == Errno::ESRCH {
                                 log::info!(
                                     "ptrace getregs failed: {pid}, ESRCH, child probably gone!"
                                 );
                                 continue;
                             }
-                            e => e?,
+                            return Err(errno.into());
+                        } else {
+                            unsafe { regs.assume_init() }
                         };
                         let syscallno = syscall_no_from_regs!(regs);
                         // let syscall_info = ptrace::get_syscall_info(pid)?;
@@ -241,10 +256,8 @@ impl Tracer {
                                 interpreters,
                             });
                             p.preexecveat = !p.preexecveat;
-                        } else if !p.preexecveat
-                            && ((is_execveat_execve_quirk!(regs)
-                                && syscallno == nix::libc::SYS_execve)
-                                || syscallno == nix::libc::SYS_execveat)
+                        } else if is_execveat_execve_quirk!(p.preexecveat, syscallno, regs)
+                            || (!p.preexecveat && syscallno == nix::libc::SYS_execveat)
                         {
                             // execveat quirk:
                             // ------------------

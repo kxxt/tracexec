@@ -11,8 +11,10 @@ macro_rules! syscall_res_from_regs {
 }
 
 macro_rules! is_execveat_execve_quirk {
-    ($regs:ident) => {
-        $regs.rdi == 0 && $regs.rsi == 0 && $regs.rdx == 0
+    ($preexecveat:expr, $syscallno:ident, $regs:ident) => {
+        !$preexecveat
+            && ($regs.rdi == 0 && $regs.rsi == 0 && $regs.rdx == 0)
+            && $syscallno == nix::libc::SYS_execve
     };
 }
 
@@ -38,6 +40,6 @@ macro_rules! syscall_arg {
 }
 
 pub(crate) use is_execveat_execve_quirk;
+pub(crate) use syscall_arg;
 pub(crate) use syscall_no_from_regs;
 pub(crate) use syscall_res_from_regs;
-pub(crate) use syscall_arg;
