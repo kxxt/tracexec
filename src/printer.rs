@@ -46,7 +46,8 @@ fn parse_env_entry(item: &str) -> (&str, &str) {
 macro_rules! escape_str_for_bash {
     // TODO: This is ... quite ugly. We should find a better way to do this.
     ($x:expr) => {
-        shell_quote::bash::quote($x).as_os_str().to_str().unwrap()
+        // https://github.com/rust-lang/rust/issues/64727
+        String::from_utf8_lossy(&shell_quote::bash::escape($x))
     };
 }
 
