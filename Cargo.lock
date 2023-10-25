@@ -443,6 +443,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "shell-quote"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7a904882fd5e7723d9113c65cd69c624dddd128f92ac1540c23cd663faba84b"
+
+[[package]]
 name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -521,6 +527,7 @@ dependencies = [
  "log",
  "nix",
  "pretty_env_logger",
+ "shell-quote",
  "strum",
 ]
 

@@ -43,6 +43,13 @@ fn parse_env_entry(item: &str) -> (&str, &str) {
     (head, &tail[1..])
 }
 
+macro_rules! escape_str_for_bash {
+    // TODO: This is ... quite ugly. We should find a better way to do this.
+    ($x:expr) => {
+        shell_quote::bash::quote($x).as_os_str().to_str().unwrap()
+    };
+}
+
 pub fn print_execve_trace(
     state: &ProcessState,
     result: i64,
@@ -160,7 +167,7 @@ pub fn print_execve_trace(
     } else if tracing_args.print_cmdline {
         write!(stdout, " env ")?;
         if cwd != exec_data.cwd {
-            write!(stdout, "-C {:?} ", exec_data.cwd)?;
+            write!(stdout, "-C {} ", escape_str_for_bash!(&exec_data.cwd))?;
         }
         let mut env = env.clone();
         let mut updated = Vec::new();
@@ -180,17 +187,25 @@ pub fn print_execve_trace(
         }
         // Now we have the tracee removed entries in env
         for (k, _v) in env.iter() {
-            write!(stdout, "-u={:?} ", k)?;
+            write!(stdout, "-u={} ", escape_str_for_bash!(k))?;
         }
         for (k, v) in updated.iter() {
-            write!(stdout, "{:?}={:?} ", k, v)?;
+            write!(
+                stdout,
+                "{}={} ",
+                escape_str_for_bash!(k),
+                escape_str_for_bash!(v)
+            )?;
         }
         for (idx, arg) in exec_data.argv.iter().enumerate() {
             if idx == 0 && arg == "/proc/self/exe" {
-                write!(stdout, "{:?} ", exec_data.filename)?;
+                write!(stdout, "{} ", escape_str_for_bash!(&exec_data.filename))?;
                 continue;
             }
-            write!(stdout, "{:?} ", arg)?;
+            if idx != 0 {
+                write!(stdout, " ")?;
+            }
+            write!(stdout, "{}", escape_str_for_bash!(arg))?;
         }
     }
     if result == 0 {

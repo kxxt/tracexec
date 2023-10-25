@@ -19,3 +19,4 @@ cfg-if = "1.0.0"
 owo-colors = { version = "4.0.0-rc.1", package = "kxxt-owo-colors", features = [
     "global-colorized-control",
 ] }
+shell-quote = "0.3.1"
