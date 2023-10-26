@@ -42,24 +42,24 @@ pub struct TracingArgs {
     pub successful_only: bool,
     #[clap(
         long,
-        help = "Print commandline that reproduces what was executed. Note that when filename and argv[0] differs, it won't give you the correct commandline for now. Implies --successful-only",
-        conflicts_with_all = ["trace_filename", "trace_env", "diff_env", "trace_argv"]
+        help = "Print commandline that reproduces what was executed. Note that when filename and argv[0] differs, it probably won't give you the correct commandline for now. Implies --successful-only",
+        conflicts_with_all = ["show_filename", "show_env", "diff_env", "show_argv"]
     )]
-    pub print_cmdline: bool,
-    #[clap(long, help = "Try to trace script interpreter")]
-    pub trace_interpreter: bool,
+    pub show_cmdline: bool,
+    #[clap(long, help = "Try to show script interpreter indicated by shebang")]
+    pub show_interpreter: bool,
     #[clap(long, help = "More colors", conflicts_with = "less_colors")]
     pub more_colors: bool,
     #[clap(long, help = "Less colors", conflicts_with = "more_colors")]
     pub less_colors: bool,
     #[clap(long, help = "Print a message when a child is created")]
-    pub print_children: bool,
+    pub show_children: bool,
     // BEGIN ugly: https://github.com/clap-rs/clap/issues/815
     #[clap(
         long,
         help = "Diff environment variables with the original environment",
         conflicts_with = "no_diff_env",
-        conflicts_with = "trace_env"
+        conflicts_with = "show_env"
     )]
     pub diff_env: bool,
     #[clap(
@@ -71,40 +71,37 @@ pub struct TracingArgs {
     #[clap(
         long,
         help = "Trace environment variables",
-        conflicts_with = "no_trace_env"
+        conflicts_with = "no_show_env",
+        conflicts_with = "diff_env"
     )]
-    pub trace_env: bool,
+    pub show_env: bool,
     #[clap(
         long,
         help = "Do not trace environment variables",
-        conflicts_with = "trace_env"
+        conflicts_with = "show_env"
     )]
-    pub no_trace_env: bool,
-    #[clap(long, help = "Trace comm", conflicts_with = "no_trace_comm")]
-    pub trace_comm: bool,
-    #[clap(long, help = "Do not trace comm", conflicts_with = "trace_comm")]
-    pub no_trace_comm: bool,
-    #[clap(long, help = "Trace argv", conflicts_with = "no_trace_argv")]
-    pub trace_argv: bool,
-    #[clap(long, help = "Do not trace argv", conflicts_with = "trace_argv")]
-    pub no_trace_argv: bool,
+    pub no_show_env: bool,
+    #[clap(long, help = "Show comm", conflicts_with = "no_show_comm")]
+    pub show_comm: bool,
+    #[clap(long, help = "Do not show comm", conflicts_with = "show_comm")]
+    pub no_show_comm: bool,
+    #[clap(long, help = "Show argv", conflicts_with = "no_show_argv")]
+    pub show_argv: bool,
+    #[clap(long, help = "Do not show argv", conflicts_with = "show_argv")]
+    pub no_show_argv: bool,
     #[clap(
         long,
-        help = "Trace filename",
+        help = "Show filename",
         default_value_t = true,
-        conflicts_with = "no_trace_filename"
+        conflicts_with = "no_show_filename"
     )]
-    pub trace_filename: bool,
-    #[clap(
-        long,
-        help = "Do not trace filename",
-        conflicts_with = "trace_filename"
-    )]
-    pub no_trace_filename: bool,
-    #[clap(long, help = "Trace cwd", conflicts_with = "no_trace_cwd")]
-    pub trace_cwd: bool,
-    #[clap(long, help = "Do not trace cwd", conflicts_with = "trace_cwd")]
-    pub no_trace_cwd: bool,
+    pub show_filename: bool,
+    #[clap(long, help = "Do not show filename", conflicts_with = "show_filename")]
+    pub no_show_filename: bool,
+    #[clap(long, help = "Show cwd", conflicts_with = "no_show_cwd")]
+    pub show_cwd: bool,
+    #[clap(long, help = "Do not show cwd", conflicts_with = "show_cwd")]
+    pub no_show_cwd: bool,
     #[clap(long, help = "Decode errno values", conflicts_with = "no_decode_errno")]
     pub decode_errno: bool,
     #[clap(long, conflicts_with = "decode_errno")]
