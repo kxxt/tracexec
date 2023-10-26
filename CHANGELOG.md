@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.0.0-experimental.5
+
+- Make the output readable on most color profiles (Simply don't change the background.)
+- Add aarch64 support.
+- Fix code that previously relies on x86_64 specific behaviors.
+- feat: also trace execveat
+
+
 ## v0.0.0-experimental.4
 
 - fix: handle ESRCH in ptrace requests
