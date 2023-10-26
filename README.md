@@ -52,27 +52,27 @@ Arguments:
   <CMD>...  command to be executed
 
 Options:
-      --successful-only    Only show successful calls
-      --print-cmdline      Print commandline that reproduces what was executed. Note that when filename and argv[0] differs, it won't give you the correct commandline for now. Implies --successful-only
-      --trace-interpreter  Try to trace script interpreter
-      --more-colors        More colors
-      --less-colors        Less colors
-      --print-children     Print a message when a child is created
-      --diff-env           Diff environment variables with the original environment
-      --no-diff-env        Do not diff environment variables
-      --trace-env          Trace environment variables
-      --no-trace-env       Do not trace environment variables
-      --trace-comm         Trace comm
-      --no-trace-comm      Do not trace comm
-      --trace-argv         Trace argv
-      --no-trace-argv      Do not trace argv
-      --trace-filename     Trace filename
-      --no-trace-filename  Do not trace filename
-      --trace-cwd          Trace cwd
-      --no-trace-cwd       Do not trace cwd
-      --decode-errno       Decode errno values
-      --no-decode-errno    
-  -h, --help               Print help
+      --successful-only   Only show successful calls
+      --show-cmdline      Print commandline that reproduces what was executed. Note that when filename and argv[0] differs, it probably won't give you the correct commandline for now. Implies --successful-only
+      --show-interpreter  Try to show script interpreter indicated by shebang
+      --more-colors       More colors
+      --less-colors       Less colors
+      --show-children     Print a message when a child is created
+      --diff-env          Diff environment variables with the original environment
+      --no-diff-env       Do not diff environment variables
+      --show-env          Trace environment variables
+      --no-show-env       Do not trace environment variables
+      --show-comm         Show comm
+      --no-show-comm      Do not show comm
+      --show-argv         Show argv
+      --no-show-argv      Do not show argv
+      --show-filename     Show filename
+      --no-show-filename  Do not show filename
+      --show-cwd          Show cwd
+      --no-show-cwd       Do not show cwd
+      --decode-errno      Decode errno values
+      --no-decode-errno   
+  -h, --help              Print help
 ```
 
 ## Origin
