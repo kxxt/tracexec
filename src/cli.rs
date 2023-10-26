@@ -51,6 +51,8 @@ pub struct TracingArgs {
     pub more_colors: bool,
     #[clap(long, help = "Less colors", conflicts_with = "more_colors")]
     pub less_colors: bool,
+    #[clap(long, help = "Print a message when a child is created")]
+    pub print_children: bool,
     // BEGIN ugly: https://github.com/clap-rs/clap/issues/815
     #[clap(
         long,

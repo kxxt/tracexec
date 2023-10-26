@@ -6,6 +6,7 @@ use std::{
 
 use crate::{proc::Interpreter, state::ProcessState};
 
+use nix::unistd::Pid;
 use owo_colors::OwoColorize;
 
 fn parse_env_entry(item: &str) -> (&str, &str) {
@@ -73,6 +74,25 @@ pub struct PrinterArgs {
     pub trace_filename: bool,
     pub decode_errno: bool,
     pub color: ColorLevel,
+}
+
+pub fn print_new_child(
+    state: &ProcessState,
+    args: &PrinterArgs,
+    child: Pid,
+) -> color_eyre::Result<()> {
+    let mut stdout = stdout();
+    write!(stdout, "{}", state.pid.bright_yellow())?;
+    if args.trace_comm {
+        write!(stdout, "<{}>", state.comm.cyan())?;
+    }
+    writeln!(
+        stdout,
+        ": {}: {}",
+        "new child".purple(),
+        child.bright_yellow()
+    )?;
+    Ok(())
 }
 
 pub fn print_exec_trace(

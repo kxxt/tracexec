@@ -16,7 +16,7 @@ use crate::{
     arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs, PtraceRegisters},
     cli::TracingArgs,
     inspect::{read_pathbuf, read_string, read_string_array},
-    printer::{print_exec_trace, ColorLevel, EnvPrintFormat, PrinterArgs},
+    printer::{print_exec_trace, print_new_child, ColorLevel, EnvPrintFormat, PrinterArgs},
     proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
@@ -26,6 +26,7 @@ pub struct Tracer {
     args: PrinterArgs,
     env: HashMap<String, String>,
     cwd: std::path::PathBuf,
+    print_children: bool,
 }
 
 fn ptrace_syscall_with_signal(pid: Pid, sig: Signal) -> Result<(), Errno> {
@@ -87,6 +88,7 @@ impl Tracer {
             store: ProcessStateStore::new(),
             env: std::env::vars().collect(),
             cwd: std::env::current_dir()?,
+            print_children: tracing_args.print_children,
             args: PrinterArgs {
                 trace_comm: !tracing_args.no_trace_comm,
                 trace_argv: !tracing_args.no_trace_argv && !tracing_args.print_cmdline,
@@ -196,6 +198,10 @@ impl Tracer {
                                 log::trace!(
                                     "ptrace fork event, evt {evt}, pid: {pid}, child: {new_child}"
                                 );
+                                if self.print_children {
+                                    let parent = self.store.get_current_mut(pid).unwrap();
+                                    print_new_child(&parent, &self.args, new_child)?;
+                                }
                                 if let Some(state) = self.store.get_current_mut(new_child) {
                                     if state.status == ProcessStatus::SigstopReceived {
                                         log::trace!("ptrace fork event received after sigstop, pid: {pid}, child: {new_child}");
