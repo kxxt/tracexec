@@ -38,7 +38,7 @@ pub fn read_fd(pid: Pid, fd: i32) -> std::io::Result<PathBuf> {
         return read_cwd(pid);
     }
     let filename = format!("/proc/{pid}/fd/{fd}");
-    Ok(std::fs::read_link(filename)?)
+    std::fs::read_link(filename)
 }
 
 #[derive(Debug)]
@@ -91,7 +91,7 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
             Interpreter::Error(e)
         }
     }
-    let file = match std::fs::File::open(&exe) {
+    let file = match std::fs::File::open(exe) {
         Ok(file) => file,
         Err(e) => return err_to_interpreter(e),
     };

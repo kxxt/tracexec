@@ -64,7 +64,7 @@ fn ptrace_getregs(pid: Pid) -> Result<PtraceRegisters, Errno> {
     };
     let regs = if -1 == ptrace_result {
         let errno = nix::errno::Errno::last();
-        return Err(errno.into());
+        return Err(errno);
     } else {
         // assert_eq!(iovec.iov_len, std::mem::size_of::<PtraceRegisters>());
         unsafe { regs.assume_init() }
@@ -314,21 +314,6 @@ impl Tracer {
                             };
                             let result = syscall_res_from_regs!(regs);
                             let exec_result = if p.is_exec_successful { 0 } else { result };
-                            // if self.args.successful_only && result != 0 {
-                            //     p.exec_data = None;
-                            //     p.preexecve = !p.preexecve;
-                            //     ptrace_syscall(pid)?;
-                            //     continue;
-                            // }
-                            // // SAFETY: p.preexecve is false, so p.exec_data is Some
-                            // print_execve_trace(
-                            //     p, result, &self.args, &self.env, &self.cwd, self.color,
-                            // )?;
-                            // p.exec_data = None;
-                            // // update comm
-                            // p.comm = read_comm(pid)?;
-                            // // flip presyscall
-                            // p.preexecve = !p.preexecve;
                             match p.syscall {
                                 nix::libc::SYS_execve => {
                                     log::trace!("post execve in exec");
@@ -389,7 +374,7 @@ impl Tracer {
             log::trace!("raise success!");
             let args = args
                 .into_iter()
-                .map(|s| CString::new(s))
+                .map(CString::new)
                 .collect::<Result<Vec<CString>, _>>()?;
             execvp(&args[0], &args)?;
         }

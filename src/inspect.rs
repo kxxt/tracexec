@@ -23,11 +23,11 @@ pub fn read_generic_string<TString>(
             Ok(word) => word,
         };
         let word_bytes = word.to_ne_bytes();
-        for i in 0..WORD_SIZE {
-            if word_bytes[i] == 0 {
+        for &byte in word_bytes.iter() {
+            if byte == 0 {
                 return Ok(ctor(buf));
             }
-            buf.push(word_bytes[i]);
+            buf.push(byte);
         }
         address = unsafe { address.add(WORD_SIZE) };
     }
