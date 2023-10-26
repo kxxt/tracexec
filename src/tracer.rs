@@ -3,13 +3,13 @@ use std::{collections::HashMap, ffi::CString, path::PathBuf, process::exit};
 use cfg_if::cfg_if;
 use nix::{
     errno::Errno,
-    libc::{pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP},
+    libc::{pid_t, raise, tcsetpgrp, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP, STDIN_FILENO},
     sys::{
         ptrace::{self, traceme, AddressType},
         signal::Signal,
         wait::{waitpid, WaitPidFlag, WaitStatus},
     },
-    unistd::{execvp, getpid, ForkResult, Pid},
+    unistd::{execvp, getpid, setpgid, ForkResult, Pid},
 };
 
 use crate::{
@@ -126,6 +126,10 @@ impl Tracer {
             let mut root_child_state = ProcessState::new(root_child, 0)?;
             root_child_state.ppid = Some(getpid());
             self.store.insert(root_child_state);
+            // Set foreground process group of the terminal
+            if -1 == unsafe { tcsetpgrp(STDIN_FILENO, root_child.as_raw()) } {
+                return Err(Errno::last().into());
+            }
             // restart child
             log::trace!("resuming child");
             ptrace::setoptions(root_child, {
@@ -200,7 +204,7 @@ impl Tracer {
                                 );
                                 if self.print_children {
                                     let parent = self.store.get_current_mut(pid).unwrap();
-                                    print_new_child(&parent, &self.args, new_child)?;
+                                    print_new_child(parent, &self.args, new_child)?;
                                 }
                                 if let Some(state) = self.store.get_current_mut(new_child) {
                                     if state.status == ProcessStatus::SigstopReceived {
@@ -401,6 +405,8 @@ impl Tracer {
                 }
             }
         } else {
+            let me = getpid();
+            setpgid(me, me)?;
             traceme()?;
             log::trace!("traceme setup!");
             if 0 != unsafe { raise(SIGSTOP) } {
