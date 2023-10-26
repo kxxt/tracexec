@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.0.0-experimental.7
+
+- Fix github release workflow
+- cli: add author, version, about and more help
+
 ## v0.0.0-experimental.6
 
 - Internal refactor and bug fixes
