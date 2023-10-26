@@ -2,6 +2,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use strum::Display;
 
 #[derive(Parser, Debug)]
+#[clap(author, version, about)]
 pub struct Cli {
     #[arg(long, default_value_t = Color::Auto, help = "Control whether colored output is enabled")]
     pub color: Color,
@@ -13,7 +14,7 @@ pub struct Cli {
 pub enum CliCommand {
     #[clap(about = "Run tracexec in logging mode")]
     Log {
-        #[arg(last = true, required = true)]
+        #[arg(last = true, required = true, help = "command to be executed")]
         cmd: Vec<String>,
         #[clap(flatten)]
         tracing_args: TracingArgs,
