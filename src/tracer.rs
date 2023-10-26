@@ -104,7 +104,7 @@ impl Tracer {
                 },
                 trace_cwd: tracing_args.trace_cwd,
                 print_cmdline: tracing_args.print_cmdline,
-                successful_only: tracing_args.successful_only,
+                successful_only: tracing_args.successful_only || tracing_args.print_cmdline,
                 trace_interpreter: tracing_args.trace_interpreter,
                 trace_filename: !tracing_args.no_trace_filename && !tracing_args.print_cmdline,
                 decode_errno: !tracing_args.no_decode_errno,
