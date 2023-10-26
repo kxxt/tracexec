@@ -38,16 +38,18 @@ $ tracexec log --trace-interpreter -- <command>
 Via cargo:
 
 ```bash
-cargo install tracexec=0.0.1
+cargo install 'tracexec@0.0.1'
 ```
 
 ## Usage
 
 ```bash
+Run tracexec in logging mode
+
 Usage: tracexec log [OPTIONS] -- <CMD>...
 
 Arguments:
-  <CMD>...
+  <CMD>...  command to be executed
 
 Options:
       --successful-only    Only show successful calls
@@ -69,7 +71,7 @@ Options:
       --trace-cwd          Trace cwd
       --no-trace-cwd       Do not trace cwd
       --decode-errno       Decode errno values
-      --no-decode-errno
+      --no-decode-errno    
   -h, --help               Print help
 ```
 
