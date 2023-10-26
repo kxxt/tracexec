@@ -185,7 +185,7 @@ impl Tracer {
                         self.store.get_current_mut(pid).unwrap().status =
                             ProcessStatus::Exited(code);
                         if pid == root_child {
-                            break;
+                            exit(code)
                         }
                     }
                     WaitStatus::PtraceEvent(pid, sig, evt) => {
@@ -244,9 +244,8 @@ impl Tracer {
                     }
                     WaitStatus::Signaled(pid, sig, _) => {
                         log::debug!("signaled: {pid}, {:?}", sig);
-                        // TODO: correctly handle death under ptrace
                         if pid == root_child {
-                            break;
+                            exit(128 + (sig as i32))
                         }
                     }
                     WaitStatus::PtraceSyscall(pid) => {
