@@ -66,7 +66,7 @@ fn ptrace_getregs(pid: Pid) -> Result<PtraceRegisters, Errno> {
         let errno = nix::errno::Errno::last();
         return Err(errno);
     } else {
-        // assert_eq!(iovec.iov_len, std::mem::size_of::<PtraceRegisters>());
+        assert_eq!(iovec.iov_len, std::mem::size_of::<PtraceRegisters>());
         unsafe { regs.assume_init() }
     };
     Ok(regs)
