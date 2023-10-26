@@ -518,7 +518,7 @@ dependencies = [
 
 [[package]]
 name = "tracexec"
-version = "0.0.0-experimental.5"
+version = "0.0.0-experimental.6"
 dependencies = [
  "cfg-if",
  "clap",

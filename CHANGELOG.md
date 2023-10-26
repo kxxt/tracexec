@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.0.0-experimental.6
+
+- Internal refactor and bug fixes
+- feat(cli): add color level option
+- --print-cmdline: show cmdline hint
+- more colors
+- deps: update shell-quote to 0.3.2, which makes the output of `--print-cmdline` more aesthetically pleasing.
+- feat: --print-children for  a message when a child is created
+- docs: update README.
+- Github: add release workflow
+
 ## v0.0.0-experimental.5
 
 - Make the output readable on most color profiles (Simply don't change the background.)
