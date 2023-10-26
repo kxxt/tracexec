@@ -54,6 +54,13 @@ pub enum EnvPrintFormat {
     None,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ColorLevel {
+    More,
+    Normal,
+    Less,
+}
+
 #[derive(Debug, Clone)]
 pub struct PrinterArgs {
     pub trace_comm: bool,
@@ -65,6 +72,7 @@ pub struct PrinterArgs {
     pub trace_interpreter: bool,
     pub trace_filename: bool,
     pub decode_errno: bool,
+    pub color: ColorLevel,
 }
 
 pub fn print_exec_trace(

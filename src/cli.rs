@@ -47,6 +47,10 @@ pub struct TracingArgs {
     pub print_cmdline: bool,
     #[clap(long, help = "Try to trace script interpreter")]
     pub trace_interpreter: bool,
+    #[clap(long, help = "More colors", conflicts_with = "less_colors")]
+    pub more_colors: bool,
+    #[clap(long, help = "Less colors", conflicts_with = "more_colors")]
+    pub less_colors: bool,
     // BEGIN ugly: https://github.com/clap-rs/clap/issues/815
     #[clap(
         long,

@@ -15,7 +15,7 @@ use crate::{
     arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs, PtraceRegisters},
     cli::{Color, TracingArgs},
     inspect::{read_pathbuf, read_string, read_string_array},
-    printer::{print_exec_trace, EnvPrintFormat, PrinterArgs},
+    printer::{print_exec_trace, ColorLevel, EnvPrintFormat, PrinterArgs},
     proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
@@ -23,7 +23,6 @@ use crate::{
 pub struct Tracer {
     pub store: ProcessStateStore,
     args: PrinterArgs,
-    pub color: Color,
     env: HashMap<String, String>,
     cwd: std::path::PathBuf,
 }
@@ -77,7 +76,6 @@ impl Tracer {
         Ok(Self {
             store: ProcessStateStore::new(),
             env: std::env::vars().collect(),
-            color,
             cwd: std::env::current_dir()?,
             args: PrinterArgs {
                 trace_comm: !tracing_args.no_trace_comm,
@@ -98,6 +96,12 @@ impl Tracer {
                 trace_interpreter: tracing_args.trace_interpreter,
                 trace_filename: !tracing_args.no_trace_filename && !tracing_args.print_cmdline,
                 decode_errno: !tracing_args.no_decode_errno,
+                color: match (tracing_args.more_colors, tracing_args.less_colors) {
+                    (false, false) => ColorLevel::Normal,
+                    (true, false) => ColorLevel::More,
+                    (false, true) => ColorLevel::Less,
+                    _ => unreachable!(),
+                },
             },
         })
     }
