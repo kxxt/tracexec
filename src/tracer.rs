@@ -14,7 +14,7 @@ use nix::{
 
 use crate::{
     arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs, PtraceRegisters},
-    cli::{Color, TracingArgs},
+    cli::TracingArgs,
     inspect::{read_pathbuf, read_string, read_string_array},
     printer::{print_exec_trace, ColorLevel, EnvPrintFormat, PrinterArgs},
     proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
@@ -82,7 +82,7 @@ fn ptrace_getregs(pid: Pid) -> Result<PtraceRegisters, Errno> {
 }
 
 impl Tracer {
-    pub fn new(tracing_args: TracingArgs, color: Color) -> color_eyre::Result<Self> {
+    pub fn new(tracing_args: TracingArgs) -> color_eyre::Result<Self> {
         Ok(Self {
             store: ProcessStateStore::new(),
             env: std::env::vars().collect(),
