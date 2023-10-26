@@ -140,7 +140,7 @@ pub fn print_execve_trace(
                         "{}{:?}={:?}",
                         "M".bright_yellow().bold(),
                         k,
-                        v.on_blue()
+                        v.bright_blue()
                     )?;
                 }
                 // Remove existing entry
@@ -151,9 +151,9 @@ pub fn print_execve_trace(
                     stdout,
                     "{}{:?}{}{:?}",
                     "+".bright_green().bold(),
-                    k.on_green(),
-                    "=".on_green(),
-                    v.on_green()
+                    k.green(),
+                    "=".green(),
+                    v.green()
                 )?;
             }
         }
@@ -164,9 +164,9 @@ pub fn print_execve_trace(
                 stdout,
                 "{}{:?}{}{:?}",
                 "-".bright_red().bold(),
-                k.on_red().strikethrough(),
-                "=".on_red().strikethrough(),
-                v.on_red().strikethrough()
+                k.bright_red().strikethrough(),
+                "=".bright_red().strikethrough(),
+                v.bright_red().strikethrough()
             )?;
         }
         write!(stdout, "]")?;
