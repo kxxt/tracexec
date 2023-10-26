@@ -4,11 +4,7 @@ use std::{
     path::Path,
 };
 
-use crate::{
-    cli::{Color, TracingArgs},
-    proc::Interpreter,
-    state::ProcessState,
-};
+use crate::{proc::Interpreter, state::ProcessState};
 
 use owo_colors::OwoColorize;
 
@@ -51,49 +47,57 @@ macro_rules! escape_str_for_bash {
     };
 }
 
-pub fn print_execve_trace(
+#[derive(Debug, Clone, Copy)]
+pub enum EnvPrintFormat {
+    Diff,
+    Raw,
+    None,
+}
+
+#[derive(Debug, Clone)]
+pub struct PrinterArgs {
+    pub trace_comm: bool,
+    pub trace_argv: bool,
+    pub trace_env: EnvPrintFormat,
+    pub trace_cwd: bool,
+    pub print_cmdline: bool,
+    pub successful_only: bool,
+    pub trace_interpreter: bool,
+    pub trace_filename: bool,
+    pub decode_errno: bool,
+}
+
+pub fn print_exec_trace(
     state: &ProcessState,
     result: i64,
-    tracing_args: &TracingArgs,
+    args: &PrinterArgs,
     env: &HashMap<String, String>,
     cwd: &Path,
-    _color: Color,
 ) -> color_eyre::Result<()> {
     // Preconditions:
     // 1. execve syscall exit, which leads to 2
     // 2. state.exec_data is Some
     let exec_data = state.exec_data.as_ref().unwrap();
     let mut stdout = stdout();
-    // TODO: move these calculations elsewhere
-    let trace_comm = !tracing_args.no_trace_comm;
-    let trace_argv = !tracing_args.no_trace_argv && !tracing_args.print_cmdline;
-    let trace_env = tracing_args.trace_env && !tracing_args.print_cmdline;
-    let diff_env = !tracing_args.no_diff_env && !trace_env && !tracing_args.print_cmdline;
-    let trace_filename = !tracing_args.no_trace_filename && !tracing_args.print_cmdline;
-    let successful_only = tracing_args.successful_only || tracing_args.print_cmdline;
-    let trace_cwd = tracing_args.trace_cwd && !tracing_args.print_cmdline;
-    if successful_only && result != 0 {
-        return Ok(());
-    }
     if result == 0 {
         write!(stdout, "{}", state.pid.bright_yellow())?;
     } else {
         write!(stdout, "{}", state.pid.bright_red())?;
     }
-    if trace_comm {
+    if args.trace_comm {
         write!(stdout, "<{}>", state.comm.cyan())?;
     }
     write!(stdout, ":")?;
-    if trace_filename {
+    if args.trace_filename {
         write!(stdout, " {:?}", exec_data.filename)?;
     }
-    if trace_argv {
+    if args.trace_argv {
         write!(stdout, " {:?}", exec_data.argv)?;
     }
-    if trace_cwd {
+    if args.trace_cwd {
         write!(stdout, " {} {:?}", "at".purple(), exec_data.cwd)?;
     }
-    if tracing_args.trace_interpreter && result == 0 {
+    if args.trace_interpreter && result == 0 {
         write!(stdout, " {} ", "interpreter".purple(),)?;
         match exec_data.interpreters.len() {
             0 => {
@@ -114,70 +118,75 @@ pub fn print_execve_trace(
             }
         }
     }
-    if diff_env {
-        // TODO: make it faster
-        //       This is mostly a proof of concept
-        write!(stdout, " {} [", "with".purple())?;
-        let mut env = env.clone();
-        let mut first_item_written = false;
-        let mut write_separator = |out: &mut Stdout| -> io::Result<()> {
-            if first_item_written {
-                write!(out, ", ")?;
-            } else {
-                first_item_written = true;
-            }
-            Ok(())
-        };
-        for item in exec_data.envp.iter() {
-            let (k, v) = parse_env_entry(item);
-            // Too bad that we still don't have if- and while-let-chains
-            // https://github.com/rust-lang/rust/issues/53667
-            if let Some(orig_v) = env.get(k).map(|x| x.as_str()) {
-                if orig_v != v {
+    match args.trace_env {
+        EnvPrintFormat::Diff => {
+            // TODO: make it faster
+            //       This is mostly a proof of concept
+            write!(stdout, " {} [", "with".purple())?;
+            let mut env = env.clone();
+            let mut first_item_written = false;
+            let mut write_separator = |out: &mut Stdout| -> io::Result<()> {
+                if first_item_written {
+                    write!(out, ", ")?;
+                } else {
+                    first_item_written = true;
+                }
+                Ok(())
+            };
+            for item in exec_data.envp.iter() {
+                let (k, v) = parse_env_entry(item);
+                // Too bad that we still don't have if- and while-let-chains
+                // https://github.com/rust-lang/rust/issues/53667
+                if let Some(orig_v) = env.get(k).map(|x| x.as_str()) {
+                    if orig_v != v {
+                        write_separator(&mut stdout)?;
+                        write!(
+                            stdout,
+                            "{}{:?}={:?}",
+                            "M".bright_yellow().bold(),
+                            k,
+                            v.bright_blue()
+                        )?;
+                    }
+                    // Remove existing entry
+                    env.remove(k);
+                } else {
                     write_separator(&mut stdout)?;
                     write!(
                         stdout,
-                        "{}{:?}={:?}",
-                        "M".bright_yellow().bold(),
-                        k,
-                        v.bright_blue()
+                        "{}{:?}{}{:?}",
+                        "+".bright_green().bold(),
+                        k.green(),
+                        "=".green(),
+                        v.green()
                     )?;
                 }
-                // Remove existing entry
-                env.remove(k);
-            } else {
+            }
+            // Now we have the tracee removed entries in env
+            for (k, v) in env.iter() {
                 write_separator(&mut stdout)?;
                 write!(
                     stdout,
                     "{}{:?}{}{:?}",
-                    "+".bright_green().bold(),
-                    k.green(),
-                    "=".green(),
-                    v.green()
+                    "-".bright_red().bold(),
+                    k.bright_red().strikethrough(),
+                    "=".bright_red().strikethrough(),
+                    v.bright_red().strikethrough()
                 )?;
             }
+            write!(stdout, "]")?;
+            // Avoid trailing color
+            // https://unix.stackexchange.com/questions/212933/background-color-whitespace-when-end-of-the-terminal-reached
+            if owo_colors::control::should_colorize() {
+                write!(stdout, "\x1B[49m\x1B[K")?;
+            }
         }
-        // Now we have the tracee removed entries in env
-        for (k, v) in env.iter() {
-            write_separator(&mut stdout)?;
-            write!(
-                stdout,
-                "{}{:?}{}{:?}",
-                "-".bright_red().bold(),
-                k.bright_red().strikethrough(),
-                "=".bright_red().strikethrough(),
-                v.bright_red().strikethrough()
-            )?;
+        EnvPrintFormat::Raw => {
+            write!(stdout, " {} {:?}", "with".purple(), exec_data.envp)?;
         }
-        write!(stdout, "]")?;
-        // Avoid trailing color
-        // https://unix.stackexchange.com/questions/212933/background-color-whitespace-when-end-of-the-terminal-reached
-        if owo_colors::control::should_colorize() {
-            write!(stdout, "\x1B[49m\x1B[K")?;
-        }
-    } else if trace_env {
-        write!(stdout, " {} {:?}", "with".purple(), exec_data.envp)?;
-    } else if tracing_args.print_cmdline {
+        EnvPrintFormat::None => (),
+    }
+    if args.print_cmdline {
         write!(stdout, " env ")?;
         if cwd != exec_data.cwd {
             write!(stdout, "-C {} ", escape_str_for_bash!(&exec_data.cwd))?;
@@ -224,9 +233,8 @@ pub fn print_execve_trace(
     if result == 0 {
         writeln!(stdout)?;
     } else {
-        let decode_errno = !tracing_args.no_decode_errno;
         write!(stdout, " {} ", "=".purple())?;
-        if decode_errno {
+        if args.decode_errno {
             writeln!(
                 stdout,
                 "{} ({})",

@@ -15,14 +15,14 @@ use crate::{
     arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs, PtraceRegisters},
     cli::{Color, TracingArgs},
     inspect::{read_pathbuf, read_string, read_string_array},
-    printer::print_execve_trace,
+    printer::{print_exec_trace, EnvPrintFormat, PrinterArgs},
     proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
 
 pub struct Tracer {
     pub store: ProcessStateStore,
-    args: TracingArgs,
+    args: PrinterArgs,
     pub color: Color,
     env: HashMap<String, String>,
     cwd: std::path::PathBuf,
@@ -73,13 +73,32 @@ fn ptrace_getregs(pid: Pid) -> Result<PtraceRegisters, Errno> {
 }
 
 impl Tracer {
-    pub fn new(args: TracingArgs, color: Color) -> color_eyre::Result<Self> {
+    pub fn new(tracing_args: TracingArgs, color: Color) -> color_eyre::Result<Self> {
         Ok(Self {
             store: ProcessStateStore::new(),
             env: std::env::vars().collect(),
             color,
-            args,
             cwd: std::env::current_dir()?,
+            args: PrinterArgs {
+                trace_comm: !tracing_args.no_trace_comm,
+                trace_argv: !tracing_args.no_trace_argv && !tracing_args.print_cmdline,
+                trace_env: match (
+                    tracing_args.print_cmdline,
+                    tracing_args.diff_env,
+                    tracing_args.no_diff_env,
+                    tracing_args.trace_env,
+                ) {
+                    (true, ..) => EnvPrintFormat::None,
+                    (false, .., true) => EnvPrintFormat::Raw,
+                    _ => EnvPrintFormat::Diff, // diff_env is enabled by default
+                },
+                trace_cwd: tracing_args.trace_cwd,
+                print_cmdline: tracing_args.print_cmdline,
+                successful_only: tracing_args.successful_only,
+                trace_interpreter: tracing_args.trace_interpreter,
+                trace_filename: !tracing_args.no_trace_filename && !tracing_args.print_cmdline,
+                decode_errno: !tracing_args.no_decode_errno,
+            },
         })
     }
 
@@ -227,7 +246,7 @@ impl Tracer {
                             };
                             let syscallno = syscall_no_from_regs!(regs);
                             p.syscall = syscallno;
-                            // log::trace!("syscall: {syscallno}");
+                            // log::trace!("pre syscall: {syscallno}");
                             if syscallno == nix::libc::SYS_execveat {
                                 log::trace!("pre execveat {syscallno}");
                                 // int execveat(int dirfd, const char *pathname,
@@ -323,13 +342,12 @@ impl Tracer {
                                         continue;
                                     }
                                     // SAFETY: p.preexecve is false, so p.exec_data is Some
-                                    print_execve_trace(
+                                    print_exec_trace(
                                         p,
                                         exec_result,
                                         &self.args,
                                         &self.env,
                                         &self.cwd,
-                                        self.color,
                                     )?;
                                     p.exec_data = None;
                                     p.is_exec_successful = false;
@@ -343,13 +361,12 @@ impl Tracer {
                                         ptrace_syscall(pid)?;
                                         continue;
                                     }
-                                    print_execve_trace(
+                                    print_exec_trace(
                                         p,
                                         exec_result,
                                         &self.args,
                                         &self.env,
                                         &self.cwd,
-                                        self.color,
                                     )?;
                                     p.exec_data = None;
                                     p.is_exec_successful = false;
