@@ -39,7 +39,6 @@ pub fn read_cstring(pid: Pid, address: AddressType) -> color_eyre::Result<CStrin
 }
 
 pub fn read_pathbuf(pid: Pid, address: AddressType) -> color_eyre::Result<PathBuf> {
-    // Waiting on https://github.com/rust-lang/libs-team/issues/116
     read_generic_string(pid, address, |x| PathBuf::from(OsString::from_vec(x)))
 }
 
