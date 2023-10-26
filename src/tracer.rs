@@ -2,7 +2,7 @@ use std::{collections::HashMap, ffi::CString, path::PathBuf, process::exit};
 
 use nix::{
     errno::Errno,
-    libc::{pid_t, raise, user_regs_struct, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP},
+    libc::{pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP},
     sys::{
         ptrace::{self, traceme, AddressType},
         signal::Signal,
@@ -12,7 +12,7 @@ use nix::{
 };
 
 use crate::{
-    arch::{is_execveat_execve_quirk, syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
+    arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs, PtraceRegisters},
     cli::{Color, TracingArgs},
     inspect::{read_pathbuf, read_string, read_string_array},
     printer::print_execve_trace,
@@ -46,6 +46,30 @@ fn ptrace_syscall(pid: Pid) -> Result<(), Errno> {
         }
         other => other,
     }
+}
+
+fn ptrace_getregs(pid: Pid) -> Result<PtraceRegisters, Errno> {
+    let mut regs = std::mem::MaybeUninit::<PtraceRegisters>::uninit();
+    let iovec = nix::libc::iovec {
+        iov_base: regs.as_mut_ptr() as AddressType,
+        iov_len: std::mem::size_of::<PtraceRegisters>(),
+    };
+    let ptrace_result = unsafe {
+        nix::libc::ptrace(
+            nix::libc::PTRACE_GETREGSET,
+            pid.as_raw(),
+            nix::libc::NT_PRSTATUS,
+            &iovec as *const _ as *const nix::libc::c_void,
+        )
+    };
+    let regs = if -1 == ptrace_result {
+        let errno = nix::errno::Errno::last();
+        return Err(errno.into());
+    } else {
+        // assert_eq!(iovec.iov_len, std::mem::size_of::<PtraceRegisters>());
+        unsafe { regs.assume_init() }
+    };
+    Ok(regs)
 }
 
 impl Tracer {
@@ -160,6 +184,13 @@ impl Tracer {
                             }
                             nix::libc::PTRACE_EVENT_EXEC => {
                                 log::trace!("exec event");
+                                let p = self.store.get_current_mut(pid).unwrap();
+                                assert!(!p.presyscall);
+                                // After execve or execveat, in syscall exit event,
+                                // the registers might be clobbered(e.g. aarch64).
+                                // So we need to determine whether exec is successful here.
+                                // PTRACE_EVENT_EXEC only happens for successful exec.
+                                p.is_exec_successful = true;
                                 ptrace_syscall(pid)?;
                             }
                             nix::libc::PTRACE_EVENT_EXIT => {
@@ -180,114 +211,72 @@ impl Tracer {
                         }
                     }
                     WaitStatus::PtraceSyscall(pid) => {
-                        let mut regs = std::mem::MaybeUninit::<user_regs_struct>::uninit();
-                        let iovec = nix::libc::iovec {
-                            iov_base: regs.as_mut_ptr() as AddressType,
-                            iov_len: std::mem::size_of::<user_regs_struct>(),
-                        };
-                        let ptrace_result = unsafe {
-                            nix::libc::ptrace(
-                                nix::libc::PTRACE_GETREGSET,
-                                pid.as_raw(),
-                                nix::libc::NT_PRSTATUS,
-                                &iovec as *const _ as *const nix::libc::c_void,
-                            )
-                        };
-                        let regs = if -1 == ptrace_result {
-                            let errno = nix::errno::Errno::last();
-                            if errno == Errno::ESRCH {
-                                log::info!(
-                                    "ptrace getregs failed: {pid}, ESRCH, child probably gone!"
-                                );
-                                continue;
-                            }
-                            return Err(errno.into());
-                        } else {
-                            unsafe { regs.assume_init() }
-                        };
-                        let syscallno = syscall_no_from_regs!(regs);
-                        // let syscall_info = ptrace::get_syscall_info(pid)?;
                         let p = self.store.get_current_mut(pid).unwrap();
-                        // log::trace!("syscall: {syscallno}");
-                        if syscallno == nix::libc::SYS_execveat && p.preexecveat {
-                            log::trace!("pre execveat {syscallno}");
-                            // int execveat(int dirfd, const char *pathname,
-                            //              char *const _Nullable argv[],
-                            //              char *const _Nullable envp[],
-                            //              int flags);
-                            let dirfd = syscall_arg!(regs, 0) as i32;
-                            let pathname = read_string(pid, syscall_arg!(regs, 1) as AddressType)?;
-                            let pathname_is_empty = pathname.is_empty();
-                            let pathname = PathBuf::from(pathname);
-                            let argv =
-                                read_string_array(pid, syscall_arg!(regs, 2) as AddressType)?;
-                            let envp =
-                                read_string_array(pid, syscall_arg!(regs, 3) as AddressType)?;
-                            let flags = syscall_arg!(regs, 4) as i32;
-                            let filename = match (
-                                pathname.is_absolute(),
-                                pathname_is_empty && ((flags & AT_EMPTY_PATH) != 0),
-                            ) {
-                                (true, _) => {
-                                    // If pathname is absolute, then dirfd is ignored.
-                                    pathname
+                        if p.presyscall {
+                            p.presyscall = !p.presyscall;
+                            // SYSCALL ENTRY
+                            let regs = match ptrace_getregs(pid) {
+                                Ok(regs) => regs,
+                                Err(Errno::ESRCH) => {
+                                    log::info!(
+                                        "ptrace getregs failed: {pid}, ESRCH, child probably gone!"
+                                    );
+                                    continue;
                                 }
-                                (false, true) => {
-                                    // If  pathname  is an empty string and the AT_EMPTY_PATH flag is specified, then the file descriptor dirfd
-                                    // specifies the file to be executed
-                                    read_fd(pid, dirfd)?
-                                }
-                                (false, false) => {
-                                    // pathname is relative to dirfd
-                                    let dir = read_fd(pid, dirfd)?;
-                                    dir.join(pathname)
-                                }
+                                e => e?,
                             };
-                            let interpreters = if self.args.trace_interpreter {
-                                read_interpreter_recursive(&filename)
-                            } else {
-                                vec![]
-                            };
-                            p.exec_data = Some(ExecData {
-                                filename,
-                                argv,
-                                envp,
-                                cwd: read_cwd(pid)?,
-                                interpreters,
-                            });
-                            p.preexecveat = !p.preexecveat;
-                        } else if is_execveat_execve_quirk!(p.preexecveat, syscallno, regs)
-                            || (!p.preexecveat && syscallno == nix::libc::SYS_execveat)
-                        {
-                            // execveat quirk:
-                            // ------------------
-                            // If execveat succeeds, in the syscall exit event, the syscall number from regs will be SYS_execve instead of SYS_execveat.
-                            // and the argument registers are all zero.
-                            // If execveat fails, in the syscall exit event, the syscall number from regs will still be SYS_execveat,
-                            // and the argument registers are all zero.
-                            let result = syscall_res_from_regs!(regs);
-                            log::trace!("post execveat");
-                            if self.args.successful_only && result != 0 {
-                                p.exec_data = None;
-                                p.preexecve = !p.preexecve;
-                                ptrace_syscall(pid)?;
-                                continue;
-                            }
-                            print_execve_trace(
-                                p, result, &self.args, &self.env, &self.cwd, self.color,
-                            )?;
-
-                            p.exec_data = None;
-                            // update comm
-                            p.comm = read_comm(pid)?;
-                            p.preexecveat = !p.preexecveat;
-                        } else if syscallno == nix::libc::SYS_execve {
-                            log::trace!(
-                                "execve {syscallno}, preexecve: {}, preexecveat: {}",
-                                p.preexecve,
-                                p.preexecveat
-                            );
-                            if p.preexecve {
+                            let syscallno = syscall_no_from_regs!(regs);
+                            p.syscall = syscallno;
+                            // log::trace!("syscall: {syscallno}");
+                            if syscallno == nix::libc::SYS_execveat {
+                                log::trace!("pre execveat {syscallno}");
+                                // int execveat(int dirfd, const char *pathname,
+                                //              char *const _Nullable argv[],
+                                //              char *const _Nullable envp[],
+                                //              int flags);
+                                let dirfd = syscall_arg!(regs, 0) as i32;
+                                let pathname =
+                                    read_string(pid, syscall_arg!(regs, 1) as AddressType)?;
+                                let pathname_is_empty = pathname.is_empty();
+                                let pathname = PathBuf::from(pathname);
+                                let argv =
+                                    read_string_array(pid, syscall_arg!(regs, 2) as AddressType)?;
+                                let envp =
+                                    read_string_array(pid, syscall_arg!(regs, 3) as AddressType)?;
+                                let flags = syscall_arg!(regs, 4) as i32;
+                                let filename = match (
+                                    pathname.is_absolute(),
+                                    pathname_is_empty && ((flags & AT_EMPTY_PATH) != 0),
+                                ) {
+                                    (true, _) => {
+                                        // If pathname is absolute, then dirfd is ignored.
+                                        pathname
+                                    }
+                                    (false, true) => {
+                                        // If  pathname  is an empty string and the AT_EMPTY_PATH flag is specified, then the file descriptor dirfd
+                                        // specifies the file to be executed
+                                        read_fd(pid, dirfd)?
+                                    }
+                                    (false, false) => {
+                                        // pathname is relative to dirfd
+                                        let dir = read_fd(pid, dirfd)?;
+                                        dir.join(pathname)
+                                    }
+                                };
+                                let interpreters = if self.args.trace_interpreter {
+                                    read_interpreter_recursive(&filename)
+                                } else {
+                                    vec![]
+                                };
+                                p.exec_data = Some(ExecData {
+                                    filename,
+                                    argv,
+                                    envp,
+                                    cwd: read_cwd(pid)?,
+                                    interpreters,
+                                });
+                            } else if syscallno == nix::libc::SYS_execve {
+                                log::trace!("pre execve {syscallno}",);
                                 let filename =
                                     read_pathbuf(pid, syscall_arg!(regs, 0) as AddressType)?;
                                 let argv =
@@ -306,26 +295,84 @@ impl Tracer {
                                     cwd: read_cwd(pid)?,
                                     interpreters,
                                 });
-                                p.preexecve = !p.preexecve;
-                            } else {
-                                let result = syscall_res_from_regs!(regs);
-                                if self.args.successful_only && result != 0 {
-                                    p.exec_data = None;
-                                    p.preexecve = !p.preexecve;
-                                    ptrace_syscall(pid)?;
+                            } else if syscallno == SYS_clone || syscallno == SYS_clone3 {
+                            }
+                        } else {
+                            // SYSCALL EXIT
+                            // log::trace!("post syscall {}", p.syscall);
+                            p.presyscall = !p.presyscall;
+
+                            let regs = match ptrace_getregs(pid) {
+                                Ok(regs) => regs,
+                                Err(Errno::ESRCH) => {
+                                    log::info!(
+                                        "ptrace getregs failed: {pid}, ESRCH, child probably gone!"
+                                    );
                                     continue;
                                 }
-                                // SAFETY: p.preexecve is false, so p.exec_data is Some
-                                print_execve_trace(
-                                    p, result, &self.args, &self.env, &self.cwd, self.color,
-                                )?;
-                                p.exec_data = None;
-                                // update comm
-                                p.comm = read_comm(pid)?;
-                                // flip presyscall
-                                p.preexecve = !p.preexecve;
+                                e => e?,
+                            };
+                            let result = syscall_res_from_regs!(regs);
+                            let exec_result = if p.is_exec_successful { 0 } else { result };
+                            // if self.args.successful_only && result != 0 {
+                            //     p.exec_data = None;
+                            //     p.preexecve = !p.preexecve;
+                            //     ptrace_syscall(pid)?;
+                            //     continue;
+                            // }
+                            // // SAFETY: p.preexecve is false, so p.exec_data is Some
+                            // print_execve_trace(
+                            //     p, result, &self.args, &self.env, &self.cwd, self.color,
+                            // )?;
+                            // p.exec_data = None;
+                            // // update comm
+                            // p.comm = read_comm(pid)?;
+                            // // flip presyscall
+                            // p.preexecve = !p.preexecve;
+                            match p.syscall {
+                                nix::libc::SYS_execve => {
+                                    log::trace!("post execve in exec");
+                                    if self.args.successful_only && !p.is_exec_successful {
+                                        p.exec_data = None;
+                                        ptrace_syscall(pid)?;
+                                        continue;
+                                    }
+                                    // SAFETY: p.preexecve is false, so p.exec_data is Some
+                                    print_execve_trace(
+                                        p,
+                                        exec_result,
+                                        &self.args,
+                                        &self.env,
+                                        &self.cwd,
+                                        self.color,
+                                    )?;
+                                    p.exec_data = None;
+                                    p.is_exec_successful = false;
+                                    // update comm
+                                    p.comm = read_comm(pid)?;
+                                }
+                                nix::libc::SYS_execveat => {
+                                    log::trace!("post execveat in exec");
+                                    if self.args.successful_only && !p.is_exec_successful {
+                                        p.exec_data = None;
+                                        ptrace_syscall(pid)?;
+                                        continue;
+                                    }
+                                    print_execve_trace(
+                                        p,
+                                        exec_result,
+                                        &self.args,
+                                        &self.env,
+                                        &self.cwd,
+                                        self.color,
+                                    )?;
+                                    p.exec_data = None;
+                                    p.is_exec_successful = false;
+                                    // update comm
+                                    p.comm = read_comm(pid)?;
+                                }
+                                _ => (),
                             }
-                        } else if syscallno == SYS_clone || syscallno == SYS_clone3 {
                         }
                         ptrace_syscall(pid)?;
                     }

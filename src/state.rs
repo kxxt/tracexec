@@ -16,8 +16,9 @@ pub struct ProcessState {
     pub start_time: u64,
     pub argv: Vec<CString>,
     pub comm: String,
-    pub preexecve: bool,
-    pub preexecveat: bool,
+    pub presyscall: bool,
+    pub is_exec_successful: bool,
+    pub syscall: i64,
     pub exec_data: Option<ExecData>,
 }
 
@@ -68,8 +69,9 @@ impl ProcessState {
             comm: read_comm(pid)?,
             argv: read_argv(pid)?,
             start_time,
-            preexecve: true,
-            preexecveat: true,
+            presyscall: true,
+            is_exec_successful: false,
+            syscall: -1,
             exec_data: None,
         })
     }
