@@ -195,6 +195,7 @@ pub fn print_exec_trace(
         EnvPrintFormat::None => (),
     }
     if args.print_cmdline {
+        write!(stdout, " {}", "cmdline".purple())?;
         write!(stdout, " env ")?;
         if cwd != exec_data.cwd {
             write!(stdout, "-C {} ", escape_str_for_bash!(&exec_data.cwd))?;
