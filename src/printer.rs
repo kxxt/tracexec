@@ -54,11 +54,11 @@ pub enum EnvPrintFormat {
     None,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum ColorLevel {
-    More,
-    Normal,
     Less,
+    Normal,
+    More,
 }
 
 #[derive(Debug, Clone)]
@@ -196,47 +196,83 @@ pub fn print_exec_trace(
     }
     if args.print_cmdline {
         write!(stdout, " {}", "cmdline".purple())?;
-        write!(stdout, " env ")?;
+        write!(stdout, " env")?;
         if cwd != exec_data.cwd {
-            write!(stdout, "-C {} ", escape_str_for_bash!(&exec_data.cwd))?;
+            if args.color >= ColorLevel::Normal {
+                write!(
+                    stdout,
+                    " -C {}",
+                    escape_str_for_bash!(&exec_data.cwd).bright_cyan()
+                )?;
+            } else {
+                write!(stdout, " -C {}", escape_str_for_bash!(&exec_data.cwd))?;
+            }
         }
         let mut env = env.clone();
-        let mut updated = Vec::new();
+        let mut updated = Vec::new(); // k,v,is_new
         for item in exec_data.envp.iter() {
             let (k, v) = parse_env_entry(item);
             // Too bad that we still don't have if- and while-let-chains
             // https://github.com/rust-lang/rust/issues/53667
             if let Some(orig_v) = env.get(k).map(|x| x.as_str()) {
                 if orig_v != v {
-                    updated.push((k, v));
+                    updated.push((k, v, false));
                 }
                 // Remove existing entry
                 env.remove(k);
             } else {
-                updated.push((k, v));
+                updated.push((k, v, true));
             }
         }
         // Now we have the tracee removed entries in env
         for (k, _v) in env.iter() {
-            write!(stdout, "-u={} ", escape_str_for_bash!(k))?;
+            if args.color >= ColorLevel::Normal {
+                write!(
+                    stdout,
+                    " {}{}",
+                    "-u=".bright_red(),
+                    escape_str_for_bash!(k).bright_red()
+                )?;
+            } else {
+                write!(stdout, " -u={}", escape_str_for_bash!(k))?;
+            }
         }
-        for (k, v) in updated.iter() {
-            write!(
-                stdout,
-                "{}={} ",
-                escape_str_for_bash!(k),
-                escape_str_for_bash!(v)
-            )?;
+        if args.color >= ColorLevel::Normal {
+            for (k, v, is_new) in updated.into_iter() {
+                if is_new {
+                    write!(
+                        stdout,
+                        " {}{}{}",
+                        escape_str_for_bash!(k).green(),
+                        "=".green().bold(),
+                        escape_str_for_bash!(v).green()
+                    )?;
+                } else {
+                    write!(
+                        stdout,
+                        " {}{}{}",
+                        escape_str_for_bash!(k),
+                        "=".bold(),
+                        escape_str_for_bash!(v).bright_blue()
+                    )?;
+                }
+            }
+        } else {
+            for (k, v, _) in updated.into_iter() {
+                write!(
+                    stdout,
+                    " {}={}",
+                    escape_str_for_bash!(k),
+                    escape_str_for_bash!(v)
+                )?;
+            }
         }
         for (idx, arg) in exec_data.argv.iter().enumerate() {
             if idx == 0 && arg == "/proc/self/exe" {
-                write!(stdout, "{} ", escape_str_for_bash!(&exec_data.filename))?;
+                write!(stdout, " {}", escape_str_for_bash!(&exec_data.filename))?;
                 continue;
             }
-            if idx != 0 {
-                write!(stdout, " ")?;
-            }
-            write!(stdout, "{}", escape_str_for_bash!(arg))?;
+            write!(stdout, " {}", escape_str_for_bash!(arg))?;
         }
     }
     if result == 0 {
