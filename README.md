@@ -10,7 +10,8 @@ A small utility to trace program execution.
 
 ## Showcase
 
-![default](screenshots/default.png)
+[![asciicast](https://asciinema.org/a/5ZH5pAPTdTeSXIWIZmm015UNr.svg)](https://asciinema.org/a/5ZH5pAPTdTeSXIWIZmm015UNr)
+
 
 ## Usage
 
