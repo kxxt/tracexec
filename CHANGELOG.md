@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.0.2
+
+tracexec v0.0.2 released!
+
+Changes since v0.0.1:
+
+- Add riscv64 support
+- Fix a bug that a equal sign incorrectly got printed in the printed cmdline
+
 ## v0.0.1
 
 tracexec v0.0.1 released!
