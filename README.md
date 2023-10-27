@@ -1,6 +1,6 @@
 # tracexec
 
-A small utility to trace program execution.
+A small utility for tracing execve{,at}.
 
 **Status**:
 
