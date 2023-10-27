@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.0.2
+## v0.0.2-rc.1
 
 tracexec v0.0.2 released!
 

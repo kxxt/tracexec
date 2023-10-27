@@ -1,6 +1,6 @@
 [package]
 name = "tracexec"
-version = "0.0.2"
+version = "0.0.2-rc.1"
 edition = "2021"
 authors = ["Levi Zim <rsworktech@outlook.com>"]
 description = "A small utility to trace program execution."
