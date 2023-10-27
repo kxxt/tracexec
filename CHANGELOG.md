@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.0.1
+
+tracexec v0.0.1 released!
+
+Changes since v0.0.0-experimental.7:
+
+- feat: --output, stderr by default
+- feat: set foreground process group
+- feat: use exit code from root child
+- cli: allow show-filename to be used with show-cmdline
+- cli: rename some options
+- docs: update README
+
 ## v0.0.0-experimental.7
 
 - Fix github release workflow
