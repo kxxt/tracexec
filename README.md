@@ -74,7 +74,7 @@ Options:
       --show-children     Print a message when a child is created
       --diff-env          Diff environment variables with the original environment
       --no-diff-env       Do not diff environment variables
-      --show-env          Trace environment variables
+      --show-env          Show environment variables
       --no-show-env       Do not trace environment variables
       --show-comm         Show comm
       --no-show-comm      Do not show comm
@@ -86,6 +86,7 @@ Options:
       --no-show-cwd       Do not show cwd
       --decode-errno      Decode errno values
       --no-decode-errno   
+  -o, --output <OUTPUT>   Output, stderr by default. A single hyphen '-' represents stdout.
   -h, --help              Print help
 ```
 
