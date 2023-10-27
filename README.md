@@ -43,11 +43,17 @@ $ tracexec log --show-interpreter --show-cwd -- makepkg -f
 
 ## Installation
 
+### From source
+
 Via cargo:
 
 ```bash
 cargo install 'tracexec@0.0.1'
 ```
+
+### Binary
+
+You can download the binary from the [release page](https://github.com/kxxt/tracexec/releases)
 
 ## Usage
 
