@@ -246,7 +246,7 @@ pub fn print_exec_trace(
                 write!(
                     out,
                     " {}{}",
-                    "-u=".bright_red(),
+                    "-u ".bright_red(),
                     escape_str_for_bash!(k).bright_red()
                 )?;
             } else {
