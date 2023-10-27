@@ -17,18 +17,18 @@ By default, `tracexec` will print filename, argv and the diff of the environment
 
 [![asciicast](https://asciinema.org/a/5ZH5pAPTdTeSXIWIZmm015UNr.svg)](https://asciinema.org/a/5ZH5pAPTdTeSXIWIZmm015UNr)
 
-### Reconstruct the command line with `--print-cmdline`
+### Reconstruct the command line with `--show-cmdline`
 
 ```bash
-$ tracexec log --print-cmdline -- <command>
+$ tracexec log --show-cmdline -- <command>
 ```
 
 [![asciicast](https://asciinema.org/a/k8lXyeF19Es7cLO4RUw0Cu4OU.svg)](https://asciinema.org/a/k8lXyeF19Es7cLO4RUw0Cu4OU)
 
-### Show the interpreter indicated by shebang with `--trace-interpreter`
+### Show the interpreter indicated by shebang with `--show-interpreter`
 
 ```bash
-$ tracexec log --trace-interpreter -- <command>
+$ tracexec log --show-interpreter -- <command>
 ```
 
 [![asciicast](https://asciinema.org/a/nkvDleC3nyVOT2Cif8nOXBuVV.svg)](https://asciinema.org/a/nkvDleC3nyVOT2Cif8nOXBuVV)
@@ -74,6 +74,20 @@ Options:
       --no-decode-errno   
   -h, --help              Print help
 ```
+
+The recommended way to use `tracexec` is to create an alias with your favorite options in your bashrc:
+
+```bash
+alias tracex='tracexec log --show-cmdline --show-interpreter --show-children --show-filename --'
+# Now you can use
+tracex <command>
+```
+
+## Known issues
+
+- Non UTF-8 strings are converted to UTF-8 in a lossy way, which means that the output may be inaccurate.
+- The output is not stable yet, which means that the output may change in the future.
+- No tests yet.
 
 ## Origin
 
