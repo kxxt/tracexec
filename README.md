@@ -15,23 +15,31 @@ A small utility to trace program execution.
 
 By default, `tracexec` will print filename, argv and the diff of the environment variables.
 
-[![asciicast](https://asciinema.org/a/5ZH5pAPTdTeSXIWIZmm015UNr.svg)](https://asciinema.org/a/5ZH5pAPTdTeSXIWIZmm015UNr)
+example: `tracexec log -- bash` (In an interactive bash shell)
+
+[![asciicast](https://asciinema.org/a/yEXXh2DBZLXaiGVCSaoynOJEz.svg)](https://asciinema.org/a/yEXXh2DBZLXaiGVCSaoynOJEz)
 
 ### Reconstruct the command line with `--show-cmdline`
 
 ```bash
 $ tracexec log --show-cmdline -- <command>
+# example:
+$ tracexec log --show-cmdline -- firefox
 ```
 
-[![asciicast](https://asciinema.org/a/k8lXyeF19Es7cLO4RUw0Cu4OU.svg)](https://asciinema.org/a/k8lXyeF19Es7cLO4RUw0Cu4OU)
+[![asciicast](https://asciinema.org/a/AWTG4iHaFPMcEGCVtqAl44YFW.svg)](https://asciinema.org/a/AWTG4iHaFPMcEGCVtqAl44YFW)
 
 ### Show the interpreter indicated by shebang with `--show-interpreter`
 
+And show the cwd with `--show-cwd`.
+
 ```bash
-$ tracexec log --show-interpreter -- <command>
+$ tracexec log --show-interpreter --show-cwd -- <command>
+# example: Running Arch Linux makepkg
+$ tracexec log --show-interpreter --show-cwd -- makepkg -f
 ```
 
-[![asciicast](https://asciinema.org/a/nkvDleC3nyVOT2Cif8nOXBuVV.svg)](https://asciinema.org/a/nkvDleC3nyVOT2Cif8nOXBuVV)
+[![asciicast](https://asciinema.org/a/7jDtrlNRx5XUnDXeDBsMRj09p.svg)](https://asciinema.org/a/7jDtrlNRx5XUnDXeDBsMRj09p)
 
 ## Installation
 
