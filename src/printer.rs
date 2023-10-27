@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{self, stdout, Stdout, Write},
+    io::{self, Write},
     path::Path,
 };
 
@@ -77,25 +77,22 @@ pub struct PrinterArgs {
 }
 
 pub fn print_new_child(
+    out: &mut dyn Write,
     state: &ProcessState,
     args: &PrinterArgs,
     child: Pid,
 ) -> color_eyre::Result<()> {
-    let mut stdout = stdout();
-    write!(stdout, "{}", state.pid.bright_yellow())?;
+    write!(out, "{}", state.pid.bright_yellow())?;
     if args.trace_comm {
-        write!(stdout, "<{}>", state.comm.cyan())?;
+        write!(out, "<{}>", state.comm.cyan())?;
     }
-    writeln!(
-        stdout,
-        ": {}: {}",
-        "new child".purple(),
-        child.bright_yellow()
-    )?;
+    writeln!(out, ": {}: {}", "new child".purple(), child.bright_yellow())?;
+    out.flush()?;
     Ok(())
 }
 
 pub fn print_exec_trace(
+    out: &mut dyn Write,
     state: &ProcessState,
     result: i64,
     args: &PrinterArgs,
@@ -106,43 +103,42 @@ pub fn print_exec_trace(
     // 1. execve syscall exit, which leads to 2
     // 2. state.exec_data is Some
     let exec_data = state.exec_data.as_ref().unwrap();
-    let mut stdout = stdout();
     if result == 0 {
-        write!(stdout, "{}", state.pid.bright_yellow())?;
+        write!(out, "{}", state.pid.bright_yellow())?;
     } else {
-        write!(stdout, "{}", state.pid.bright_red())?;
+        write!(out, "{}", state.pid.bright_red())?;
     }
     if args.trace_comm {
-        write!(stdout, "<{}>", state.comm.cyan())?;
+        write!(out, "<{}>", state.comm.cyan())?;
     }
-    write!(stdout, ":")?;
+    write!(out, ":")?;
     if args.trace_filename {
-        write!(stdout, " {:?}", exec_data.filename)?;
+        write!(out, " {:?}", exec_data.filename)?;
     }
     if args.trace_argv {
-        write!(stdout, " {:?}", exec_data.argv)?;
+        write!(out, " {:?}", exec_data.argv)?;
     }
     if args.trace_cwd {
-        write!(stdout, " {} {:?}", "at".purple(), exec_data.cwd)?;
+        write!(out, " {} {:?}", "at".purple(), exec_data.cwd)?;
     }
     if args.trace_interpreter && result == 0 {
-        write!(stdout, " {} ", "interpreter".purple(),)?;
+        write!(out, " {} ", "interpreter".purple(),)?;
         match exec_data.interpreters.len() {
             0 => {
-                write!(stdout, "{}", Interpreter::None)?;
+                write!(out, "{}", Interpreter::None)?;
             }
             1 => {
-                write!(stdout, "{}", exec_data.interpreters[0])?;
+                write!(out, "{}", exec_data.interpreters[0])?;
             }
             _ => {
-                write!(stdout, "[")?;
+                write!(out, "[")?;
                 for (idx, interpreter) in exec_data.interpreters.iter().enumerate() {
                     if idx != 0 {
-                        write!(stdout, ", ")?;
+                        write!(out, ", ")?;
                     }
-                    write!(stdout, "{}", interpreter)?;
+                    write!(out, "{}", interpreter)?;
                 }
-                write!(stdout, "]")?;
+                write!(out, "]")?;
             }
         }
     }
@@ -150,10 +146,10 @@ pub fn print_exec_trace(
         EnvPrintFormat::Diff => {
             // TODO: make it faster
             //       This is mostly a proof of concept
-            write!(stdout, " {} [", "with".purple())?;
+            write!(out, " {} [", "with".purple())?;
             let mut env = env.clone();
             let mut first_item_written = false;
-            let mut write_separator = |out: &mut Stdout| -> io::Result<()> {
+            let mut write_separator = |out: &mut dyn Write| -> io::Result<()> {
                 if first_item_written {
                     write!(out, ", ")?;
                 } else {
@@ -167,9 +163,9 @@ pub fn print_exec_trace(
                 // https://github.com/rust-lang/rust/issues/53667
                 if let Some(orig_v) = env.get(k).map(|x| x.as_str()) {
                     if orig_v != v {
-                        write_separator(&mut stdout)?;
+                        write_separator(out)?;
                         write!(
-                            stdout,
+                            out,
                             "{}{:?}={:?}",
                             "M".bright_yellow().bold(),
                             k,
@@ -179,9 +175,9 @@ pub fn print_exec_trace(
                     // Remove existing entry
                     env.remove(k);
                 } else {
-                    write_separator(&mut stdout)?;
+                    write_separator(out)?;
                     write!(
-                        stdout,
+                        out,
                         "{}{:?}{}{:?}",
                         "+".bright_green().bold(),
                         k.green(),
@@ -192,9 +188,9 @@ pub fn print_exec_trace(
             }
             // Now we have the tracee removed entries in env
             for (k, v) in env.iter() {
-                write_separator(&mut stdout)?;
+                write_separator(out)?;
                 write!(
-                    stdout,
+                    out,
                     "{}{:?}{}{:?}",
                     "-".bright_red().bold(),
                     k.bright_red().strikethrough(),
@@ -202,30 +198,30 @@ pub fn print_exec_trace(
                     v.bright_red().strikethrough()
                 )?;
             }
-            write!(stdout, "]")?;
+            write!(out, "]")?;
             // Avoid trailing color
             // https://unix.stackexchange.com/questions/212933/background-color-whitespace-when-end-of-the-terminal-reached
             if owo_colors::control::should_colorize() {
-                write!(stdout, "\x1B[49m\x1B[K")?;
+                write!(out, "\x1B[49m\x1B[K")?;
             }
         }
         EnvPrintFormat::Raw => {
-            write!(stdout, " {} {:?}", "with".purple(), exec_data.envp)?;
+            write!(out, " {} {:?}", "with".purple(), exec_data.envp)?;
         }
         EnvPrintFormat::None => (),
     }
     if args.print_cmdline {
-        write!(stdout, " {}", "cmdline".purple())?;
-        write!(stdout, " env")?;
+        write!(out, " {}", "cmdline".purple())?;
+        write!(out, " env")?;
         if cwd != exec_data.cwd {
             if args.color >= ColorLevel::Normal {
                 write!(
-                    stdout,
+                    out,
                     " -C {}",
                     escape_str_for_bash!(&exec_data.cwd).bright_cyan()
                 )?;
             } else {
-                write!(stdout, " -C {}", escape_str_for_bash!(&exec_data.cwd))?;
+                write!(out, " -C {}", escape_str_for_bash!(&exec_data.cwd))?;
             }
         }
         let mut env = env.clone();
@@ -248,20 +244,20 @@ pub fn print_exec_trace(
         for (k, _v) in env.iter() {
             if args.color >= ColorLevel::Normal {
                 write!(
-                    stdout,
+                    out,
                     " {}{}",
                     "-u=".bright_red(),
                     escape_str_for_bash!(k).bright_red()
                 )?;
             } else {
-                write!(stdout, " -u={}", escape_str_for_bash!(k))?;
+                write!(out, " -u={}", escape_str_for_bash!(k))?;
             }
         }
         if args.color >= ColorLevel::Normal {
             for (k, v, is_new) in updated.into_iter() {
                 if is_new {
                     write!(
-                        stdout,
+                        out,
                         " {}{}{}",
                         escape_str_for_bash!(k).green(),
                         "=".green().bold(),
@@ -269,7 +265,7 @@ pub fn print_exec_trace(
                     )?;
                 } else {
                     write!(
-                        stdout,
+                        out,
                         " {}{}{}",
                         escape_str_for_bash!(k),
                         "=".bold(),
@@ -280,7 +276,7 @@ pub fn print_exec_trace(
         } else {
             for (k, v, _) in updated.into_iter() {
                 write!(
-                    stdout,
+                    out,
                     " {}={}",
                     escape_str_for_bash!(k),
                     escape_str_for_bash!(v)
@@ -289,26 +285,30 @@ pub fn print_exec_trace(
         }
         for (idx, arg) in exec_data.argv.iter().enumerate() {
             if idx == 0 && arg == "/proc/self/exe" {
-                write!(stdout, " {}", escape_str_for_bash!(&exec_data.filename))?;
+                write!(out, " {}", escape_str_for_bash!(&exec_data.filename))?;
                 continue;
             }
-            write!(stdout, " {}", escape_str_for_bash!(arg))?;
+            write!(out, " {}", escape_str_for_bash!(arg))?;
         }
     }
     if result == 0 {
-        writeln!(stdout)?;
+        writeln!(out)?;
     } else {
-        write!(stdout, " {} ", "=".purple())?;
+        write!(out, " {} ", "=".purple())?;
         if args.decode_errno {
             writeln!(
-                stdout,
+                out,
                 "{} ({})",
                 result.bright_red().bold(),
                 nix::errno::Errno::from_i32(-result as i32).red()
             )?;
         } else {
-            writeln!(stdout, "{}", result.bright_red().bold())?;
+            writeln!(out, "{}", result.bright_red().bold())?;
         }
     }
+    // It is critical to call [flush] before BufWriter<W> is dropped.
+    // Though dropping will attempt to flush the contents of the buffer, any errors that happen in the process of dropping will be ignored.
+    // Calling [flush] ensures that the buffer is empty and thus dropping will not even attempt file operations.
+    out.flush()?;
     Ok(())
 }

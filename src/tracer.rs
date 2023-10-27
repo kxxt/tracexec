@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ffi::CString, path::PathBuf, process::exit};
+use std::{collections::HashMap, ffi::CString, io::Write, path::PathBuf, process::exit};
 
 use cfg_if::cfg_if;
 use nix::{
@@ -27,6 +27,7 @@ pub struct Tracer {
     env: HashMap<String, String>,
     cwd: std::path::PathBuf,
     print_children: bool,
+    output: Box<dyn Write>,
 }
 
 fn ptrace_syscall_with_signal(pid: Pid, sig: Signal) -> Result<(), Errno> {
@@ -83,7 +84,7 @@ fn ptrace_getregs(pid: Pid) -> Result<PtraceRegisters, Errno> {
 }
 
 impl Tracer {
-    pub fn new(tracing_args: TracingArgs) -> color_eyre::Result<Self> {
+    pub fn new(tracing_args: TracingArgs, output: Box<dyn Write>) -> color_eyre::Result<Self> {
         Ok(Self {
             store: ProcessStateStore::new(),
             env: std::env::vars().collect(),
@@ -115,6 +116,7 @@ impl Tracer {
                     _ => unreachable!(),
                 },
             },
+            output,
         })
     }
 
@@ -204,7 +206,12 @@ impl Tracer {
                                 );
                                 if self.print_children {
                                     let parent = self.store.get_current_mut(pid).unwrap();
-                                    print_new_child(parent, &self.args, new_child)?;
+                                    print_new_child(
+                                        self.output.as_mut(),
+                                        parent,
+                                        &self.args,
+                                        new_child,
+                                    )?;
                                 }
                                 if let Some(state) = self.store.get_current_mut(new_child) {
                                     if state.status == ProcessStatus::SigstopReceived {
@@ -366,6 +373,7 @@ impl Tracer {
                                     }
                                     // SAFETY: p.preexecve is false, so p.exec_data is Some
                                     print_exec_trace(
+                                        self.output.as_mut(),
                                         p,
                                         exec_result,
                                         &self.args,
@@ -385,6 +393,7 @@ impl Tracer {
                                         continue;
                                     }
                                     print_exec_trace(
+                                        self.output.as_mut(),
                                         p,
                                         exec_result,
                                         &self.args,

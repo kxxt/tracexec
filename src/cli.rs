@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use strum::Display;
 
@@ -18,6 +20,8 @@ pub enum CliCommand {
         cmd: Vec<String>,
         #[clap(flatten)]
         tracing_args: TracingArgs,
+        #[clap(short, long, help = "Output, stderr by default. A single hyphen '-' represents stdout.")]
+        output: Option<PathBuf>,
     },
     #[clap(about = "Run tracexec in tree visualization mode")]
     Tree {
@@ -70,7 +74,7 @@ pub struct TracingArgs {
     pub no_diff_env: bool,
     #[clap(
         long,
-        help = "Trace environment variables",
+        help = "Show environment variables",
         conflicts_with = "no_show_env",
         conflicts_with = "diff_env"
     )]
