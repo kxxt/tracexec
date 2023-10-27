@@ -51,9 +51,13 @@ Via cargo:
 cargo install 'tracexec@0.0.1'
 ```
 
+You can also install `tracexec` from AUR.
+
 ### Binary
 
 You can download the binary from the [release page](https://github.com/kxxt/tracexec/releases)
+
+You can also install `tracexec-bin` from AUR.
 
 ## Usage
 
