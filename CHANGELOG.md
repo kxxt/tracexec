@@ -2,9 +2,9 @@
 
 ## v0.0.3
 
-tracexec v0.0.2 released!
+tracexec v0.0.3 released!
 
-Changes since v0.0.1:
+Changes since v0.0.2:
 
 - Fix hangs in some cases because SIGCHILD is not delivered to tracee.
 
