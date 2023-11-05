@@ -187,7 +187,7 @@ impl Tracer {
                                 // This means, that if our tracee forked and said fork exits before the parent, the parent will get stopped.
                                 // Therefor issue a PTRACE_SYSCALL request to the parent to continue execution.
                                 // This is also important if we trace without the following forks option.
-                                ptrace_syscall(pid)?;
+                                ptrace_syscall_with_signal(pid, Signal::SIGCHLD)?;
                             }
                             _ => {
                                 // Just deliver the signal to tracee
