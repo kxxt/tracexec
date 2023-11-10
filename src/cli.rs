@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use strum::Display;
 
 #[derive(Parser, Debug)]
@@ -8,6 +8,10 @@ use strum::Display;
 pub struct Cli {
     #[arg(long, default_value_t = Color::Auto, help = "Control whether colored output is enabled")]
     pub color: Color,
+    #[arg(short, long, action = ArgAction::Count)]
+    pub verbose: u8,
+    #[arg(short, long, conflicts_with = "verbose")]
+    pub quiet: bool,
     #[clap(subcommand)]
     pub cmd: CliCommand,
 }
@@ -20,7 +24,11 @@ pub enum CliCommand {
         cmd: Vec<String>,
         #[clap(flatten)]
         tracing_args: TracingArgs,
-        #[clap(short, long, help = "Output, stderr by default. A single hyphen '-' represents stdout.")]
+        #[clap(
+            short,
+            long,
+            help = "Output, stderr by default. A single hyphen '-' represents stdout."
+        )]
         output: Option<PathBuf>,
     },
     #[clap(about = "Run tracexec in tree visualization mode")]

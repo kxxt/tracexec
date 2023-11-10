@@ -27,7 +27,16 @@ fn main() -> color_eyre::Result<()> {
     } else {
         color_eyre::install()?;
     }
-    pretty_env_logger::init();
+    pretty_env_logger::formatted_builder()
+        .filter_level(match (cli.quiet, cli.verbose) {
+            // Don't follow RUST_LOG environment variable.
+            (true, _) => log::LevelFilter::Error,
+            (false, 0) => log::LevelFilter::Warn,
+            (false, 1) => log::LevelFilter::Info,
+            (false, 2) => log::LevelFilter::Debug,
+            (false, _) => log::LevelFilter::Trace,
+        })
+        .init();
     log::trace!("Commandline args: {:?}", cli);
     match cli.cmd {
         CliCommand::Log {
