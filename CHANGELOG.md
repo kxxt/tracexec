@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.0.4
+
+tracexec v0.0.4 released!
+
+Changes since v0.0.3:
+
+- `--show-cmdline` now always shows the filename in the place of argv[0]. A warning will be logged if the filename does not match argv[0].
+- Log level is now controlled via `--verbose` and `--quiet` flags instead of `RUST_LOG` environment variable.
+
 ## v0.0.3
 
 tracexec v0.0.3 released!
