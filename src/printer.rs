@@ -210,6 +210,9 @@ pub fn print_exec_trace(
         }
         EnvPrintFormat::None => (),
     }
+    let mut deferred_warning = DeferredWarnings {
+        warning: DeferredWarningKind::None,
+    };
     if args.print_cmdline {
         write!(out, " {}", "cmdline".purple())?;
         write!(out, " env")?;
@@ -284,8 +287,13 @@ pub fn print_exec_trace(
             }
         }
         for (idx, arg) in exec_data.argv.iter().enumerate() {
-            if idx == 0 && arg == "/proc/self/exe" {
-                write!(out, " {}", escape_str_for_bash!(&exec_data.filename))?;
+            if idx == 0 {
+                let escaped_filename = shell_quote::bash::escape(&exec_data.filename);
+                let escaped_filename_lossy = String::from_utf8_lossy(&escaped_filename);
+                if !escaped_filename_lossy.ends_with(arg) {
+                    deferred_warning.warning = DeferredWarningKind::Argv0AndFileNameDiffers;
+                }
+                write!(out, " {}", escaped_filename_lossy)?;
                 continue;
             }
             write!(out, " {}", escape_str_for_bash!(arg))?;
@@ -311,4 +319,24 @@ pub fn print_exec_trace(
     // Calling [flush] ensures that the buffer is empty and thus dropping will not even attempt file operations.
     out.flush()?;
     Ok(())
+}
+
+enum DeferredWarningKind {
+    None,
+    Argv0AndFileNameDiffers,
+}
+
+struct DeferredWarnings {
+    warning: DeferredWarningKind,
+}
+
+impl Drop for DeferredWarnings {
+    fn drop(&mut self) {
+        match self.warning {
+            DeferredWarningKind::None => (),
+            DeferredWarningKind::Argv0AndFileNameDiffers => log::warn!(
+                "argv[0] and filename differs. The printed commandline might be incorrect!"
+            ),
+        }
+    }
 }
