@@ -71,7 +71,8 @@ pub struct TracingArgs {
         long,
         help = "Diff environment variables with the original environment",
         conflicts_with = "no_diff_env",
-        conflicts_with = "show_env"
+        conflicts_with = "show_env",
+        conflicts_with = "no_show_env"
     )]
     pub diff_env: bool,
     #[clap(
@@ -89,7 +90,7 @@ pub struct TracingArgs {
     pub show_env: bool,
     #[clap(
         long,
-        help = "Do not trace environment variables",
+        help = "Do not show environment variables",
         conflicts_with = "show_env"
     )]
     pub no_show_env: bool,

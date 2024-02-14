@@ -98,9 +98,10 @@ impl Tracer {
                     tracing_args.diff_env,
                     tracing_args.no_diff_env,
                     tracing_args.show_env,
+                    tracing_args.no_show_env,
                 ) {
-                    (true, ..) => EnvPrintFormat::None,
-                    (false, .., true) | (false, _, true, _) => EnvPrintFormat::Raw,
+                    (true, ..) | (.., true) => EnvPrintFormat::None,
+                    (false, .., true, _) | (false, _, true, ..) => EnvPrintFormat::Raw,
                     _ => EnvPrintFormat::Diff, // diff_env is enabled by default
                 },
                 trace_cwd: tracing_args.show_cwd,
