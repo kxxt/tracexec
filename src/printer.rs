@@ -1,3 +1,4 @@
+
 use std::{
     collections::HashMap,
     io::{self, Write},
@@ -7,7 +8,7 @@ use std::{
 use crate::{proc::Interpreter, state::ProcessState};
 
 use nix::unistd::Pid;
-use owo_colors::OwoColorize;
+use owo_colors::{OwoColorize, Style};
 
 fn parse_env_entry(item: &str) -> (&str, &str) {
     let mut sep_loc = item
@@ -103,6 +104,7 @@ pub fn print_exec_trace(
     // 1. execve syscall exit, which leads to 2
     // 2. state.exec_data is Some
     let exec_data = state.exec_data.as_ref().unwrap();
+    let list_printer = ListPrinter::new(args.color);
     if result == 0 {
         write!(out, "{}", state.pid.bright_yellow())?;
     } else {
@@ -116,7 +118,8 @@ pub fn print_exec_trace(
         write!(out, " {:?}", exec_data.filename)?;
     }
     if args.trace_argv {
-        write!(out, " {:?}", exec_data.argv)?;
+        write!(out, " ")?;
+        list_printer.print_string_list(out, &exec_data.argv)?;
     }
     if args.trace_cwd {
         write!(out, " {} {:?}", "at".purple(), exec_data.cwd)?;
@@ -131,14 +134,14 @@ pub fn print_exec_trace(
                 write!(out, "{}", exec_data.interpreters[0])?;
             }
             _ => {
-                write!(out, "[")?;
+                list_printer.begin(out)?;
                 for (idx, interpreter) in exec_data.interpreters.iter().enumerate() {
                     if idx != 0 {
-                        write!(out, ", ")?;
+                        list_printer.comma(out)?;
                     }
                     write!(out, "{}", interpreter)?;
                 }
-                write!(out, "]")?;
+                list_printer.end(out)?;
             }
         }
     }
@@ -146,12 +149,13 @@ pub fn print_exec_trace(
         EnvPrintFormat::Diff => {
             // TODO: make it faster
             //       This is mostly a proof of concept
-            write!(out, " {} [", "with".purple())?;
+            write!(out, " {} ", "with".purple())?;
+            list_printer.begin(out)?;
             let mut env = env.clone();
             let mut first_item_written = false;
             let mut write_separator = |out: &mut dyn Write| -> io::Result<()> {
                 if first_item_written {
-                    write!(out, ", ")?;
+                    list_printer.comma(out)?;
                 } else {
                     first_item_written = true;
                 }
@@ -198,7 +202,7 @@ pub fn print_exec_trace(
                     v.bright_red().strikethrough()
                 )?;
             }
-            write!(out, "]")?;
+            list_printer.end(out)?;
             // Avoid trailing color
             // https://unix.stackexchange.com/questions/212933/background-color-whitespace-when-end-of-the-terminal-reached
             if owo_colors::control::should_colorize() {
@@ -206,7 +210,8 @@ pub fn print_exec_trace(
             }
         }
         EnvPrintFormat::Raw => {
-            write!(out, " {} {:?}", "with".purple(), exec_data.envp)?;
+            write!(out, " {} ", "with".purple())?;
+            list_printer.print_string_list(out, &exec_data.envp)?;
         }
         EnvPrintFormat::None => (),
     }
@@ -338,5 +343,51 @@ impl Drop for DeferredWarnings {
                 "argv[0] and filename differs. The printed commandline might be incorrect!"
             ),
         }
+    }
+}
+
+struct ListPrinter {
+    style: owo_colors::Style,
+}
+
+impl ListPrinter {
+    pub fn new(color: ColorLevel) -> Self {
+        if color > ColorLevel::Normal {
+            ListPrinter {
+                style: Style::new().bright_white().bold(),
+            }
+        } else {
+            ListPrinter {
+                style: Style::new(),
+            }
+        }
+    }
+
+    pub fn begin(&self, out: &mut dyn Write) -> io::Result<()> {
+        write!(out, "{}", "[".style(self.style))
+    }
+
+    pub fn end(&self, out: &mut dyn Write) -> io::Result<()> {
+        write!(out, "{}", "]".style(self.style))
+    }
+
+    pub fn comma(&self, out: &mut dyn Write) -> io::Result<()> {
+        write!(out, "{}", ", ".style(self.style))
+    }
+
+    pub fn print_string_list(&self, out: &mut dyn Write, list: &[String]) -> io::Result<()> {
+        self.begin(out)?;
+        if let Some((last, rest)) = list.split_last() {
+            if rest.is_empty() {
+                write!(out, "{:?}", last)?;
+            } else {
+                for s in rest {
+                    write!(out, "{:?}", s)?;
+                    self.comma(out)?;
+                }
+                write!(out, "{:?}", last)?;
+            }
+        }
+        self.end(out)
     }
 }
