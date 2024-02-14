@@ -25,5 +25,10 @@ owo-colors = { version = "4.0.0", package = "kxxt-owo-colors", features = [
     "global-colorized-control",
 ] }
 shell-quote = "0.5.0"
-seccompiler = "0.4.0"
+seccompiler = { version = "0.4.0", optional = true }
 atoi = "2.0.0"
+
+[features]
+default = ["seccomp-bpf"]
+seccomp-bpf = ["dep:seccompiler"]
+

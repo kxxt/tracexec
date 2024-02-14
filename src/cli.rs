@@ -48,6 +48,7 @@ pub enum Color {
     Never,
 }
 
+#[cfg(feature = "seccomp-bpf")]
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Display)]
 #[strum(serialize_all = "kebab-case")]
 pub enum SeccompBpf {
@@ -75,6 +76,7 @@ pub struct TracingArgs {
     pub less_colors: bool,
     #[clap(long, help = "Print a message when a child is created")]
     pub show_children: bool,
+    #[cfg(feature = "seccomp-bpf")]
     #[clap(long, help = "seccomp-bpf filtering option", default_value_t = SeccompBpf::Auto)]
     pub seccomp_bpf: SeccompBpf,
     // BEGIN ugly: https://github.com/clap-rs/clap/issues/815

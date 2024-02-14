@@ -3,6 +3,7 @@ mod cli;
 mod inspect;
 mod printer;
 mod proc;
+#[cfg(feature = "seccomp-bpf")]
 mod seccomp;
 mod state;
 mod tracer;
