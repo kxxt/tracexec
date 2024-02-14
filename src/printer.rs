@@ -44,7 +44,7 @@ macro_rules! escape_str_for_bash {
     // TODO: This is ... quite ugly. We should find a better way to do this.
     ($x:expr) => {
         // https://github.com/rust-lang/rust/issues/64727
-        String::from_utf8_lossy(&shell_quote::bash::escape($x))
+        String::from_utf8_lossy(&shell_quote::Bash::quote($x))
     };
 }
 
@@ -288,7 +288,7 @@ pub fn print_exec_trace(
         }
         for (idx, arg) in exec_data.argv.iter().enumerate() {
             if idx == 0 {
-                let escaped_filename = shell_quote::bash::escape(&exec_data.filename);
+                let escaped_filename = shell_quote::Bash::quote(&exec_data.filename);
                 let escaped_filename_lossy = String::from_utf8_lossy(&escaped_filename);
                 if !escaped_filename_lossy.ends_with(arg) {
                     deferred_warning.warning = DeferredWarningKind::Argv0AndFileNameDiffers;
