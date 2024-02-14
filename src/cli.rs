@@ -66,6 +66,8 @@ pub struct TracingArgs {
     pub less_colors: bool,
     #[clap(long, help = "Print a message when a child is created")]
     pub show_children: bool,
+    #[clap(long, help = "seccomp-bpf filtering option")]
+    pub seccomp_bpf: bool,
     // BEGIN ugly: https://github.com/clap-rs/clap/issues/815
     #[clap(
         long,

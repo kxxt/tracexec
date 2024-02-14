@@ -3,6 +3,7 @@ mod cli;
 mod inspect;
 mod printer;
 mod proc;
+mod seccomp;
 mod state;
 mod tracer;
 

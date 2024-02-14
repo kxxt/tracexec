@@ -1,6 +1,7 @@
 use std::{collections::HashMap, ffi::CString, io::Write, path::PathBuf, process::exit};
 
 use cfg_if::cfg_if;
+
 use nix::{
     errno::Errno,
     libc::{pid_t, raise, tcsetpgrp, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP, STDIN_FILENO},
@@ -11,6 +12,7 @@ use nix::{
     },
     unistd::{execvp, getpid, setpgid, ForkResult, Pid},
 };
+use seccompiler::BpfProgram;
 
 use crate::{
     arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs, PtraceRegisters},
@@ -18,6 +20,7 @@ use crate::{
     inspect::{read_pathbuf, read_string, read_string_array},
     printer::{print_exec_trace, print_new_child, ColorLevel, EnvPrintFormat, PrinterArgs},
     proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
+    seccomp,
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
 
@@ -28,10 +31,11 @@ pub struct Tracer {
     cwd: std::path::PathBuf,
     print_children: bool,
     output: Box<dyn Write>,
+    seccomp_bpf: bool,
 }
 
-fn ptrace_syscall_with_signal(pid: Pid, sig: Signal) -> Result<(), Errno> {
-    match ptrace::syscall(pid, Some(sig)) {
+fn ptrace_syscall(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
+    match ptrace::syscall(pid, sig) {
         Err(Errno::ESRCH) => {
             log::info!("ptrace syscall failed: {pid}, ESRCH, child probably gone!");
             Ok(())
@@ -40,10 +44,10 @@ fn ptrace_syscall_with_signal(pid: Pid, sig: Signal) -> Result<(), Errno> {
     }
 }
 
-fn ptrace_syscall(pid: Pid) -> Result<(), Errno> {
-    match ptrace::syscall(pid, None) {
+fn ptrace_cont(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
+    match ptrace::cont(pid, sig) {
         Err(Errno::ESRCH) => {
-            log::info!("ptrace syscall failed: {pid}, ESRCH, child probably gone!");
+            log::info!("ptrace cont failed: {pid}, ESRCH, child probably gone!");
             Ok(())
         }
         other => other,
@@ -90,6 +94,7 @@ impl Tracer {
             env: std::env::vars().collect(),
             cwd: std::env::current_dir()?,
             print_children: tracing_args.show_children,
+            seccomp_bpf: tracing_args.seccomp_bpf,
             args: PrinterArgs {
                 trace_comm: !tracing_args.no_show_comm,
                 trace_argv: !tracing_args.no_show_argv && !tracing_args.show_cmdline,
@@ -144,7 +149,7 @@ impl Tracer {
             }
             // restart child
             log::trace!("resuming child");
-            ptrace::setoptions(root_child, {
+            let mut ptrace_opts = {
                 use nix::sys::ptrace::Options;
                 Options::PTRACE_O_TRACEEXEC
                     | Options::PTRACE_O_TRACEEXIT
@@ -153,8 +158,13 @@ impl Tracer {
                     | Options::PTRACE_O_TRACEFORK
                     | Options::PTRACE_O_TRACECLONE
                     | Options::PTRACE_O_TRACEVFORK
-            })?;
-            ptrace_syscall(root_child)?; // restart child
+            };
+            if self.seccomp_bpf {
+                ptrace_opts |= ptrace::Options::PTRACE_O_TRACESECCOMP;
+            }
+            ptrace::setoptions(root_child, ptrace_opts)?;
+            // restart child
+            self.seccomp_aware_cont(root_child)?;
             loop {
                 let status = waitpid(None, Some(WaitPidFlag::__WALL))?;
                 // log::trace!("waitpid: {:?}", status);
@@ -167,8 +177,8 @@ impl Tracer {
                                 if let Some(state) = self.store.get_current_mut(pid) {
                                     if state.status == ProcessStatus::PtraceForkEventReceived {
                                         log::trace!("sigstop event received after ptrace fork event, pid: {pid}");
-                                        ptrace_syscall(pid)?;
                                         state.status = ProcessStatus::Running;
+                                        self.seccomp_aware_cont(pid)?;
                                     } else if pid != root_child {
                                         log::error!("Unexpected SIGSTOP: {state:?}")
                                     }
@@ -188,11 +198,11 @@ impl Tracer {
                                 // This means, that if our tracee forked and said fork exits before the parent, the parent will get stopped.
                                 // Therefor issue a PTRACE_SYSCALL request to the parent to continue execution.
                                 // This is also important if we trace without the following forks option.
-                                ptrace_syscall_with_signal(pid, Signal::SIGCHLD)?;
+                                self.seccomp_aware_cont_with_signal(pid, Signal::SIGCHLD)?;
                             }
                             _ => {
                                 // Just deliver the signal to tracee
-                                ptrace_syscall_with_signal(pid, sig)?;
+                                self.seccomp_aware_cont_with_signal(pid, sig)?;
                             }
                         }
                     }
@@ -228,7 +238,7 @@ impl Tracer {
                                         log::trace!("ptrace fork event received after sigstop, pid: {pid}, child: {new_child}");
                                         state.status = ProcessStatus::Running;
                                         state.ppid = Some(pid);
-                                        ptrace_syscall(new_child)?;
+                                        self.seccomp_aware_cont(new_child)?;
                                     } else if new_child != root_child {
                                         log::error!("Unexpected fork event: {state:?}")
                                     }
@@ -240,7 +250,7 @@ impl Tracer {
                                     self.store.insert(state);
                                 }
                                 // Resume parent
-                                ptrace_syscall(pid)?;
+                                self.seccomp_aware_cont(pid)?;
                             }
                             nix::libc::PTRACE_EVENT_EXEC => {
                                 log::trace!("exec event");
@@ -251,15 +261,20 @@ impl Tracer {
                                 // So we need to determine whether exec is successful here.
                                 // PTRACE_EVENT_EXEC only happens for successful exec.
                                 p.is_exec_successful = true;
-                                ptrace_syscall(pid)?;
+                                // Don't use seccomp_aware_cont here because that will skip the next syscall exit stop
+                                self.syscall_enter_cont(pid)?;
                             }
                             nix::libc::PTRACE_EVENT_EXIT => {
                                 log::trace!("exit event");
-                                ptrace_syscall(pid)?;
+                                self.seccomp_aware_cont(pid)?;
+                            }
+                            nix::libc::PTRACE_EVENT_SECCOMP => {
+                                log::trace!("seccomp event");
+                                self.on_syscall_enter(pid)?;
                             }
                             _ => {
                                 log::trace!("other event");
-                                ptrace_syscall(pid)?;
+                                self.seccomp_aware_cont(pid)?;
                             }
                         }
                     }
@@ -270,160 +285,23 @@ impl Tracer {
                         }
                     }
                     WaitStatus::PtraceSyscall(pid) => {
-                        let p = self.store.get_current_mut(pid).unwrap();
-                        if p.presyscall {
-                            p.presyscall = !p.presyscall;
-                            // SYSCALL ENTRY
-                            let regs = match ptrace_getregs(pid) {
-                                Ok(regs) => regs,
-                                Err(Errno::ESRCH) => {
-                                    log::info!(
-                                        "ptrace getregs failed: {pid}, ESRCH, child probably gone!"
-                                    );
-                                    continue;
-                                }
-                                e => e?,
-                            };
-                            let syscallno = syscall_no_from_regs!(regs);
-                            p.syscall = syscallno;
-                            // log::trace!("pre syscall: {syscallno}");
-                            if syscallno == nix::libc::SYS_execveat {
-                                log::trace!("pre execveat {syscallno}");
-                                // int execveat(int dirfd, const char *pathname,
-                                //              char *const _Nullable argv[],
-                                //              char *const _Nullable envp[],
-                                //              int flags);
-                                let dirfd = syscall_arg!(regs, 0) as i32;
-                                let pathname =
-                                    read_string(pid, syscall_arg!(regs, 1) as AddressType)?;
-                                let pathname_is_empty = pathname.is_empty();
-                                let pathname = PathBuf::from(pathname);
-                                let argv =
-                                    read_string_array(pid, syscall_arg!(regs, 2) as AddressType)?;
-                                let envp =
-                                    read_string_array(pid, syscall_arg!(regs, 3) as AddressType)?;
-                                let flags = syscall_arg!(regs, 4) as i32;
-                                let filename = match (
-                                    pathname.is_absolute(),
-                                    pathname_is_empty && ((flags & AT_EMPTY_PATH) != 0),
-                                ) {
-                                    (true, _) => {
-                                        // If pathname is absolute, then dirfd is ignored.
-                                        pathname
-                                    }
-                                    (false, true) => {
-                                        // If  pathname  is an empty string and the AT_EMPTY_PATH flag is specified, then the file descriptor dirfd
-                                        // specifies the file to be executed
-                                        read_fd(pid, dirfd)?
-                                    }
-                                    (false, false) => {
-                                        // pathname is relative to dirfd
-                                        let dir = read_fd(pid, dirfd)?;
-                                        dir.join(pathname)
-                                    }
-                                };
-                                let interpreters = if self.args.trace_interpreter {
-                                    read_interpreter_recursive(&filename)
-                                } else {
-                                    vec![]
-                                };
-                                p.exec_data = Some(ExecData {
-                                    filename,
-                                    argv,
-                                    envp,
-                                    cwd: read_cwd(pid)?,
-                                    interpreters,
-                                });
-                            } else if syscallno == nix::libc::SYS_execve {
-                                log::trace!("pre execve {syscallno}",);
-                                let filename =
-                                    read_pathbuf(pid, syscall_arg!(regs, 0) as AddressType)?;
-                                let argv =
-                                    read_string_array(pid, syscall_arg!(regs, 1) as AddressType)?;
-                                let envp =
-                                    read_string_array(pid, syscall_arg!(regs, 2) as AddressType)?;
-                                let interpreters = if self.args.trace_interpreter {
-                                    read_interpreter_recursive(&filename)
-                                } else {
-                                    vec![]
-                                };
-                                p.exec_data = Some(ExecData {
-                                    filename,
-                                    argv,
-                                    envp,
-                                    cwd: read_cwd(pid)?,
-                                    interpreters,
-                                });
-                            } else if syscallno == SYS_clone || syscallno == SYS_clone3 {
-                            }
+                        let presyscall = self.store.get_current_mut(pid).unwrap().presyscall;
+                        if presyscall {
+                            self.on_syscall_enter(pid)?;
                         } else {
-                            // SYSCALL EXIT
-                            // log::trace!("post syscall {}", p.syscall);
-                            p.presyscall = !p.presyscall;
-
-                            let regs = match ptrace_getregs(pid) {
-                                Ok(regs) => regs,
-                                Err(Errno::ESRCH) => {
-                                    log::info!(
-                                        "ptrace getregs failed: {pid}, ESRCH, child probably gone!"
-                                    );
-                                    continue;
-                                }
-                                e => e?,
-                            };
-                            let result = syscall_res_from_regs!(regs);
-                            let exec_result = if p.is_exec_successful { 0 } else { result };
-                            match p.syscall {
-                                nix::libc::SYS_execve => {
-                                    log::trace!("post execve in exec");
-                                    if self.args.successful_only && !p.is_exec_successful {
-                                        p.exec_data = None;
-                                        ptrace_syscall(pid)?;
-                                        continue;
-                                    }
-                                    // SAFETY: p.preexecve is false, so p.exec_data is Some
-                                    print_exec_trace(
-                                        self.output.as_mut(),
-                                        p,
-                                        exec_result,
-                                        &self.args,
-                                        &self.env,
-                                        &self.cwd,
-                                    )?;
-                                    p.exec_data = None;
-                                    p.is_exec_successful = false;
-                                    // update comm
-                                    p.comm = read_comm(pid)?;
-                                }
-                                nix::libc::SYS_execveat => {
-                                    log::trace!("post execveat in exec");
-                                    if self.args.successful_only && !p.is_exec_successful {
-                                        p.exec_data = None;
-                                        ptrace_syscall(pid)?;
-                                        continue;
-                                    }
-                                    print_exec_trace(
-                                        self.output.as_mut(),
-                                        p,
-                                        exec_result,
-                                        &self.args,
-                                        &self.env,
-                                        &self.cwd,
-                                    )?;
-                                    p.exec_data = None;
-                                    p.is_exec_successful = false;
-                                    // update comm
-                                    p.comm = read_comm(pid)?;
-                                }
-                                _ => (),
-                            }
+                            self.on_syscall_exit(pid)?;
                         }
-                        ptrace_syscall(pid)?;
                     }
                     _ => {}
                 }
             }
         } else {
+            if self.seccomp_bpf {
+                let filter = seccomp::create_seccomp_filter();
+                let bpf: BpfProgram = filter.try_into()?;
+                seccompiler::apply_filter(&bpf)?;
+            }
+
             let me = getpid();
             setpgid(me, me)?;
             traceme()?;
@@ -433,12 +311,182 @@ impl Tracer {
                 exit(-1);
             }
             log::trace!("raise success!");
+
             let args = args
                 .into_iter()
                 .map(CString::new)
                 .collect::<Result<Vec<CString>, _>>()?;
+
             execvp(&args[0], &args)?;
         }
         Ok(())
+    }
+
+    fn on_syscall_enter(&mut self, pid: Pid) -> color_eyre::Result<()> {
+        let p = self.store.get_current_mut(pid).unwrap();
+        p.presyscall = !p.presyscall;
+        // SYSCALL ENTRY
+        let regs = match ptrace_getregs(pid) {
+            Ok(regs) => regs,
+            Err(Errno::ESRCH) => {
+                log::info!("ptrace getregs failed: {pid}, ESRCH, child probably gone!");
+                return Ok(());
+            }
+            e => e?,
+        };
+        let syscallno = syscall_no_from_regs!(regs);
+        p.syscall = syscallno;
+        // log::trace!("pre syscall: {syscallno}");
+        if syscallno == nix::libc::SYS_execveat {
+            log::trace!("pre execveat {syscallno}");
+            // int execveat(int dirfd, const char *pathname,
+            //              char *const _Nullable argv[],
+            //              char *const _Nullable envp[],
+            //              int flags);
+            let dirfd = syscall_arg!(regs, 0) as i32;
+            let pathname = read_string(pid, syscall_arg!(regs, 1) as AddressType)?;
+            let pathname_is_empty = pathname.is_empty();
+            let pathname = PathBuf::from(pathname);
+            let argv = read_string_array(pid, syscall_arg!(regs, 2) as AddressType)?;
+            let envp = read_string_array(pid, syscall_arg!(regs, 3) as AddressType)?;
+            let flags = syscall_arg!(regs, 4) as i32;
+            let filename = match (
+                pathname.is_absolute(),
+                pathname_is_empty && ((flags & AT_EMPTY_PATH) != 0),
+            ) {
+                (true, _) => {
+                    // If pathname is absolute, then dirfd is ignored.
+                    pathname
+                }
+                (false, true) => {
+                    // If  pathname  is an empty string and the AT_EMPTY_PATH flag is specified, then the file descriptor dirfd
+                    // specifies the file to be executed
+                    read_fd(pid, dirfd)?
+                }
+                (false, false) => {
+                    // pathname is relative to dirfd
+                    let dir = read_fd(pid, dirfd)?;
+                    dir.join(pathname)
+                }
+            };
+            let interpreters = if self.args.trace_interpreter {
+                read_interpreter_recursive(&filename)
+            } else {
+                vec![]
+            };
+            p.exec_data = Some(ExecData {
+                filename,
+                argv,
+                envp,
+                cwd: read_cwd(pid)?,
+                interpreters,
+            });
+        } else if syscallno == nix::libc::SYS_execve {
+            log::trace!("pre execve {syscallno}",);
+            let filename = read_pathbuf(pid, syscall_arg!(regs, 0) as AddressType)?;
+            let argv = read_string_array(pid, syscall_arg!(regs, 1) as AddressType)?;
+            let envp = read_string_array(pid, syscall_arg!(regs, 2) as AddressType)?;
+            let interpreters = if self.args.trace_interpreter {
+                read_interpreter_recursive(&filename)
+            } else {
+                vec![]
+            };
+            p.exec_data = Some(ExecData {
+                filename,
+                argv,
+                envp,
+                cwd: read_cwd(pid)?,
+                interpreters,
+            });
+        } else if syscallno == SYS_clone || syscallno == SYS_clone3 {
+        }
+        self.syscall_enter_cont(pid)?;
+        Ok(())
+    }
+
+    fn on_syscall_exit(&mut self, pid: Pid) -> color_eyre::Result<()> {
+        // SYSCALL EXIT
+        // log::trace!("post syscall {}", p.syscall);
+        let p = self.store.get_current_mut(pid).unwrap();
+        p.presyscall = !p.presyscall;
+
+        let regs = match ptrace_getregs(pid) {
+            Ok(regs) => regs,
+            Err(Errno::ESRCH) => {
+                log::info!("ptrace getregs failed: {pid}, ESRCH, child probably gone!");
+                return Ok(());
+            }
+            e => e?,
+        };
+        let result = syscall_res_from_regs!(regs);
+        let exec_result = if p.is_exec_successful { 0 } else { result };
+        match p.syscall {
+            nix::libc::SYS_execve => {
+                log::trace!("post execve in exec");
+                if self.args.successful_only && !p.is_exec_successful {
+                    p.exec_data = None;
+                    self.seccomp_aware_cont(pid)?;
+                    return Ok(());
+                }
+                // SAFETY: p.preexecve is false, so p.exec_data is Some
+                print_exec_trace(
+                    self.output.as_mut(),
+                    p,
+                    exec_result,
+                    &self.args,
+                    &self.env,
+                    &self.cwd,
+                )?;
+                p.exec_data = None;
+                p.is_exec_successful = false;
+                // update comm
+                p.comm = read_comm(pid)?;
+            }
+            nix::libc::SYS_execveat => {
+                log::trace!("post execveat in exec");
+                if self.args.successful_only && !p.is_exec_successful {
+                    p.exec_data = None;
+                    self.seccomp_aware_cont(pid)?;
+                    return Ok(());
+                }
+                print_exec_trace(
+                    self.output.as_mut(),
+                    p,
+                    exec_result,
+                    &self.args,
+                    &self.env,
+                    &self.cwd,
+                )?;
+                p.exec_data = None;
+                p.is_exec_successful = false;
+                // update comm
+                p.comm = read_comm(pid)?;
+            }
+            _ => (),
+        }
+        self.seccomp_aware_cont(pid)?;
+        Ok(())
+    }
+
+    fn syscall_enter_cont(&self, pid: Pid) -> Result<(), Errno> {
+        ptrace_syscall(pid, None)
+    }
+
+    /// When seccomp-bpf is enabled, we use ptrace::cont instead of ptrace::syscall to improve performance.
+    /// Then the next syscall-entry stop is skipped and the seccomp stop is used as the syscall entry stop.
+    fn seccomp_aware_cont(&self, pid: Pid) -> Result<(), Errno> {
+        if self.seccomp_bpf {
+            ptrace_cont(pid, None)
+        } else {
+            ptrace_syscall(pid, None)
+        }
+    }
+
+    fn seccomp_aware_cont_with_signal(&self, pid: Pid, sig: Signal) -> Result<(), Errno> {
+        if self.seccomp_bpf {
+            ptrace_cont(pid, Some(sig))
+        } else {
+            ptrace_syscall(pid, Some(sig))
+        }
     }
 }
