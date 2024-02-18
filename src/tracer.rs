@@ -16,10 +16,10 @@ use seccompiler::BpfProgram;
 
 use crate::{
     arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs, PtraceRegisters},
-    cli::TracingArgs,
+    cli::{TracingArgs, SeccompBpf},
     inspect::{read_pathbuf, read_string, read_string_array},
     printer::{print_exec_trace, print_new_child, ColorLevel, EnvPrintFormat, PrinterArgs},
-    proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
+    proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive, self},
     seccomp,
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
@@ -31,7 +31,7 @@ pub struct Tracer {
     cwd: std::path::PathBuf,
     print_children: bool,
     output: Box<dyn Write>,
-    seccomp_bpf: bool,
+    seccomp_bpf: SeccompBpf,
 }
 
 fn ptrace_syscall(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
@@ -137,6 +137,14 @@ impl Tracer {
 
     pub fn start_root_process(&mut self, args: Vec<String>) -> color_eyre::Result<()> {
         log::trace!("start_root_process: {:?}", args);
+
+        // Check if we should enable seccomp-bpf
+        if self.seccomp_bpf == SeccompBpf::Auto {
+            // TODO: check if the kernel supports seccomp-bpf
+            // Let's just enable it for now and see if anyone complains
+            self.seccomp_bpf = SeccompBpf::On;
+        }
+
         if let ForkResult::Parent { child: root_child } = unsafe { nix::unistd::fork()? } {
             waitpid(root_child, Some(WaitPidFlag::WSTOPPED))?; // wait for child to stop
             log::trace!("child stopped");
@@ -159,7 +167,7 @@ impl Tracer {
                     | Options::PTRACE_O_TRACECLONE
                     | Options::PTRACE_O_TRACEVFORK
             };
-            if self.seccomp_bpf {
+            if self.seccomp_bpf == SeccompBpf::On {
                 ptrace_opts |= ptrace::Options::PTRACE_O_TRACESECCOMP;
             }
             ptrace::setoptions(root_child, ptrace_opts)?;
@@ -296,7 +304,7 @@ impl Tracer {
                 }
             }
         } else {
-            if self.seccomp_bpf {
+            if self.seccomp_bpf == SeccompBpf::On {
                 let filter = seccomp::create_seccomp_filter();
                 let bpf: BpfProgram = filter.try_into()?;
                 seccompiler::apply_filter(&bpf)?;
@@ -475,7 +483,7 @@ impl Tracer {
     /// When seccomp-bpf is enabled, we use ptrace::cont instead of ptrace::syscall to improve performance.
     /// Then the next syscall-entry stop is skipped and the seccomp stop is used as the syscall entry stop.
     fn seccomp_aware_cont(&self, pid: Pid) -> Result<(), Errno> {
-        if self.seccomp_bpf {
+        if self.seccomp_bpf == SeccompBpf::On {
             ptrace_cont(pid, None)
         } else {
             ptrace_syscall(pid, None)
@@ -483,7 +491,7 @@ impl Tracer {
     }
 
     fn seccomp_aware_cont_with_signal(&self, pid: Pid, sig: Signal) -> Result<(), Errno> {
-        if self.seccomp_bpf {
+        if self.seccomp_bpf == SeccompBpf::On {
             ptrace_cont(pid, Some(sig))
         } else {
             ptrace_syscall(pid, Some(sig))
