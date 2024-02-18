@@ -7,10 +7,15 @@ mod seccomp;
 mod state;
 mod tracer;
 
-use std::io::{stderr, stdout, BufWriter, Write};
+use std::{
+    io::{stderr, stdout, BufWriter, Write},
+    os::unix::ffi::OsStrExt,
+};
 
+use atoi::atoi;
 use clap::Parser;
 use cli::Cli;
+use color_eyre::eyre::bail;
 
 use crate::cli::{CliCommand, Color};
 
@@ -39,6 +44,15 @@ fn main() -> color_eyre::Result<()> {
         })
         .init();
     log::trace!("Commandline args: {:?}", cli);
+    // Seccomp-bpf ptrace behvaior is changed on 4.8. I haven't tested on older kernels.
+    let min_support_kver = (4, 8);
+    if !is_current_kernel_greater_than(min_support_kver)? {
+        log::warn!(
+            "Current kernel version is not supported! Minimum supported kernel version is {}.{}.",
+            min_support_kver.0,
+            min_support_kver.1
+        );
+    }
     match cli.cmd {
         CliCommand::Log {
             cmd,
@@ -71,4 +85,24 @@ fn main() -> color_eyre::Result<()> {
         }
     }
     Ok(())
+}
+
+fn is_current_kernel_greater_than(min_support: (u32, u32)) -> color_eyre::Result<bool> {
+    let utsname = nix::sys::utsname::uname()?;
+    let kstr = utsname.release().as_bytes();
+    let pos = kstr.iter().position(|&c| c != b'.' && !c.is_ascii_digit());
+    let kver = if let Some(pos) = pos {
+        let (s, _) = kstr.split_at(pos);
+        s
+    } else {
+        kstr
+    };
+    let mut kvers = kver.split(|&c| c == b'.');
+    let Some(major) = kvers.next().and_then(|s| atoi::<u32>(s)) else {
+        bail!("Failed to parse kernel major ver!")
+    };
+    let Some(minor) = kvers.next().and_then(|s| atoi::<u32>(s)) else {
+        bail!("Failed to parse kernel minor ver!")
+    };
+    return Ok((major, minor) >= min_support);
 }
