@@ -99,11 +99,11 @@ fn is_current_kernel_greater_than(min_support: (u32, u32)) -> color_eyre::Result
         kstr
     };
     let mut kvers = kver.split(|&c| c == b'.');
-    let Some(major) = kvers.next().and_then(|s| atoi::<u32>(s)) else {
+    let Some(major) = kvers.next().and_then(atoi::<u32>) else {
         bail!("Failed to parse kernel major ver!")
     };
-    let Some(minor) = kvers.next().and_then(|s| atoi::<u32>(s)) else {
+    let Some(minor) = kvers.next().and_then(atoi::<u32>) else {
         bail!("Failed to parse kernel minor ver!")
     };
-    return Ok((major, minor) >= min_support);
+    Ok((major, minor) >= min_support)
 }

@@ -49,7 +49,7 @@ impl ProcessStateStore {
     pub fn insert(&mut self, state: ProcessState) {
         self.processes
             .entry(state.pid)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(state);
     }
 
