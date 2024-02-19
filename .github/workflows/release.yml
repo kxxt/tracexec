@@ -27,10 +27,13 @@ jobs:
         include:
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            no-default-features: false
           - os: ubuntu-22.04
             target: aarch64-unknown-linux-gnu
+            no-default-features: false
           - os: ubuntu-22.04
             target: riscv64gc-unknown-linux-gnu
+            no-default-features: true
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
@@ -56,3 +59,4 @@ jobs:
           bin: tracexec
           token: ${{ secrets.GITHUB_TOKEN }}
           target: ${{ matrix.target }}
+          no-default-features: ${{ matrix.no-default-features }}
