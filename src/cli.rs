@@ -31,13 +31,6 @@ pub enum CliCommand {
         )]
         output: Option<PathBuf>,
     },
-    #[clap(about = "Run tracexec in tree visualization mode")]
-    Tree {
-        #[arg(last = true)]
-        cmd: Vec<String>,
-        #[clap(flatten)]
-        tracing_args: TracingArgs,
-    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Display)]
@@ -56,7 +49,6 @@ pub enum SeccompBpf {
     On,
     Off,
 }
-
 
 #[derive(Args, Debug)]
 pub struct TracingArgs {

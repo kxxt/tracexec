@@ -78,12 +78,6 @@ fn main() -> color_eyre::Result<()> {
             };
             tracer::Tracer::new(tracing_args, output)?.start_root_process(cmd)?;
         }
-        CliCommand::Tree {
-            cmd: _,
-            tracing_args: _,
-        } => {
-            unimplemented!("tree mode not implemented yet")
-        }
     }
     Ok(())
 }
