@@ -556,7 +556,7 @@ dependencies = [
 
 [[package]]
 name = "tracexec"
-version = "0.0.5-rc.1"
+version = "0.0.5"
 dependencies = [
  "atoi",
  "cfg-if",
