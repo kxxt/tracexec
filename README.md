@@ -2,12 +2,13 @@
 
 A small utility for tracing execve{,at}.
 
+tracexec helps you to figure out what and how programs get executed when you execute a program.
+
 **Status**:
 
-- Proof of concept.
-- Experimental quality.
-- Not ready for production use.
-- Performance is not a focus right now.
+- Minimum Viable Product. It works, but neither the output nor the CLI is stable.
+- Shitty code 💩 with no tests at all 👿.
+- Anyway, it should be helpful for debugging and troubleshooting.
 
 ## Showcases
 
@@ -70,28 +71,29 @@ Arguments:
   <CMD>...  command to be executed
 
 Options:
-      --successful-only   Only show successful calls
-      --show-cmdline      Print commandline that reproduces what was executed. Note that when filename and argv[0] differs, it probably won't give you the correct commandline for now. Implies --successful-only
-      --show-interpreter  Try to show script interpreter indicated by shebang
-      --more-colors       More colors
-      --less-colors       Less colors
-      --show-children     Print a message when a child is created
-      --diff-env          Diff environment variables with the original environment
-      --no-diff-env       Do not diff environment variables
-      --show-env          Show environment variables
-      --no-show-env       Do not trace environment variables
-      --show-comm         Show comm
-      --no-show-comm      Do not show comm
-      --show-argv         Show argv
-      --no-show-argv      Do not show argv
-      --show-filename     Show filename
-      --no-show-filename  Do not show filename
-      --show-cwd          Show cwd
-      --no-show-cwd       Do not show cwd
-      --decode-errno      Decode errno values
-      --no-decode-errno   
-  -o, --output <OUTPUT>   Output, stderr by default. A single hyphen '-' represents stdout.
-  -h, --help              Print help
+      --successful-only            Only show successful calls
+      --show-cmdline               Print commandline that reproduces what was executed. Note that when filename and argv[0] differs, it probably won't give you the correct commandline for now. Implies --successful-only
+      --show-interpreter           Try to show script interpreter indicated by shebang
+      --more-colors                More colors
+      --less-colors                Less colors
+      --show-children              Print a message when a child is created
+      --seccomp-bpf <SECCOMP_BPF>  seccomp-bpf filtering option [default: auto] [possible values: auto, on, off]
+      --diff-env                   Diff environment variables with the original environment
+      --no-diff-env                Do not diff environment variables
+      --show-env                   Show environment variables
+      --no-show-env                Do not show environment variables
+      --show-comm                  Show comm
+      --no-show-comm               Do not show comm
+      --show-argv                  Show argv
+      --no-show-argv               Do not show argv
+      --show-filename              Show filename
+      --no-show-filename           Do not show filename
+      --show-cwd                   Show cwd
+      --no-show-cwd                Do not show cwd
+      --decode-errno               Decode errno values
+      --no-decode-errno            
+  -o, --output <OUTPUT>            Output, stderr by default. A single hyphen '-' represents stdout.
+  -h, --help                       Print help
 ```
 
 The recommended way to use `tracexec` is to create an alias with your favorite options in your bashrc:
