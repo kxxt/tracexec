@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.0.5-rc.1
+
+Changes since v0.0.4:
+
+- Seccomp-bpf optimization is implemented and enabled by default. This almost reduces the performance overhead of tracexec to zero.
+    - `--seccomp-bpf` option is added to control this feature.
+    - Added a warning when running on untested low kernel versions (<4.8).
+- Bug fixes for `--no-show-env`.
+- List is now highlighted when using `--more-colors`.
+
 ## v0.0.4
 
 tracexec v0.0.4 released!
