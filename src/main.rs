@@ -21,7 +21,10 @@ use clap::Parser;
 use cli::Cli;
 use color_eyre::eyre::bail;
 
-use crate::cli::{CliCommand, Color};
+use crate::{
+    cli::{CliCommand, Color},
+    log::initialize_panic_handler,
+};
 
 fn main() -> color_eyre::Result<()> {
     let mut cli = Cli::parse();
@@ -37,6 +40,7 @@ fn main() -> color_eyre::Result<()> {
     } else {
         color_eyre::install()?;
     }
+    initialize_panic_handler();
     log::initialize_logging()?;
     // TODO: separate output verbosity from log level
     // pretty_env_logger::formatted_builder()

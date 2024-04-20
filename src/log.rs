@@ -26,6 +26,8 @@ use tracing_subscriber::{self, layer::SubscriberExt, util::SubscriberInitExt, La
 
 pub use log::*;
 
+use crate::tui::restore_tui;
+
 lazy_static! {
     pub static ref PROJECT_NAME: String = env!("CARGO_CRATE_NAME").to_uppercase().to_string();
     pub static ref DATA_FOLDER: Option<PathBuf> =
@@ -100,4 +102,18 @@ macro_rules! trace_dbg {
     ($ex:expr) => {
         trace_dbg!(level: tracing::Level::DEBUG, $ex)
     };
+}
+
+pub fn initialize_panic_handler() {
+    std::panic::set_hook(Box::new(|panic_info| {
+        if let Err(e) = restore_tui() {
+            error!("Unable to restore Terminal: {e:?}");
+        }
+        better_panic::Settings::auto()
+            .most_recent_first(false)
+            .lineno_suffix(true)
+            .verbosity(better_panic::Verbosity::Full)
+            .create_panic_handler()(panic_info);
+        std::process::exit(nix::libc::EXIT_FAILURE);
+    }));
 }

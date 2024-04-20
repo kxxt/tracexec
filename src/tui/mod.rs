@@ -51,6 +51,18 @@ pub struct Tui {
     pub paste: bool,
 }
 
+pub fn init_tui() -> Result<()> {
+    crossterm::terminal::enable_raw_mode()?;
+    crossterm::execute!(std::io::stdout(), EnterAlternateScreen, cursor::Hide)?;
+    Ok(())
+}
+
+pub fn restore_tui() -> Result<()> {
+    crossterm::execute!(std::io::stdout(), LeaveAlternateScreen, cursor::Show)?;
+    crossterm::terminal::disable_raw_mode()?;
+    Ok(())
+}
+
 impl Tui {
     pub fn new() -> Result<Self> {
         let frame_rate = 60.0;
@@ -148,14 +160,7 @@ impl Tui {
     }
 
     pub fn enter(&mut self) -> Result<()> {
-        crossterm::terminal::enable_raw_mode()?;
-        crossterm::execute!(std::io::stderr(), EnterAlternateScreen, cursor::Hide)?;
-        if self.mouse {
-            crossterm::execute!(std::io::stderr(), EnableMouseCapture)?;
-        }
-        if self.paste {
-            crossterm::execute!(std::io::stderr(), EnableBracketedPaste)?;
-        }
+        init_tui()?;
         self.start();
         Ok(())
     }
@@ -164,14 +169,7 @@ impl Tui {
         self.stop()?;
         if crossterm::terminal::is_raw_mode_enabled()? {
             self.flush()?;
-            if self.paste {
-                crossterm::execute!(std::io::stderr(), DisableBracketedPaste)?;
-            }
-            if self.mouse {
-                crossterm::execute!(std::io::stderr(), DisableMouseCapture)?;
-            }
-            crossterm::execute!(std::io::stderr(), LeaveAlternateScreen, cursor::Show)?;
-            crossterm::terminal::disable_raw_mode()?;
+            restore_tui()?;
         }
         Ok(())
     }
