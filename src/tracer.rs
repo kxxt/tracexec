@@ -12,10 +12,12 @@ use nix::{
     },
     unistd::{execvp, getpid, setpgid, ForkResult, Pid},
 };
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs, PtraceRegisters},
     cli::TracingArgs,
+    event::TracerEvent,
     inspect::{read_pathbuf, read_string, read_string_array},
     printer::{print_exec_trace, print_new_child, ColorLevel, EnvPrintFormat, PrinterArgs},
     proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
@@ -36,6 +38,7 @@ pub struct Tracer {
     output: Box<dyn Write>,
     #[cfg(feature = "seccomp-bpf")]
     seccomp_bpf: SeccompBpf,
+    tx: UnboundedSender<TracerEvent>,
 }
 
 fn ptrace_syscall(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
@@ -93,7 +96,11 @@ fn ptrace_getregs(pid: Pid) -> Result<PtraceRegisters, Errno> {
 }
 
 impl Tracer {
-    pub fn new(tracing_args: TracingArgs, output: Box<dyn Write>) -> color_eyre::Result<Self> {
+    pub fn new(
+        tracing_args: TracingArgs,
+        output: Box<dyn Write>,
+        tx: UnboundedSender<TracerEvent>,
+    ) -> color_eyre::Result<Self> {
         Ok(Self {
             store: ProcessStateStore::new(),
             env: std::env::vars().collect(),
@@ -138,6 +145,7 @@ impl Tracer {
                 },
             },
             output,
+            tx,
         })
     }
 
@@ -242,6 +250,8 @@ impl Tracer {
                                 );
                                 if self.print_children {
                                     let parent = self.store.get_current_mut(pid).unwrap();
+                                    self.tx.send(TracerEvent::NewChild)?;
+                                    // TODO: replace print
                                     print_new_child(
                                         self.output.as_mut(),
                                         parent,
@@ -256,6 +266,8 @@ impl Tracer {
                                         state.ppid = Some(pid);
                                         self.seccomp_aware_cont(new_child)?;
                                     } else if new_child != root_child {
+                                        self.tx.send(TracerEvent::Error)?;
+                                        // TODO: replace log
                                         log::error!("Unexpected fork event: {state:?}")
                                     }
                                 } else {
@@ -295,6 +307,7 @@ impl Tracer {
                         }
                     }
                     WaitStatus::Signaled(pid, sig, _) => {
+                        // TODO: replace log
                         log::debug!("signaled: {pid}, {:?}", sig);
                         if pid == root_child {
                             exit(128 + (sig as i32))
@@ -346,6 +359,8 @@ impl Tracer {
         let regs = match ptrace_getregs(pid) {
             Ok(regs) => regs,
             Err(Errno::ESRCH) => {
+                self.tx.send(TracerEvent::Error)?;
+                // TODO: replace log
                 log::info!("ptrace getregs failed: {pid}, ESRCH, child probably gone!");
                 return Ok(());
             }
@@ -445,6 +460,8 @@ impl Tracer {
                     self.seccomp_aware_cont(pid)?;
                     return Ok(());
                 }
+                self.tx.send(TracerEvent::Exec)?;
+                // TODO: replace print
                 // SAFETY: p.preexecve is false, so p.exec_data is Some
                 print_exec_trace(
                     self.output.as_mut(),
@@ -466,6 +483,8 @@ impl Tracer {
                     self.seccomp_aware_cont(pid)?;
                     return Ok(());
                 }
+                self.tx.send(TracerEvent::Exec)?;
+                // TODO: replace print
                 print_exec_trace(
                     self.output.as_mut(),
                     p,

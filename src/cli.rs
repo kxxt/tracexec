@@ -30,6 +30,8 @@ pub enum CliCommand {
             help = "Output, stderr by default. A single hyphen '-' represents stdout."
         )]
         output: Option<PathBuf>,
+        #[clap(long, short, help = "Show TUI")]
+        tui: bool,
     },
 }
 

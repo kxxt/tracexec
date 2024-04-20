@@ -12,14 +12,14 @@ mod tracer;
 mod tui;
 
 use std::{
-    io::{stderr, stdout, BufWriter, Write},
-    os::unix::ffi::OsStrExt,
+    io::{stderr, stdout, BufWriter, Write}, mem::forget, os::unix::ffi::OsStrExt
 };
 
 use atoi::atoi;
 use clap::Parser;
 use cli::Cli;
 use color_eyre::eyre::bail;
+use tokio::sync::mpsc;
 
 use crate::{
     cli::{CliCommand, Color},
@@ -68,6 +68,7 @@ fn main() -> color_eyre::Result<()> {
             cmd,
             tracing_args,
             output,
+            tui,
         } => {
             let output: Box<dyn Write> = match output {
                 None => Box::new(stderr()),
@@ -85,7 +86,9 @@ fn main() -> color_eyre::Result<()> {
                     Box::new(BufWriter::new(file))
                 }
             };
-            tracer::Tracer::new(tracing_args, output)?.start_root_process(cmd)?;
+            let (evt_tx, evt_rx) = mpsc::unbounded_channel();
+            forget(evt_rx);
+            tracer::Tracer::new(tracing_args, output, evt_tx)?.start_root_process(cmd)?;
         }
     }
     Ok(())
