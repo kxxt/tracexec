@@ -1,5 +1,6 @@
 mod arch;
 mod cli;
+mod event;
 mod inspect;
 mod log;
 mod printer;
@@ -8,6 +9,7 @@ mod proc;
 mod seccomp;
 mod state;
 mod tracer;
+mod tui;
 
 use std::{
     io::{stderr, stdout, BufWriter, Write},
