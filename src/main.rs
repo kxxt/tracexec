@@ -1,6 +1,7 @@
 mod arch;
 mod cli;
 mod inspect;
+mod log;
 mod printer;
 mod proc;
 #[cfg(feature = "seccomp-bpf")]
@@ -34,18 +35,20 @@ fn main() -> color_eyre::Result<()> {
     } else {
         color_eyre::install()?;
     }
-    pretty_env_logger::formatted_builder()
-        .filter_level(match (cli.quiet, cli.verbose) {
-            // Don't follow RUST_LOG environment variable.
-            (true, _) => log::LevelFilter::Error,
-            (false, 0) => log::LevelFilter::Warn,
-            (false, 1) => log::LevelFilter::Info,
-            (false, 2) => log::LevelFilter::Debug,
-            (false, _) => log::LevelFilter::Trace,
-        })
-        .init();
+    log::initialize_logging()?;
+    // TODO: separate output verbosity from log level
+    // pretty_env_logger::formatted_builder()
+    //     .filter_level(match (cli.quiet, cli.verbose) {
+    //         // Don't follow RUST_LOG environment variable.
+    //         (true, _) => log::LevelFilter::Error,
+    //         (false, 0) => log::LevelFilter::Warn,
+    //         (false, 1) => log::LevelFilter::Info,
+    //         (false, 2) => log::LevelFilter::Debug,
+    //         (false, _) => log::LevelFilter::Trace,
+    //     })
+    //     .init();
     log::trace!("Commandline args: {:?}", cli);
-    // Seccomp-bpf ptrace behvaior is changed on 4.8. I haven't tested on older kernels.
+    // Seccomp-bpf ptrace behavior is changed on 4.8. I haven't tested on older kernels.
     let min_support_kver = (4, 8);
     if !is_current_kernel_greater_than(min_support_kver)? {
         log::warn!(
