@@ -76,7 +76,42 @@ async fn main() -> color_eyre::Result<()> {
             cmd,
             tracing_args,
             output,
-            tui,
+        } => {
+            let output: Box<dyn Write + Send> = match output {
+                None => Box::new(stderr()),
+                Some(ref x) if x.as_os_str() == "-" => Box::new(stdout()),
+                Some(path) => {
+                    let file = std::fs::OpenOptions::new()
+                        .create(true)
+                        .truncate(true)
+                        .write(true)
+                        .open(path)?;
+                    if cli.color != Color::Always {
+                        // Disable color by default when output is file
+                        owo_colors::control::set_should_colorize(false);
+                    }
+                    Box::new(BufWriter::new(file))
+                }
+            };
+            let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
+            let mut tracer = tracer::Tracer::new(tracing_args, output, tracer_tx)?;
+            let tracer_thread = thread::spawn(move || tracer.start_root_process(cmd));
+            tracer_thread.join().unwrap()?;
+            loop {
+                if let Some(e) = tracer_rx.recv().await {
+                    match e {
+                        TracerEvent::RootChildExit { exit_code, .. } => {
+                            process::exit(exit_code);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        CliCommand::Tui {
+            cmd,
+            tracing_args,
+            output,
         } => {
             let output: Box<dyn Write + Send> = match output {
                 None => Box::new(stderr()),
@@ -98,27 +133,14 @@ async fn main() -> color_eyre::Result<()> {
                 event_list: EventList::new(),
                 printer_args: (&tracing_args).into(),
             };
-            let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
+            let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
             let mut tracer = tracer::Tracer::new(tracing_args, output, tracer_tx)?;
             let tracer_thread = thread::spawn(move || tracer.start_root_process(cmd));
-            if tui {
-                let mut tui = tui::Tui::new()?.frame_rate(30.0);
-                tui.enter(tracer_rx)?;
-                app.run(&mut tui).await?;
-                tui::restore_tui()?;
-            } else {
-                tracer_thread.join().unwrap()?;
-                loop {
-                    if let Some(e) = tracer_rx.recv().await {
-                        match e {
-                            TracerEvent::RootChildExit { exit_code, .. } => {
-                                process::exit(exit_code);
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
+            let mut tui = tui::Tui::new()?.frame_rate(30.0);
+            tui.enter(tracer_rx)?;
+            app.run(&mut tui).await?;
+            tui::restore_tui()?;
+            tracer_thread.join().unwrap()?;
         }
     }
     Ok(())

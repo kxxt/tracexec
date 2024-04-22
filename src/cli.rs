@@ -30,8 +30,18 @@ pub enum CliCommand {
             help = "Output, stderr by default. A single hyphen '-' represents stdout."
         )]
         output: Option<PathBuf>,
-        #[clap(long, short, help = "Show TUI")]
-        tui: bool,
+    },
+    Tui {
+        #[arg(last = true, required = true, help = "command to be executed")]
+        cmd: Vec<String>,
+        #[clap(flatten)]
+        tracing_args: TracingArgs,
+        #[clap(
+            short,
+            long,
+            help = "Output, stderr by default. A single hyphen '-' represents stdout."
+        )]
+        output: Option<PathBuf>,
     },
 }
 
