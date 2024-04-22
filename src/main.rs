@@ -103,26 +103,7 @@ async fn main() -> color_eyre::Result<()> {
             if tui {
                 let mut tui = tui::Tui::new()?.frame_rate(30.0);
                 tui.enter(tracer_rx)?;
-                loop {
-                    if let Some(e) = tui.next().await {
-                        match e {
-                            Event::ShouldQuit => {
-                                break;
-                            }
-                            Event::Key(ke) => {
-                                if ke.code == KeyCode::Char('q') {
-                                    // todo
-                                }
-                            }
-                            Event::Tracer(te) => {}
-                            Event::Render => {
-                                tui.draw(|f| app.render(f.size(), f.buffer_mut()))?;
-                            }
-                            Event::Init => {}
-                            Event::Error => {}
-                        }
-                    }
-                }
+                app.run(&mut tui).await?;
                 tui::restore_tui()?;
             } else {
                 tracer_thread.join().unwrap()?;

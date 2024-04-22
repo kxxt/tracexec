@@ -25,3 +25,11 @@ pub enum TracerEvent {
         exit_code: i32,
     },
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Action {
+    Quit,
+    Render,
+    NextItem,
+    PrevItem,
+}
