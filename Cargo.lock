@@ -1116,6 +1116,7 @@ dependencies = [
  "crossterm",
  "directories",
  "futures",
+ "itertools",
  "kxxt-owo-colors",
  "lazy_static",
  "log",
