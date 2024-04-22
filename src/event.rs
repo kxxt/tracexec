@@ -1,5 +1,5 @@
 use crossterm::event::KeyEvent;
-use nix::sys::signal::Signal;
+use nix::{sys::signal::Signal, unistd::Pid};
 use strum::Display;
 
 #[derive(Debug, Clone, Display)]
@@ -18,7 +18,11 @@ pub enum TracerEvent {
     Warning,
     Error,
     FatalError,
-    NewChild,
+    NewChild {
+        ppid: Pid,
+        pcomm: String,
+        pid: Pid,
+    },
     Exec,
     RootChildExit {
         signal: Option<Signal>,

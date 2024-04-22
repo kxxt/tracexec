@@ -259,7 +259,11 @@ impl Tracer {
                                 );
                                 if self.print_children {
                                     let parent = self.store.get_current_mut(pid).unwrap();
-                                    self.tx.send(TracerEvent::NewChild)?;
+                                    self.tx.send(TracerEvent::NewChild {
+                                        ppid: parent.pid,
+                                        pcomm: parent.comm.clone(),
+                                        pid: new_child,
+                                    })?;
                                     // TODO: replace print
                                     print_new_child(
                                         self.output.as_mut(),
