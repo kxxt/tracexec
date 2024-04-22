@@ -1,5 +1,10 @@
 use std::{
-    collections::HashMap, ffi::CString, io::Write, os::fd::AsRawFd, path::PathBuf, process::exit,
+    collections::HashMap,
+    ffi::CString,
+    io::Write,
+    os::fd::AsRawFd,
+    path::{Path, PathBuf},
+    process::exit,
 };
 
 use nix::{
@@ -17,7 +22,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::{
     arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
     cli::TracingArgs,
-    event::{TracerEvent, TracerMessage},
+    event::{ExecEvent, TracerEvent, TracerMessage},
     inspect::{read_pathbuf, read_string, read_string_array},
     printer::{print_exec_trace, print_new_child, PrinterArgs, PrinterOut},
     proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
@@ -398,7 +403,8 @@ impl Tracer {
                     self.seccomp_aware_cont(pid)?;
                     return Ok(());
                 }
-                self.tx.send(TracerEvent::Exec)?;
+                self.tx
+                    .send(TracerEvent::Exec(Tracer::collect_exec_event(p)))?;
                 // TODO: replace print
                 // SAFETY: p.preexecve is false, so p.exec_data is Some
                 print_exec_trace(
@@ -421,7 +427,8 @@ impl Tracer {
                     self.seccomp_aware_cont(pid)?;
                     return Ok(());
                 }
-                self.tx.send(TracerEvent::Exec)?;
+                self.tx
+                    .send(TracerEvent::Exec(Tracer::collect_exec_event(p)))?;
                 // TODO: replace print
                 print_exec_trace(
                     self.output.as_deref_mut(),
@@ -462,5 +469,19 @@ impl Tracer {
             return ptrace_cont(pid, Some(sig));
         }
         ptrace_syscall(pid, Some(sig))
+    }
+
+    fn collect_exec_event(state: &ProcessState) -> ExecEvent {
+        let exec_data = state.exec_data.as_ref().unwrap();
+        ExecEvent {
+            pid: state.pid,
+            cwd: exec_data.cwd.to_owned(),
+            comm: state.comm.clone(),
+            filename: state.exec_data.as_ref().unwrap().filename.clone(),
+            argv: exec_data.argv.clone(),
+            interpreter: state.exec_data.as_ref().unwrap().interpreters.clone(),
+            envp: exec_data.envp.clone(),
+            result: 0,
+        }
     }
 }

@@ -41,12 +41,12 @@ pub fn read_fd(pid: Pid, fd: i32) -> std::io::Result<PathBuf> {
     std::fs::read_link(filename)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Interpreter {
     None,
     Shebang(String),
     ExecutableUnaccessible,
-    Error(io::Error),
+    Error(String),
 }
 
 impl Display for Interpreter {
@@ -88,7 +88,7 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
         if e.kind() == io::ErrorKind::PermissionDenied || e.kind() == io::ErrorKind::NotFound {
             Interpreter::ExecutableUnaccessible
         } else {
-            Interpreter::Error(e)
+            Interpreter::Error(e.to_string())
         }
     }
     let file = match std::fs::File::open(exe) {
@@ -100,7 +100,7 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
     let mut buf = [0u8; 2];
 
     if let Err(e) = reader.read_exact(&mut buf) {
-        return Interpreter::Error(e);
+        return Interpreter::Error(e.to_string());
     };
     if &buf != b"#!" {
         return Interpreter::None;
@@ -109,7 +109,7 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
     let mut buf = Vec::new();
 
     if let Err(e) = reader.read_until(b'\n', &mut buf) {
-        return Interpreter::Error(e);
+        return Interpreter::Error(e.to_string());
     };
     // Get trimed shebang line [start, end) indices
     // If the shebang line is empty, we don't care
