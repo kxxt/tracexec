@@ -10,6 +10,7 @@ mod seccomp;
 mod state;
 mod tracer;
 mod tui;
+mod ptrace;
 
 use std::{
     io::{stderr, stdout, BufWriter, Write},

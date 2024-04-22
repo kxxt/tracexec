@@ -2,8 +2,6 @@ use std::{
     collections::HashMap, ffi::CString, io::Write, os::fd::AsRawFd, path::PathBuf, process::exit,
 };
 
-use cfg_if::cfg_if;
-
 use nix::{
     errno::Errno,
     libc::{dup2, pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP},
@@ -17,12 +15,13 @@ use nix::{
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
-    arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs, PtraceRegisters},
+    arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
     cli::TracingArgs,
     event::{TracerEvent, TracerMessage},
     inspect::{read_pathbuf, read_string, read_string_array},
     printer::{print_exec_trace, print_new_child, PrinterArgs, PrinterOut},
     proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
+    ptrace::{ptrace_cont, ptrace_getregs, ptrace_syscall},
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
 
@@ -41,60 +40,6 @@ pub struct Tracer {
     #[cfg(feature = "seccomp-bpf")]
     seccomp_bpf: SeccompBpf,
     tx: UnboundedSender<TracerEvent>,
-}
-
-fn ptrace_syscall(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
-    match ptrace::syscall(pid, sig) {
-        Err(Errno::ESRCH) => {
-            log::info!("ptrace syscall failed: {pid}, ESRCH, child probably gone!");
-            Ok(())
-        }
-        other => other,
-    }
-}
-
-#[cfg(feature = "seccomp-bpf")]
-fn ptrace_cont(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
-    match ptrace::cont(pid, sig) {
-        Err(Errno::ESRCH) => {
-            log::info!("ptrace cont failed: {pid}, ESRCH, child probably gone!");
-            Ok(())
-        }
-        other => other,
-    }
-}
-
-fn ptrace_getregs(pid: Pid) -> Result<PtraceRegisters, Errno> {
-    // Don't use GETREGSET on x86_64.
-    // In some cases(it usually happens several times at and after exec syscall exit),
-    // we only got 68/216 bytes into `regs`, which seems unreasonable. Not sure why.
-    cfg_if! {
-        if #[cfg(target_arch = "x86_64")] {
-            ptrace::getregs(pid)
-        } else {
-            let mut regs = std::mem::MaybeUninit::<PtraceRegisters>::uninit();
-            let iovec = nix::libc::iovec {
-                iov_base: regs.as_mut_ptr() as AddressType,
-                iov_len: std::mem::size_of::<PtraceRegisters>(),
-            };
-            let ptrace_result = unsafe {
-                nix::libc::ptrace(
-                    nix::libc::PTRACE_GETREGSET,
-                    pid.as_raw(),
-                    nix::libc::NT_PRSTATUS,
-                    &iovec as *const _ as *const nix::libc::c_void,
-                )
-            };
-            let regs = if -1 == ptrace_result {
-                let errno = nix::errno::Errno::last();
-                return Err(errno);
-            } else {
-                assert_eq!(iovec.iov_len, std::mem::size_of::<PtraceRegisters>());
-                unsafe { regs.assume_init() }
-            };
-            Ok(regs)
-        }
-    }
 }
 
 impl Tracer {
