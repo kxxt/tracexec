@@ -344,6 +344,14 @@ impl Tracer {
                 seccompiler::apply_filter(&bpf)?;
             }
 
+            // TODO: reattach stdout/err to pty
+            unsafe {
+                let dev_null = std::fs::File::open("/dev/null")?;
+                dup2(dev_null.as_raw_fd(), 0);
+                dup2(dev_null.as_raw_fd(), 1);
+                dup2(dev_null.as_raw_fd(), 2);
+            }
+
             let me = getpid();
             setpgid(me, me)?;
             traceme()?;
