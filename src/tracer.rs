@@ -6,9 +6,7 @@ use cfg_if::cfg_if;
 
 use nix::{
     errno::Errno,
-    libc::{
-        dup2, pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP,
-    },
+    libc::{dup2, pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP},
     sys::{
         ptrace::{self, traceme, AddressType},
         signal::Signal,
@@ -21,11 +19,9 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::{
     arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs, PtraceRegisters},
     cli::TracingArgs,
-    event::TracerEvent,
+    event::{TracerEvent, TracerMessage},
     inspect::{read_pathbuf, read_string, read_string_array},
-    printer::{
-        print_exec_trace, print_new_child, PrinterArgs, PrinterOut,
-    },
+    printer::{print_exec_trace, print_new_child, PrinterArgs, PrinterOut},
     proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
@@ -246,8 +242,10 @@ impl Tracer {
                                         state.ppid = Some(pid);
                                         self.seccomp_aware_cont(new_child)?;
                                     } else if new_child != root_child {
-                                        self.tx.send(TracerEvent::Error)?;
-                                        // TODO: replace log
+                                        self.tx.send(TracerEvent::Error(TracerMessage {
+                                            pid: Some(new_child),
+                                            msg: format!("Unexpected fork event! Please report this bug if you can provide a reproducible case.")
+                                        }))?;
                                         log::error!("Unexpected fork event: {state:?}")
                                     }
                                 } else {
@@ -351,7 +349,10 @@ impl Tracer {
         let regs = match ptrace_getregs(pid) {
             Ok(regs) => regs,
             Err(Errno::ESRCH) => {
-                self.tx.send(TracerEvent::Error)?;
+                self.tx.send(TracerEvent::Info(TracerMessage {
+                    msg: format!("Failed to read registers: ESRCH (child probably gone!)"),
+                    pid: Some(pid),
+                }))?;
                 // TODO: replace log
                 log::info!("ptrace getregs failed: {pid}, ESRCH, child probably gone!");
                 return Ok(());

@@ -21,9 +21,9 @@ pub enum Event {
 
 #[derive(Debug, Clone)]
 pub enum TracerEvent {
-    Info,
-    Warning,
-    Error,
+    Info(TracerMessage),
+    Warning(TracerMessage),
+    Error(TracerMessage),
     FatalError,
     NewChild {
         ppid: Pid,
@@ -35,6 +35,12 @@ pub enum TracerEvent {
         signal: Option<Signal>,
         exit_code: i32,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct TracerMessage {
+    pub pid: Option<Pid>,
+    pub msg: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,9 +66,30 @@ macro_rules! tracer_event_spans {
 impl TracerEvent {
     pub fn to_tui_line(&self, args: &PrinterArgs) -> Line {
         match self {
-            TracerEvent::Info => "Info".into(),
-            TracerEvent::Warning => "Warning".into(),
-            TracerEvent::Error => "Error".into(),
+            TracerEvent::Info(TracerMessage { ref msg, pid }) => chain!(
+                ["info".bg(Color::LightBlue)],
+                pid.map(|p| ["(".into(), p.to_string().fg(Color::Yellow), ")".into()])
+                    .unwrap_or_default(),
+                [": ".into(), msg.as_str().into()]
+            )
+            .into_iter()
+            .collect(),
+            TracerEvent::Warning(TracerMessage { ref msg, pid }) => chain!(
+                ["warn".bg(Color::Yellow)],
+                pid.map(|p| ["(".into(), p.to_string().fg(Color::Yellow), ")".into()])
+                    .unwrap_or_default(),
+                [": ".into(), msg.as_str().into()]
+            )
+            .into_iter()
+            .collect(),
+            TracerEvent::Error(TracerMessage { ref msg, pid }) => chain!(
+                ["error".bg(Color::Red)],
+                pid.map(|p| ["(".into(), p.to_string().fg(Color::Yellow), ")".into()])
+                    .unwrap_or_default(),
+                [": ".into(), msg.as_str().into()]
+            )
+            .into_iter()
+            .collect(),
             TracerEvent::FatalError => "FatalError".into(),
             TracerEvent::NewChild { ppid, pcomm, pid } => {
                 let spans = tracer_event_spans!(
