@@ -23,7 +23,9 @@ use crate::{
     cli::TracingArgs,
     event::TracerEvent,
     inspect::{read_pathbuf, read_string, read_string_array},
-    printer::{print_exec_trace, print_new_child, ColorLevel, EnvPrintFormat, PrinterArgs},
+    printer::{
+        print_exec_trace, print_new_child, ColorLevel, EnvPrintFormat, PrinterArgs, PrinterOut,
+    },
     proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
@@ -39,7 +41,7 @@ pub struct Tracer {
     env: HashMap<String, String>,
     cwd: std::path::PathBuf,
     print_children: bool,
-    output: Box<dyn Write + Send>,
+    output: Option<Box<PrinterOut>>,
     #[cfg(feature = "seccomp-bpf")]
     seccomp_bpf: SeccompBpf,
     tx: UnboundedSender<TracerEvent>,
@@ -102,7 +104,7 @@ fn ptrace_getregs(pid: Pid) -> Result<PtraceRegisters, Errno> {
 impl Tracer {
     pub fn new(
         tracing_args: TracingArgs,
-        output: Box<dyn Write + Send>,
+        output: Option<Box<dyn Write + Send>>,
         tx: UnboundedSender<TracerEvent>,
     ) -> color_eyre::Result<Self> {
         Ok(Self {
@@ -231,7 +233,7 @@ impl Tracer {
                                     })?;
                                     // TODO: replace print
                                     print_new_child(
-                                        self.output.as_mut(),
+                                        self.output.as_deref_mut(),
                                         parent,
                                         &self.args,
                                         new_child,
@@ -454,7 +456,7 @@ impl Tracer {
                 // TODO: replace print
                 // SAFETY: p.preexecve is false, so p.exec_data is Some
                 print_exec_trace(
-                    self.output.as_mut(),
+                    self.output.as_deref_mut(),
                     p,
                     exec_result,
                     &self.args,
@@ -476,7 +478,7 @@ impl Tracer {
                 self.tx.send(TracerEvent::Exec)?;
                 // TODO: replace print
                 print_exec_trace(
-                    self.output.as_mut(),
+                    self.output.as_deref_mut(),
                     p,
                     exec_result,
                     &self.args,

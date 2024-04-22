@@ -117,12 +117,17 @@ impl From<&TracingArgs> for PrinterArgs {
     }
 }
 
+pub type PrinterOut = dyn Write + Send + 'static;
+
 pub fn print_new_child(
-    out: &mut dyn Write,
+    out: Option<&mut PrinterOut>,
     state: &ProcessState,
     args: &PrinterArgs,
     child: Pid,
 ) -> color_eyre::Result<()> {
+    let Some(out) = out else {
+        return Ok(());
+    };
     write!(out, "{}", state.pid.bright_yellow())?;
     if args.trace_comm {
         write!(out, "<{}>", state.comm.cyan())?;
@@ -133,7 +138,7 @@ pub fn print_new_child(
 }
 
 pub fn print_exec_trace(
-    out: &mut dyn Write,
+    out: Option<&mut PrinterOut>,
     state: &ProcessState,
     result: i64,
     args: &PrinterArgs,
@@ -143,6 +148,9 @@ pub fn print_exec_trace(
     // Preconditions:
     // 1. execve syscall exit, which leads to 2
     // 2. state.exec_data is Some
+    let Some(out) = out else {
+        return Ok(());
+    };
     let exec_data = state.exec_data.as_ref().unwrap();
     let list_printer = ListPrinter::new(args.color);
     if result == 0 {

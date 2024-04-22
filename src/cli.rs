@@ -36,12 +36,6 @@ pub enum CliCommand {
         cmd: Vec<String>,
         #[clap(flatten)]
         tracing_args: TracingArgs,
-        #[clap(
-            short,
-            long,
-            help = "Output, stderr by default. A single hyphen '-' represents stdout."
-        )]
-        output: Option<PathBuf>,
     },
 }
 

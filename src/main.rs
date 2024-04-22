@@ -94,7 +94,7 @@ async fn main() -> color_eyre::Result<()> {
                 }
             };
             let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
-            let mut tracer = tracer::Tracer::new(tracing_args, output, tracer_tx)?;
+            let mut tracer = tracer::Tracer::new(tracing_args, Some(output), tracer_tx)?;
             let tracer_thread = thread::spawn(move || tracer.start_root_process(cmd));
             tracer_thread.join().unwrap()?;
             loop {
@@ -111,30 +111,13 @@ async fn main() -> color_eyre::Result<()> {
         CliCommand::Tui {
             cmd,
             tracing_args,
-            output,
         } => {
-            let output: Box<dyn Write + Send> = match output {
-                None => Box::new(stderr()),
-                Some(ref x) if x.as_os_str() == "-" => Box::new(stdout()),
-                Some(path) => {
-                    let file = std::fs::OpenOptions::new()
-                        .create(true)
-                        .truncate(true)
-                        .write(true)
-                        .open(path)?;
-                    if cli.color != Color::Always {
-                        // Disable color by default when output is file
-                        owo_colors::control::set_should_colorize(false);
-                    }
-                    Box::new(BufWriter::new(file))
-                }
-            };
             let mut app = EventListApp {
                 event_list: EventList::new(),
                 printer_args: (&tracing_args).into(),
             };
             let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
-            let mut tracer = tracer::Tracer::new(tracing_args, output, tracer_tx)?;
+            let mut tracer = tracer::Tracer::new(tracing_args, None, tracer_tx)?;
             let tracer_thread = thread::spawn(move || tracer.start_root_process(cmd));
             let mut tui = tui::Tui::new()?.frame_rate(30.0);
             tui.enter(tracer_rx)?;
