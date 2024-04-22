@@ -9,14 +9,14 @@ use crate::event::TracerEvent;
 
 use super::ui::{render_footer, render_title};
 
-struct EventList {
+pub struct EventList {
     state: ListState,
     items: Vec<TracerEvent>,
     last_selected: Option<usize>,
 }
 
 impl EventList {
-    fn new() -> EventList {
+    pub fn new() -> EventList {
         Self {
             state: ListState::default(),
             items: vec![],
@@ -24,7 +24,7 @@ impl EventList {
         }
     }
 
-    fn next(&mut self) {
+    pub fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
                 if i >= self.items.len() - 1 {
@@ -38,7 +38,7 @@ impl EventList {
         self.state.select(Some(i));
     }
 
-    fn previous(&mut self) {
+    pub fn previous(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
                 if i == 0 {
@@ -52,7 +52,7 @@ impl EventList {
         self.state.select(Some(i));
     }
 
-    fn unselect(&mut self) {
+    pub fn unselect(&mut self) {
         let offset = self.state.offset();
         self.last_selected = self.state.selected();
         self.state.select(None);
@@ -60,8 +60,8 @@ impl EventList {
     }
 }
 
-struct EventListApp {
-    event_list: EventList,
+pub struct EventListApp {
+    pub event_list: EventList,
 }
 
 impl EventListApp {

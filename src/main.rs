@@ -23,12 +23,14 @@ use clap::Parser;
 use cli::Cli;
 use color_eyre::eyre::bail;
 use crossterm::event::KeyCode;
+use ratatui::widgets::Widget;
 use tokio::{sync::mpsc, task::spawn_blocking};
 
 use crate::{
     cli::{CliCommand, Color},
     event::{Event, TracerEvent},
     log::initialize_panic_handler,
+    tui::event_list::{EventList, EventListApp},
 };
 
 #[tokio::main]
@@ -92,6 +94,9 @@ async fn main() -> color_eyre::Result<()> {
                     Box::new(BufWriter::new(file))
                 }
             };
+            let mut app = EventListApp {
+                event_list: EventList::new(),
+            };
             let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
             let mut tracer = tracer::Tracer::new(tracing_args, output, tracer_tx)?;
             let tracer_thread = thread::spawn(move || tracer.start_root_process(cmd));
@@ -110,7 +115,9 @@ async fn main() -> color_eyre::Result<()> {
                                 }
                             }
                             Event::Tracer(te) => {}
-                            Event::Render => {}
+                            Event::Render => {
+                                tui.draw(|f| app.render(f.size(), f.buffer_mut()))?;
+                            }
                             Event::Init => {}
                             Event::Error => {}
                         }
