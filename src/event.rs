@@ -57,8 +57,7 @@ impl TracerEvent {
                     args.trace_comm
                         .then_some(format!("<{}>", pcomm).fg(Color::Cyan)),
                     Some(": ".into()),
-                    Some("new child".fg(Color::Magenta)),
-                    Some(": ".into()),
+                    Some("new child ".fg(Color::Magenta)),
                     Some(pid.to_string().fg(Color::Yellow)),
                 ];
                 spans.into_iter().flatten().collect()
