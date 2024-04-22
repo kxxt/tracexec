@@ -7,7 +7,10 @@ use ratatui::{
 };
 use tokio::sync::mpsc;
 
-use crate::event::{Action, Event, TracerEvent};
+use crate::{
+    event::{Action, Event, TracerEvent},
+    printer::PrinterArgs,
+};
 
 use super::{
     ui::{render_footer, render_title},
@@ -67,6 +70,7 @@ impl EventList {
 
 pub struct EventListApp {
     pub event_list: EventList,
+    pub printer_args: PrinterArgs,
 }
 
 impl EventListApp {
@@ -133,7 +137,7 @@ impl EventListApp {
             .items
             .iter()
             .enumerate()
-            .map(|(i, evt)| evt.to_tui_line().into())
+            .map(|(i, evt)| evt.to_tui_line(&self.printer_args).into())
             .collect();
         // Create a List from all list items and highlight the currently selected one
         let items = List::new(items)

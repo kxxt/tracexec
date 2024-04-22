@@ -96,6 +96,7 @@ async fn main() -> color_eyre::Result<()> {
             };
             let mut app = EventListApp {
                 event_list: EventList::new(),
+                printer_args: (&tracing_args).into(),
             };
             let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
             let mut tracer = tracer::Tracer::new(tracing_args, output, tracer_tx)?;

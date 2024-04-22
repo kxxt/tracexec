@@ -6,6 +6,8 @@ use ratatui::{
 };
 use strum::Display;
 
+use crate::printer::PrinterArgs;
+
 #[derive(Debug, Clone, Display)]
 pub enum Event {
     ShouldQuit,
@@ -43,20 +45,24 @@ pub enum Action {
 }
 
 impl TracerEvent {
-    pub fn to_tui_line(&self) -> Line {
+    pub fn to_tui_line(&self, args: &PrinterArgs) -> Line {
         match self {
             TracerEvent::Info => "Info".into(),
             TracerEvent::Warning => "Warning".into(),
             TracerEvent::Error => "Error".into(),
             TracerEvent::FatalError => "FatalError".into(),
-            TracerEvent::NewChild { ppid, pcomm, pid } => Line::from(vec![
-                ppid.to_string().fg(Color::Yellow),
-                format!("<{}>", pcomm).fg(Color::Cyan),
-                ": ".into(),
-                "new child".fg(Color::Magenta),
-                ": ".into(),
-                pid.to_string().fg(Color::Yellow),
-            ]),
+            TracerEvent::NewChild { ppid, pcomm, pid } => {
+                let spans = [
+                    Some(ppid.to_string().fg(Color::Yellow)),
+                    args.trace_comm
+                        .then_some(format!("<{}>", pcomm).fg(Color::Cyan)),
+                    Some(": ".into()),
+                    Some("new child".fg(Color::Magenta)),
+                    Some(": ".into()),
+                    Some(pid.to_string().fg(Color::Yellow)),
+                ];
+                spans.into_iter().flatten().collect()
+            }
             TracerEvent::Exec => "Exec".into(),
             TracerEvent::RootChildExit { signal, exit_code } => format!(
                 "RootChildExit: signal: {:?}, exit_code: {}",

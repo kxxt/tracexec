@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use crate::{proc::Interpreter, state::ProcessState};
+use crate::{cli::TracingArgs, proc::Interpreter, state::ProcessState};
 
 use nix::unistd::Pid;
 use owo_colors::{OwoColorize, Style};
@@ -74,6 +74,47 @@ pub struct PrinterArgs {
     pub trace_filename: bool,
     pub decode_errno: bool,
     pub color: ColorLevel,
+}
+
+impl From<&TracingArgs> for PrinterArgs {
+    fn from(tracing_args: &TracingArgs) -> Self {
+        PrinterArgs {
+            trace_comm: !tracing_args.no_show_comm,
+            trace_argv: !tracing_args.no_show_argv && !tracing_args.show_cmdline,
+            trace_env: match (
+                tracing_args.show_cmdline,
+                tracing_args.diff_env,
+                tracing_args.no_diff_env,
+                tracing_args.show_env,
+                tracing_args.no_show_env,
+            ) {
+                (true, ..) | (.., true) => EnvPrintFormat::None,
+                (false, .., true, _) | (false, _, true, ..) => EnvPrintFormat::Raw,
+                _ => EnvPrintFormat::Diff, // diff_env is enabled by default
+            },
+            trace_cwd: tracing_args.show_cwd,
+            print_cmdline: tracing_args.show_cmdline,
+            successful_only: tracing_args.successful_only || tracing_args.show_cmdline,
+            trace_interpreter: tracing_args.show_interpreter,
+            trace_filename: match (
+                tracing_args.show_filename,
+                tracing_args.no_show_filename,
+                tracing_args.show_cmdline,
+            ) {
+                (true, _, _) => true,
+                // show filename by default, but not in show-cmdline mode
+                (false, _, true) => false,
+                _ => true,
+            },
+            decode_errno: !tracing_args.no_decode_errno,
+            color: match (tracing_args.more_colors, tracing_args.less_colors) {
+                (false, false) => ColorLevel::Normal,
+                (true, false) => ColorLevel::More,
+                (false, true) => ColorLevel::Less,
+                _ => unreachable!(),
+            },
+        }
+    }
 }
 
 pub fn print_new_child(

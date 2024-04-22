@@ -112,42 +112,7 @@ impl Tracer {
             print_children: tracing_args.show_children,
             #[cfg(feature = "seccomp-bpf")]
             seccomp_bpf: tracing_args.seccomp_bpf,
-            args: PrinterArgs {
-                trace_comm: !tracing_args.no_show_comm,
-                trace_argv: !tracing_args.no_show_argv && !tracing_args.show_cmdline,
-                trace_env: match (
-                    tracing_args.show_cmdline,
-                    tracing_args.diff_env,
-                    tracing_args.no_diff_env,
-                    tracing_args.show_env,
-                    tracing_args.no_show_env,
-                ) {
-                    (true, ..) | (.., true) => EnvPrintFormat::None,
-                    (false, .., true, _) | (false, _, true, ..) => EnvPrintFormat::Raw,
-                    _ => EnvPrintFormat::Diff, // diff_env is enabled by default
-                },
-                trace_cwd: tracing_args.show_cwd,
-                print_cmdline: tracing_args.show_cmdline,
-                successful_only: tracing_args.successful_only || tracing_args.show_cmdline,
-                trace_interpreter: tracing_args.show_interpreter,
-                trace_filename: match (
-                    tracing_args.show_filename,
-                    tracing_args.no_show_filename,
-                    tracing_args.show_cmdline,
-                ) {
-                    (true, _, _) => true,
-                    // show filename by default, but not in show-cmdline mode
-                    (false, _, true) => false,
-                    _ => true,
-                },
-                decode_errno: !tracing_args.no_decode_errno,
-                color: match (tracing_args.more_colors, tracing_args.less_colors) {
-                    (false, false) => ColorLevel::Normal,
-                    (true, false) => ColorLevel::More,
-                    (false, true) => ColorLevel::Less,
-                    _ => unreachable!(),
-                },
-            },
+            args: (&tracing_args).into(),
             output,
             tx,
         })
