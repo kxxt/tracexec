@@ -171,9 +171,10 @@ impl Tracer {
             root_child_state.ppid = Some(getpid());
             self.store.insert(root_child_state);
             // Set foreground process group of the terminal
-            if -1 == unsafe { tcsetpgrp(STDIN_FILENO, root_child.as_raw()) } {
-                return Err(Errno::last().into());
-            }
+            // TODO: do this only to non-TUI mode.
+            // if -1 == unsafe { tcsetpgrp(STDIN_FILENO, root_child.as_raw()) } {
+            //     return Err(Errno::last().into());
+            // }
             // restart child
             log::trace!("resuming child");
             let mut ptrace_opts = {
