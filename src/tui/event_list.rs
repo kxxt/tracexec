@@ -155,7 +155,7 @@ impl EventListApp {
             .items
             .iter()
             .enumerate()
-            .map(|(i, evt)| evt.to_tui_line(&self.printer_args).into())
+            .map(|(_i, evt)| evt.to_tui_line(&self.printer_args).into())
             .collect();
         // Create a List from all list items and highlight the currently selected one
         let items = List::new(items)

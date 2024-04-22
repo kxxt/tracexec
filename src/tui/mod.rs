@@ -25,7 +25,6 @@ use color_eyre::eyre::Result;
 use crossterm::{
     cursor,
     event::{
-        DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
         Event as CrosstermEvent, KeyEventKind,
     },
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},

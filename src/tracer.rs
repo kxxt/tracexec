@@ -7,7 +7,7 @@ use cfg_if::cfg_if;
 use nix::{
     errno::Errno,
     libc::{
-        dup2, pid_t, raise, tcsetpgrp, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP, STDIN_FILENO,
+        dup2, pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP,
     },
     sys::{
         ptrace::{self, traceme, AddressType},
@@ -24,7 +24,7 @@ use crate::{
     event::TracerEvent,
     inspect::{read_pathbuf, read_string, read_string_array},
     printer::{
-        print_exec_trace, print_new_child, ColorLevel, EnvPrintFormat, PrinterArgs, PrinterOut,
+        print_exec_trace, print_new_child, PrinterArgs, PrinterOut,
     },
     proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},

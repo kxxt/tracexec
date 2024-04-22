@@ -13,7 +13,6 @@ mod tui;
 
 use std::{
     io::{stderr, stdout, BufWriter, Write},
-    mem::forget,
     os::unix::ffi::OsStrExt,
     process, thread,
 };
@@ -22,13 +21,13 @@ use atoi::atoi;
 use clap::Parser;
 use cli::Cli;
 use color_eyre::eyre::bail;
-use crossterm::event::KeyCode;
-use ratatui::widgets::Widget;
-use tokio::{sync::mpsc, task::spawn_blocking};
+
+
+use tokio::{sync::mpsc};
 
 use crate::{
     cli::{CliCommand, Color},
-    event::{Event, TracerEvent},
+    event::{TracerEvent},
     log::initialize_panic_handler,
     tui::event_list::{EventList, EventListApp},
 };
