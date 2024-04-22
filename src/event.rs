@@ -1,6 +1,8 @@
 use crossterm::event::KeyEvent;
+use nix::sys::signal::Signal;
+use strum::Display;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Display)]
 pub enum Event {
     ShouldQuit,
     Key(KeyEvent),
@@ -10,7 +12,7 @@ pub enum Event {
     Error,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Display)]
 pub enum TracerEvent {
     Info,
     Warning,
@@ -18,4 +20,8 @@ pub enum TracerEvent {
     FatalError,
     NewChild,
     Exec,
+    RootChildExit {
+        signal: Option<Signal>,
+        exit_code: i32,
+    },
 }

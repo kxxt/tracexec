@@ -38,7 +38,10 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::event::Event;
+use crate::event::{Event, TracerEvent};
+
+pub mod event_list;
+pub mod ui;
 
 pub struct Tui {
     pub terminal: ratatui::Terminal<Backend<std::io::Stderr>>,
@@ -47,8 +50,6 @@ pub struct Tui {
     pub event_rx: UnboundedReceiver<Event>,
     pub event_tx: UnboundedSender<Event>,
     pub frame_rate: f64,
-    pub mouse: bool,
-    pub paste: bool,
 }
 
 pub fn init_tui() -> Result<()> {
@@ -70,8 +71,6 @@ impl Tui {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
         let cancellation_token = CancellationToken::new();
         let task = tokio::spawn(async {});
-        let mouse = false;
-        let paste = false;
         Ok(Self {
             terminal,
             task,
@@ -79,8 +78,6 @@ impl Tui {
             event_rx,
             event_tx,
             frame_rate,
-            mouse,
-            paste,
         })
     }
 
@@ -89,17 +86,7 @@ impl Tui {
         self
     }
 
-    pub fn mouse(mut self, mouse: bool) -> Self {
-        self.mouse = mouse;
-        self
-    }
-
-    pub fn paste(mut self, paste: bool) -> Self {
-        self.paste = paste;
-        self
-    }
-
-    pub fn start(&mut self) {
+    pub fn start(&mut self, mut tracer_rx: UnboundedReceiver<TracerEvent>) {
         let render_delay = std::time::Duration::from_secs_f64(1.0 / self.frame_rate);
         self.cancel();
         self.cancellation_token = CancellationToken::new();
@@ -112,9 +99,15 @@ impl Tui {
             loop {
                 let render_delay = render_interval.tick();
                 let crossterm_event = reader.next().fuse();
+                let tracer_event = tracer_rx.recv();
                 tokio::select! {
                     _ = _cancellation_token.cancelled() => {
                         break;
+                    }
+                    tracer_event = tracer_event => {
+                        if let Some(tracer_event) = tracer_event {
+                            _event_tx.send(Event::Tracer(tracer_event)).unwrap()
+                        }
                     }
                     maybe_event = crossterm_event => {
                         match maybe_event {
@@ -159,9 +152,9 @@ impl Tui {
         Ok(())
     }
 
-    pub fn enter(&mut self) -> Result<()> {
+    pub fn enter(&mut self, tracer_rx: UnboundedReceiver<TracerEvent>) -> Result<()> {
         init_tui()?;
-        self.start();
+        self.start(tracer_rx);
         Ok(())
     }
 
@@ -176,17 +169,6 @@ impl Tui {
 
     pub fn cancel(&self) {
         self.cancellation_token.cancel();
-    }
-
-    pub fn suspend(&mut self) -> Result<()> {
-        self.exit()?;
-        signal_hook::low_level::raise(signal_hook::consts::signal::SIGTSTP)?;
-        Ok(())
-    }
-
-    pub fn resume(&mut self) -> Result<()> {
-        self.enter()?;
-        Ok(())
     }
 
     pub async fn next(&mut self) -> Option<Event> {

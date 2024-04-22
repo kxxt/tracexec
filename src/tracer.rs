@@ -1,10 +1,14 @@
-use std::{collections::HashMap, ffi::CString, io::Write, path::PathBuf, process::exit};
+use std::{
+    collections::HashMap, ffi::CString, io::Write, os::fd::AsRawFd, path::PathBuf, process::exit,
+};
 
 use cfg_if::cfg_if;
 
 use nix::{
     errno::Errno,
-    libc::{pid_t, raise, tcsetpgrp, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP, STDIN_FILENO},
+    libc::{
+        dup2, pid_t, raise, tcsetpgrp, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP, STDIN_FILENO,
+    },
     sys::{
         ptrace::{self, traceme, AddressType},
         signal::Signal,
@@ -35,7 +39,7 @@ pub struct Tracer {
     env: HashMap<String, String>,
     cwd: std::path::PathBuf,
     print_children: bool,
-    output: Box<dyn Write>,
+    output: Box<dyn Write + Send>,
     #[cfg(feature = "seccomp-bpf")]
     seccomp_bpf: SeccompBpf,
     tx: UnboundedSender<TracerEvent>,
@@ -98,7 +102,7 @@ fn ptrace_getregs(pid: Pid) -> Result<PtraceRegisters, Errno> {
 impl Tracer {
     pub fn new(
         tracing_args: TracingArgs,
-        output: Box<dyn Write>,
+        output: Box<dyn Write + Send>,
         tx: UnboundedSender<TracerEvent>,
     ) -> color_eyre::Result<Self> {
         Ok(Self {
@@ -235,7 +239,11 @@ impl Tracer {
                         self.store.get_current_mut(pid).unwrap().status =
                             ProcessStatus::Exited(code);
                         if pid == root_child {
-                            exit(code)
+                            self.tx.send(TracerEvent::RootChildExit {
+                                signal: None,
+                                exit_code: code,
+                            })?;
+                            return Ok(());
                         }
                     }
                     WaitStatus::PtraceEvent(pid, sig, evt) => {
@@ -310,7 +318,11 @@ impl Tracer {
                         // TODO: replace log
                         log::debug!("signaled: {pid}, {:?}", sig);
                         if pid == root_child {
-                            exit(128 + (sig as i32))
+                            self.tx.send(TracerEvent::RootChildExit {
+                                signal: Some(sig),
+                                exit_code: 128 + (sig as i32),
+                            })?;
+                            return Ok(());
                         }
                     }
                     WaitStatus::PtraceSyscall(pid) => {

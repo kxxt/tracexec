@@ -12,21 +12,27 @@ mod tracer;
 mod tui;
 
 use std::{
-    io::{stderr, stdout, BufWriter, Write}, mem::forget, os::unix::ffi::OsStrExt
+    io::{stderr, stdout, BufWriter, Write},
+    mem::forget,
+    os::unix::ffi::OsStrExt,
+    process, thread,
 };
 
 use atoi::atoi;
 use clap::Parser;
 use cli::Cli;
 use color_eyre::eyre::bail;
-use tokio::sync::mpsc;
+use crossterm::event::KeyCode;
+use tokio::{sync::mpsc, task::spawn_blocking};
 
 use crate::{
     cli::{CliCommand, Color},
+    event::{Event, TracerEvent},
     log::initialize_panic_handler,
 };
 
-fn main() -> color_eyre::Result<()> {
+#[tokio::main]
+async fn main() -> color_eyre::Result<()> {
     let mut cli = Cli::parse();
     if cli.color == Color::Auto && std::env::var_os("NO_COLOR").is_some() {
         // Respect NO_COLOR if --color=auto
@@ -70,7 +76,7 @@ fn main() -> color_eyre::Result<()> {
             output,
             tui,
         } => {
-            let output: Box<dyn Write> = match output {
+            let output: Box<dyn Write + Send> = match output {
                 None => Box::new(stderr()),
                 Some(ref x) if x.as_os_str() == "-" => Box::new(stdout()),
                 Some(path) => {
@@ -86,9 +92,44 @@ fn main() -> color_eyre::Result<()> {
                     Box::new(BufWriter::new(file))
                 }
             };
-            let (evt_tx, evt_rx) = mpsc::unbounded_channel();
-            forget(evt_rx);
-            tracer::Tracer::new(tracing_args, output, evt_tx)?.start_root_process(cmd)?;
+            let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
+            let mut tracer = tracer::Tracer::new(tracing_args, output, tracer_tx)?;
+            let tracer_thread = thread::spawn(move || tracer.start_root_process(cmd));
+            if tui {
+                let mut tui = tui::Tui::new()?.frame_rate(30.0);
+                tui.enter(tracer_rx)?;
+                loop {
+                    if let Some(e) = tui.next().await {
+                        match e {
+                            Event::ShouldQuit => {
+                                break;
+                            }
+                            Event::Key(ke) => {
+                                if ke.code == KeyCode::Char('q') {
+                                    // todo
+                                }
+                            }
+                            Event::Tracer(te) => {}
+                            Event::Render => {}
+                            Event::Init => {}
+                            Event::Error => {}
+                        }
+                    }
+                }
+                tui::restore_tui()?;
+            } else {
+                tracer_thread.join().unwrap()?;
+                loop {
+                    if let Some(e) = tracer_rx.recv().await {
+                        match e {
+                            TracerEvent::RootChildExit { exit_code, .. } => {
+                                process::exit(exit_code);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
         }
     }
     Ok(())
