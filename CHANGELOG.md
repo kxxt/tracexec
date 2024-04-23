@@ -1,8 +1,8 @@
 # Changelog
 
-## v0.1.0-alpha.2
+## v0.1.0-alpha.3
 
-tracexec v0.1.0-alpha.2 released!
+tracexec v0.1.0-alpha.3 released!
 
 Changes since v0.0.5:
 
