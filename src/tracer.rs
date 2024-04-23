@@ -4,24 +4,26 @@ use std::{
 
 use nix::{
     errno::Errno,
-    libc::{dup2, pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP},
+    libc::{dup2, pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP, STDIN_FILENO},
     sys::{
         ptrace::{self, traceme, AddressType},
         signal::Signal,
         wait::{waitpid, WaitPidFlag, WaitStatus},
     },
-    unistd::{execvp, getpid, setpgid, ForkResult, Pid},
+    unistd::{execvp, getpid, setpgid, tcsetpgrp, ForkResult, Pid},
 };
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
     cli::TracingArgs,
+    cmdbuilder::CommandBuilder,
     event::{ExecEvent, TracerEvent, TracerMessage},
     inspect::{read_pathbuf, read_string, read_string_array},
     printer::{print_exec_trace, print_new_child, PrinterArgs, PrinterOut},
     proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
     ptrace::{ptrace_cont, ptrace_getregs, ptrace_syscall},
+    pty::{self, Child, UnixSlavePty},
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
 
@@ -31,6 +33,8 @@ use crate::cli::SeccompBpf;
 use crate::seccomp;
 
 pub struct Tracer {
+    with_tty: bool,
+    mode: TracerMode,
     pub store: ProcessStateStore,
     args: PrinterArgs,
     env: HashMap<String, String>,
@@ -42,13 +46,24 @@ pub struct Tracer {
     tx: UnboundedSender<TracerEvent>,
 }
 
+pub enum TracerMode {
+    Tui(Option<UnixSlavePty>),
+    Cli,
+}
+
 impl Tracer {
     pub fn new(
+        mode: TracerMode,
         tracing_args: TracingArgs,
         output: Option<Box<dyn Write + Send>>,
         tx: UnboundedSender<TracerEvent>,
     ) -> color_eyre::Result<Self> {
         Ok(Self {
+            with_tty: match &mode {
+                TracerMode::Tui(tty) => tty.is_some(),
+                TracerMode::Cli => true,
+            },
+            mode,
             store: ProcessStateStore::new(),
             env: std::env::vars().collect(),
             cwd: std::env::current_dir()?,
@@ -72,219 +87,230 @@ impl Tracer {
             self.seccomp_bpf = SeccompBpf::On;
         }
 
-        if let ForkResult::Parent { child: root_child } = unsafe { nix::unistd::fork()? } {
-            waitpid(root_child, Some(WaitPidFlag::WSTOPPED))?; // wait for child to stop
-            log::trace!("child stopped");
-            let mut root_child_state = ProcessState::new(root_child, 0)?;
-            root_child_state.ppid = Some(getpid());
-            self.store.insert(root_child_state);
-            // Set foreground process group of the terminal
-            // TODO: do this only to non-TUI mode.
-            // if -1 == unsafe { tcsetpgrp(STDIN_FILENO, root_child.as_raw()) } {
-            //     return Err(Errno::last().into());
-            // }
-            // restart child
-            log::trace!("resuming child");
-            let mut ptrace_opts = {
-                use nix::sys::ptrace::Options;
-                Options::PTRACE_O_TRACEEXEC
-                    | Options::PTRACE_O_TRACEEXIT
-                    | Options::PTRACE_O_EXITKILL
-                    | Options::PTRACE_O_TRACESYSGOOD
-                    | Options::PTRACE_O_TRACEFORK
-                    | Options::PTRACE_O_TRACECLONE
-                    | Options::PTRACE_O_TRACEVFORK
-            };
-            #[cfg(feature = "seccomp-bpf")]
-            if self.seccomp_bpf == SeccompBpf::On {
-                ptrace_opts |= ptrace::Options::PTRACE_O_TRACESECCOMP;
-            }
-            ptrace::setoptions(root_child, ptrace_opts)?;
-            // restart child
-            self.seccomp_aware_cont(root_child)?;
-            loop {
-                let status = waitpid(None, Some(WaitPidFlag::__WALL))?;
-                // log::trace!("waitpid: {:?}", status);
-                match status {
-                    WaitStatus::Stopped(pid, sig) => {
-                        log::trace!("stopped: {pid}, sig {:?}", sig);
-                        match sig {
-                            Signal::SIGSTOP => {
-                                log::trace!("sigstop event, child: {pid}");
-                                if let Some(state) = self.store.get_current_mut(pid) {
-                                    if state.status == ProcessStatus::PtraceForkEventReceived {
-                                        log::trace!("sigstop event received after ptrace fork event, pid: {pid}");
-                                        state.status = ProcessStatus::Running;
-                                        self.seccomp_aware_cont(pid)?;
-                                    } else if pid != root_child {
-                                        log::error!("Unexpected SIGSTOP: {state:?}")
-                                    }
-                                } else {
-                                    log::trace!("sigstop event received before ptrace fork event, pid: {pid}");
-                                    let mut state = ProcessState::new(pid, 0)?;
-                                    state.status = ProcessStatus::SigstopReceived;
-                                    self.store.insert(state);
+        let mut cmd = CommandBuilder::new(&args[0]);
+        cmd.args(args.iter().skip(1));
+
+        let seccomp_bpf = self.seccomp_bpf;
+        let slave_pty = match &self.mode {
+            TracerMode::Tui(tty) => tty.as_ref(),
+            TracerMode::Cli => None,
+        };
+        let with_tty = self.with_tty;
+
+        let root_child = pty::spawn_command(
+            slave_pty,
+            cmd,
+            |_| Ok(()),
+            move || {
+                #[cfg(feature = "seccomp-bpf")]
+                if seccomp_bpf == SeccompBpf::On {
+                    let filter = seccomp::create_seccomp_filter();
+                    let bpf: seccompiler::BpfProgram = filter.try_into()?;
+                    seccompiler::apply_filter(&bpf)?;
+                }
+
+                if !with_tty {
+                    unsafe {
+                        let dev_null = std::fs::File::open("/dev/null")?;
+                        dup2(dev_null.as_raw_fd(), 0);
+                        dup2(dev_null.as_raw_fd(), 1);
+                        dup2(dev_null.as_raw_fd(), 2);
+                    }
+                }
+
+                let me = getpid();
+                setpgid(me, me)?;
+                traceme()?;
+                log::trace!("traceme setup!");
+                if 0 != unsafe { raise(SIGSTOP) } {
+                    log::error!("raise failed!");
+                    exit(-1);
+                }
+                log::trace!("raise success!");
+
+                Ok(())
+            },
+        )?
+        .process_id();
+
+        waitpid(root_child, Some(WaitPidFlag::WSTOPPED))?; // wait for child to stop
+        log::trace!("child stopped");
+        let mut root_child_state = ProcessState::new(root_child, 0)?;
+        root_child_state.ppid = Some(getpid());
+        self.store.insert(root_child_state);
+        // Set foreground process group of the terminal
+        if self.with_tty {
+            tcsetpgrp(STDIN_FILENO, root_child)?;
+        }
+        // restart child
+        log::trace!("resuming child");
+        let mut ptrace_opts = {
+            use nix::sys::ptrace::Options;
+            Options::PTRACE_O_TRACEEXEC
+                | Options::PTRACE_O_TRACEEXIT
+                | Options::PTRACE_O_EXITKILL
+                | Options::PTRACE_O_TRACESYSGOOD
+                | Options::PTRACE_O_TRACEFORK
+                | Options::PTRACE_O_TRACECLONE
+                | Options::PTRACE_O_TRACEVFORK
+        };
+        #[cfg(feature = "seccomp-bpf")]
+        if self.seccomp_bpf == SeccompBpf::On {
+            ptrace_opts |= ptrace::Options::PTRACE_O_TRACESECCOMP;
+        }
+        ptrace::setoptions(root_child, ptrace_opts)?;
+        // restart child
+        self.seccomp_aware_cont(root_child)?;
+        loop {
+            let status = waitpid(None, Some(WaitPidFlag::__WALL))?;
+            // log::trace!("waitpid: {:?}", status);
+            match status {
+                WaitStatus::Stopped(pid, sig) => {
+                    log::trace!("stopped: {pid}, sig {:?}", sig);
+                    match sig {
+                        Signal::SIGSTOP => {
+                            log::trace!("sigstop event, child: {pid}");
+                            if let Some(state) = self.store.get_current_mut(pid) {
+                                if state.status == ProcessStatus::PtraceForkEventReceived {
+                                    log::trace!("sigstop event received after ptrace fork event, pid: {pid}");
+                                    state.status = ProcessStatus::Running;
+                                    self.seccomp_aware_cont(pid)?;
+                                } else if pid != root_child {
+                                    log::error!("Unexpected SIGSTOP: {state:?}")
                                 }
-                                // https://stackoverflow.com/questions/29997244/occasionally-missing-ptrace-event-vfork-when-running-ptrace
-                                // DO NOT send PTRACE_SYSCALL until we receive the PTRACE_EVENT_FORK, etc.
-                            }
-                            Signal::SIGCHLD => {
-                                // From lurk:
-                                //
-                                // The SIGCHLD signal is sent to a process when a child process terminates, interrupted, or resumes after being interrupted
-                                // This means, that if our tracee forked and said fork exits before the parent, the parent will get stopped.
-                                // Therefor issue a PTRACE_SYSCALL request to the parent to continue execution.
-                                // This is also important if we trace without the following forks option.
-                                self.seccomp_aware_cont_with_signal(pid, Signal::SIGCHLD)?;
-                            }
-                            _ => {
-                                // Just deliver the signal to tracee
-                                self.seccomp_aware_cont_with_signal(pid, sig)?;
-                            }
-                        }
-                    }
-                    WaitStatus::Exited(pid, code) => {
-                        log::trace!("exited: pid {}, code {:?}", pid, code);
-                        self.store.get_current_mut(pid).unwrap().status =
-                            ProcessStatus::Exited(code);
-                        if pid == root_child {
-                            self.tx.send(TracerEvent::RootChildExit {
-                                signal: None,
-                                exit_code: code,
-                            })?;
-                            return Ok(());
-                        }
-                    }
-                    WaitStatus::PtraceEvent(pid, sig, evt) => {
-                        log::trace!("ptrace event: {:?} {:?}", sig, evt);
-                        match evt {
-                            nix::libc::PTRACE_EVENT_FORK
-                            | nix::libc::PTRACE_EVENT_VFORK
-                            | nix::libc::PTRACE_EVENT_CLONE => {
-                                let new_child = Pid::from_raw(ptrace::getevent(pid)? as pid_t);
+                            } else {
                                 log::trace!(
-                                    "ptrace fork event, evt {evt}, pid: {pid}, child: {new_child}"
+                                    "sigstop event received before ptrace fork event, pid: {pid}"
                                 );
-                                if self.print_children {
-                                    let parent = self.store.get_current_mut(pid).unwrap();
-                                    self.tx.send(TracerEvent::NewChild {
-                                        ppid: parent.pid,
-                                        pcomm: parent.comm.clone(),
-                                        pid: new_child,
-                                    })?;
-                                    // TODO: replace print
-                                    print_new_child(
-                                        self.output.as_deref_mut(),
-                                        parent,
-                                        &self.args,
-                                        new_child,
-                                    )?;
-                                }
-                                if let Some(state) = self.store.get_current_mut(new_child) {
-                                    if state.status == ProcessStatus::SigstopReceived {
-                                        log::trace!("ptrace fork event received after sigstop, pid: {pid}, child: {new_child}");
-                                        state.status = ProcessStatus::Running;
-                                        state.ppid = Some(pid);
-                                        self.seccomp_aware_cont(new_child)?;
-                                    } else if new_child != root_child {
-                                        self.tx.send(TracerEvent::Error(TracerMessage {
+                                let mut state = ProcessState::new(pid, 0)?;
+                                state.status = ProcessStatus::SigstopReceived;
+                                self.store.insert(state);
+                            }
+                            // https://stackoverflow.com/questions/29997244/occasionally-missing-ptrace-event-vfork-when-running-ptrace
+                            // DO NOT send PTRACE_SYSCALL until we receive the PTRACE_EVENT_FORK, etc.
+                        }
+                        Signal::SIGCHLD => {
+                            // From lurk:
+                            //
+                            // The SIGCHLD signal is sent to a process when a child process terminates, interrupted, or resumes after being interrupted
+                            // This means, that if our tracee forked and said fork exits before the parent, the parent will get stopped.
+                            // Therefor issue a PTRACE_SYSCALL request to the parent to continue execution.
+                            // This is also important if we trace without the following forks option.
+                            self.seccomp_aware_cont_with_signal(pid, Signal::SIGCHLD)?;
+                        }
+                        _ => {
+                            // Just deliver the signal to tracee
+                            self.seccomp_aware_cont_with_signal(pid, sig)?;
+                        }
+                    }
+                }
+                WaitStatus::Exited(pid, code) => {
+                    log::trace!("exited: pid {}, code {:?}", pid, code);
+                    self.store.get_current_mut(pid).unwrap().status = ProcessStatus::Exited(code);
+                    if pid == root_child {
+                        self.tx.send(TracerEvent::RootChildExit {
+                            signal: None,
+                            exit_code: code,
+                        })?;
+                        return Ok(());
+                    }
+                }
+                WaitStatus::PtraceEvent(pid, sig, evt) => {
+                    log::trace!("ptrace event: {:?} {:?}", sig, evt);
+                    match evt {
+                        nix::libc::PTRACE_EVENT_FORK
+                        | nix::libc::PTRACE_EVENT_VFORK
+                        | nix::libc::PTRACE_EVENT_CLONE => {
+                            let new_child = Pid::from_raw(ptrace::getevent(pid)? as pid_t);
+                            log::trace!(
+                                "ptrace fork event, evt {evt}, pid: {pid}, child: {new_child}"
+                            );
+                            if self.print_children {
+                                let parent = self.store.get_current_mut(pid).unwrap();
+                                self.tx.send(TracerEvent::NewChild {
+                                    ppid: parent.pid,
+                                    pcomm: parent.comm.clone(),
+                                    pid: new_child,
+                                })?;
+                                // TODO: replace print
+                                print_new_child(
+                                    self.output.as_deref_mut(),
+                                    parent,
+                                    &self.args,
+                                    new_child,
+                                )?;
+                            }
+                            if let Some(state) = self.store.get_current_mut(new_child) {
+                                if state.status == ProcessStatus::SigstopReceived {
+                                    log::trace!("ptrace fork event received after sigstop, pid: {pid}, child: {new_child}");
+                                    state.status = ProcessStatus::Running;
+                                    state.ppid = Some(pid);
+                                    self.seccomp_aware_cont(new_child)?;
+                                } else if new_child != root_child {
+                                    self.tx.send(TracerEvent::Error(TracerMessage {
                                             pid: Some(new_child),
                                             msg: "Unexpected fork event! Please report this bug if you can provide a reproducible case.".to_string(),
                                         }))?;
-                                        log::error!("Unexpected fork event: {state:?}")
-                                    }
-                                } else {
-                                    log::trace!("ptrace fork event received before sigstop, pid: {pid}, child: {new_child}");
-                                    let mut state = ProcessState::new(new_child, 0)?;
-                                    state.status = ProcessStatus::PtraceForkEventReceived;
-                                    state.ppid = Some(pid);
-                                    self.store.insert(state);
+                                    log::error!("Unexpected fork event: {state:?}")
                                 }
-                                // Resume parent
-                                self.seccomp_aware_cont(pid)?;
+                            } else {
+                                log::trace!("ptrace fork event received before sigstop, pid: {pid}, child: {new_child}");
+                                let mut state = ProcessState::new(new_child, 0)?;
+                                state.status = ProcessStatus::PtraceForkEventReceived;
+                                state.ppid = Some(pid);
+                                self.store.insert(state);
                             }
-                            nix::libc::PTRACE_EVENT_EXEC => {
-                                log::trace!("exec event");
-                                let p = self.store.get_current_mut(pid).unwrap();
-                                assert!(!p.presyscall);
-                                // After execve or execveat, in syscall exit event,
-                                // the registers might be clobbered(e.g. aarch64).
-                                // So we need to determine whether exec is successful here.
-                                // PTRACE_EVENT_EXEC only happens for successful exec.
-                                p.is_exec_successful = true;
-                                // Don't use seccomp_aware_cont here because that will skip the next syscall exit stop
-                                self.syscall_enter_cont(pid)?;
-                            }
-                            nix::libc::PTRACE_EVENT_EXIT => {
-                                log::trace!("exit event");
-                                self.seccomp_aware_cont(pid)?;
-                            }
-                            nix::libc::PTRACE_EVENT_SECCOMP => {
-                                log::trace!("seccomp event");
-                                self.on_syscall_enter(pid)?;
-                            }
-                            _ => {
-                                log::trace!("other event");
-                                self.seccomp_aware_cont(pid)?;
-                            }
+                            // Resume parent
+                            self.seccomp_aware_cont(pid)?;
                         }
-                    }
-                    WaitStatus::Signaled(pid, sig, _) => {
-                        // TODO: replace log
-                        log::debug!("signaled: {pid}, {:?}", sig);
-                        if pid == root_child {
-                            self.tx.send(TracerEvent::RootChildExit {
-                                signal: Some(sig),
-                                exit_code: 128 + (sig as i32),
-                            })?;
-                            return Ok(());
+                        nix::libc::PTRACE_EVENT_EXEC => {
+                            log::trace!("exec event");
+                            let p = self.store.get_current_mut(pid).unwrap();
+                            assert!(!p.presyscall);
+                            // After execve or execveat, in syscall exit event,
+                            // the registers might be clobbered(e.g. aarch64).
+                            // So we need to determine whether exec is successful here.
+                            // PTRACE_EVENT_EXEC only happens for successful exec.
+                            p.is_exec_successful = true;
+                            // Don't use seccomp_aware_cont here because that will skip the next syscall exit stop
+                            self.syscall_enter_cont(pid)?;
                         }
-                    }
-                    WaitStatus::PtraceSyscall(pid) => {
-                        let presyscall = self.store.get_current_mut(pid).unwrap().presyscall;
-                        if presyscall {
+                        nix::libc::PTRACE_EVENT_EXIT => {
+                            log::trace!("exit event");
+                            self.seccomp_aware_cont(pid)?;
+                        }
+                        nix::libc::PTRACE_EVENT_SECCOMP => {
+                            log::trace!("seccomp event");
                             self.on_syscall_enter(pid)?;
-                        } else {
-                            self.on_syscall_exit(pid)?;
+                        }
+                        _ => {
+                            log::trace!("other event");
+                            self.seccomp_aware_cont(pid)?;
                         }
                     }
-                    _ => {}
                 }
+                WaitStatus::Signaled(pid, sig, _) => {
+                    // TODO: replace log
+                    log::debug!("signaled: {pid}, {:?}", sig);
+                    if pid == root_child {
+                        self.tx.send(TracerEvent::RootChildExit {
+                            signal: Some(sig),
+                            exit_code: 128 + (sig as i32),
+                        })?;
+                        return Ok(());
+                    }
+                }
+                WaitStatus::PtraceSyscall(pid) => {
+                    let presyscall = self.store.get_current_mut(pid).unwrap().presyscall;
+                    if presyscall {
+                        self.on_syscall_enter(pid)?;
+                    } else {
+                        self.on_syscall_exit(pid)?;
+                    }
+                }
+                _ => {}
             }
-        } else {
-            #[cfg(feature = "seccomp-bpf")]
-            if self.seccomp_bpf == SeccompBpf::On {
-                let filter = seccomp::create_seccomp_filter();
-                let bpf: seccompiler::BpfProgram = filter.try_into()?;
-                seccompiler::apply_filter(&bpf)?;
-            }
-
-            // TODO: reattach stdout/err to pty
-            unsafe {
-                let dev_null = std::fs::File::open("/dev/null")?;
-                dup2(dev_null.as_raw_fd(), 0);
-                dup2(dev_null.as_raw_fd(), 1);
-                dup2(dev_null.as_raw_fd(), 2);
-            }
-
-            let me = getpid();
-            setpgid(me, me)?;
-            traceme()?;
-            log::trace!("traceme setup!");
-            if 0 != unsafe { raise(SIGSTOP) } {
-                log::error!("raise failed!");
-                exit(-1);
-            }
-            log::trace!("raise success!");
-
-            let args = args
-                .into_iter()
-                .map(CString::new)
-                .collect::<Result<Vec<CString>, _>>()?;
-
-            execvp(&args[0], &args)?;
         }
-        Ok(())
     }
 
     fn on_syscall_enter(&mut self, pid: Pid) -> color_eyre::Result<()> {

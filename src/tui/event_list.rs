@@ -28,6 +28,7 @@ use tokio::sync::mpsc;
 use crate::{
     event::{Action, Event, TracerEvent},
     printer::PrinterArgs,
+    pty::UnixMasterPty,
 };
 
 use super::{
@@ -100,6 +101,7 @@ impl EventList {
 pub struct EventListApp {
     pub event_list: EventList,
     pub printer_args: PrinterArgs,
+    pub pty_master: Option<UnixMasterPty>,
 }
 
 impl EventListApp {

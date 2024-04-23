@@ -16,7 +16,7 @@ categories = ["command-line-utilities", "development-tools::debugging"]
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
 color-eyre = "0.6.2"
-nix = { version = "0.27.1", features = ["ptrace", "process", "feature"] }
+nix = { version = "0.27.1", features = ["ptrace", "process", "feature", "term", "fs"] }
 strum = { version = "0.26.1", features = ["derive"] }
 log = "0.4"
 cfg-if = "1.0.0"
@@ -39,6 +39,9 @@ futures = "0.3.30"
 signal-hook = "0.3.17"
 better-panic = "0.3.0"
 itertools = "0.12.1"
+tui-term = "0.1.10"
+filedescriptor = "0.8.2"
+vt100 = "0.15.2"
 
 [features]
 default = ["seccomp-bpf"]

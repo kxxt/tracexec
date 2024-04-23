@@ -39,6 +39,12 @@ pub enum CliCommand {
         cmd: Vec<String>,
         #[clap(flatten)]
         tracing_args: TracingArgs,
+        #[clap(
+            long,
+            short,
+            help = "Allocate a pseudo terminal and show it alongside the TUI"
+        )]
+        tty: bool,
     },
 }
 

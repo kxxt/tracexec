@@ -1,11 +1,13 @@
 mod arch;
 mod cli;
+mod cmdbuilder;
 mod event;
 mod inspect;
 mod log;
 mod printer;
 mod proc;
 mod ptrace;
+mod pty;
 #[cfg(feature = "seccomp-bpf")]
 mod seccomp;
 mod state;
@@ -29,6 +31,8 @@ use crate::{
     cli::{CliCommand, Color},
     event::TracerEvent,
     log::initialize_panic_handler,
+    pty::{native_pty_system, PtySize, PtySystem},
+    tracer::TracerMode,
     tui::event_list::{EventList, EventListApp},
 };
 
@@ -93,7 +97,8 @@ async fn main() -> color_eyre::Result<()> {
                 }
             };
             let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
-            let mut tracer = tracer::Tracer::new(tracing_args, Some(output), tracer_tx)?;
+            let mut tracer =
+                tracer::Tracer::new(TracerMode::Cli, tracing_args, Some(output), tracer_tx)?;
             let tracer_thread = thread::spawn(move || tracer.start_root_process(cmd));
             tracer_thread.join().unwrap()?;
             loop {
@@ -102,13 +107,30 @@ async fn main() -> color_eyre::Result<()> {
                 }
             }
         }
-        CliCommand::Tui { cmd, tracing_args } => {
+        CliCommand::Tui {
+            cmd,
+            tracing_args,
+            tty,
+        } => {
+            let (tracer_mode, pty_master) = if tty {
+                let pty_system = native_pty_system();
+                let pair = pty_system.openpty(PtySize {
+                    rows: 24,
+                    cols: 80,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                })?;
+                (TracerMode::Tui(Some(pair.slave)), Some(pair.master))
+            } else {
+                (TracerMode::Tui(None), None)
+            };
             let mut app = EventListApp {
                 event_list: EventList::new(),
                 printer_args: (&tracing_args).into(),
+                pty_master,
             };
             let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
-            let mut tracer = tracer::Tracer::new(tracing_args, None, tracer_tx)?;
+            let mut tracer = tracer::Tracer::new(tracer_mode, tracing_args, None, tracer_tx)?;
             let tracer_thread = thread::spawn(move || tracer.start_root_process(cmd));
             let mut tui = tui::Tui::new()?.frame_rate(30.0);
             tui.enter(tracer_rx)?;
