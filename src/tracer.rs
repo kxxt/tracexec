@@ -102,7 +102,11 @@ impl Tracer {
         if self.seccomp_bpf == SeccompBpf::Auto {
             // TODO: check if the kernel supports seccomp-bpf
             // Let's just enable it for now and see if anyone complains
-            self.seccomp_bpf = SeccompBpf::On;
+            if self.user.is_none() {
+                // Seccomp-bpf enforces no-new-privs, so when using --user to trace set(u|g)id
+                // binaries, we disable seccomp-bpf by default.
+                self.seccomp_bpf = SeccompBpf::On;
+            }
         }
 
         let mut cmd = CommandBuilder::new(&args[0]);
