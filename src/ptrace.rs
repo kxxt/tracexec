@@ -32,6 +32,8 @@ pub fn ptrace_getregs(pid: Pid) -> Result<PtraceRegisters, Errno> {
         if #[cfg(target_arch = "x86_64")] {
             ptrace::getregs(pid)
         } else {
+            use nix::sys::ptrace::AddressType;
+
             let mut regs = std::mem::MaybeUninit::<PtraceRegisters>::uninit();
             let iovec = nix::libc::iovec {
                 iov_base: regs.as_mut_ptr() as AddressType,
