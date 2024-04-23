@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap, ffi::CString, io::Write, os::fd::AsRawFd, path::PathBuf, process::exit,
+    collections::HashMap, ffi::CString, io::{stdin, Write}, os::fd::AsRawFd, path::PathBuf, process::exit,
 };
 
 use nix::{
@@ -140,7 +140,7 @@ impl Tracer {
         self.store.insert(root_child_state);
         // Set foreground process group of the terminal
         if self.with_tty {
-            tcsetpgrp(STDIN_FILENO, root_child)?;
+            tcsetpgrp(stdin(), root_child)?;
         }
         // restart child
         log::trace!("resuming child");
