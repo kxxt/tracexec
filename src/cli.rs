@@ -31,6 +31,9 @@ pub enum CliCommand {
         )]
         output: Option<PathBuf>,
     },
+    #[clap(
+        about = "Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default"
+    )]
     Tui {
         #[arg(last = true, required = true, help = "command to be executed")]
         cmd: Vec<String>,
