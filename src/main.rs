@@ -5,12 +5,12 @@ mod inspect;
 mod log;
 mod printer;
 mod proc;
+mod ptrace;
 #[cfg(feature = "seccomp-bpf")]
 mod seccomp;
 mod state;
 mod tracer;
 mod tui;
-mod ptrace;
 
 use std::{
     io::{stderr, stdout, BufWriter, Write},
@@ -23,12 +23,11 @@ use clap::Parser;
 use cli::Cli;
 use color_eyre::eyre::bail;
 
-
-use tokio::{sync::mpsc};
+use tokio::sync::mpsc;
 
 use crate::{
     cli::{CliCommand, Color},
-    event::{TracerEvent},
+    event::TracerEvent,
     log::initialize_panic_handler,
     tui::event_list::{EventList, EventListApp},
 };
@@ -98,20 +97,12 @@ async fn main() -> color_eyre::Result<()> {
             let tracer_thread = thread::spawn(move || tracer.start_root_process(cmd));
             tracer_thread.join().unwrap()?;
             loop {
-                if let Some(e) = tracer_rx.recv().await {
-                    match e {
-                        TracerEvent::RootChildExit { exit_code, .. } => {
-                            process::exit(exit_code);
-                        }
-                        _ => {}
-                    }
+                if let Some(TracerEvent::RootChildExit { exit_code, .. }) = tracer_rx.recv().await {
+                    process::exit(exit_code);
                 }
             }
         }
-        CliCommand::Tui {
-            cmd,
-            tracing_args,
-        } => {
+        CliCommand::Tui { cmd, tracing_args } => {
             let mut app = EventListApp {
                 event_list: EventList::new(),
                 printer_args: (&tracing_args).into(),

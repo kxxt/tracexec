@@ -86,7 +86,6 @@ impl TracerEvent {
                     .unwrap_or_default(),
                 [": ".into(), msg.as_str().into()]
             )
-            .into_iter()
             .collect(),
             TracerEvent::Warning(TracerMessage { ref msg, pid }) => chain!(
                 ["warn".bg(Color::Yellow)],
@@ -94,7 +93,6 @@ impl TracerEvent {
                     .unwrap_or_default(),
                 [": ".into(), msg.as_str().into()]
             )
-            .into_iter()
             .collect(),
             TracerEvent::Error(TracerMessage { ref msg, pid }) => chain!(
                 ["error".bg(Color::Red)],
@@ -102,7 +100,6 @@ impl TracerEvent {
                     .unwrap_or_default(),
                 [": ".into(), msg.as_str().into()]
             )
-            .into_iter()
             .collect(),
             TracerEvent::FatalError => "FatalError".into(),
             TracerEvent::NewChild { ppid, pcomm, pid } => {
@@ -113,11 +110,11 @@ impl TracerEvent {
                     Some("new child ".fg(Color::Magenta)),
                     Some(pid.to_string().fg(Color::Yellow)),
                 );
-                spans.into_iter().flatten().collect()
+                spans.flatten().collect()
             }
             TracerEvent::Exec(ExecEvent {
                 pid,
-                cwd,
+                cwd: _,
                 comm,
                 filename,
                 argv,
@@ -149,7 +146,7 @@ impl TracerEvent {
                     Some("] result: ".into()),
                     Some(result.to_string().fg(Color::Yellow)),
                 );
-                spans.into_iter().flatten().collect()
+                spans.flatten().collect()
             }
             TracerEvent::RootChildExit { signal, exit_code } => format!(
                 "RootChildExit: signal: {:?}, exit_code: {}",

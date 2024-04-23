@@ -24,9 +24,7 @@ use std::{
 use color_eyre::eyre::Result;
 use crossterm::{
     cursor,
-    event::{
-        Event as CrosstermEvent, KeyEventKind,
-    },
+    event::{Event as CrosstermEvent, KeyEventKind},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use futures::{FutureExt, StreamExt};

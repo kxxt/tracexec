@@ -35,6 +35,7 @@ use super::{
     Tui,
 };
 
+#[derive(Debug)]
 pub struct EventList {
     state: ListState,
     items: Vec<TracerEvent>,

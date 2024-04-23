@@ -1,10 +1,5 @@
 use std::{
-    collections::HashMap,
-    ffi::CString,
-    io::Write,
-    os::fd::AsRawFd,
-    path::{Path, PathBuf},
-    process::exit,
+    collections::HashMap, ffi::CString, io::Write, os::fd::AsRawFd, path::PathBuf, process::exit,
 };
 
 use nix::{
@@ -194,7 +189,7 @@ impl Tracer {
                                     } else if new_child != root_child {
                                         self.tx.send(TracerEvent::Error(TracerMessage {
                                             pid: Some(new_child),
-                                            msg: format!("Unexpected fork event! Please report this bug if you can provide a reproducible case.")
+                                            msg: "Unexpected fork event! Please report this bug if you can provide a reproducible case.".to_string(),
                                         }))?;
                                         log::error!("Unexpected fork event: {state:?}")
                                     }
@@ -300,7 +295,7 @@ impl Tracer {
             Ok(regs) => regs,
             Err(Errno::ESRCH) => {
                 self.tx.send(TracerEvent::Info(TracerMessage {
-                    msg: format!("Failed to read registers: ESRCH (child probably gone!)"),
+                    msg: "Failed to read registers: ESRCH (child probably gone!)".to_string(),
                     pid: Some(pid),
                 }))?;
                 // TODO: replace log
@@ -477,9 +472,9 @@ impl Tracer {
             pid: state.pid,
             cwd: exec_data.cwd.to_owned(),
             comm: state.comm.clone(),
-            filename: state.exec_data.as_ref().unwrap().filename.clone(),
+            filename: exec_data.filename.clone(),
             argv: exec_data.argv.clone(),
-            interpreter: state.exec_data.as_ref().unwrap().interpreters.clone(),
+            interpreter: exec_data.interpreters.clone(),
             envp: exec_data.envp.clone(),
             result: 0,
         }
