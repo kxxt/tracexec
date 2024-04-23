@@ -28,7 +28,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use futures::{FutureExt, StreamExt};
-use ratatui::backend::CrosstermBackend as Backend;
+use ratatui::{backend::CrosstermBackend as Backend, layout::Size};
 use tokio::{
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
     task::JoinHandle,
@@ -115,6 +115,12 @@ impl Tui {
                                         if key.kind == KeyEventKind::Press {
                                             _event_tx.send(Event::Key(key)).unwrap();
                                         }
+                                    },
+                                    CrosstermEvent::Resize(cols, rows) => {
+                                        _event_tx.send(Event::Resize(Size {
+                                            width: cols,
+                                            height: rows,
+                                        })).unwrap();
                                     },
                                     _ => {},
                                 }

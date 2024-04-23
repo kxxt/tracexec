@@ -39,6 +39,7 @@ pub struct PseudoTerminalPane {
     reader_task: tokio::task::JoinHandle<color_eyre::Result<()>>,
     writer_task: tokio::task::JoinHandle<color_eyre::Result<()>>,
     master_tx: tokio::sync::mpsc::Sender<Bytes>,
+    size: PtySize,
 }
 
 impl PseudoTerminalPane {
@@ -89,6 +90,7 @@ impl PseudoTerminalPane {
 
         Ok(Self {
             // term,
+            size,
             parser,
             pty_master,
             reader_task,
@@ -144,5 +146,16 @@ impl PseudoTerminalPane {
 
         self.master_tx.send(Bytes::from(input_bytes)).await.ok();
         true
+    }
+
+    pub fn resize(&mut self, size: PtySize) -> color_eyre::Result<()> {
+        if size == self.size {
+            return Ok(());
+        }
+        self.size = size;
+        let mut parser = self.parser.write().unwrap();
+        parser.set_size(size.rows, size.cols);
+        self.pty_master.resize(size)?;
+        Ok(())
     }
 }

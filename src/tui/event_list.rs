@@ -29,6 +29,7 @@ use tui_term::widget::PseudoTerminal;
 use crate::{
     event::{Action, Event, TracerEvent},
     printer::PrinterArgs,
+    pty::PtySize,
 };
 
 use super::{
@@ -135,6 +136,10 @@ impl EventListApp {
                     Event::Render => {
                         action_tx.send(Action::Render)?;
                     }
+                    Event::Resize(size) => {
+                        action_tx.send(Action::Resize(size))?;
+                        action_tx.send(Action::Render)?;
+                    }
                     Event::Init => {}
                     Event::Error => {}
                 }
@@ -161,6 +166,18 @@ impl EventListApp {
                     Action::HandleTerminalKeyPress(ke) => {
                         if let Some(term) = self.term.as_mut() {
                             term.handle_key_event(&ke).await;
+                        }
+                    }
+                    Action::Resize(size) => {
+                        let term_size = PtySize {
+                            rows: size.height - 2 - 4,
+                            cols: size.width / 2 - 2,
+                            pixel_height: 0,
+                            pixel_width: 0,
+                        };
+
+                        if let Some(term) = self.term.as_mut() {
+                            term.resize(term_size)?;
                         }
                     }
                 }

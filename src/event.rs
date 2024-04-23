@@ -4,6 +4,7 @@ use crossterm::event::KeyEvent;
 use itertools::chain;
 use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
+    layout::Size,
     style::{Color, Stylize},
     text::Line,
 };
@@ -17,6 +18,7 @@ pub enum Event {
     Key(KeyEvent),
     Tracer(TracerEvent),
     Render,
+    Resize(Size),
     Init,
     Error,
 }
@@ -61,6 +63,7 @@ pub struct ExecEvent {
 pub enum Action {
     Quit,
     Render,
+    Resize(Size),
     NextItem,
     PrevItem,
     HandleTerminalKeyPress(KeyEvent),
