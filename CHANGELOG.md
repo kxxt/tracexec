@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.0-alpha.2
+
+tracexec v0.1.0-alpha.2 released!
+
+Changes since v0.0.5:
+
+- Added experimental TUI command.
+- Logs are no longer output to stderr, but saved to a file instead.
+- Internal refactor.
+
 ## v0.0.5
 
 tracexec v0.0.5 released!
