@@ -1134,6 +1134,7 @@ version = "0.0.5"
 dependencies = [
  "atoi",
  "better-panic",
+ "bytes",
  "cfg-if",
  "clap",
  "color-eyre",

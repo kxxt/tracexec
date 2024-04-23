@@ -1,4 +1,7 @@
+use bytes::Bytes;
+use std::io::{BufWriter, Write};
 use std::sync::Arc;
+use tokio::sync::mpsc::channel;
 
 use std::sync::RwLock;
 
@@ -10,6 +13,8 @@ pub struct PseudoTerminalPane {
     pub parser: Arc<RwLock<vt100::Parser>>,
     pty_master: UnixMasterPty,
     reader_task: tokio::task::JoinHandle<color_eyre::Result<()>>,
+    writer_task: tokio::task::JoinHandle<()>,
+    master_tx: tokio::sync::mpsc::Sender<Bytes>,
 }
 
 impl PseudoTerminalPane {
@@ -44,11 +49,26 @@ impl PseudoTerminalPane {
             })
         };
 
+        let (tx, mut rx) = channel::<Bytes>(32);
+
+        let writer_task = {
+            let mut writer = BufWriter::new(pty_master.take_writer()?);
+            // Drop writer on purpose
+            tokio::spawn(async move {
+                while let Some(bytes) = rx.recv().await {
+                    writer.write_all(&bytes).unwrap();
+                    writer.flush().unwrap();
+                }
+            })
+        };
+
         Ok(Self {
             // term,
             parser,
             pty_master,
             reader_task,
+            writer_task,
+            master_tx: tx,
         })
     }
 }
