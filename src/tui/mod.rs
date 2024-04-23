@@ -38,6 +38,7 @@ use tokio_util::sync::CancellationToken;
 use crate::event::{Event, TracerEvent};
 
 pub mod event_list;
+pub mod pseudo_term;
 pub mod ui;
 
 pub struct Tui {

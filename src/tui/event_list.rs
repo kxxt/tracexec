@@ -21,22 +21,22 @@ use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
-    widgets::{HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget},
+    widgets::{Block, HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget},
 };
 use tokio::sync::mpsc;
+use tui_term::widget::PseudoTerminal;
 
 use crate::{
     event::{Action, Event, TracerEvent},
     printer::PrinterArgs,
-    pty::UnixMasterPty,
 };
 
 use super::{
+    pseudo_term::PseudoTerminalPane,
     ui::{render_footer, render_title},
     Tui,
 };
 
-#[derive(Debug)]
 pub struct EventList {
     state: ListState,
     items: Vec<TracerEvent>,
@@ -45,7 +45,7 @@ pub struct EventList {
 }
 
 impl EventList {
-    pub fn new() -> EventList {
+    pub fn new() -> Self {
         Self {
             state: ListState::default(),
             items: vec![],
@@ -101,7 +101,7 @@ impl EventList {
 pub struct EventListApp {
     pub event_list: EventList,
     pub printer_args: PrinterArgs,
-    pub pty_master: Option<UnixMasterPty>,
+    pub term: Option<PseudoTerminalPane>,
 }
 
 impl EventListApp {
@@ -197,9 +197,21 @@ impl Widget for &mut EventListApp {
             Constraint::Length(2),
         ]);
         let [header_area, rest_area, footer_area] = vertical.areas(area);
-
+        let horizontal_constraints = match self.term {
+            Some(_) => [Constraint::Percentage(50), Constraint::Percentage(50)],
+            None => [Constraint::Percentage(100), Constraint::Length(0)],
+        };
+        let [left_area, right_area] = Layout::horizontal(horizontal_constraints).areas(rest_area);
         render_title(header_area, buf, "tracexec event list");
-        self.render_events(rest_area, buf);
+        self.render_events(left_area, buf);
+        if let Some(term) = self.term.as_mut() {
+            let block = Block::default()
+                .title("Pseudo Terminal")
+                .borders(ratatui::widgets::Borders::ALL);
+            let parser = term.parser.read().unwrap();
+            let pseudo_term = PseudoTerminal::new(parser.screen()).block(block);
+            pseudo_term.render(right_area, buf);
+        }
         render_footer(footer_area, buf, "Press 'q' to quit");
     }
 }

@@ -1,16 +1,20 @@
 use std::{
-    collections::HashMap, ffi::CString, io::{stdin, Write}, os::fd::AsRawFd, path::PathBuf, process::exit,
+    collections::HashMap,
+    io::{stdin, Write},
+    os::fd::AsRawFd,
+    path::PathBuf,
+    process::exit,
 };
 
 use nix::{
     errno::Errno,
-    libc::{dup2, pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP, STDIN_FILENO},
+    libc::{dup2, pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP},
     sys::{
         ptrace::{self, traceme, AddressType},
         signal::Signal,
         wait::{waitpid, WaitPidFlag, WaitStatus},
     },
-    unistd::{execvp, getpid, setpgid, tcsetpgrp, ForkResult, Pid},
+    unistd::{getpid, setpgid, tcsetpgrp, Pid},
 };
 use tokio::sync::mpsc::UnboundedSender;
 

@@ -33,7 +33,10 @@ use crate::{
     log::initialize_panic_handler,
     pty::{native_pty_system, PtySize, PtySystem},
     tracer::TracerMode,
-    tui::event_list::{EventList, EventListApp},
+    tui::{
+        event_list::{EventList, EventListApp},
+        pseudo_term::PseudoTerminalPane,
+    },
 };
 
 #[tokio::main]
@@ -112,7 +115,7 @@ async fn main() -> color_eyre::Result<()> {
             tracing_args,
             tty,
         } => {
-            let (tracer_mode, pty_master) = if tty {
+            let (tracer_mode, pty_master, alloc_pty) = if tty {
                 let pty_system = native_pty_system();
                 let pair = pty_system.openpty(PtySize {
                     rows: 24,
@@ -120,14 +123,27 @@ async fn main() -> color_eyre::Result<()> {
                     pixel_width: 0,
                     pixel_height: 0,
                 })?;
-                (TracerMode::Tui(Some(pair.slave)), Some(pair.master))
+                (TracerMode::Tui(Some(pair.slave)), Some(pair.master), true)
             } else {
-                (TracerMode::Tui(None), None)
+                (TracerMode::Tui(None), None, false)
             };
             let mut app = EventListApp {
                 event_list: EventList::new(),
                 printer_args: (&tracing_args).into(),
-                pty_master,
+                term: alloc_pty
+                    .then(|| {
+                        Some(PseudoTerminalPane::new(
+                            PtySize {
+                                rows: 24,
+                                cols: 80,
+                                pixel_width: 0,
+                                pixel_height: 0,
+                            },
+                            pty_master.unwrap(),
+                        ))
+                    })
+                    .flatten()
+                    .transpose()?,
             };
             let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
             let mut tracer = tracer::Tracer::new(tracer_mode, tracing_args, None, tracer_tx)?;
