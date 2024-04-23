@@ -18,6 +18,12 @@ pub struct Cli {
         help = "Change current directory to this path before doing anything"
     )]
     pub cwd: Option<PathBuf>,
+    #[arg(
+        short,
+        long,
+        help = "Run as user. This option is only available when running tracexec as root"
+    )]
+    pub user: Option<String>,
     #[clap(subcommand)]
     pub cmd: CliCommand,
 }

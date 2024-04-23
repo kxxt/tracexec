@@ -533,7 +533,7 @@ impl PtyFd {
         &self,
         command: CommandBuilder,
         command_hook: impl FnOnce(&mut Command) -> color_eyre::Result<()> + Send + Sync + 'static,
-        pre_exec: impl Fn() -> color_eyre::Result<()> + Send + Sync + 'static,
+        pre_exec: impl Fn(&OsStr) -> color_eyre::Result<()> + Send + Sync + 'static,
     ) -> color_eyre::Result<std::process::Child> {
         spawn_command_from_pty_fd(Some(self), command, command_hook, pre_exec)
     }
@@ -543,7 +543,7 @@ pub fn spawn_command(
     pts: Option<&UnixSlavePty>,
     command: CommandBuilder,
     command_hook: impl FnOnce(&mut Command) -> color_eyre::Result<()> + Send + Sync + 'static,
-    pre_exec: impl Fn() -> color_eyre::Result<()> + Send + Sync + 'static,
+    pre_exec: impl Fn(&OsStr) -> color_eyre::Result<()> + Send + Sync + 'static,
 ) -> color_eyre::Result<std::process::Child> {
     if let Some(pts) = pts {
         pts.spawn_command(command, command_hook, pre_exec)
@@ -556,7 +556,7 @@ fn spawn_command_from_pty_fd(
     pty: Option<&PtyFd>,
     command: CommandBuilder,
     command_hook: impl FnOnce(&mut Command) -> color_eyre::Result<()> + Send + Sync + 'static,
-    pre_exec: impl Fn() -> color_eyre::Result<()> + Send + Sync + 'static,
+    pre_exec: impl Fn(&OsStr) -> color_eyre::Result<()> + Send + Sync + 'static,
 ) -> color_eyre::Result<std::process::Child> {
     let configured_umask = command.umask;
 
@@ -571,6 +571,7 @@ fn spawn_command_from_pty_fd(
     command_hook(&mut cmd)?;
 
     unsafe {
+        let program_path = cmd.get_program().to_owned();
         cmd.pre_exec(move || {
             // Clean up a few things before we exec the program
             // Clear out any potentially problematic signal
@@ -595,7 +596,7 @@ fn spawn_command_from_pty_fd(
                 libc::umask(mask);
             }
 
-            pre_exec().unwrap();
+            pre_exec(program_path.as_os_str()).unwrap();
 
             Ok(())
         })
@@ -634,7 +635,7 @@ impl UnixSlavePty {
         &self,
         command: CommandBuilder,
         command_hook: impl FnOnce(&mut Command) -> color_eyre::Result<()> + Send + Sync + 'static,
-        pre_exec: impl Fn() -> color_eyre::Result<()> + Send + Sync + 'static,
+        pre_exec: impl Fn(&OsStr) -> color_eyre::Result<()> + Send + Sync + 'static,
     ) -> color_eyre::Result<std::process::Child> {
         self.fd.spawn_command(command, command_hook, pre_exec)
     }

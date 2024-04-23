@@ -23,9 +23,12 @@ use std::{
 use atoi::atoi;
 use clap::Parser;
 use cli::Cli;
-use color_eyre::eyre::bail;
+use color_eyre::eyre::{bail, OptionExt};
 
-use nix::sys::signal::Signal;
+use nix::{
+    sys::signal::Signal,
+    unistd::{Uid, User},
+};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -69,6 +72,14 @@ async fn main() -> color_eyre::Result<()> {
     if let Some(cwd) = cli.cwd {
         std::env::set_current_dir(cwd)?;
     }
+    let user = if let Some(user) = cli.user.as_deref() {
+        if !Uid::effective().is_root() {
+            bail!("--user option is only available when running tracexec as root!");
+        }
+        Some(User::from_name(user)?.ok_or_eyre("Failed to get user info")?)
+    } else {
+        None
+    };
     // Seccomp-bpf ptrace behavior is changed on 4.8. I haven't tested on older kernels.
     let min_support_kver = (4, 8);
     if !is_current_kernel_greater_than(min_support_kver)? {
@@ -102,7 +113,7 @@ async fn main() -> color_eyre::Result<()> {
             };
             let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
             let mut tracer =
-                tracer::Tracer::new(TracerMode::Cli, tracing_args, Some(output), tracer_tx)?;
+                tracer::Tracer::new(TracerMode::Cli, tracing_args, Some(output), tracer_tx, user)?;
             let tracer_thread = thread::spawn(move || tracer.start_root_process(cmd));
             tracer_thread.join().unwrap()?;
             loop {
@@ -132,7 +143,7 @@ async fn main() -> color_eyre::Result<()> {
             };
             let mut app = EventListApp::new(&tracing_args, pty_master)?;
             let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
-            let mut tracer = tracer::Tracer::new(tracer_mode, tracing_args, None, tracer_tx)?;
+            let mut tracer = tracer::Tracer::new(tracer_mode, tracing_args, None, tracer_tx, user)?;
             let tracer_thread = thread::spawn(move || tracer.start_root_process(cmd));
             let mut tui = tui::Tui::new()?.frame_rate(30.0);
             tui.enter(tracer_rx)?;

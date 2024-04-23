@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    ffi::CString,
     io::{self, stdin, Write},
     os::fd::AsRawFd,
     path::PathBuf,
@@ -9,13 +10,18 @@ use std::{
 use cfg_if::cfg_if;
 use nix::{
     errno::Errno,
-    libc::{self, dup2, pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP},
+    libc::{
+        self, dup2, pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP, S_ISGID, S_ISUID,
+    },
     sys::{
         ptrace::{self, traceme, AddressType},
         signal::Signal,
+        stat::fstat,
         wait::{waitpid, WaitPidFlag, WaitStatus},
     },
-    unistd::{getpid, setpgid, setsid, tcsetpgrp, Pid},
+    unistd::{
+        getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, Gid, Pid, Uid, User,
+    },
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -53,6 +59,7 @@ pub struct Tracer {
     #[cfg(feature = "seccomp-bpf")]
     seccomp_bpf: SeccompBpf,
     tx: UnboundedSender<TracerEvent>,
+    user: Option<User>,
 }
 
 pub enum TracerMode {
@@ -66,6 +73,7 @@ impl Tracer {
         tracing_args: TracingArgs,
         output: Option<Box<dyn Write + Send>>,
         tx: UnboundedSender<TracerEvent>,
+        user: Option<User>,
     ) -> color_eyre::Result<Self> {
         Ok(Self {
             with_tty: match &mode {
@@ -82,6 +90,7 @@ impl Tracer {
             args: (&tracing_args).into(),
             output,
             tx,
+            user,
         })
     }
 
@@ -108,12 +117,13 @@ impl Tracer {
         };
         let with_tty = self.with_tty;
         let use_pseudo_term = slave_pty.is_some();
+        let user = self.user.clone();
 
         let root_child = pty::spawn_command(
             slave_pty,
             cmd,
             |_| Ok(()),
-            move || {
+            move |program_path| {
                 #[cfg(feature = "seccomp-bpf")]
                 if seccomp_bpf == SeccompBpf::On {
                     let filter = seccomp::create_seccomp_filter();
@@ -142,6 +152,29 @@ impl Tracer {
 
                 traceme()?;
                 log::trace!("traceme setup!");
+
+                if let Some(user) = &user {
+                    // First, read set(u|g)id info from stat
+                    let file = std::fs::File::open(program_path)?;
+                    let stat = fstat(file.as_raw_fd())?;
+                    drop(file);
+                    // setuid binary
+                    let euid = if stat.st_mode & S_ISUID > 0 {
+                        Uid::from_raw(stat.st_uid)
+                    } else {
+                        user.uid
+                    };
+                    // setgid binary
+                    let egid = if stat.st_mode & S_ISGID > 0 {
+                        Gid::from_raw(stat.st_gid)
+                    } else {
+                        user.gid
+                    };
+                    initgroups(&CString::new(user.name.as_str())?[..], user.gid)?;
+                    setresgid(user.gid, egid, Gid::from_raw(u32::MAX))?;
+                    setresuid(user.uid, euid, Uid::from_raw(u32::MAX))?;
+                }
+
                 if 0 != unsafe { raise(SIGSTOP) } {
                     log::error!("raise failed!");
                     exit(-1);
