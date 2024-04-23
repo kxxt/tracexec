@@ -98,6 +98,7 @@ impl Tracer {
 
         let mut cmd = CommandBuilder::new(&args[0]);
         cmd.args(args.iter().skip(1));
+        cmd.cwd(std::env::current_dir()?);
 
         #[cfg(feature = "seccomp-bpf")]
         let seccomp_bpf = self.seccomp_bpf;
