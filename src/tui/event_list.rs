@@ -140,7 +140,11 @@ impl EventListApp {
                         action_tx.send(Action::Resize(size))?;
                         action_tx.send(Action::Render)?;
                     }
-                    Event::Init => {}
+                    Event::Init => {
+                        // Fix the size of the terminal
+                        action_tx.send(Action::Resize(tui.size()?.into()))?;
+                        action_tx.send(Action::Render)?;
+                    }
                     Event::Error => {}
                 }
             }
