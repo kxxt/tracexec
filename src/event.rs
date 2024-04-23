@@ -63,6 +63,7 @@ pub enum Action {
     Render,
     NextItem,
     PrevItem,
+    HandleTerminalKeyPress(KeyEvent),
 }
 
 macro_rules! tracer_event_spans {

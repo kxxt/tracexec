@@ -124,6 +124,8 @@ impl EventListApp {
                         } else if ke.code == KeyCode::Up {
                             action_tx.send(Action::PrevItem)?;
                             action_tx.send(Action::Render)?;
+                        } else {
+                            action_tx.send(Action::HandleTerminalKeyPress(ke))?;
                         }
                     }
                     Event::Tracer(te) => {
@@ -155,6 +157,11 @@ impl EventListApp {
                     }
                     Action::PrevItem => {
                         self.event_list.previous();
+                    }
+                    Action::HandleTerminalKeyPress(ke) => {
+                        if let Some(term) = self.term.as_mut() {
+                            term.handle_key_event(&ke).await;
+                        }
                     }
                 }
             }
