@@ -190,6 +190,10 @@ impl EventListApp {
     }
 
     fn render_events(&mut self, area: Rect, buf: &mut Buffer) {
+        let block = Block::default()
+            .title("Events")
+            .borders(ratatui::widgets::Borders::ALL)
+            .border_style(Style::new().fg(ratatui::style::Color::Cyan));
         // Iterate through all elements in the `items` and stylize them.
         let items: Vec<ListItem> = self
             .event_list
@@ -207,7 +211,8 @@ impl EventListApp {
                     .fg(ratatui::style::Color::Cyan),
             )
             .highlight_symbol(">")
-            .highlight_spacing(HighlightSpacing::Always);
+            .highlight_spacing(HighlightSpacing::Always)
+            .block(block);
 
         // We can now render the item list
         // (look careful we are using StatefulWidget's render.)
