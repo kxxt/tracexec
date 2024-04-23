@@ -595,21 +595,6 @@ fn spawn_command_from_pty_fd(
             let empty_set: libc::sigset_t = std::mem::zeroed();
             libc::sigprocmask(libc::SIG_SETMASK, &empty_set, std::ptr::null_mut());
 
-            // // Clippy wants us to explicitly cast TIOCSCTTY using
-            // // type::from(), but the size and potentially signedness
-            // // are system dependent, which is why we're using `as _`.
-            // // Suppress this lint for this section of code.
-            // #[allow(clippy::cast_lossless)]
-            // if command.get_controlling_tty() {
-            //     // Set the pty as the controlling terminal.
-            //     // Failure to do this means that delivery of
-            //     // SIGWINCH won't happen when we resize the
-            //     // terminal, among other undesirable effects.
-            //     if libc::ioctl(0, libc::TIOCSCTTY as _, 0) == -1 {
-            //         return Err(io::Error::last_os_error());
-            //     }
-            // }
-
             close_random_fds();
 
             if let Some(mask) = configured_umask {

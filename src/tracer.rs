@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{stdin, Write},
+    io::{self, stdin, Write},
     os::fd::AsRawFd,
     path::PathBuf,
     process::exit,
@@ -8,13 +8,13 @@ use std::{
 
 use nix::{
     errno::Errno,
-    libc::{dup2, pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP},
+    libc::{self, dup2, pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP},
     sys::{
         ptrace::{self, traceme, AddressType},
         signal::Signal,
         wait::{waitpid, WaitPidFlag, WaitStatus},
     },
-    unistd::{getpid, setpgid, tcsetpgrp, Pid},
+    unistd::{getpid, setpgid, setsid, tcsetpgrp, Pid},
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -100,6 +100,7 @@ impl Tracer {
             TracerMode::Cli => None,
         };
         let with_tty = self.with_tty;
+        let use_pseudo_term = slave_pty.is_some();
 
         let root_child = pty::spawn_command(
             slave_pty,
@@ -122,8 +123,16 @@ impl Tracer {
                     }
                 }
 
-                let me = getpid();
-                setpgid(me, me)?;
+                if use_pseudo_term {
+                    setsid()?;
+                    if unsafe { libc::ioctl(0, libc::TIOCSCTTY as _, 0) } == -1 {
+                        Err(io::Error::last_os_error())?;
+                    }
+                } else {
+                    let me = getpid();
+                    setpgid(me, me)?;
+                }
+
                 traceme()?;
                 log::trace!("traceme setup!");
                 if 0 != unsafe { raise(SIGSTOP) } {
