@@ -143,7 +143,7 @@ impl Tracer {
         root_child_state.ppid = Some(getpid());
         self.store.insert(root_child_state);
         // Set foreground process group of the terminal
-        if self.with_tty {
+        if let TracerMode::Cli = &self.mode {
             tcsetpgrp(stdin(), root_child)?;
         }
         // restart child
