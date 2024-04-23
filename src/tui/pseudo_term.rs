@@ -37,7 +37,7 @@ pub struct PseudoTerminalPane {
     pub parser: Arc<RwLock<vt100::Parser>>,
     pty_master: UnixMasterPty,
     reader_task: tokio::task::JoinHandle<color_eyre::Result<()>>,
-    writer_task: tokio::task::JoinHandle<()>,
+    writer_task: tokio::task::JoinHandle<color_eyre::Result<()>>,
     master_tx: tokio::sync::mpsc::Sender<Bytes>,
 }
 
@@ -80,9 +80,10 @@ impl PseudoTerminalPane {
             // Drop writer on purpose
             tokio::spawn(async move {
                 while let Some(bytes) = rx.recv().await {
-                    writer.write_all(&bytes).unwrap();
-                    writer.flush().unwrap();
+                    writer.write_all(&bytes)?;
+                    writer.flush()?;
                 }
+                Ok(())
             })
         };
 
