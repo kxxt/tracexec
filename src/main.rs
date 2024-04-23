@@ -114,6 +114,8 @@ async fn main() -> color_eyre::Result<()> {
             tui.enter(tracer_rx)?;
             app.run(&mut tui).await?;
             tui::restore_tui()?;
+            // Now when TUI exits, the tracer is still running.
+            // TODO: add cli option to kill on exit
             tracer_thread.join().unwrap()?;
         }
     }
