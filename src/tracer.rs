@@ -6,6 +6,7 @@ use std::{
     process::exit,
 };
 
+use cfg_if::cfg_if;
 use nix::{
     errno::Errno,
     libc::{self, dup2, pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP},
@@ -26,15 +27,19 @@ use crate::{
     inspect::{read_pathbuf, read_string, read_string_array},
     printer::{print_exec_trace, print_new_child, PrinterArgs, PrinterOut},
     proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
-    ptrace::{ptrace_cont, ptrace_getregs, ptrace_syscall},
+    ptrace::{ptrace_getregs, ptrace_syscall},
     pty::{self, Child, UnixSlavePty},
     state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
 
-#[cfg(feature = "seccomp-bpf")]
-use crate::cli::SeccompBpf;
-#[cfg(feature = "seccomp-bpf")]
-use crate::seccomp;
+cfg_if! {
+    if #[cfg(feature = "seccomp-bpf")] {
+        use crate::cli::SeccompBpf;
+        use crate::seccomp;
+        use crate::ptrace::ptrace_cont;
+    }
+
+}
 
 pub struct Tracer {
     with_tty: bool,
@@ -94,6 +99,7 @@ impl Tracer {
         let mut cmd = CommandBuilder::new(&args[0]);
         cmd.args(args.iter().skip(1));
 
+        #[cfg(feature = "seccomp-bpf")]
         let seccomp_bpf = self.seccomp_bpf;
         let slave_pty = match &self.mode {
             TracerMode::Tui(tty) => tty.as_ref(),
