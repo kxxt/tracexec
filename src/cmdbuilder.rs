@@ -329,7 +329,7 @@ impl CommandBuilder {
 
             if let Some(path) = self.resolve_path() {
                 for path in std::env::split_paths(&path) {
-                    let candidate = path.join(&exe);
+                    let candidate = path.join(exe);
                     if access(&candidate, AccessFlags::X_OK).is_ok() {
                         return Ok(candidate.into_os_string());
                     }
@@ -360,8 +360,7 @@ impl CommandBuilder {
         let home = self.get_home_dir()?;
         let dir: &OsStr = self
             .cwd
-            .as_ref()
-            .map(|dir| dir.as_os_str())
+            .as_deref()
             .filter(|dir| std::path::Path::new(dir).is_dir())
             .unwrap_or(home.as_ref());
         let shell = self.get_shell();
@@ -414,7 +413,7 @@ impl CommandBuilder {
             }
         }
 
-        get_shell().into()
+        get_shell()
     }
 
     fn get_home_dir(&self) -> color_eyre::Result<String> {

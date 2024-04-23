@@ -242,10 +242,7 @@ pub trait PtySystem {
 
 impl Child for std::process::Child {
     fn try_wait(&mut self) -> IoResult<Option<ExitStatus>> {
-        std::process::Child::try_wait(self).map(|s| match s {
-            Some(s) => Some(s.into()),
-            None => None,
-        })
+        std::process::Child::try_wait(self).map(|s| s.map(Into::into))
     }
 
     fn wait(&mut self) -> IoResult<ExitStatus> {
@@ -380,10 +377,7 @@ fn openpty(size: PtySize) -> color_eyre::Result<(UnixMasterPty, UnixSlavePty)> {
 impl PtySystem for UnixPtySystem {
     fn openpty(&self, size: PtySize) -> color_eyre::Result<PtyPair> {
         let (master, slave) = openpty(size)?;
-        Ok(PtyPair {
-            master: master,
-            slave: slave,
-        })
+        Ok(PtyPair { master, slave })
     }
 }
 
@@ -541,7 +535,7 @@ impl PtyFd {
         command_hook: impl FnOnce(&mut Command) -> color_eyre::Result<()> + Send + Sync + 'static,
         pre_exec: impl Fn() -> color_eyre::Result<()> + Send + Sync + 'static,
     ) -> color_eyre::Result<std::process::Child> {
-        spawn_command_from_pty_fd(Some(&self), command, command_hook, pre_exec)
+        spawn_command_from_pty_fd(Some(self), command, command_hook, pre_exec)
     }
 }
 
@@ -642,7 +636,7 @@ impl UnixSlavePty {
         command_hook: impl FnOnce(&mut Command) -> color_eyre::Result<()> + Send + Sync + 'static,
         pre_exec: impl Fn() -> color_eyre::Result<()> + Send + Sync + 'static,
     ) -> color_eyre::Result<std::process::Child> {
-        Ok(self.fd.spawn_command(command, command_hook, pre_exec)?)
+        self.fd.spawn_command(command, command_hook, pre_exec)
     }
 }
 
