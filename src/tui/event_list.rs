@@ -39,6 +39,7 @@ pub struct EventList {
     state: ListState,
     items: Vec<TracerEvent>,
     last_selected: Option<usize>,
+    horizontal_offset: usize,
 }
 
 impl EventList {
@@ -47,6 +48,7 @@ impl EventList {
             state: ListState::default(),
             items: vec![],
             last_selected: None,
+            horizontal_offset: 0,
         }
     }
 
@@ -83,6 +85,14 @@ impl EventList {
         self.last_selected = self.state.selected();
         self.state.select(None);
         *self.state.offset_mut() = offset;
+    }
+
+    pub fn scroll_left(&mut self) {
+        self.horizontal_offset = self.horizontal_offset.saturating_sub(1);
+    }
+
+    pub fn scroll_right(&mut self) {
+        self.horizontal_offset += 1;
     }
 }
 
