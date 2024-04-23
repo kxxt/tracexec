@@ -12,6 +12,12 @@ pub struct Cli {
     pub verbose: u8,
     #[arg(short, long, conflicts_with = "verbose")]
     pub quiet: bool,
+    #[arg(
+        short = 'C',
+        long,
+        help = "Change current directory to this path before doing anything"
+    )]
+    pub cwd: Option<PathBuf>,
     #[clap(subcommand)]
     pub cmd: CliCommand,
 }

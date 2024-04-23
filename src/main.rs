@@ -68,6 +68,9 @@ async fn main() -> color_eyre::Result<()> {
     //     })
     //     .init();
     log::trace!("Commandline args: {:?}", cli);
+    if let Some(cwd) = cli.cwd {
+        std::env::set_current_dir(cwd)?;
+    }
     // Seccomp-bpf ptrace behavior is changed on 4.8. I haven't tested on older kernels.
     let min_support_kver = (4, 8);
     if !is_current_kernel_greater_than(min_support_kver)? {
