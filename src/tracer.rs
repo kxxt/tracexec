@@ -152,6 +152,7 @@ impl Tracer {
             },
         )?
         .process_id();
+        self.tx.send(TracerEvent::RootChildSpawn(root_child))?;
 
         waitpid(root_child, Some(WaitPidFlag::WSTOPPED))?; // wait for child to stop
         log::trace!("child stopped");

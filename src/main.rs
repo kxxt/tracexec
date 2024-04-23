@@ -25,6 +25,7 @@ use clap::Parser;
 use cli::Cli;
 use color_eyre::eyre::bail;
 
+use nix::sys::signal::Signal;
 use tokio::sync::mpsc;
 
 use crate::{
@@ -33,10 +34,7 @@ use crate::{
     log::initialize_panic_handler,
     pty::{native_pty_system, PtySize, PtySystem},
     tracer::TracerMode,
-    tui::{
-        event_list::{EventList, EventListApp},
-        pseudo_term::PseudoTerminalPane,
-    },
+    tui::event_list::EventListApp,
 };
 
 #[tokio::main]
@@ -117,8 +115,10 @@ async fn main() -> color_eyre::Result<()> {
             cmd,
             tracing_args,
             tty,
+            terminate_on_exit,
+            kill_on_exit,
         } => {
-            let (tracer_mode, pty_master, alloc_pty) = if tty {
+            let (tracer_mode, pty_master) = if tty {
                 let pty_system = native_pty_system();
                 let pair = pty_system.openpty(PtySize {
                     rows: 24,
@@ -126,28 +126,11 @@ async fn main() -> color_eyre::Result<()> {
                     pixel_width: 0,
                     pixel_height: 0,
                 })?;
-                (TracerMode::Tui(Some(pair.slave)), Some(pair.master), true)
+                (TracerMode::Tui(Some(pair.slave)), Some(pair.master))
             } else {
-                (TracerMode::Tui(None), None, false)
+                (TracerMode::Tui(None), None)
             };
-            let mut app = EventListApp {
-                event_list: EventList::new(),
-                printer_args: (&tracing_args).into(),
-                term: alloc_pty
-                    .then(|| {
-                        Some(PseudoTerminalPane::new(
-                            PtySize {
-                                rows: 24,
-                                cols: 80,
-                                pixel_width: 0,
-                                pixel_height: 0,
-                            },
-                            pty_master.unwrap(),
-                        ))
-                    })
-                    .flatten()
-                    .transpose()?,
-            };
+            let mut app = EventListApp::new(&tracing_args, pty_master)?;
             let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
             let mut tracer = tracer::Tracer::new(tracer_mode, tracing_args, None, tracer_tx)?;
             let tracer_thread = thread::spawn(move || tracer.start_root_process(cmd));
@@ -155,8 +138,16 @@ async fn main() -> color_eyre::Result<()> {
             tui.enter(tracer_rx)?;
             app.run(&mut tui).await?;
             tui::restore_tui()?;
-            // Now when TUI exits, the tracer is still running.
-            // TODO: add cli option to kill on exit
+            // Now when TUI exits, the tracer thread is still running.
+            // options:
+            // 1. Wait for the tracer thread to exit.
+            // 2. Terminate the root process so that the tracer thread exits.
+            // 3. Kill the root process so that the tracer thread exits.
+            if terminate_on_exit {
+                app.signal_root_process(Signal::SIGTERM)?;
+            } else if kill_on_exit {
+                app.signal_root_process(Signal::SIGKILL)?;
+            }
             tracer_thread.join().unwrap()?;
         }
     }

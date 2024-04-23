@@ -17,6 +17,7 @@
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 use crossterm::event::KeyCode;
+use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
@@ -27,9 +28,10 @@ use tokio::sync::mpsc;
 use tui_term::widget::PseudoTerminal;
 
 use crate::{
+    cli::TracingArgs,
     event::{Action, Event, TracerEvent},
     printer::PrinterArgs,
-    pty::PtySize,
+    pty::{PtySize, UnixMasterPty},
 };
 
 use super::{
@@ -103,9 +105,34 @@ pub struct EventListApp {
     pub event_list: EventList,
     pub printer_args: PrinterArgs,
     pub term: Option<PseudoTerminalPane>,
+    pub root_pid: Option<Pid>,
 }
 
 impl EventListApp {
+    pub fn new(
+        tracing_args: &TracingArgs,
+        pty_master: Option<UnixMasterPty>,
+    ) -> color_eyre::Result<Self> {
+        Ok(Self {
+            event_list: EventList::new(),
+            printer_args: tracing_args.into(),
+            term: if let Some(pty_master) = pty_master {
+                Some(PseudoTerminalPane::new(
+                    PtySize {
+                        rows: 24,
+                        cols: 80,
+                        pixel_width: 0,
+                        pixel_height: 0,
+                    },
+                    pty_master,
+                )?)
+            } else {
+                None
+            },
+            root_pid: None,
+        })
+    }
+
     pub async fn run(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
         let (action_tx, mut action_rx) = mpsc::unbounded_channel();
 
@@ -129,10 +156,15 @@ impl EventListApp {
                             action_tx.send(Action::HandleTerminalKeyPress(ke))?;
                         }
                     }
-                    Event::Tracer(te) => {
-                        self.event_list.items.push(te);
-                        action_tx.send(Action::Render)?;
-                    }
+                    Event::Tracer(te) => match te {
+                        TracerEvent::RootChildSpawn(pid) => {
+                            self.root_pid = Some(pid);
+                        }
+                        te => {
+                            self.event_list.items.push(te);
+                            action_tx.send(Action::Render)?;
+                        }
+                    },
                     Event::Render => {
                         action_tx.send(Action::Render)?;
                     }
@@ -187,6 +219,13 @@ impl EventListApp {
                 }
             }
         }
+    }
+
+    pub fn signal_root_process(&self, sig: Signal) -> color_eyre::Result<()> {
+        if let Some(root_pid) = self.root_pid {
+            nix::sys::signal::kill(root_pid, sig)?;
+        }
+        Ok(())
     }
 
     fn render_events(&mut self, area: Rect, buf: &mut Buffer) {

@@ -51,6 +51,17 @@ pub enum CliCommand {
             help = "Allocate a pseudo terminal and show it alongside the TUI"
         )]
         tty: bool,
+        #[clap(
+            long,
+            help = "Instead of waiting for the root child to exit, terminate when the TUI exits",
+            conflicts_with = "kill_on_exit"
+        )]
+        terminate_on_exit: bool,
+        #[clap(
+            long,
+            help = "Instead of waiting for the root child to exit, kill when the TUI exits"
+        )]
+        kill_on_exit: bool,
     },
 }
 

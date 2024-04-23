@@ -35,6 +35,7 @@ pub enum TracerEvent {
         pid: Pid,
     },
     Exec(ExecEvent),
+    RootChildSpawn(Pid),
     RootChildExit {
         signal: Option<Signal>,
         exit_code: i32,
@@ -157,6 +158,7 @@ impl TracerEvent {
                 signal, exit_code
             )
             .into(),
+            TracerEvent::RootChildSpawn(pid) => format!("RootChildSpawn: {}", pid).into(),
         }
     }
 }
