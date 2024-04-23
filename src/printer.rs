@@ -361,7 +361,7 @@ pub fn print_exec_trace(
                 out,
                 "{} ({})",
                 result.bright_red().bold(),
-                nix::errno::Errno::from_i32(-result as i32).red()
+                nix::errno::Errno::from_raw(-result as i32).red()
             )?;
         } else {
             writeln!(out, "{}", result.bright_red().bold())?;
