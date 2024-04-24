@@ -43,6 +43,8 @@ use super::{
 pub struct EventList {
     state: ListState,
     items: Vec<TracerEvent>,
+    /// Current window of the event list, [start, end)
+    window: (usize, usize),
     last_selected: Option<usize>,
     horizontal_offset: usize,
 }
@@ -53,15 +55,43 @@ impl EventList {
             state: ListState::default(),
             items: vec![],
             last_selected: None,
+            window: (0, 0),
             horizontal_offset: 0,
         }
     }
 
+    /// Try to slide down the window by one item
+    /// Returns true if the window was slid down, false otherwise
+    pub fn next_window(&mut self) -> bool {
+        if self.window.1 < self.items.len() {
+            self.window.0 += 1;
+            self.window.1 += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn previous_window(&mut self) -> bool {
+        if self.window.0 > 0 {
+            self.window.0 -= 1;
+            self.window.1 -= 1;
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn next(&mut self) {
+        // i is the number of the selected item relative to the window
         let i = match self.state.selected() {
             Some(i) => {
-                if i >= self.items.len() - 1 {
-                    0
+                if i >= self.window.1 - self.window.0 - 1 {
+                    if self.next_window() {
+                        i
+                    } else {
+                        i
+                    }
                 } else {
                     i + 1
                 }
@@ -75,7 +105,11 @@ impl EventList {
         let i = match self.state.selected() {
             Some(i) => {
                 if i == 0 {
-                    self.items.len() - 1
+                    if self.previous_window() {
+                        i
+                    } else {
+                        i
+                    }
                 } else {
                     i - 1
                 }
@@ -98,6 +132,14 @@ impl EventList {
 
     pub fn scroll_right(&mut self) {
         self.horizontal_offset += 1;
+    }
+
+    // TODO: this is ugly due to borrow checking.
+    pub fn window(
+        items: &Vec<TracerEvent>,
+        window: (usize, usize),
+    ) -> impl Iterator<Item = &TracerEvent> {
+        items[window.0..window.1.min(items.len())].iter()
     }
 }
 
@@ -175,6 +217,12 @@ impl EventListApp {
                     Event::Init => {
                         // Fix the size of the terminal
                         action_tx.send(Action::Resize(tui.size()?.into()))?;
+                        // Set the window size of the event list
+                        self.event_list.window = (0, tui.size()?.height as usize - 4 - 2);
+                        log::debug!(
+                            "initialized event list window: {:?}",
+                            self.event_list.window
+                        );
                         action_tx.send(Action::Render)?;
                     }
                     Event::Error => {}
@@ -234,13 +282,10 @@ impl EventListApp {
             .borders(ratatui::widgets::Borders::ALL)
             .border_style(Style::new().fg(ratatui::style::Color::Cyan));
         // Iterate through all elements in the `items` and stylize them.
-        let items: Vec<ListItem> = self
-            .event_list
-            .items
-            .iter()
-            .enumerate()
-            .map(|(_i, evt)| evt.to_tui_line(&self.printer_args).into())
-            .collect();
+        let items: Vec<ListItem> =
+            EventList::window(&self.event_list.items, self.event_list.window)
+                .map(|evt| evt.to_tui_line(&self.printer_args).into())
+                .collect();
         // Create a List from all list items and highlight the currently selected one
         let items = List::new(items)
             .highlight_style(
