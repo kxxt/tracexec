@@ -61,6 +61,7 @@ pub fn initialize_logging() -> Result<()> {
     let file_subscriber = tracing_subscriber::fmt::layer()
         .with_file(true)
         .with_thread_ids(true)
+        .with_thread_names(true)
         .with_line_number(true)
         .with_writer(log_file)
         .with_target(false)
