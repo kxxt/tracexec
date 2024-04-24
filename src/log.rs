@@ -60,6 +60,7 @@ pub fn initialize_logging() -> Result<()> {
     let log_file = std::fs::File::create(log_path)?;
     let file_subscriber = tracing_subscriber::fmt::layer()
         .with_file(true)
+        .with_thread_ids(true)
         .with_line_number(true)
         .with_writer(log_file)
         .with_target(false)
