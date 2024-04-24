@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.1.0-alpha.4
+
+tracexec v0.1.0-alpha.4 released!
+
+Changes since v0.1.0-alpha.3:
+
+### New Features
+
+- Added `-C` option to change the working directory of tracexec.
+- Added terminate/kill on exit option to TUI command.
+- Added `--user` option to run as a different user. (This is mostly useful for tracing setuid/setgid binaries. Thanks to strace for the idea.)
+    - Automatically disable seccomp-bpf when using `--user` because seccomp-bpf enforces no-new-privs.
+
+![tracexec tracing across setuid binaries](https://github.com/kxxt/tracexec/blob/6fac526/screenshots/trace-suid.png?raw=true)
+
+### Fixes
+
+- Fix wrong cwd used to spawn child processes. This bug was introduced when switching to use `CommandBuilder` in v0.1.0-alpha.3.
+- Fix `RUST_LOG` env var getting overwritten by tracexec. tracexec should not touch the environment variables at all.
+
+
 ## v0.1.0-alpha.3
 
 tracexec v0.1.0-alpha.3 released!
