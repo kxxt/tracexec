@@ -190,8 +190,19 @@ impl Tracer {
         )?
         .process_id();
         self.tx.send(TracerEvent::RootChildSpawn(root_child))?;
-
-        waitpid(root_child, Some(WaitPidFlag::WSTOPPED))?; // wait for child to stop
+        // wait for child to be stopped by SIGSTOP
+        loop {
+            let status = waitpid(root_child, Some(WaitPidFlag::WSTOPPED))?;
+            match status {
+                WaitStatus::Stopped(_, Signal::SIGSTOP) => {
+                    break;
+                }
+                _ => {
+                    log::trace!("tracee stopped by other signal, restarting it...");
+                    ptrace::cont(root_child, None)?;
+                }
+            }
+        }
         log::trace!("child stopped");
         let mut root_child_state = ProcessState::new(root_child, 0)?;
         root_child_state.ppid = Some(getpid());
@@ -200,8 +211,6 @@ impl Tracer {
         if let TracerMode::Cli = &self.mode {
             tcsetpgrp(stdin(), root_child)?;
         }
-        // restart child
-        log::trace!("resuming child");
         let mut ptrace_opts = {
             use nix::sys::ptrace::Options;
             Options::PTRACE_O_TRACEEXEC
@@ -218,6 +227,7 @@ impl Tracer {
         }
         ptrace::setoptions(root_child, ptrace_opts)?;
         // restart child
+        log::trace!("resuming child");
         self.seccomp_aware_cont(root_child)?;
         loop {
             let status = waitpid(None, Some(WaitPidFlag::__WALL))?;
@@ -235,6 +245,19 @@ impl Tracer {
                                     self.seccomp_aware_cont(pid)?;
                                 } else if pid != root_child {
                                     log::error!("Unexpected SIGSTOP: {state:?}")
+                                } else {
+                                    log::error!("Unexpected SIGSTOP: {state:?}")
+                                    // let siginfo = ptrace::getsiginfo(pid)?;
+                                    // log::trace!(
+                                    //     "FIXME: this is weird, pid: {pid}, siginfo: {siginfo:?}"
+                                    // );
+                                    // let sender = siginfo._pad[1];
+                                    // let tmp = format!("/proc/{sender}/status");
+                                    // ptrace::detach(pid, Some(Signal::SIGSTOP))?;
+                                    // trace_dbg!(process::Command::new("/bin/cat")
+                                    //     .arg(tmp)
+                                    //     .output()?);
+                                    // self.seccomp_aware_cont(pid)?;
                                 }
                             } else {
                                 log::trace!(
