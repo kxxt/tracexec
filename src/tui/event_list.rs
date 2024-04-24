@@ -20,11 +20,16 @@ use crossterm::event::KeyCode;
 use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
     buffer::Buffer,
-    layout::{Constraint, Layout, Rect},
+    layout::{Constraint, Layout, Rect, Size},
     style::{Modifier, Style},
-    widgets::{Block, HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget},
+    text::Line,
+    widgets::{
+        Block, HighlightSpacing, List, ListItem, ListState, StatefulWidget, StatefulWidgetRef,
+        Widget,
+    },
 };
 use tokio::sync::mpsc;
+use tui_scrollview::{ScrollView, ScrollViewState};
 use tui_term::widget::PseudoTerminal;
 
 use crate::{
@@ -47,6 +52,7 @@ pub struct EventList {
     window: (usize, usize),
     last_selected: Option<usize>,
     horizontal_offset: usize,
+    pub scroll_state: ScrollViewState,
 }
 
 impl EventList {
@@ -57,6 +63,7 @@ impl EventList {
             last_selected: None,
             window: (0, 0),
             horizontal_offset: 0,
+            scroll_state: ScrollViewState::default(),
         }
     }
 
@@ -148,6 +155,7 @@ pub struct EventListApp {
     pub printer_args: PrinterArgs,
     pub term: Option<PseudoTerminalPane>,
     pub root_pid: Option<Pid>,
+    pub scroll_view: ScrollView,
 }
 
 impl EventListApp {
@@ -172,6 +180,7 @@ impl EventListApp {
                 None
             },
             root_pid: None,
+            scroll_view: ScrollView::new(Size::new(0, 0)),
         })
     }
 
@@ -218,7 +227,7 @@ impl EventListApp {
                         // Fix the size of the terminal
                         action_tx.send(Action::Resize(tui.size()?.into()))?;
                         // Set the window size of the event list
-                        self.event_list.window = (0, tui.size()?.height as usize - 4 - 2);
+                        self.event_list.window = (0, tui.size()?.height as usize - 4 - 2 - 1);
                         log::debug!(
                             "initialized event list window: {:?}",
                             self.event_list.window
@@ -282,10 +291,16 @@ impl EventListApp {
             .borders(ratatui::widgets::Borders::ALL)
             .border_style(Style::new().fg(ratatui::style::Color::Cyan));
         // Iterate through all elements in the `items` and stylize them.
+        let mut max_len = area.width as usize - 2;
         let items: Vec<ListItem> =
             EventList::window(&self.event_list.items, self.event_list.window)
-                .map(|evt| evt.to_tui_line(&self.printer_args).into())
+                .map(|evt| {
+                    let line: ListItem = evt.to_tui_line(&self.printer_args).into();
+                    max_len = line.width().max(max_len);
+                    line
+                })
                 .collect();
+        log::trace!("tui: tracer event max_len: {max_len}");
         // Create a List from all list items and highlight the currently selected one
         let items = List::new(items)
             .highlight_style(
@@ -295,13 +310,26 @@ impl EventListApp {
                     .fg(ratatui::style::Color::Cyan),
             )
             .highlight_symbol(">")
-            .highlight_spacing(HighlightSpacing::Always)
-            .block(block);
+            .highlight_spacing(HighlightSpacing::Always);
+        let mut inner_area = block.inner(area);
+        block.render(area, buf);
+        let scroll_view_size = Size::new(max_len as u16, inner_area.height);
+        if self.scroll_view.size() != scroll_view_size {
+            self.scroll_view = ScrollView::new(scroll_view_size);
+        }
 
         // We can now render the item list
         // (look careful we are using StatefulWidget's render.)
         // ratatui::widgets::StatefulWidget::render as stateful_render
-        StatefulWidget::render(items, area, buf, &mut self.event_list.state);
+        StatefulWidget::render(
+            items,
+            self.scroll_view.buf().area,
+            self.scroll_view.buf_mut(),
+            &mut self.event_list.state,
+        );
+        inner_area.height += 1;
+        self.scroll_view
+            .render_ref(inner_area, buf, &mut self.event_list.scroll_state)
     }
 }
 

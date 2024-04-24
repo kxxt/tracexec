@@ -1157,6 +1157,7 @@ dependencies = [
  "tracing",
  "tracing-error",
  "tracing-subscriber",
+ "tui-scrollview",
  "tui-term",
  "vt100",
 ]
@@ -1230,6 +1231,14 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-log",
+]
+
+[[package]]
+name = "tui-scrollview"
+version = "0.3.4"
+dependencies = [
+ "indoc",
+ "ratatui",
 ]
 
 [[package]]
