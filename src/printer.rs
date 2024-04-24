@@ -30,7 +30,7 @@ fn parse_env_entry(item: &str) -> (&str, &str) {
             .position(|&x| x == b'=')
             .unwrap_or_else(|| {
                 log::warn!(
-                    "Invalid envp entry staring with '=': {:?}, assuming value to empty string!",
+                    "Invalid envp entry starting with '=': {:?}, assuming value to empty string!",
                     item
                 );
                 item.len()
