@@ -114,7 +114,9 @@ async fn main() -> color_eyre::Result<()> {
             let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
             let mut tracer =
                 tracer::Tracer::new(TracerMode::Cli, tracing_args, Some(output), tracer_tx, user)?;
-            let tracer_thread = thread::spawn(move || tracer.start_root_process(cmd));
+            let tracer_thread = thread::Builder::new()
+                .name("tracer".to_string())
+                .spawn(move || tracer.start_root_process(cmd))?;
             tracer_thread.join().unwrap()?;
             loop {
                 if let Some(TracerEvent::RootChildExit { exit_code, .. }) = tracer_rx.recv().await {
@@ -144,7 +146,9 @@ async fn main() -> color_eyre::Result<()> {
             let mut app = EventListApp::new(&tracing_args, pty_master)?;
             let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
             let mut tracer = tracer::Tracer::new(tracer_mode, tracing_args, None, tracer_tx, user)?;
-            let tracer_thread = thread::spawn(move || tracer.start_root_process(cmd));
+            let tracer_thread = thread::Builder::new()
+                .name("tracer".to_string())
+                .spawn(move || tracer.start_root_process(cmd))?;
             let mut tui = tui::Tui::new()?.frame_rate(30.0);
             tui.enter(tracer_rx)?;
             app.run(&mut tui).await?;
