@@ -18,7 +18,7 @@ impl<'a> PartialLine<'a> for Line<'a> {
     };
     let mut cur = 0;
     let mut discard_until = 0;
-    let mut discard_after = self.spans.len() - 1;
+    let mut discard_after = self.spans.len();
     for (i, span) in self.spans.iter_mut().enumerate() {
       let span_len = span.content.len();
       if cur + span_len < start {
