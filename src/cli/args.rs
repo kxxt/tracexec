@@ -1,5 +1,6 @@
 use clap::Args;
 
+#[cfg(feature = "seccomp-bpf")]
 use super::options::SeccompBpf;
 
 #[derive(Args, Debug)]
