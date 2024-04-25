@@ -179,7 +179,10 @@ impl App {
           }
           Action::Resize(size) => {
             // Set the window size of the event list
-            self.event_list.window = (0, size.height as usize - 4 - 2);
+            self.event_list.window = (
+              self.event_list.window.0,
+              self.event_list.window.0 + size.height as usize - 4 - 2,
+            );
             log::debug!("TUI: set event list window: {:?}", self.event_list.window);
 
             let term_size = PtySize {
