@@ -248,7 +248,7 @@ impl App {
       .iter()
       .map(|evt| {
         let full_line = evt.to_tui_line(&self.printer_args);
-        max_len = max_len.max(full_line.width() as usize);
+        max_len = max_len.max(full_line.width());
         full_line
           .substring(self.event_list.horizontal_offset, area.width - 2)
           .into()

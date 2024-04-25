@@ -67,11 +67,11 @@ pub fn initialize_logging() -> Result<()> {
     .with_target(false)
     .with_ansi(false);
 
-  let file_subscriber = if let Ok(_) = std::env::var(LOG_ENV.clone()) {
+  let file_subscriber = if std::env::var(LOG_ENV.clone()).is_ok() {
     file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::from_env(
       LOG_ENV.clone(),
     ))
-  } else if let Ok(_) = std::env::var("RUST_LOG") {
+  } else if std::env::var("RUST_LOG").is_ok() {
     file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::from_env("RUST_LOG"))
   } else {
     file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::new(format!(

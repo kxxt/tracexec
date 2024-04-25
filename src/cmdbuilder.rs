@@ -224,7 +224,7 @@ impl CommandBuilder {
       EnvEntry {
         is_from_base_env: false,
         preferred_key: key,
-        value: value,
+        value,
       },
     );
   }

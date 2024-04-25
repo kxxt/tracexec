@@ -71,11 +71,8 @@ impl EventList {
     // i is the number of the selected item relative to the window
     let i = match self.state.selected() {
       Some(i) => if i >= self.window.1 - self.window.0 - 1 {
-        if self.next_window() {
-          i
-        } else {
-          i
-        }
+        self.next_window();
+        i
       } else {
         i + 1
       }
@@ -89,11 +86,8 @@ impl EventList {
     let i = match self.state.selected() {
       Some(i) => {
         if i == 0 {
-          if self.previous_window() {
-            i
-          } else {
-            i
-          }
+          self.previous_window();
+          i
         } else {
           i - 1
         }
@@ -119,7 +113,7 @@ impl EventList {
   }
 
   // TODO: this is ugly due to borrow checking.
-  pub fn window(items: &Vec<TracerEvent>, window: (usize, usize)) -> &[TracerEvent] {
+  pub fn window(items: &[TracerEvent], window: (usize, usize)) -> &[TracerEvent] {
     &items[window.0..window.1.min(items.len())]
   }
 }
