@@ -48,6 +48,7 @@ pub struct EventList {
     window: (usize, usize),
     last_selected: Option<usize>,
     horizontal_offset: usize,
+    max_width: usize,
 }
 
 impl EventList {
@@ -58,6 +59,7 @@ impl EventList {
             last_selected: None,
             window: (0, 0),
             horizontal_offset: 0,
+            max_width: 0,
         }
     }
 
@@ -132,7 +134,7 @@ impl EventList {
     }
 
     pub fn scroll_right(&mut self) {
-        self.horizontal_offset += 1;
+        self.horizontal_offset = (self.horizontal_offset + 1).min(self.max_width.saturating_sub(1));
     }
 
     // TODO: this is ugly due to borrow checking.
@@ -194,6 +196,12 @@ impl EventListApp {
                             action_tx.send(Action::Render)?;
                         } else if ke.code == KeyCode::Up {
                             action_tx.send(Action::PrevItem)?;
+                            action_tx.send(Action::Render)?;
+                        } else if ke.code == KeyCode::Left {
+                            action_tx.send(Action::ScrollLeft)?;
+                            action_tx.send(Action::Render)?;
+                        } else if ke.code == KeyCode::Right {
+                            action_tx.send(Action::ScrollRight)?;
                             action_tx.send(Action::Render)?;
                         } else {
                             action_tx.send(Action::HandleTerminalKeyPress(ke))?;
@@ -265,6 +273,12 @@ impl EventListApp {
                             term.resize(term_size)?;
                         }
                     }
+                    Action::ScrollLeft => {
+                        self.event_list.scroll_left();
+                    }
+                    Action::ScrollRight => {
+                        self.event_list.scroll_right();
+                    }
                 }
             }
         }
@@ -282,11 +296,21 @@ impl EventListApp {
             .title("Events")
             .borders(ratatui::widgets::Borders::ALL)
             .border_style(Style::new().fg(ratatui::style::Color::Cyan));
+        let mut max_len = area.width as usize - 2;
         // Iterate through all elements in the `items` and stylize them.
         let items: Vec<ListItem> =
             EventList::window(&self.event_list.items, self.event_list.window)
-                .map(|evt| evt.to_tui_line(&self.printer_args).truncate_start(0).into())
+                .map(|evt| {
+                    let full_line = evt.to_tui_line(&self.printer_args);
+                    max_len = max_len.max(full_line.width() as usize);
+                    full_line
+                        .truncate_start(self.event_list.horizontal_offset)
+                        .into()
+                })
                 .collect();
+        // FIXME: It's a little late to set the max width here. The max width is already used
+        //        Though this should only affect the first render.
+        self.event_list.max_width = max_len;
         // Create a List from all list items and highlight the currently selected one
         let items = List::new(items)
             .highlight_style(

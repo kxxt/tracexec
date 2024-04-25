@@ -67,6 +67,8 @@ pub enum Action {
     Resize(Size),
     NextItem,
     PrevItem,
+    ScrollLeft,
+    ScrollRight,
     HandleTerminalKeyPress(KeyEvent),
 }
 

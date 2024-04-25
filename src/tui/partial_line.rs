@@ -3,13 +3,12 @@ use std::borrow::Cow;
 use ratatui::text::Line;
 
 pub trait PartialLine<'a> {
-    fn substring(self, start: u16, len: u16) -> Line<'a>;
-    fn truncate_start(self, start: u16) -> Line<'a>;
+    fn substring(self, start: usize, len: u16) -> Line<'a>;
+    fn truncate_start(self, start: usize) -> Line<'a>;
 }
 
 impl<'a> PartialLine<'a> for Line<'a> {
-    fn substring(mut self, start: u16, len: u16) -> Line<'a> {
-        let start = start as usize;
+    fn substring(mut self, start: usize, len: u16) -> Line<'a> {
         let len = len as usize;
         let end = start + len;
         let end = if end > self.width() {
@@ -54,8 +53,7 @@ impl<'a> PartialLine<'a> for Line<'a> {
         self
     }
 
-    fn truncate_start(mut self, start: u16) -> Line<'a> {
-        let start = start as usize;
+    fn truncate_start(mut self, start: usize) -> Line<'a> {
         let mut cur = 0;
         let mut discard_until = 0;
         for (i, span) in self.spans.iter_mut().enumerate() {
