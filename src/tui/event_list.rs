@@ -28,7 +28,7 @@ use tokio::sync::mpsc;
 use tui_term::widget::PseudoTerminal;
 
 use crate::{
-  cli::{ModifierArgs, TracingArgs},
+  cli::{options::ActivePane, ModifierArgs, TracingArgs},
   event::{Action, Event, TracerEvent},
   printer::PrinterArgs,
   pty::{PtySize, UnixMasterPty},
@@ -51,9 +51,6 @@ pub struct EventList {
   last_selected: Option<usize>,
   horizontal_offset: usize,
   max_width: usize,
-  /// Whether the event list is active
-  /// When the event list is not active, the terminal will be active
-  is_active: bool,
 }
 
 impl EventList {
@@ -66,7 +63,6 @@ impl EventList {
       nr_items_in_window: 0,
       horizontal_offset: 0,
       max_width: 0,
-      is_active: true,
     }
   }
 
@@ -154,6 +150,7 @@ pub struct EventListApp {
   pub printer_args: PrinterArgs,
   pub term: Option<PseudoTerminalPane>,
   pub root_pid: Option<Pid>,
+  pub active_pane: ActivePane,
 }
 
 impl EventListApp {
@@ -161,7 +158,13 @@ impl EventListApp {
     tracing_args: &TracingArgs,
     modifier_args: &ModifierArgs,
     pty_master: Option<UnixMasterPty>,
+    active_pane: ActivePane,
   ) -> color_eyre::Result<Self> {
+    let active_pane = if pty_master.is_some() {
+      active_pane
+    } else {
+      ActivePane::Events
+    };
     Ok(Self {
       event_list: EventList::new(),
       printer_args: PrinterArgs::from_cli(tracing_args, modifier_args),
@@ -179,6 +182,7 @@ impl EventListApp {
         None
       },
       root_pid: None,
+      active_pane,
     })
   }
 
@@ -204,8 +208,8 @@ impl EventListApp {
               action_tx.send(Action::SwitchActivePane)?;
               // action_tx.send(Action::Render)?;
             } else {
-              log::trace!("TUI: Event list active: {}", self.event_list.is_active);
-              if self.event_list.is_active {
+              log::trace!("TUI: Active pane: {}", self.active_pane);
+              if self.active_pane == ActivePane::Events {
                 if ke.code == KeyCode::Char('q') {
                   action_tx.send(Action::Quit)?;
                 } else if ke.code == KeyCode::Down {
@@ -298,7 +302,10 @@ impl EventListApp {
             self.event_list.scroll_right();
           }
           Action::SwitchActivePane => {
-            self.event_list.is_active = !self.event_list.is_active;
+            self.active_pane = match self.active_pane {
+              ActivePane::Events => ActivePane::Terminal,
+              ActivePane::Terminal => ActivePane::Events,
+            }
           }
         }
       }
@@ -328,7 +335,7 @@ impl EventListApp {
     let block = Block::default()
       .title("Events")
       .borders(ratatui::widgets::Borders::ALL)
-      .border_style(Style::new().fg(if self.event_list.is_active {
+      .border_style(Style::new().fg(if self.active_pane == ActivePane::Events {
         Color::Cyan
       } else {
         Color::White
@@ -389,11 +396,13 @@ impl Widget for &mut EventListApp {
       let block = Block::default()
         .title("Pseudo Terminal")
         .borders(ratatui::widgets::Borders::ALL)
-        .border_style(Style::default().fg(if !self.event_list.is_active {
-          Color::Cyan
-        } else {
-          Color::White
-        }));
+        .border_style(
+          Style::default().fg(if self.active_pane == ActivePane::Terminal {
+            Color::Cyan
+          } else {
+            Color::White
+          }),
+        );
       let parser = term.parser.read().unwrap();
       let pseudo_term = PseudoTerminal::new(parser.screen()).block(block);
       pseudo_term.render(right_area, buf);

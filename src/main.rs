@@ -136,6 +136,7 @@ async fn main() -> color_eyre::Result<()> {
       tracer_event_args,
       tty,
       terminate_on_exit,
+      active_pane,
       kill_on_exit,
     } => {
       let (tracer_mode, pty_master) = if tty {
@@ -159,7 +160,7 @@ async fn main() -> color_eyre::Result<()> {
         diff_env: true,
         ..Default::default()
       };
-      let mut app = EventListApp::new(&tracing_args, &modifier_args, pty_master)?;
+      let mut app = EventListApp::new(&tracing_args, &modifier_args, pty_master, active_pane)?;
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
       let mut tracer = tracer::Tracer::new(
         tracer_mode,

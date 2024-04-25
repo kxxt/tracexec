@@ -1,9 +1,8 @@
 use std::path::PathBuf;
 
-use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
-use strum::Display;
+use clap::{ArgAction, Args, Parser, Subcommand};
 
-use self::options::{Color, SeccompBpf};
+use self::options::{ActivePane, Color, SeccompBpf};
 
 pub mod options;
 
@@ -76,6 +75,14 @@ pub enum CliCommand {
       help = "Instead of waiting for the root child to exit, kill when the TUI exits"
     )]
     kill_on_exit: bool,
+    #[clap(
+      long,
+      short = 'A',
+      help = "Set the default active pane to use when TUI launches",
+      requires = "tty",
+      default_value_t
+    )]
+    active_pane: ActivePane,
   },
 }
 

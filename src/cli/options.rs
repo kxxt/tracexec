@@ -17,3 +17,11 @@ pub enum SeccompBpf {
   On,
   Off,
 }
+
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Display, Default)]
+#[strum(serialize_all = "kebab-case")]
+pub enum ActivePane {
+  #[default]
+  Terminal,
+  Events,
+}
