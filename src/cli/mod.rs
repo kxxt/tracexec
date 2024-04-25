@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
-use clap::{ArgAction, Args, Parser, Subcommand};
+use clap::{ArgAction, Parser, Subcommand};
 
 use self::{
   args::{ModifierArgs, TracerEventArgs, TracingArgs},
-  options::{ActivePane, Color, SeccompBpf},
+  options::{ActivePane, Color},
 };
 
 pub mod args;
