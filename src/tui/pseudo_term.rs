@@ -23,14 +23,19 @@
 
 use bytes::Bytes;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::prelude::{Buffer, Rect};
+use ratatui::style::{Color, Style};
+use ratatui::widgets::{Block, StatefulWidget, Widget};
 use std::io::{BufWriter, Write};
 use std::sync::Arc;
 use tokio::sync::mpsc::channel;
+use tui_term::widget::PseudoTerminal;
 
 use tokio_util::sync::CancellationToken;
 
 use std::sync::RwLock;
 
+use crate::cli::options::ActivePane;
 use crate::pty::{MasterPty, PtySize, UnixMasterPty};
 
 pub struct PseudoTerminalPane {
@@ -175,4 +180,25 @@ impl PseudoTerminalPane {
   pub fn exit(&self) {
     self.master_cancellation_token.cancel()
   }
+}
+
+impl StatefulWidget for &PseudoTerminalPane {
+  fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State)
+  where
+    Self: Sized,
+  {
+    let block = Block::default()
+      .title("Pseudo Terminal")
+      .borders(ratatui::widgets::Borders::ALL)
+      .border_style(Style::default().fg(if *state == ActivePane::Terminal {
+        Color::Cyan
+      } else {
+        Color::White
+      }));
+    let parser = self.parser.read().unwrap();
+    let pseudo_term = PseudoTerminal::new(parser.screen()).block(block);
+    pseudo_term.render(area, buf);
+  }
+
+  type State = ActivePane;
 }
