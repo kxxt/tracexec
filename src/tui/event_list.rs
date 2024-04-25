@@ -245,12 +245,6 @@ impl EventListApp {
           Event::Init => {
             // Fix the size of the terminal
             action_tx.send(Action::Resize(tui.size()?.into()))?;
-            // Set the window size of the event list
-            self.event_list.window = (0, tui.size()?.height as usize - 4 - 2);
-            log::debug!(
-              "initialized event list window: {:?}",
-              self.event_list.window
-            );
             action_tx.send(Action::Render)?;
           }
           Event::Error => {}
@@ -281,6 +275,13 @@ impl EventListApp {
             }
           }
           Action::Resize(size) => {
+            // Set the window size of the event list
+            self.event_list.window = (0, size.height as usize - 4 - 2);
+            log::debug!(
+              "TUI: set event list window: {:?}",
+              self.event_list.window
+            );
+
             let term_size = PtySize {
               rows: size.height - 2 - 4,
               cols: size.width / 2 - 2,
