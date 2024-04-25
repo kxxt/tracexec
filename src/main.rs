@@ -34,7 +34,7 @@ use crate::{
   log::initialize_panic_handler,
   pty::{native_pty_system, PtySize, PtySystem},
   tracer::TracerMode,
-  tui::event_list::EventListApp,
+  tui::app::App,
 };
 
 #[tokio::main]
@@ -160,7 +160,7 @@ async fn main() -> color_eyre::Result<()> {
         diff_env: true,
         ..Default::default()
       };
-      let mut app = EventListApp::new(&tracing_args, &modifier_args, pty_master, active_pane)?;
+      let mut app = App::new(&tracing_args, &modifier_args, pty_master, active_pane)?;
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
       let mut tracer = tracer::Tracer::new(
         tracer_mode,
