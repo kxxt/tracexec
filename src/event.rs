@@ -77,16 +77,14 @@ macro_rules! tracer_event_spans {
     ($pid: expr, $comm: expr, $printer_args: expr, $($t:tt)*) => {
         chain!([
             Some($pid.to_string().fg(Color::Yellow)),
-            $printer_args
-                .trace_comm
-                .then_some(format!("<{}>", $comm).fg(Color::Cyan)),
+            Some(format!("<{}>", $comm).fg(Color::Cyan)),
             Some(": ".into()),
         ], [$($t)*])
     };
 }
 
 impl TracerEvent {
-  pub fn to_tui_line(&self, args: &PrinterArgs) -> Line {
+  pub fn to_tui_line(&self) -> Line {
     match self {
       TracerEvent::Info(TracerMessage { ref msg, pid }) => chain!(
         ["info".bg(Color::LightBlue)],
@@ -142,8 +140,8 @@ impl TracerEvent {
           Some(" argv: [".into()),
           Some(argv.join(", ").fg(Color::Green)),
           Some("]".into()),
-          args.trace_interpreter.then_some(" interpreter: [".into()),
-          args.trace_interpreter.then_some(
+          Some(" interpreter: [".into()),
+          Some(
             interpreter
               .iter()
               .map(|x| x.to_string())
@@ -151,7 +149,7 @@ impl TracerEvent {
               .join(", ")
               .fg(Color::Green)
           ),
-          args.trace_interpreter.then_some("]".into()),
+          Some("]".into()),
           Some(" envp: [".into()),
           Some(envp.join(", ").fg(Color::Green)),
           Some("] result: ".into()),

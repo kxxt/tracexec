@@ -247,7 +247,7 @@ impl App {
     let items: Vec<ListItem> = items
       .iter()
       .map(|evt| {
-        let full_line = evt.to_tui_line(&self.printer_args);
+        let full_line = evt.to_tui_line();
         max_len = max_len.max(full_line.width());
         full_line
           .substring(self.event_list.horizontal_offset, area.width - 2)
