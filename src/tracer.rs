@@ -40,7 +40,7 @@ use crate::{
 
 cfg_if! {
     if #[cfg(feature = "seccomp-bpf")] {
-        use crate::cli::SeccompBpf;
+        use crate::cli::options::SeccompBpf;
         use crate::seccomp;
         use crate::ptrace::ptrace_cont;
     }
