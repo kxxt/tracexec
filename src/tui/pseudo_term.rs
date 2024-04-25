@@ -24,8 +24,8 @@
 use bytes::Bytes;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::prelude::{Buffer, Rect};
-use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, StatefulWidget, Widget};
+
+use ratatui::widgets::{StatefulWidget, Widget};
 use std::io::{BufWriter, Write};
 use std::sync::Arc;
 use tokio::sync::mpsc::channel;
@@ -35,7 +35,7 @@ use tokio_util::sync::CancellationToken;
 
 use std::sync::RwLock;
 
-use crate::cli::options::ActivePane;
+
 use crate::pty::{MasterPty, PtySize, UnixMasterPty};
 
 pub struct PseudoTerminalPane {

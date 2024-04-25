@@ -21,8 +21,8 @@ use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
   buffer::Buffer,
   layout::{Constraint, Layout, Rect},
-  style::{Color, Modifier, Style},
-  widgets::{Block, HighlightSpacing, List, ListItem, StatefulWidget, Widget},
+  style::{Color, Style},
+  widgets::{Block, StatefulWidget, Widget},
 };
 use tokio::sync::mpsc;
 
@@ -38,7 +38,6 @@ use crate::{
 
 use super::{
   event_list::EventList,
-  partial_line::PartialLine,
   pseudo_term::PseudoTerminalPane,
   ui::{render_footer, render_title},
   Tui,
@@ -229,50 +228,6 @@ impl App {
     }
     Ok(())
   }
-
-  fn render_events(&mut self, area: Rect, buf: &mut Buffer) {
-    let block = Block::default()
-      .title("Events")
-      .borders(ratatui::widgets::Borders::ALL)
-      .border_style(Style::new().fg(if self.active_pane == ActivePane::Events {
-        Color::Cyan
-      } else {
-        Color::White
-      }));
-    let mut max_len = area.width as usize - 2;
-    // Iterate through all elements in the `items` and stylize them.
-    let items = EventList::window(&self.event_list.items, self.event_list.window);
-    self.event_list.nr_items_in_window = items.len();
-    let items: Vec<ListItem> = items
-      .iter()
-      .map(|evt| {
-        let full_line = evt.to_tui_line();
-        max_len = max_len.max(full_line.width());
-        full_line
-          .substring(self.event_list.horizontal_offset, area.width - 2)
-          .into()
-      })
-      .collect();
-    // FIXME: It's a little late to set the max width here. The max width is already used
-    //        Though this should only affect the first render.
-    self.event_list.max_width = max_len;
-    // Create a List from all list items and highlight the currently selected one
-    let items = List::new(items)
-      .highlight_style(
-        Style::default()
-          .add_modifier(Modifier::BOLD)
-          .add_modifier(Modifier::REVERSED)
-          .fg(ratatui::style::Color::Cyan),
-      )
-      .highlight_symbol(">")
-      .highlight_spacing(HighlightSpacing::Always)
-      .block(block);
-
-    // We can now render the item list
-    // (look careful we are using StatefulWidget's render.)
-    // ratatui::widgets::StatefulWidget::render as stateful_render
-    StatefulWidget::render(items, area, buf, &mut self.event_list.state);
-  }
 }
 
 impl Widget for &mut App {
@@ -290,7 +245,16 @@ impl Widget for &mut App {
     };
     let [left_area, right_area] = Layout::horizontal(horizontal_constraints).areas(rest_area);
     render_title(header_area, buf, "tracexec event list");
-    self.render_events(left_area, buf);
+    let block = Block::default()
+      .title("Events")
+      .borders(ratatui::widgets::Borders::ALL)
+      .border_style(Style::new().fg(if self.active_pane == ActivePane::Events {
+        Color::Cyan
+      } else {
+        Color::White
+      }));
+    self.event_list.render(block.inner(left_area), buf);
+    block.render(left_area, buf);
     if let Some(term) = self.term.as_mut() {
       let block = Block::default()
         .title("Pseudo Terminal")

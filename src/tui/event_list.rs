@@ -16,9 +16,15 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use ratatui::widgets::ListState;
+use ratatui::{
+  prelude::{Buffer, Rect},
+  style::{Modifier, Style},
+  widgets::{HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget},
+};
 
 use crate::event::TracerEvent;
+
+use super::partial_line::PartialLine;
 
 pub struct EventList {
   pub state: ListState,
@@ -115,5 +121,45 @@ impl EventList {
   // TODO: this is ugly due to borrow checking.
   pub fn window(items: &[TracerEvent], window: (usize, usize)) -> &[TracerEvent] {
     &items[window.0..window.1.min(items.len())]
+  }
+}
+
+impl Widget for &mut EventList {
+  fn render(self, area: Rect, buf: &mut Buffer)
+  where
+    Self: Sized,
+  {
+    let mut max_len = area.width as usize;
+    // Iterate through all elements in the `items` and stylize them.
+    let items = EventList::window(&self.items, self.window);
+    self.nr_items_in_window = items.len();
+    let items: Vec<ListItem> = items
+      .iter()
+      .map(|evt| {
+        let full_line = evt.to_tui_line();
+        max_len = max_len.max(full_line.width());
+        full_line
+          .substring(self.horizontal_offset, area.width)
+          .into()
+      })
+      .collect();
+    // FIXME: It's a little late to set the max width here. The max width is already used
+    //        Though this should only affect the first render.
+    self.max_width = max_len;
+    // Create a List from all list items and highlight the currently selected one
+    let items = List::new(items)
+      .highlight_style(
+        Style::default()
+          .add_modifier(Modifier::BOLD)
+          .add_modifier(Modifier::REVERSED)
+          .fg(ratatui::style::Color::Cyan),
+      )
+      .highlight_symbol(">")
+      .highlight_spacing(HighlightSpacing::Always);
+
+    // We can now render the item list
+    // (look careful we are using StatefulWidget's render.)
+    // ratatui::widgets::StatefulWidget::render as stateful_render
+    StatefulWidget::render(items, area, buf, &mut self.state);
   }
 }
