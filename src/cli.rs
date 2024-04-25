@@ -50,8 +50,6 @@ pub enum CliCommand {
     #[arg(last = true, required = true, help = "command to be executed")]
     cmd: Vec<String>,
     #[clap(flatten)]
-    tracing_args: TracingArgs,
-    #[clap(flatten)]
     modifier_args: ModifierArgs,
     #[clap(
       long,
@@ -99,7 +97,7 @@ pub struct ModifierArgs {
   pub successful_only: bool,
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Default)]
 pub struct TracingArgs {
   #[clap(
     long,

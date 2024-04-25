@@ -29,7 +29,7 @@ use nix::unistd::{Uid, User};
 use tokio::sync::mpsc;
 
 use crate::{
-  cli::{CliCommand, Color},
+  cli::{CliCommand, Color, TracingArgs},
   event::TracerEvent,
   log::initialize_panic_handler,
   pty::{native_pty_system, PtySize, PtySystem},
@@ -130,7 +130,6 @@ async fn main() -> color_eyre::Result<()> {
     }
     CliCommand::Tui {
       cmd,
-      tracing_args,
       modifier_args,
       tty,
       terminate_on_exit,
@@ -147,6 +146,16 @@ async fn main() -> color_eyre::Result<()> {
         (TracerMode::Tui(Some(pair.slave)), Some(pair.master))
       } else {
         (TracerMode::Tui(None), None)
+      };
+      let tracing_args = TracingArgs {
+        show_cmdline: true,
+        show_argv: true,
+        show_interpreter: true,
+        more_colors: false,
+        less_colors: false,
+        show_children: true,
+        diff_env: true,
+        ..Default::default()
       };
       let mut app = EventListApp::new(&tracing_args, &modifier_args, pty_master)?;
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
