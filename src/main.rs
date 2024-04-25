@@ -25,10 +25,7 @@ use clap::Parser;
 use cli::Cli;
 use color_eyre::eyre::{bail, OptionExt};
 
-use nix::{
-  sys::signal::Signal,
-  unistd::{Uid, User},
-};
+use nix::unistd::{Uid, User};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -152,17 +149,13 @@ async fn main() -> color_eyre::Result<()> {
       let mut tui = tui::Tui::new()?.frame_rate(30.0);
       tui.enter(tracer_rx)?;
       app.run(&mut tui).await?;
-      tui::restore_tui()?;
       // Now when TUI exits, the tracer thread is still running.
       // options:
       // 1. Wait for the tracer thread to exit.
       // 2. Terminate the root process so that the tracer thread exits.
       // 3. Kill the root process so that the tracer thread exits.
-      if terminate_on_exit {
-        app.signal_root_process(Signal::SIGTERM)?;
-      } else if kill_on_exit {
-        app.signal_root_process(Signal::SIGKILL)?;
-      }
+      app.exit(terminate_on_exit, kill_on_exit)?;
+      tui::restore_tui()?;
       tracer_thread.join().unwrap()?;
     }
   }

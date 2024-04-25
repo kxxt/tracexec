@@ -27,6 +27,8 @@ use std::io::{BufWriter, Write};
 use std::sync::Arc;
 use tokio::sync::mpsc::channel;
 
+use tokio_util::sync::CancellationToken;
+
 use std::sync::RwLock;
 
 use crate::pty::{MasterPty, PtySize, UnixMasterPty};
@@ -39,6 +41,7 @@ pub struct PseudoTerminalPane {
   reader_task: tokio::task::JoinHandle<color_eyre::Result<()>>,
   writer_task: tokio::task::JoinHandle<color_eyre::Result<()>>,
   master_tx: tokio::sync::mpsc::Sender<Bytes>,
+  master_cancellation_token: CancellationToken,
   size: PtySize,
 }
 
@@ -75,15 +78,23 @@ impl PseudoTerminalPane {
     };
 
     let (tx, mut rx) = channel::<Bytes>(32);
+    let master_cancellation_token = CancellationToken::new();
 
     let writer_task = {
+      let cancellation_token = master_cancellation_token.clone();
       let mut writer = BufWriter::new(pty_master.take_writer()?);
       // Drop writer on purpose
       tokio::spawn(async move {
-        while let Some(bytes) = rx.recv().await {
-          writer.write_all(&bytes)?;
-          writer.flush()?;
+        loop {
+          tokio::select! {
+            _ = cancellation_token.cancelled() => break,
+            Some(bytes) = rx.recv() => {
+              writer.write_all(&bytes)?;
+              writer.flush()?;
+            }
+          }
         }
+        log::trace!("Closing pty master!");
         Ok(())
       })
     };
@@ -96,6 +107,7 @@ impl PseudoTerminalPane {
       reader_task,
       writer_task,
       master_tx: tx,
+      master_cancellation_token,
     })
   }
 
@@ -157,5 +169,10 @@ impl PseudoTerminalPane {
     parser.set_size(size.rows, size.cols);
     self.pty_master.resize(size)?;
     Ok(())
+  }
+
+  /// Closes pty master
+  pub fn exit(&self) {
+    self.master_cancellation_token.cancel()
   }
 }

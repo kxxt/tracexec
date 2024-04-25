@@ -304,6 +304,18 @@ impl EventListApp {
     }
   }
 
+  pub fn exit(&self, terminate_on_exit: bool, kill_on_exit: bool) -> color_eyre::Result<()> {
+    // Close pty master
+    self.term.as_ref().inspect(|t| t.exit());
+    // Terminate root process
+    if terminate_on_exit {
+      self.signal_root_process(Signal::SIGTERM)?;
+    } else if kill_on_exit {
+      self.signal_root_process(Signal::SIGKILL)?;
+    }
+    Ok(())
+  }
+
   pub fn signal_root_process(&self, sig: Signal) -> color_eyre::Result<()> {
     if let Some(root_pid) = self.root_pid {
       nix::sys::signal::kill(root_pid, sig)?;
