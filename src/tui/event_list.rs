@@ -277,10 +277,7 @@ impl EventListApp {
           Action::Resize(size) => {
             // Set the window size of the event list
             self.event_list.window = (0, size.height as usize - 4 - 2);
-            log::debug!(
-              "TUI: set event list window: {:?}",
-              self.event_list.window
-            );
+            log::debug!("TUI: set event list window: {:?}", self.event_list.window);
 
             let term_size = PtySize {
               rows: size.height - 2 - 4,
@@ -333,7 +330,7 @@ impl EventListApp {
         let full_line = evt.to_tui_line(&self.printer_args);
         max_len = max_len.max(full_line.width() as usize);
         full_line
-          .truncate_start(self.event_list.horizontal_offset)
+          .substring(self.event_list.horizontal_offset, area.width - 2)
           .into()
       })
       .collect();
