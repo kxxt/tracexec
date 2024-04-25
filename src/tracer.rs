@@ -52,9 +52,9 @@ pub struct Tracer {
   mode: TracerMode,
   pub store: ProcessStateStore,
   args: PrinterArgs,
+  event_args: TracerEventArgs,
   env: HashMap<String, String>,
   cwd: std::path::PathBuf,
-  print_children: bool,
   output: Option<Box<PrinterOut>>,
   #[cfg(feature = "seccomp-bpf")]
   seccomp_bpf: SeccompBpf,
@@ -86,13 +86,13 @@ impl Tracer {
       store: ProcessStateStore::new(),
       env: std::env::vars().collect(),
       cwd: std::env::current_dir()?,
-      print_children: tracer_event_args.show_children,
       #[cfg(feature = "seccomp-bpf")]
       seccomp_bpf: modifier_args.seccomp_bpf,
       args: PrinterArgs::from_cli(&tracing_args, &modifier_args),
       output,
       tx,
       user,
+      event_args: tracer_event_args,
     })
   }
 
@@ -304,14 +304,13 @@ impl Tracer {
             | nix::libc::PTRACE_EVENT_CLONE => {
               let new_child = Pid::from_raw(ptrace::getevent(pid)? as pid_t);
               log::trace!("ptrace fork event, evt {evt}, pid: {pid}, child: {new_child}");
-              if self.print_children {
+              if self.event_args.show_children {
                 let parent = self.store.get_current_mut(pid).unwrap();
                 self.tx.send(TracerEvent::NewChild {
                   ppid: parent.pid,
                   pcomm: parent.comm.clone(),
                   pid: new_child,
                 })?;
-                // TODO: replace print
                 print_new_child(self.output.as_deref_mut(), parent, &self.args, new_child)?;
               }
               if let Some(state) = self.store.get_current_mut(new_child) {
