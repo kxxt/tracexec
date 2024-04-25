@@ -36,6 +36,8 @@ pub enum CliCommand {
     cmd: Vec<String>,
     #[clap(flatten)]
     tracing_args: TracingArgs,
+    #[clap(flatten)]
+    modifier_args: ModifierArgs,
     #[clap(
       short,
       long,
@@ -49,6 +51,8 @@ pub enum CliCommand {
     cmd: Vec<String>,
     #[clap(flatten)]
     tracing_args: TracingArgs,
+    #[clap(flatten)]
+    modifier_args: ModifierArgs,
     #[clap(
       long,
       short,
@@ -87,14 +91,21 @@ pub enum SeccompBpf {
 }
 
 #[derive(Args, Debug)]
-pub struct TracingArgs {
+pub struct ModifierArgs {
+  #[cfg(feature = "seccomp-bpf")]
+  #[clap(long, help = "seccomp-bpf filtering option", default_value_t = SeccompBpf::Auto)]
+  pub seccomp_bpf: SeccompBpf,
   #[clap(long, help = "Only show successful calls", default_value_t = false)]
   pub successful_only: bool,
+}
+
+#[derive(Args, Debug)]
+pub struct TracingArgs {
   #[clap(
-        long,
-        help = "Print commandline that reproduces what was executed. Note that when filename and argv[0] differs, it probably won't give you the correct commandline for now. Implies --successful-only",
-        conflicts_with_all = ["show_env", "diff_env", "show_argv"]
-    )]
+    long,
+    help = "Print commandline that reproduces what was executed. Note that when filename and argv[0] differs, it probably won't give you the correct commandline for now. Implies --successful-only",
+    conflicts_with_all = ["show_env", "diff_env", "show_argv"]
+)]
   pub show_cmdline: bool,
   #[clap(long, help = "Try to show script interpreter indicated by shebang")]
   pub show_interpreter: bool,
@@ -104,9 +115,6 @@ pub struct TracingArgs {
   pub less_colors: bool,
   #[clap(long, help = "Print a message when a child is created")]
   pub show_children: bool,
-  #[cfg(feature = "seccomp-bpf")]
-  #[clap(long, help = "seccomp-bpf filtering option", default_value_t = SeccompBpf::Auto)]
-  pub seccomp_bpf: SeccompBpf,
   // BEGIN ugly: https://github.com/clap-rs/clap/issues/815
   #[clap(
     long,

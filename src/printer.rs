@@ -4,7 +4,11 @@ use std::{
   path::Path,
 };
 
-use crate::{cli::TracingArgs, proc::Interpreter, state::ProcessState};
+use crate::{
+  cli::{ModifierArgs, TracingArgs},
+  proc::Interpreter,
+  state::ProcessState,
+};
 
 use nix::unistd::Pid;
 use owo_colors::{OwoColorize, Style};
@@ -76,8 +80,8 @@ pub struct PrinterArgs {
   pub color: ColorLevel,
 }
 
-impl From<&TracingArgs> for PrinterArgs {
-  fn from(tracing_args: &TracingArgs) -> Self {
+impl PrinterArgs {
+  pub fn from_cli(tracing_args: &TracingArgs, modifier_args: &ModifierArgs) -> Self {
     PrinterArgs {
       trace_comm: !tracing_args.no_show_comm,
       trace_argv: !tracing_args.no_show_argv && !tracing_args.show_cmdline,
@@ -94,7 +98,7 @@ impl From<&TracingArgs> for PrinterArgs {
       },
       trace_cwd: tracing_args.show_cwd,
       print_cmdline: tracing_args.show_cmdline,
-      successful_only: tracing_args.successful_only || tracing_args.show_cmdline,
+      successful_only: modifier_args.successful_only || tracing_args.show_cmdline,
       trace_interpreter: tracing_args.show_interpreter,
       trace_filename: match (
         tracing_args.show_filename,

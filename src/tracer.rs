@@ -27,7 +27,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
   arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
-  cli::TracingArgs,
+  cli::{ModifierArgs, TracingArgs},
   cmdbuilder::CommandBuilder,
   event::{ExecEvent, TracerEvent, TracerMessage},
   inspect::{read_pathbuf, read_string, read_string_array},
@@ -71,6 +71,7 @@ impl Tracer {
   pub fn new(
     mode: TracerMode,
     tracing_args: TracingArgs,
+    modifier_args: ModifierArgs,
     output: Option<Box<dyn Write + Send>>,
     tx: UnboundedSender<TracerEvent>,
     user: Option<User>,
@@ -86,8 +87,8 @@ impl Tracer {
       cwd: std::env::current_dir()?,
       print_children: tracing_args.show_children,
       #[cfg(feature = "seccomp-bpf")]
-      seccomp_bpf: tracing_args.seccomp_bpf,
-      args: (&tracing_args).into(),
+      seccomp_bpf: modifier_args.seccomp_bpf,
+      args: PrinterArgs::from_cli(&tracing_args, &modifier_args),
       output,
       tx,
       user,

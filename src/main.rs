@@ -90,6 +90,7 @@ async fn main() -> color_eyre::Result<()> {
     CliCommand::Log {
       cmd,
       tracing_args,
+      modifier_args,
       output,
     } => {
       let output: Box<dyn Write + Send> = match output {
@@ -109,8 +110,14 @@ async fn main() -> color_eyre::Result<()> {
         }
       };
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
-      let mut tracer =
-        tracer::Tracer::new(TracerMode::Cli, tracing_args, Some(output), tracer_tx, user)?;
+      let mut tracer = tracer::Tracer::new(
+        TracerMode::Cli,
+        tracing_args,
+        modifier_args,
+        Some(output),
+        tracer_tx,
+        user,
+      )?;
       let tracer_thread = thread::Builder::new()
         .name("tracer".to_string())
         .spawn(move || tracer.start_root_process(cmd))?;
@@ -124,6 +131,7 @@ async fn main() -> color_eyre::Result<()> {
     CliCommand::Tui {
       cmd,
       tracing_args,
+      modifier_args,
       tty,
       terminate_on_exit,
       kill_on_exit,
@@ -140,9 +148,16 @@ async fn main() -> color_eyre::Result<()> {
       } else {
         (TracerMode::Tui(None), None)
       };
-      let mut app = EventListApp::new(&tracing_args, pty_master)?;
+      let mut app = EventListApp::new(&tracing_args, &modifier_args, pty_master)?;
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
-      let mut tracer = tracer::Tracer::new(tracer_mode, tracing_args, None, tracer_tx, user)?;
+      let mut tracer = tracer::Tracer::new(
+        tracer_mode,
+        tracing_args,
+        modifier_args,
+        None,
+        tracer_tx,
+        user,
+      )?;
       let tracer_thread = thread::Builder::new()
         .name("tracer".to_string())
         .spawn(move || tracer.start_root_process(cmd))?;

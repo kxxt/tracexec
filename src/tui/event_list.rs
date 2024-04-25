@@ -28,7 +28,7 @@ use tokio::sync::mpsc;
 use tui_term::widget::PseudoTerminal;
 
 use crate::{
-  cli::TracingArgs,
+  cli::{ModifierArgs, TracingArgs},
   event::{Action, Event, TracerEvent},
   printer::PrinterArgs,
   pty::{PtySize, UnixMasterPty},
@@ -159,11 +159,12 @@ pub struct EventListApp {
 impl EventListApp {
   pub fn new(
     tracing_args: &TracingArgs,
+    modifier_args: &ModifierArgs,
     pty_master: Option<UnixMasterPty>,
   ) -> color_eyre::Result<Self> {
     Ok(Self {
       event_list: EventList::new(),
-      printer_args: tracing_args.into(),
+      printer_args: PrinterArgs::from_cli(tracing_args, modifier_args),
       term: if let Some(pty_master) = pty_master {
         Some(PseudoTerminalPane::new(
           PtySize {
