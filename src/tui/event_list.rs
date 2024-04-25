@@ -46,6 +46,8 @@ pub struct EventList {
   items: Vec<TracerEvent>,
   /// Current window of the event list, [start, end)
   window: (usize, usize),
+  /// How many items are there in the window
+  nr_items_in_window: usize,
   last_selected: Option<usize>,
   horizontal_offset: usize,
   max_width: usize,
@@ -61,6 +63,7 @@ impl EventList {
       items: vec![],
       last_selected: None,
       window: (0, 0),
+      nr_items_in_window: 0,
       horizontal_offset: 0,
       max_width: 0,
       is_active: true,
@@ -92,17 +95,16 @@ impl EventList {
   pub fn next(&mut self) {
     // i is the number of the selected item relative to the window
     let i = match self.state.selected() {
-      Some(i) => {
-        if i >= self.window.1 - self.window.0 - 1 {
-          if self.next_window() {
-            i
-          } else {
-            i
-          }
+      Some(i) => if i >= self.window.1 - self.window.0 - 1 {
+        if self.next_window() {
+          i
         } else {
-          i + 1
+          i
         }
+      } else {
+        i + 1
       }
+      .min(self.nr_items_in_window - 1),
       None => self.last_selected.unwrap_or(0),
     };
     self.state.select(Some(i));
@@ -142,11 +144,8 @@ impl EventList {
   }
 
   // TODO: this is ugly due to borrow checking.
-  pub fn window(
-    items: &Vec<TracerEvent>,
-    window: (usize, usize),
-  ) -> impl Iterator<Item = &TracerEvent> {
-    items[window.0..window.1.min(items.len())].iter()
+  pub fn window(items: &Vec<TracerEvent>, window: (usize, usize)) -> &[TracerEvent] {
+    &items[window.0..window.1.min(items.len())]
   }
 }
 
@@ -325,7 +324,10 @@ impl EventListApp {
       }));
     let mut max_len = area.width as usize - 2;
     // Iterate through all elements in the `items` and stylize them.
-    let items: Vec<ListItem> = EventList::window(&self.event_list.items, self.event_list.window)
+    let items = EventList::window(&self.event_list.items, self.event_list.window);
+    self.event_list.nr_items_in_window = items.len();
+    let items: Vec<ListItem> = items
+      .iter()
       .map(|evt| {
         let full_line = evt.to_tui_line(&self.printer_args);
         max_len = max_len.max(full_line.width() as usize);
