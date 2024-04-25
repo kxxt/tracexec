@@ -69,6 +69,7 @@ pub enum Action {
     PrevItem,
     ScrollLeft,
     ScrollRight,
+    SwitchActivePane,
     HandleTerminalKeyPress(KeyEvent),
 }
 

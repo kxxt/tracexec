@@ -21,7 +21,7 @@ use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     widgets::{Block, HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget},
 };
 use tokio::sync::mpsc;
@@ -49,6 +49,9 @@ pub struct EventList {
     last_selected: Option<usize>,
     horizontal_offset: usize,
     max_width: usize,
+    /// Whether the event list is active
+    /// When the event list is not active, the terminal will be active
+    is_active: bool,
 }
 
 impl EventList {
@@ -60,6 +63,7 @@ impl EventList {
             window: (0, 0),
             horizontal_offset: 0,
             max_width: 0,
+            is_active: true,
         }
     }
 
@@ -189,7 +193,14 @@ impl EventListApp {
                         action_tx.send(Action::Quit)?;
                     }
                     Event::Key(ke) => {
-                        if ke.code == KeyCode::Char('q') {
+                        if ke.code == KeyCode::Char('s')
+                            && ke
+                                .modifiers
+                                .contains(crossterm::event::KeyModifiers::CONTROL)
+                        {
+                            action_tx.send(Action::SwitchActivePane)?;
+                            action_tx.send(Action::Render)?;
+                        } else if ke.code == KeyCode::Char('q') {
                             action_tx.send(Action::Quit)?;
                         } else if ke.code == KeyCode::Down {
                             action_tx.send(Action::NextItem)?;
@@ -279,6 +290,9 @@ impl EventListApp {
                     Action::ScrollRight => {
                         self.event_list.scroll_right();
                     }
+                    Action::SwitchActivePane => {
+                        self.event_list.is_active = !self.event_list.is_active;
+                    }
                 }
             }
         }
@@ -295,7 +309,11 @@ impl EventListApp {
         let block = Block::default()
             .title("Events")
             .borders(ratatui::widgets::Borders::ALL)
-            .border_style(Style::new().fg(ratatui::style::Color::Cyan));
+            .border_style(Style::new().fg(if self.event_list.is_active {
+                Color::Cyan
+            } else {
+                Color::White
+            }));
         let mut max_len = area.width as usize - 2;
         // Iterate through all elements in the `items` and stylize them.
         let items: Vec<ListItem> =
@@ -349,7 +367,12 @@ impl Widget for &mut EventListApp {
         if let Some(term) = self.term.as_mut() {
             let block = Block::default()
                 .title("Pseudo Terminal")
-                .borders(ratatui::widgets::Borders::ALL);
+                .borders(ratatui::widgets::Borders::ALL)
+                .border_style(Style::default().fg(if !self.event_list.is_active {
+                    Color::Cyan
+                } else {
+                    Color::White
+                }));
             let parser = term.parser.read().unwrap();
             let pseudo_term = PseudoTerminal::new(parser.screen()).block(block);
             pseudo_term.render(right_area, buf);
