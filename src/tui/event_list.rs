@@ -36,6 +36,7 @@ pub struct EventList {
   last_selected: Option<usize>,
   pub horizontal_offset: usize,
   pub max_width: usize,
+  pub max_window_len: usize,
 }
 
 impl EventList {
@@ -48,6 +49,7 @@ impl EventList {
       nr_items_in_window: 0,
       horizontal_offset: 0,
       max_width: 0,
+      max_window_len: 0,
     }
   }
 
@@ -108,6 +110,34 @@ impl EventList {
     self.last_selected = self.state.selected();
     self.state.select(None);
     *self.state.offset_mut() = offset;
+  }
+
+  pub fn page_down(&mut self) {
+    if self.window.1 + self.max_window_len <= self.items.len() {
+      self.window.0 += self.max_window_len;
+      self.window.1 += self.max_window_len;
+    } else {
+      // If we can't slide down the window by the number of items in the window
+      // just set the window to the last items
+      self.window.0 = self
+        .items
+        .len()
+        .saturating_sub(self.max_window_len);
+      self.window.1 = self.window.0 + self.max_window_len;
+    }
+  }
+
+  pub fn page_up(&mut self) {
+    // Try to slide up the window by the number of items in the window
+    if self.window.0 >= self.max_window_len {
+      self.window.0 -= self.max_window_len;
+      self.window.1 -= self.max_window_len;
+    } else {
+      // If we can't slide up the window by the number of items in the window
+      // just set the window to the first items
+      self.window.0 = 0;
+      self.window.1 = self.window.0 + self.max_window_len;
+    }
   }
 
   pub fn scroll_left(&mut self) {

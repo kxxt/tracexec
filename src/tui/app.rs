@@ -122,6 +122,12 @@ impl App {
                 } else if ke.code == KeyCode::Right {
                   action_tx.send(Action::ScrollRight)?;
                   // action_tx.send(Action::Render)?;
+                } else if ke.code == KeyCode::PageDown {
+                  action_tx.send(Action::PageDown)?;
+                  // action_tx.send(Action::Render)?;
+                } else if ke.code == KeyCode::PageUp {
+                  action_tx.send(Action::PageUp)?;
+                  // action_tx.send(Action::Render)?;
                 }
               } else {
                 action_tx.send(Action::HandleTerminalKeyPress(ke))?;
@@ -172,6 +178,12 @@ impl App {
           Action::PrevItem => {
             self.event_list.previous();
           }
+          Action::PageDown => {
+            self.event_list.page_down();
+          }
+          Action::PageUp => {
+            self.event_list.page_up();
+          }
           Action::HandleTerminalKeyPress(ke) => {
             if let Some(term) = self.term.as_mut() {
               term.handle_key_event(&ke).await;
@@ -179,9 +191,10 @@ impl App {
           }
           Action::Resize(size) => {
             // Set the window size of the event list
+            self.event_list.max_window_len = size.height as usize - 4 - 2;
             self.event_list.window = (
               self.event_list.window.0,
-              self.event_list.window.0 + size.height as usize - 4 - 2,
+              self.event_list.window.0 + self.event_list.max_window_len,
             );
             log::debug!("TUI: set event list window: {:?}", self.event_list.window);
 
