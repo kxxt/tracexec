@@ -29,62 +29,62 @@ pub use log::*;
 use crate::tui::restore_tui;
 
 lazy_static! {
-    pub static ref PROJECT_NAME: String = env!("CARGO_CRATE_NAME").to_uppercase().to_string();
-    pub static ref DATA_FOLDER: Option<PathBuf> =
-        std::env::var(format!("{}_DATA", PROJECT_NAME.clone()))
-            .ok()
-            .map(PathBuf::from);
-    pub static ref LOG_ENV: String = format!("{}_LOGLEVEL", PROJECT_NAME.clone());
-    pub static ref LOG_FILE: String = format!("{}.log", env!("CARGO_PKG_NAME"));
+  pub static ref PROJECT_NAME: String = env!("CARGO_CRATE_NAME").to_uppercase().to_string();
+  pub static ref DATA_FOLDER: Option<PathBuf> =
+    std::env::var(format!("{}_DATA", PROJECT_NAME.clone()))
+      .ok()
+      .map(PathBuf::from);
+  pub static ref LOG_ENV: String = format!("{}_LOGLEVEL", PROJECT_NAME.clone());
+  pub static ref LOG_FILE: String = format!("{}.log", env!("CARGO_PKG_NAME"));
 }
 
 fn project_directory() -> Option<ProjectDirs> {
-    ProjectDirs::from("dev", "kxxt", env!("CARGO_PKG_NAME"))
+  ProjectDirs::from("dev", "kxxt", env!("CARGO_PKG_NAME"))
 }
 
 pub fn get_data_dir() -> PathBuf {
-    let directory = if let Some(s) = DATA_FOLDER.clone() {
-        s
-    } else if let Some(proj_dirs) = project_directory() {
-        proj_dirs.data_local_dir().to_path_buf()
-    } else {
-        PathBuf::from(".").join(".data")
-    };
-    directory
+  let directory = if let Some(s) = DATA_FOLDER.clone() {
+    s
+  } else if let Some(proj_dirs) = project_directory() {
+    proj_dirs.data_local_dir().to_path_buf()
+  } else {
+    PathBuf::from(".").join(".data")
+  };
+  directory
 }
 
 pub fn initialize_logging() -> Result<()> {
-    let directory = get_data_dir();
-    std::fs::create_dir_all(directory.clone())?;
-    let log_path = directory.join(LOG_FILE.clone());
-    let log_file = std::fs::File::create(log_path)?;
-    let file_subscriber = tracing_subscriber::fmt::layer()
-        .with_file(true)
-        .with_thread_ids(true)
-        .with_thread_names(true)
-        .with_line_number(true)
-        .with_writer(log_file)
-        .with_target(false)
-        .with_ansi(false);
+  let directory = get_data_dir();
+  std::fs::create_dir_all(directory.clone())?;
+  let log_path = directory.join(LOG_FILE.clone());
+  let log_file = std::fs::File::create(log_path)?;
+  let file_subscriber = tracing_subscriber::fmt::layer()
+    .with_file(true)
+    .with_thread_ids(true)
+    .with_thread_names(true)
+    .with_line_number(true)
+    .with_writer(log_file)
+    .with_target(false)
+    .with_ansi(false);
 
-    let file_subscriber = if let Ok(_) = std::env::var(LOG_ENV.clone()) {
-        file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::from_env(
-            LOG_ENV.clone(),
-        ))
-    } else if let Ok(_) = std::env::var("RUST_LOG") {
-        file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::from_env("RUST_LOG"))
-    } else {
-        file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::new(format!(
-            "{}=info",
-            env!("CARGO_CRATE_NAME")
-        )))
-    };
+  let file_subscriber = if let Ok(_) = std::env::var(LOG_ENV.clone()) {
+    file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::from_env(
+      LOG_ENV.clone(),
+    ))
+  } else if let Ok(_) = std::env::var("RUST_LOG") {
+    file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::from_env("RUST_LOG"))
+  } else {
+    file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::new(format!(
+      "{}=info",
+      env!("CARGO_CRATE_NAME")
+    )))
+  };
 
-    tracing_subscriber::registry()
-        .with(file_subscriber)
-        .with(ErrorLayer::default())
-        .init();
-    Ok(())
+  tracing_subscriber::registry()
+    .with(file_subscriber)
+    .with(ErrorLayer::default())
+    .init();
+  Ok(())
 }
 
 /// Similar to the `std::dbg!` macro, but generates `tracing` events rather
@@ -114,15 +114,15 @@ macro_rules! trace_dbg {
 }
 
 pub fn initialize_panic_handler() {
-    std::panic::set_hook(Box::new(|panic_info| {
-        if let Err(e) = restore_tui() {
-            error!("Unable to restore Terminal: {e:?}");
-        }
-        better_panic::Settings::auto()
-            .most_recent_first(false)
-            .lineno_suffix(true)
-            .verbosity(better_panic::Verbosity::Full)
-            .create_panic_handler()(panic_info);
-        std::process::exit(nix::libc::EXIT_FAILURE);
-    }));
+  std::panic::set_hook(Box::new(|panic_info| {
+    if let Err(e) = restore_tui() {
+      error!("Unable to restore Terminal: {e:?}");
+    }
+    better_panic::Settings::auto()
+      .most_recent_first(false)
+      .lineno_suffix(true)
+      .verbosity(better_panic::Verbosity::Full)
+      .create_panic_handler()(panic_info);
+    std::process::exit(nix::libc::EXIT_FAILURE);
+  }));
 }
