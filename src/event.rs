@@ -10,7 +10,7 @@ use ratatui::{
 };
 use strum::Display;
 
-use crate::{printer::PrinterArgs, proc::Interpreter};
+use crate::proc::Interpreter;
 
 #[derive(Debug, Clone, Display, PartialEq)]
 pub enum Event {
@@ -74,7 +74,7 @@ pub enum Action {
 }
 
 macro_rules! tracer_event_spans {
-    ($pid: expr, $comm: expr, $printer_args: expr, $($t:tt)*) => {
+    ($pid: expr, $comm: expr, $($t:tt)*) => {
         chain!([
             Some($pid.to_string().fg(Color::Yellow)),
             Some(format!("<{}>", $comm).fg(Color::Cyan)),
@@ -115,7 +115,6 @@ impl TracerEvent {
         let spans = tracer_event_spans!(
           ppid,
           pcomm,
-          args,
           Some("new child ".fg(Color::Magenta)),
           Some(pid.to_string().fg(Color::Yellow)),
         );
@@ -134,7 +133,6 @@ impl TracerEvent {
         let spans = tracer_event_spans!(
           pid,
           comm,
-          args,
           Some("exec ".fg(Color::Magenta)),
           Some(filename.display().to_string().fg(Color::Green)),
           Some(" argv: [".into()),
