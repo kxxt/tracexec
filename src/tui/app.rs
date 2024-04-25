@@ -26,7 +26,6 @@ use ratatui::{
 };
 use tokio::sync::mpsc;
 
-
 use crate::{
   cli::{
     args::{ModifierArgs, TracingArgs},
@@ -293,7 +292,18 @@ impl Widget for &mut App {
     render_title(header_area, buf, "tracexec event list");
     self.render_events(left_area, buf);
     if let Some(term) = self.term.as_mut() {
-      term.render(right_area, buf, &mut self.active_pane);
+      let block = Block::default()
+        .title("Pseudo Terminal")
+        .borders(ratatui::widgets::Borders::ALL)
+        .border_style(
+          Style::default().fg(if self.active_pane == ActivePane::Terminal {
+            Color::Cyan
+          } else {
+            Color::White
+          }),
+        );
+      term.render(block.inner(right_area), buf);
+      block.render(right_area, buf);
     }
     render_footer(footer_area, buf, "Press 'q' to quit");
   }

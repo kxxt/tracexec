@@ -182,23 +182,13 @@ impl PseudoTerminalPane {
   }
 }
 
-impl StatefulWidget for &PseudoTerminalPane {
-  fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State)
+impl Widget for &PseudoTerminalPane {
+  fn render(self, area: Rect, buf: &mut Buffer)
   where
     Self: Sized,
   {
-    let block = Block::default()
-      .title("Pseudo Terminal")
-      .borders(ratatui::widgets::Borders::ALL)
-      .border_style(Style::default().fg(if *state == ActivePane::Terminal {
-        Color::Cyan
-      } else {
-        Color::White
-      }));
     let parser = self.parser.read().unwrap();
-    let pseudo_term = PseudoTerminal::new(parser.screen()).block(block);
+    let pseudo_term = PseudoTerminal::new(parser.screen());
     pseudo_term.render(area, buf);
   }
-
-  type State = ActivePane;
 }
