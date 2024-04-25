@@ -35,6 +35,7 @@ use crate::{
 };
 
 use super::{
+    partial_line::PartialLine,
     pseudo_term::PseudoTerminalPane,
     ui::{render_footer, render_title},
     Tui,
@@ -284,7 +285,7 @@ impl EventListApp {
         // Iterate through all elements in the `items` and stylize them.
         let items: Vec<ListItem> =
             EventList::window(&self.event_list.items, self.event_list.window)
-                .map(|evt| evt.to_tui_line(&self.printer_args).into())
+                .map(|evt| evt.to_tui_line(&self.printer_args).substring(0, area.width - 2).into())
                 .collect();
         // Create a List from all list items and highlight the currently selected one
         let items = List::new(items)

@@ -40,6 +40,7 @@ use crate::event::{Event, TracerEvent};
 pub mod event_list;
 pub mod pseudo_term;
 pub mod ui;
+pub mod partial_line;
 
 pub struct Tui {
     pub terminal: ratatui::Terminal<Backend<std::io::Stderr>>,
