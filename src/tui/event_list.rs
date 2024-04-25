@@ -201,7 +201,7 @@ impl EventListApp {
                 .contains(crossterm::event::KeyModifiers::CONTROL)
             {
               action_tx.send(Action::SwitchActivePane)?;
-              action_tx.send(Action::Render)?;
+              // action_tx.send(Action::Render)?;
             } else {
               log::trace!("TUI: Event list active: {}", self.event_list.is_active);
               if self.event_list.is_active {
@@ -209,20 +209,20 @@ impl EventListApp {
                   action_tx.send(Action::Quit)?;
                 } else if ke.code == KeyCode::Down {
                   action_tx.send(Action::NextItem)?;
-                  action_tx.send(Action::Render)?;
+                  // action_tx.send(Action::Render)?;
                 } else if ke.code == KeyCode::Up {
                   action_tx.send(Action::PrevItem)?;
-                  action_tx.send(Action::Render)?;
+                  // action_tx.send(Action::Render)?;
                 } else if ke.code == KeyCode::Left {
                   action_tx.send(Action::ScrollLeft)?;
-                  action_tx.send(Action::Render)?;
+                  // action_tx.send(Action::Render)?;
                 } else if ke.code == KeyCode::Right {
                   action_tx.send(Action::ScrollRight)?;
-                  action_tx.send(Action::Render)?;
+                  // action_tx.send(Action::Render)?;
                 }
               } else {
                 action_tx.send(Action::HandleTerminalKeyPress(ke))?;
-                action_tx.send(Action::Render)?;
+                // action_tx.send(Action::Render)?;
               }
             }
           }
@@ -232,7 +232,7 @@ impl EventListApp {
             }
             te => {
               self.event_list.items.push(te);
-              action_tx.send(Action::Render)?;
+              // action_tx.send(Action::Render)?;
             }
           },
           Event::Render => {
@@ -240,12 +240,12 @@ impl EventListApp {
           }
           Event::Resize(size) => {
             action_tx.send(Action::Resize(size))?;
-            action_tx.send(Action::Render)?;
+            // action_tx.send(Action::Render)?;
           }
           Event::Init => {
             // Fix the size of the terminal
             action_tx.send(Action::Resize(tui.size()?.into()))?;
-            action_tx.send(Action::Render)?;
+            // action_tx.send(Action::Render)?;
           }
           Event::Error => {}
         }
