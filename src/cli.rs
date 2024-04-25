@@ -38,6 +38,8 @@ pub enum CliCommand {
     tracing_args: TracingArgs,
     #[clap(flatten)]
     modifier_args: ModifierArgs,
+    #[clap(flatten)]
+    tracer_event_args: TracerEventArgs,
     #[clap(
       short,
       long,
@@ -51,6 +53,8 @@ pub enum CliCommand {
     cmd: Vec<String>,
     #[clap(flatten)]
     modifier_args: ModifierArgs,
+    #[clap(flatten)]
+    tracer_event_args: TracerEventArgs,
     #[clap(
       long,
       short,
@@ -98,6 +102,12 @@ pub struct ModifierArgs {
 }
 
 #[derive(Args, Debug, Default)]
+pub struct TracerEventArgs {
+  #[clap(long, help = "Print a message when a child is created")]
+  pub show_children: bool,
+}
+
+#[derive(Args, Debug, Default)]
 pub struct TracingArgs {
   #[clap(
     long,
@@ -111,8 +121,6 @@ pub struct TracingArgs {
   pub more_colors: bool,
   #[clap(long, help = "Less colors", conflicts_with = "more_colors")]
   pub less_colors: bool,
-  #[clap(long, help = "Print a message when a child is created")]
-  pub show_children: bool,
   // BEGIN ugly: https://github.com/clap-rs/clap/issues/815
   #[clap(
     long,

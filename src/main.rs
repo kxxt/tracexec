@@ -91,6 +91,7 @@ async fn main() -> color_eyre::Result<()> {
       cmd,
       tracing_args,
       modifier_args,
+      tracer_event_args,
       output,
     } => {
       let output: Box<dyn Write + Send> = match output {
@@ -114,6 +115,7 @@ async fn main() -> color_eyre::Result<()> {
         TracerMode::Cli,
         tracing_args,
         modifier_args,
+        tracer_event_args,
         Some(output),
         tracer_tx,
         user,
@@ -131,6 +133,7 @@ async fn main() -> color_eyre::Result<()> {
     CliCommand::Tui {
       cmd,
       modifier_args,
+      tracer_event_args,
       tty,
       terminate_on_exit,
       kill_on_exit,
@@ -153,7 +156,6 @@ async fn main() -> color_eyre::Result<()> {
         show_interpreter: true,
         more_colors: false,
         less_colors: false,
-        show_children: true,
         diff_env: true,
         ..Default::default()
       };
@@ -163,6 +165,7 @@ async fn main() -> color_eyre::Result<()> {
         tracer_mode,
         tracing_args,
         modifier_args,
+        tracer_event_args,
         None,
         tracer_tx,
         user,
