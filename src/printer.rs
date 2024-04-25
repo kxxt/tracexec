@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-  cli::{ModifierArgs, TracingArgs},
+  cli::args::{ModifierArgs, TracingArgs},
   proc::Interpreter,
   state::ProcessState,
 };

@@ -27,7 +27,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
   arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
-  cli::{ModifierArgs, TracerEventArgs, TracingArgs},
+  cli::args::{ModifierArgs, TracerEventArgs, TracingArgs},
   cmdbuilder::CommandBuilder,
   event::{ExecEvent, TracerEvent, TracerMessage},
   inspect::{read_pathbuf, read_string, read_string_array},

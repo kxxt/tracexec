@@ -28,7 +28,10 @@ use tokio::sync::mpsc;
 use tui_term::widget::PseudoTerminal;
 
 use crate::{
-  cli::{options::ActivePane, ModifierArgs, TracingArgs},
+  cli::{
+    args::{ModifierArgs, TracingArgs},
+    options::ActivePane,
+  },
   event::{Action, Event, TracerEvent},
   printer::PrinterArgs,
   pty::{PtySize, UnixMasterPty},

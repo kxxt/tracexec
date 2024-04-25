@@ -29,7 +29,7 @@ use nix::unistd::{Uid, User};
 use tokio::sync::mpsc;
 
 use crate::{
-  cli::{options::Color, CliCommand, TracingArgs},
+  cli::{args::TracingArgs, options::Color, CliCommand},
   event::TracerEvent,
   log::initialize_panic_handler,
   pty::{native_pty_system, PtySize, PtySystem},
