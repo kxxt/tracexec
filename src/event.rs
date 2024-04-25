@@ -12,7 +12,7 @@ use strum::Display;
 
 use crate::{printer::PrinterArgs, proc::Interpreter};
 
-#[derive(Debug, Clone, Display)]
+#[derive(Debug, Clone, Display, PartialEq)]
 pub enum Event {
     ShouldQuit,
     Key(KeyEvent),
@@ -23,7 +23,7 @@ pub enum Event {
     Error,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TracerEvent {
     Info(TracerMessage),
     Warning(TracerMessage),
@@ -42,13 +42,13 @@ pub enum TracerEvent {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TracerMessage {
     pub pid: Option<Pid>,
     pub msg: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExecEvent {
     pub pid: Pid,
     pub cwd: PathBuf,

@@ -188,6 +188,9 @@ impl EventListApp {
         loop {
             // Handle events
             if let Some(e) = tui.next().await {
+                if e != Event::Render {
+                    log::trace!("Received event {e:?}");
+                }
                 match e {
                     Event::ShouldQuit => {
                         action_tx.send(Action::Quit)?;
@@ -200,22 +203,28 @@ impl EventListApp {
                         {
                             action_tx.send(Action::SwitchActivePane)?;
                             action_tx.send(Action::Render)?;
-                        } else if ke.code == KeyCode::Char('q') {
-                            action_tx.send(Action::Quit)?;
-                        } else if ke.code == KeyCode::Down {
-                            action_tx.send(Action::NextItem)?;
-                            action_tx.send(Action::Render)?;
-                        } else if ke.code == KeyCode::Up {
-                            action_tx.send(Action::PrevItem)?;
-                            action_tx.send(Action::Render)?;
-                        } else if ke.code == KeyCode::Left {
-                            action_tx.send(Action::ScrollLeft)?;
-                            action_tx.send(Action::Render)?;
-                        } else if ke.code == KeyCode::Right {
-                            action_tx.send(Action::ScrollRight)?;
-                            action_tx.send(Action::Render)?;
                         } else {
-                            action_tx.send(Action::HandleTerminalKeyPress(ke))?;
+                            log::trace!("TUI: Event list active: {}", self.event_list.is_active);
+                            if self.event_list.is_active {
+                                if ke.code == KeyCode::Char('q') {
+                                    action_tx.send(Action::Quit)?;
+                                } else if ke.code == KeyCode::Down {
+                                    action_tx.send(Action::NextItem)?;
+                                    action_tx.send(Action::Render)?;
+                                } else if ke.code == KeyCode::Up {
+                                    action_tx.send(Action::PrevItem)?;
+                                    action_tx.send(Action::Render)?;
+                                } else if ke.code == KeyCode::Left {
+                                    action_tx.send(Action::ScrollLeft)?;
+                                    action_tx.send(Action::Render)?;
+                                } else if ke.code == KeyCode::Right {
+                                    action_tx.send(Action::ScrollRight)?;
+                                    action_tx.send(Action::Render)?;
+                                }
+                            } else {
+                                action_tx.send(Action::HandleTerminalKeyPress(ke))?;
+                                action_tx.send(Action::Render)?;
+                            }
                         }
                     }
                     Event::Tracer(te) => match te {

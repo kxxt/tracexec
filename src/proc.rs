@@ -41,7 +41,7 @@ pub fn read_fd(pid: Pid, fd: i32) -> std::io::Result<PathBuf> {
     std::fs::read_link(filename)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Interpreter {
     None,
     Shebang(String),
