@@ -127,3 +127,34 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
   let shebang = String::from_utf8_lossy(&buf[start..end]);
   Interpreter::Shebang(shebang.into_owned())
 }
+
+pub fn parse_env_entry(item: &str) -> (&str, &str) {
+  let mut sep_loc = item
+    .as_bytes()
+    .iter()
+    .position(|&x| x == b'=')
+    .unwrap_or_else(|| {
+      log::warn!(
+        "Invalid envp entry: {:?}, assuming value to empty string!",
+        item
+      );
+      item.len()
+    });
+  if sep_loc == 0 {
+    // Find the next equal sign
+    sep_loc = item
+      .as_bytes()
+      .iter()
+      .skip(1)
+      .position(|&x| x == b'=')
+      .unwrap_or_else(|| {
+        log::warn!(
+          "Invalid envp entry starting with '=': {:?}, assuming value to empty string!",
+          item
+        );
+        item.len()
+      });
+  }
+  let (head, tail) = item.split_at(sep_loc);
+  (head, &tail[1..])
+}

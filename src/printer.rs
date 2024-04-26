@@ -6,43 +6,12 @@ use std::{
 
 use crate::{
   cli::args::{ModifierArgs, TracingArgs},
-  proc::Interpreter,
+  proc::{parse_env_entry, Interpreter},
   state::ProcessState,
 };
 
 use nix::unistd::Pid;
 use owo_colors::{OwoColorize, Style};
-
-fn parse_env_entry(item: &str) -> (&str, &str) {
-  let mut sep_loc = item
-    .as_bytes()
-    .iter()
-    .position(|&x| x == b'=')
-    .unwrap_or_else(|| {
-      log::warn!(
-        "Invalid envp entry: {:?}, assuming value to empty string!",
-        item
-      );
-      item.len()
-    });
-  if sep_loc == 0 {
-    // Find the next equal sign
-    sep_loc = item
-      .as_bytes()
-      .iter()
-      .skip(1)
-      .position(|&x| x == b'=')
-      .unwrap_or_else(|| {
-        log::warn!(
-          "Invalid envp entry starting with '=': {:?}, assuming value to empty string!",
-          item
-        );
-        item.len()
-      });
-  }
-  let (head, tail) = item.split_at(sep_loc);
-  (head, &tail[1..])
-}
 
 macro_rules! escape_str_for_bash {
   // TODO: This is ... quite ugly. We should find a better way to do this.
