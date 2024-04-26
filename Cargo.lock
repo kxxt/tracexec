@@ -445,6 +445,8 @@ dependencies = [
 [[package]]
 name = "filterable-enum"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38c13cce8223a2d6a05135f0b3893b146feb31cf757a6333a83d1bc2124da4c7"
 dependencies = [
  "enumflags2",
  "filterable-enum-derive",
@@ -453,6 +455,8 @@ dependencies = [
 [[package]]
 name = "filterable-enum-derive"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e25aa16e81b87b777b9468c00f7189b89778bcd616d2ad0e6389fa821fd8597b"
 dependencies = [
  "darling",
  "proc-macro-crate",
