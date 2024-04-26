@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
+use clap::ValueEnum;
 use crossterm::event::KeyEvent;
+use filterable_enum::FilterableEnum;
 use itertools::chain;
 use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
@@ -23,12 +25,12 @@ pub enum Event {
   Error,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, FilterableEnum)]
+#[filterable_enum(kind_extra_derive=ValueEnum, kind_extra_derive=Display, kind_extra_attrs="strum(serialize_all = \"kebab-case\")")]
 pub enum TracerEvent {
   Info(TracerMessage),
   Warning(TracerMessage),
   Error(TracerMessage),
-  FatalError,
   NewChild {
     ppid: Pid,
     pcomm: String,
@@ -112,7 +114,6 @@ impl TracerEvent {
         [": ".into(), msg.as_str().into()]
       )
       .collect(),
-      TracerEvent::FatalError => "FatalError".into(),
       TracerEvent::NewChild { ppid, pcomm, pid } => {
         let spans = tracer_event_spans!(
           ppid,

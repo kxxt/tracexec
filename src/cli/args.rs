@@ -1,4 +1,7 @@
 use clap::Args;
+use enumflags2::BitFlags;
+
+use crate::event::TracerEventKind;
 
 #[cfg(feature = "seccomp-bpf")]
 use super::options::SeccompBpf;
@@ -14,8 +17,23 @@ pub struct ModifierArgs {
 
 #[derive(Args, Debug, Default)]
 pub struct TracerEventArgs {
-  #[clap(long, help = "Print a message when a child is created")]
-  pub show_children: bool,
+  #[clap(
+    long,
+    value_delimiter = ',',
+    num_args = 1..,
+    help = "Only show events in this filter",
+    default_values_t = [TracerEventKind::Warning, TracerEventKind::Error, TracerEventKind::Exec, TracerEventKind::RootChildExit]
+  )]
+  pub filter: Vec<TracerEventKind>,
+}
+
+impl TracerEventArgs {
+  pub fn filter(&self) -> BitFlags<TracerEventKind> {
+    self
+      .filter
+      .iter()
+      .fold(BitFlags::empty(), |acc, f| acc | *f)
+  }
 }
 
 #[derive(Args, Debug, Default)]

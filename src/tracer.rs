@@ -8,6 +8,7 @@ use std::{
 };
 
 use cfg_if::cfg_if;
+use enumflags2::BitFlags;
 use nix::{
   errno::Errno,
   libc::{
@@ -29,7 +30,7 @@ use crate::{
   arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
   cli::args::{ModifierArgs, TracerEventArgs, TracingArgs},
   cmdbuilder::CommandBuilder,
-  event::{ExecEvent, TracerEvent, TracerMessage},
+  event::{ExecEvent, TracerEvent, TracerEventKind, TracerMessage},
   inspect::{read_pathbuf, read_string, read_string_array},
   printer::{print_exec_trace, print_new_child, PrinterArgs, PrinterOut},
   proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
@@ -52,7 +53,7 @@ pub struct Tracer {
   mode: TracerMode,
   pub store: ProcessStateStore,
   args: PrinterArgs,
-  event_args: TracerEventArgs,
+  filter: BitFlags<TracerEventKind>,
   env: HashMap<String, String>,
   cwd: std::path::PathBuf,
   output: Option<Box<PrinterOut>>,
@@ -92,7 +93,7 @@ impl Tracer {
       output,
       tx,
       user,
-      event_args: tracer_event_args,
+      filter: tracer_event_args.filter(),
     })
   }
 
@@ -304,7 +305,7 @@ impl Tracer {
             | nix::libc::PTRACE_EVENT_CLONE => {
               let new_child = Pid::from_raw(ptrace::getevent(pid)? as pid_t);
               log::trace!("ptrace fork event, evt {evt}, pid: {pid}, child: {new_child}");
-              if self.event_args.show_children {
+              if self.filter.intersects(TracerEventKind::NewChild) {
                 let parent = self.store.get_current_mut(pid).unwrap();
                 self.tx.send(TracerEvent::NewChild {
                   ppid: parent.pid,
