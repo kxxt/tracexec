@@ -90,10 +90,19 @@ impl Tracer {
       #[cfg(feature = "seccomp-bpf")]
       seccomp_bpf: modifier_args.seccomp_bpf,
       args: PrinterArgs::from_cli(&tracing_args, &modifier_args),
-      output,
       tx,
       user,
-      filter: tracer_event_args.filter(),
+      filter: {
+        let mut filter = tracer_event_args.filter();
+        if output.is_some() {
+          // FIXME: In logging mode, we rely on root child exit event to exit the process
+          //        with the same exit code as the root child. It is not printed in logging mode.
+          //        Ideally we should use another channel to send the exit code to the main thread.
+          filter |= TracerEventKind::RootChildExit;
+        }
+        filter
+      },
+      output,
     })
   }
 
