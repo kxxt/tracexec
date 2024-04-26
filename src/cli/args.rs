@@ -17,6 +17,10 @@ pub struct ModifierArgs {
 
 #[derive(Args, Debug, Default)]
 pub struct TracerEventArgs {
+  // TODO:
+  //   1. This isn't really compatible with logging mode
+  //   2. Option to exclude some events instead of including some
+  //   3. Option to include all events
   #[clap(
     long,
     value_delimiter = ',',
