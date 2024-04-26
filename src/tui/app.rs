@@ -107,26 +107,43 @@ impl App {
             } else {
               log::trace!("TUI: Active pane: {}", self.active_pane);
               if self.active_pane == ActivePane::Events {
-                if ke.code == KeyCode::Char('q') {
-                  action_tx.send(Action::Quit)?;
-                } else if ke.code == KeyCode::Down {
-                  action_tx.send(Action::NextItem)?;
-                  // action_tx.send(Action::Render)?;
-                } else if ke.code == KeyCode::Up {
-                  action_tx.send(Action::PrevItem)?;
-                  // action_tx.send(Action::Render)?;
-                } else if ke.code == KeyCode::Left {
-                  action_tx.send(Action::ScrollLeft)?;
-                  // action_tx.send(Action::Render)?;
-                } else if ke.code == KeyCode::Right {
-                  action_tx.send(Action::ScrollRight)?;
-                  // action_tx.send(Action::Render)?;
-                } else if ke.code == KeyCode::PageDown {
-                  action_tx.send(Action::PageDown)?;
-                  // action_tx.send(Action::Render)?;
-                } else if ke.code == KeyCode::PageUp {
-                  action_tx.send(Action::PageUp)?;
-                  // action_tx.send(Action::Render)?;
+                match ke.code {
+                  KeyCode::Char('q') => {
+                    action_tx.send(Action::Quit)?;
+                  }
+                  KeyCode::Down | KeyCode::Char('j') => {
+                    if ke.modifiers == crossterm::event::KeyModifiers::CONTROL {
+                      action_tx.send(Action::PageDown)?;
+                    } else if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                      action_tx.send(Action::NextItem)?;
+                    }
+                    // action_tx.send(Action::Render)?;
+                  }
+                  KeyCode::Up | KeyCode::Char('k') => {
+                    if ke.modifiers == crossterm::event::KeyModifiers::CONTROL {
+                      action_tx.send(Action::PageUp)?;
+                    } else if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                      action_tx.send(Action::PrevItem)?;
+                    }
+                    // action_tx.send(Action::Render)?;
+                  }
+                  KeyCode::Left | KeyCode::Char('h') => {
+                    action_tx.send(Action::ScrollLeft)?;
+                    // action_tx.send(Action::Render)?;
+                  }
+                  KeyCode::Right | KeyCode::Char('l') => {
+                    action_tx.send(Action::ScrollRight)?;
+                    // action_tx.send(Action::Render)?;
+                  }
+                  KeyCode::PageDown => {
+                    action_tx.send(Action::PageDown)?;
+                    // action_tx.send(Action::Render)?;
+                  }
+                  KeyCode::PageUp => {
+                    action_tx.send(Action::PageUp)?;
+                    // action_tx.send(Action::Render)?;
+                  }
+                  _ => {}
                 }
               } else {
                 action_tx.send(Action::HandleTerminalKeyPress(ke))?;
