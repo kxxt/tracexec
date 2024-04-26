@@ -513,19 +513,20 @@ impl Tracer {
           self.seccomp_aware_cont(pid)?;
           return Ok(());
         }
-        // TODO: optimize, we don't need to collect exec event for log mode
-        filterable_event!(Exec(Tracer::collect_exec_event(p)))
-          .send_if_match(&self.tx, self.filter)?;
-        // TODO: replace print
-        // SAFETY: p.preexecve is false, so p.exec_data is Some
-        print_exec_trace(
-          self.output.as_deref_mut(),
-          p,
-          exec_result,
-          &self.args,
-          &self.env,
-          &self.cwd,
-        )?;
+        if self.filter.intersects(TracerEventKind::Exec) {
+          // TODO: optimize, we don't need to collect exec event for log mode
+          self
+            .tx
+            .send(TracerEvent::Exec(Tracer::collect_exec_event(p)))?;
+          print_exec_trace(
+            self.output.as_deref_mut(),
+            p,
+            exec_result,
+            &self.args,
+            &self.env,
+            &self.cwd,
+          )?;
+        }
         p.exec_data = None;
         p.is_exec_successful = false;
         // update comm
@@ -538,17 +539,19 @@ impl Tracer {
           self.seccomp_aware_cont(pid)?;
           return Ok(());
         }
-        filterable_event!(Exec(Tracer::collect_exec_event(p)))
-          .send_if_match(&self.tx, self.filter)?;
-        // TODO: replace print
-        print_exec_trace(
-          self.output.as_deref_mut(),
-          p,
-          exec_result,
-          &self.args,
-          &self.env,
-          &self.cwd,
-        )?;
+        if self.filter.intersects(TracerEventKind::Exec) {
+          self
+            .tx
+            .send(TracerEvent::Exec(Tracer::collect_exec_event(p)))?;
+          print_exec_trace(
+            self.output.as_deref_mut(),
+            p,
+            exec_result,
+            &self.args,
+            &self.env,
+            &self.cwd,
+          )?;
+        }
         p.exec_data = None;
         p.is_exec_successful = false;
         // update comm
