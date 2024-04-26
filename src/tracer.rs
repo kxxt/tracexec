@@ -30,7 +30,7 @@ use crate::{
   arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
   cli::args::{ModifierArgs, TracerEventArgs, TracingArgs},
   cmdbuilder::CommandBuilder,
-  event::{ExecEvent, TracerEvent, TracerEventKind, TracerMessage},
+  event::{filterable_event, ExecEvent, TracerEvent, TracerEventKind, TracerMessage},
   inspect::{read_pathbuf, read_string, read_string_array},
   printer::{print_exec_trace, print_new_child, PrinterArgs, PrinterOut},
   proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
@@ -192,7 +192,7 @@ impl Tracer {
       },
     )?
     .process_id();
-    self.tx.send(TracerEvent::RootChildSpawn(root_child))?;
+    filterable_event!(RootChildSpawn(root_child)).send_if_match(&self.tx, self.filter)?;
     // wait for child to be stopped by SIGSTOP
     loop {
       let status = waitpid(root_child, Some(WaitPidFlag::WSTOPPED))?;
@@ -290,10 +290,11 @@ impl Tracer {
           log::trace!("exited: pid {}, code {:?}", pid, code);
           self.store.get_current_mut(pid).unwrap().status = ProcessStatus::Exited(code);
           if pid == root_child {
-            self.tx.send(TracerEvent::RootChildExit {
+            filterable_event!(RootChildExit {
               signal: None,
               exit_code: code,
-            })?;
+            })
+            .send_if_match(&self.tx, self.filter)?;
             return Ok(());
           }
         }
@@ -323,10 +324,10 @@ impl Tracer {
                   state.ppid = Some(pid);
                   self.seccomp_aware_cont(new_child)?;
                 } else if new_child != root_child {
-                  self.tx.send(TracerEvent::Error(TracerMessage {
-                                            pid: Some(new_child),
-                                            msg: "Unexpected fork event! Please report this bug if you can provide a reproducible case.".to_string(),
-                                        }))?;
+                  filterable_event!(Error(TracerMessage {
+                    pid: Some(new_child),
+                    msg: "Unexpected fork event! Please report this bug if you can provide a reproducible case.".to_string(),
+                  })).send_if_match(&self.tx, self.filter)?;
                   log::error!("Unexpected fork event: {state:?}")
                 }
               } else {
@@ -371,10 +372,11 @@ impl Tracer {
           // TODO: replace log
           log::debug!("signaled: {pid}, {:?}", sig);
           if pid == root_child {
-            self.tx.send(TracerEvent::RootChildExit {
+            filterable_event!(RootChildExit {
               signal: Some(sig),
               exit_code: 128 + (sig as i32),
-            })?;
+            })
+            .send_if_match(&self.tx, self.filter)?;
             return Ok(());
           }
         }
@@ -398,11 +400,11 @@ impl Tracer {
     let regs = match ptrace_getregs(pid) {
       Ok(regs) => regs,
       Err(Errno::ESRCH) => {
-        self.tx.send(TracerEvent::Info(TracerMessage {
+        filterable_event!(Info(TracerMessage {
           msg: "Failed to read registers: ESRCH (child probably gone!)".to_string(),
           pid: Some(pid),
-        }))?;
-        // TODO: replace log
+        }))
+        .send_if_match(&self.tx, self.filter)?;
         log::info!("ptrace getregs failed: {pid}, ESRCH, child probably gone!");
         return Ok(());
       }
@@ -502,9 +504,9 @@ impl Tracer {
           self.seccomp_aware_cont(pid)?;
           return Ok(());
         }
-        self
-          .tx
-          .send(TracerEvent::Exec(Tracer::collect_exec_event(p)))?;
+        // TODO: optimize, we don't need to collect exec event for log mode
+        filterable_event!(Exec(Tracer::collect_exec_event(p)))
+          .send_if_match(&self.tx, self.filter)?;
         // TODO: replace print
         // SAFETY: p.preexecve is false, so p.exec_data is Some
         print_exec_trace(
@@ -527,9 +529,8 @@ impl Tracer {
           self.seccomp_aware_cont(pid)?;
           return Ok(());
         }
-        self
-          .tx
-          .send(TracerEvent::Exec(Tracer::collect_exec_event(p)))?;
+        filterable_event!(Exec(Tracer::collect_exec_event(p)))
+          .send_if_match(&self.tx, self.filter)?;
         // TODO: replace print
         print_exec_trace(
           self.output.as_deref_mut(),

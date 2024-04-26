@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use clap::ValueEnum;
 use crossterm::event::KeyEvent;
+use enumflags2::BitFlags;
 use filterable_enum::FilterableEnum;
 use itertools::chain;
 use nix::{sys::signal::Signal, unistd::Pid};
@@ -11,6 +12,7 @@ use ratatui::{
   text::Line,
 };
 use strum::Display;
+use tokio::sync::mpsc::{self, error::SendError};
 
 use crate::proc::Interpreter;
 
@@ -167,3 +169,24 @@ impl TracerEvent {
     }
   }
 }
+
+impl FilterableTracerEvent {
+  pub fn send_if_match(
+    self,
+    tx: &mpsc::UnboundedSender<TracerEvent>,
+    filter: BitFlags<TracerEventKind>,
+  ) -> Result<(), SendError<TracerEvent>> {
+    if let Some(evt) = self.filter_and_take(filter) {
+      tx.send(evt)?;
+    }
+    Ok(())
+  }
+}
+
+macro_rules! filterable_event {
+    ($($t:tt)*) => {
+      crate::event::FilterableTracerEvent::from(crate::event::TracerEvent::$($t)*)
+    };
+}
+
+pub(crate) use filterable_event;
