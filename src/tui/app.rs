@@ -317,14 +317,21 @@ impl App {
       d.fg(Color::Cyan).bg(Color::DarkGray).italic().bold()
     }
 
-    let line = Line::from_iter(chain![
-      help_item!("Ctrl+S", "Switch Pane"),
-      help_item!("↑/↓/←/→/Pg{Up,Dn}", "Navigate"),
-      help_item!("Ctrl+<-/->", "Scroll<->"),
-      help_item!("V", "View"),
-      help_item!("C", "Copy"),
-      help_item!("Q", "Quit"),
-    ]);
+    let iter = help_item!("Ctrl+S", "Switch Pane");
+    let iter: Box<dyn Iterator<Item = _>> = if self.active_pane == ActivePane::Events {
+      Box::new(chain!(
+        iter,
+        help_item!("↑/↓/←/→/Pg{Up,Dn}", "Navigate"),
+        help_item!("Ctrl+<-/->", "Scroll<->"),
+        help_item!("V", "View"),
+        help_item!("C", "Copy"),
+        help_item!("Q", "Quit")
+      ))
+    } else {
+      Box::new(chain!(iter, help_item!("Ctrl+Shift+R", "FIXME")))
+    };
+
+    let line = Line::from_iter(iter);
     Paragraph::new(line).centered().render(area, buf);
   }
 }
