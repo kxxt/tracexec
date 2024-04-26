@@ -1,3 +1,4 @@
+mod action;
 mod arch;
 mod cli;
 mod cmdbuilder;

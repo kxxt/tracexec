@@ -64,22 +64,6 @@ pub struct ExecEvent {
   pub result: i64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Action {
-  Quit,
-  Render,
-  Resize(Size),
-  NextItem,
-  PrevItem,
-  PageDown,
-  PageUp,
-  PageLeft,
-  PageRight,
-  ScrollLeft,
-  ScrollRight,
-  SwitchActivePane,
-  HandleTerminalKeyPress(KeyEvent),
-}
 
 macro_rules! tracer_event_spans {
     ($pid: expr, $comm: expr, $($t:tt)*) => {

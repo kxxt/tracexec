@@ -18,6 +18,7 @@
 
 use std::borrow::Cow;
 
+use arboard::Clipboard;
 use crossterm::event::KeyCode;
 use itertools::chain;
 use nix::{sys::signal::Signal, unistd::Pid};
@@ -31,11 +32,12 @@ use ratatui::{
 use tokio::sync::mpsc;
 
 use crate::{
+  action::{Action, CopyTarget, Shell},
   cli::{
     args::{ModifierArgs, TracingArgs},
     options::ActivePane,
   },
-  event::{Action, Event, TracerEvent},
+  event::{Event, TracerEvent},
   printer::PrinterArgs,
   pty::{PtySize, UnixMasterPty},
 };
@@ -48,6 +50,7 @@ pub struct App {
   pub term: Option<PseudoTerminalPane>,
   pub root_pid: Option<Pid>,
   pub active_pane: ActivePane,
+  pub clipboard: Clipboard,
 }
 
 impl App {
@@ -80,6 +83,7 @@ impl App {
       },
       root_pid: None,
       active_pane,
+      clipboard: Clipboard::new()?,
     })
   }
 
@@ -150,6 +154,13 @@ impl App {
                   KeyCode::PageUp => {
                     action_tx.send(Action::PageUp)?;
                     // action_tx.send(Action::Render)?;
+                  }
+                  KeyCode::Char('c') => {
+                    if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                      action_tx.send(Action::CopyToClipboard(CopyTarget::Commandline(
+                        Shell::Bash,
+                      )))?;
+                    }
                   }
                   _ => {}
                 }
@@ -249,6 +260,11 @@ impl App {
             self.active_pane = match self.active_pane {
               ActivePane::Events => ActivePane::Terminal,
               ActivePane::Terminal => ActivePane::Events,
+            }
+          }
+          Action::CopyToClipboard(_target) => {
+            if let Some(_selected) = self.event_list.state.selected() {
+              self.clipboard.set_text("🥰")?;
             }
           }
         }
