@@ -35,7 +35,6 @@ use tokio_util::sync::CancellationToken;
 
 use std::sync::RwLock;
 
-
 use crate::pty::{MasterPty, PtySize, UnixMasterPty};
 
 pub struct PseudoTerminalPane {

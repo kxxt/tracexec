@@ -18,7 +18,7 @@
 
 use ratatui::{
   prelude::{Buffer, Rect},
-  style::{Modifier, Style},
+  style::{Modifier, Style, Stylize},
   widgets::{HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget},
 };
 
@@ -119,10 +119,7 @@ impl EventList {
     } else {
       // If we can't slide down the window by the number of items in the window
       // just set the window to the last items
-      self.window.0 = self
-        .items
-        .len()
-        .saturating_sub(self.max_window_len);
+      self.window.0 = self.items.len().saturating_sub(self.max_window_len);
       self.window.1 = self.window.0 + self.max_window_len;
     }
   }

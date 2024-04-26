@@ -16,13 +16,17 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+use std::borrow::Cow;
+
 use crossterm::event::KeyCode;
+use itertools::chain;
 use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
   buffer::Buffer,
   layout::{Constraint, Layout, Rect},
-  style::{Color, Style},
-  widgets::{Block, StatefulWidget, Widget},
+  style::{Color, Style, Styled, Stylize},
+  text::{Line, Span},
+  widgets::{Block, Paragraph, StatefulWidget, Widget},
 };
 use tokio::sync::mpsc;
 
@@ -36,12 +40,7 @@ use crate::{
   pty::{PtySize, UnixMasterPty},
 };
 
-use super::{
-  event_list::EventList,
-  pseudo_term::PseudoTerminalPane,
-  ui::{render_footer, render_title},
-  Tui,
-};
+use super::{event_list::EventList, pseudo_term::PseudoTerminalPane, ui::render_title, Tui};
 
 pub struct App {
   pub event_list: EventList,
@@ -285,6 +284,47 @@ impl Widget for &mut App {
       term.render(block.inner(right_area), buf);
       block.render(right_area, buf);
     }
-    render_footer(footer_area, buf, "Press 'q' to quit");
+    self.render_help(footer_area, buf);
+  }
+}
+
+macro_rules! help_item {
+  ($key: literal, $desc: literal) => {{
+    let mut key_string = String::from(" ");
+    key_string.push_str($key);
+    key_string.push_str(" ");
+    let mut desc_string = String::from(" ");
+    desc_string.push_str($desc);
+    desc_string.push_str(" ");
+    [key(key_string), desc(desc_string)]
+  }};
+}
+
+impl App {
+  fn render_help(&self, area: Rect, buf: &mut Buffer) {
+    fn key<'a, T>(k: T) -> Span<'a>
+    where
+      T: Into<Cow<'a, str>>,
+      T: Styled<Item = Span<'a>>,
+    {
+      k.fg(Color::Black).bg(Color::Cyan).bold()
+    }
+    fn desc<'a, T>(d: T) -> Span<'a>
+    where
+      T: Into<Cow<'a, str>>,
+      T: Styled<Item = Span<'a>>,
+    {
+      d.fg(Color::Cyan).bg(Color::DarkGray).italic().bold()
+    }
+
+    let line = Line::from_iter(chain![
+      help_item!("Ctrl+S", "Switch Pane"),
+      help_item!("↑/↓/←/→/Pg{Up,Dn}", "Navigate"),
+      help_item!("Ctrl+<-/->", "Scroll<->"),
+      help_item!("V", "View"),
+      help_item!("C", "Copy"),
+      help_item!("Q", "Quit"),
+    ]);
+    Paragraph::new(line).centered().render(area, buf);
   }
 }
