@@ -73,6 +73,8 @@ pub enum Action {
   PrevItem,
   PageDown,
   PageUp,
+  PageLeft,
+  PageRight,
   ScrollLeft,
   ScrollRight,
   SwitchActivePane,

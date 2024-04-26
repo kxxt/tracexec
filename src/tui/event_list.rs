@@ -35,6 +35,7 @@ pub struct EventList {
   pub nr_items_in_window: usize,
   last_selected: Option<usize>,
   pub horizontal_offset: usize,
+  pub inner_width: u16,
   pub max_width: usize,
   pub max_window_len: usize,
 }
@@ -48,6 +49,7 @@ impl EventList {
       window: (0, 0),
       nr_items_in_window: 0,
       horizontal_offset: 0,
+      inner_width: 0,
       max_width: 0,
       max_window_len: 0,
     }
@@ -137,6 +139,17 @@ impl EventList {
     }
   }
 
+  pub fn page_left(&mut self) {
+    self.horizontal_offset = self
+      .horizontal_offset
+      .saturating_sub(self.inner_width as usize);
+  }
+
+  pub fn page_right(&mut self) {
+    self.horizontal_offset = (self.horizontal_offset + self.inner_width as usize)
+      .min(self.max_width.saturating_sub(self.inner_width as usize));
+  }
+
   pub fn scroll_left(&mut self) {
     self.horizontal_offset = self.horizontal_offset.saturating_sub(1);
   }
@@ -156,6 +169,7 @@ impl Widget for &mut EventList {
   where
     Self: Sized,
   {
+    self.inner_width = area.width - 1; // 1 for the selection indicator
     let mut max_len = area.width as usize;
     // Iterate through all elements in the `items` and stylize them.
     let items = EventList::window(&self.items, self.window);

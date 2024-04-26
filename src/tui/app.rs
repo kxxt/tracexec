@@ -128,11 +128,19 @@ impl App {
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Left | KeyCode::Char('h') => {
-                    action_tx.send(Action::ScrollLeft)?;
+                    if ke.modifiers == crossterm::event::KeyModifiers::CONTROL {
+                      action_tx.send(Action::PageLeft)?;
+                    } else if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                      action_tx.send(Action::ScrollLeft)?;
+                    }
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Right | KeyCode::Char('l') => {
-                    action_tx.send(Action::ScrollRight)?;
+                    if ke.modifiers == crossterm::event::KeyModifiers::CONTROL {
+                      action_tx.send(Action::PageRight)?;
+                    } else if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                      action_tx.send(Action::ScrollRight)?;
+                    }
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::PageDown => {
@@ -199,6 +207,12 @@ impl App {
           }
           Action::PageUp => {
             self.event_list.page_up();
+          }
+          Action::PageLeft => {
+            self.event_list.page_left();
+          }
+          Action::PageRight => {
+            self.event_list.page_right();
           }
           Action::HandleTerminalKeyPress(ke) => {
             if let Some(term) = self.term.as_mut() {
