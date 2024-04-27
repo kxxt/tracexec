@@ -52,6 +52,7 @@ pub struct App {
   pub root_pid: Option<Pid>,
   pub active_pane: ActivePane,
   pub clipboard: Clipboard,
+  pub split_percentage: u16,
 }
 
 impl App {
@@ -70,6 +71,7 @@ impl App {
     Ok(Self {
       event_list: EventList::new(baseline),
       printer_args: PrinterArgs::from_cli(tracing_args, modifier_args),
+      split_percentage: if pty_master.is_some() { 50 } else { 100 },
       term: if let Some(pty_master) = pty_master {
         Some(PseudoTerminalPane::new(
           PtySize {
@@ -87,6 +89,18 @@ impl App {
       active_pane,
       clipboard: Clipboard::new()?,
     })
+  }
+
+  pub fn shrink_pane(&mut self) {
+    if self.term.is_some() {
+      self.split_percentage = self.split_percentage.saturating_sub(1).max(10);
+    }
+  }
+
+  pub fn grow_pane(&mut self) {
+    if self.term.is_some() {
+      self.split_percentage = self.split_percentage.saturating_add(1).min(90);
+    }
   }
 
   pub async fn run(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
@@ -155,6 +169,18 @@ impl App {
                   }
                   KeyCode::PageUp => {
                     action_tx.send(Action::PageUp)?;
+                    // action_tx.send(Action::Render)?;
+                  }
+                  KeyCode::Char('g') => {
+                    if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                      action_tx.send(Action::GrowPane)?;
+                    }
+                    // action_tx.send(Action::Render)?;
+                  }
+                  KeyCode::Char('s') => {
+                    if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                      action_tx.send(Action::ShrinkPane)?;
+                    }
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Char('c') => {
@@ -258,6 +284,12 @@ impl App {
           Action::ScrollRight => {
             self.event_list.scroll_right();
           }
+          Action::ShrinkPane => {
+            self.shrink_pane();
+          }
+          Action::GrowPane => {
+            self.grow_pane();
+          }
           Action::SwitchActivePane => {
             self.active_pane = match self.active_pane {
               ActivePane::Events => ActivePane::Terminal,
@@ -303,20 +335,20 @@ impl Widget for &mut App {
       Constraint::Length(2),
     ]);
     let [header_area, rest_area, footer_area] = vertical.areas(area);
-    let horizontal_constraints = match self.term {
-      Some(_) => [Constraint::Percentage(50), Constraint::Percentage(50)],
-      None => [Constraint::Percentage(100), Constraint::Length(0)],
-    };
+    let horizontal_constraints = [
+      Constraint::Percentage(self.split_percentage),
+      Constraint::Percentage(100 - self.split_percentage),
+    ];
     let [left_area, right_area] = Layout::horizontal(horizontal_constraints).areas(rest_area);
     render_title(header_area, buf, "tracexec event list");
 
     if left_area.width < 10 || right_area.width < 10 {
-      Paragraph::new("Terminal\ntoo\nsmall").render(rest_area, buf);
+      Paragraph::new("Terminal\nor\npane\ntoo\nsmall").render(rest_area, buf);
       return;
     }
 
     if left_area.height < 4 || right_area.height < 4 {
-      Paragraph::new("Terminal too small").render(rest_area, buf);
+      Paragraph::new("Terminal or pane too small").render(rest_area, buf);
       return;
     }
 
@@ -383,6 +415,7 @@ impl App {
         iter,
         help_item!("↑/↓/←/→/Pg{Up,Dn}", "Navigate"),
         help_item!("Ctrl+<-/->", "Scroll<->"),
+        help_item!("G/S", "Grow/Shrink Pane"),
         help_item!("V", "View"),
         help_item!("C", "Copy"),
         help_item!("Q", "Quit")

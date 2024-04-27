@@ -14,6 +14,8 @@ pub enum Action {
   PageRight,
   ScrollLeft,
   ScrollRight,
+  ShrinkPane,
+  GrowPane,
   SwitchActivePane,
   CopyToClipboard(CopyTarget),
   HandleTerminalKeyPress(KeyEvent),
