@@ -33,7 +33,7 @@ use crate::{
   event::{filterable_event, ExecEvent, TracerEvent, TracerEventKind, TracerMessage},
   inspect::{read_pathbuf, read_string, read_string_array},
   printer::{print_exec_trace, print_new_child, PrinterArgs, PrinterOut},
-  proc::{read_comm, read_cwd, read_fd, read_interpreter_recursive},
+  proc::{diff_env, read_comm, read_cwd, read_fd, read_interpreter_recursive, BaselineInfo},
   ptrace::{ptrace_getregs, ptrace_syscall},
   pty::{self, Child, UnixSlavePty},
   state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
@@ -54,8 +54,7 @@ pub struct Tracer {
   pub store: ProcessStateStore,
   args: PrinterArgs,
   filter: BitFlags<TracerEventKind>,
-  env: HashMap<String, String>,
-  cwd: std::path::PathBuf,
+  baseline: BaselineInfo,
   output: Option<Box<PrinterOut>>,
   #[cfg(feature = "seccomp-bpf")]
   seccomp_bpf: SeccompBpf,
@@ -74,6 +73,7 @@ impl Tracer {
     tracing_args: TracingArgs,
     modifier_args: ModifierArgs,
     tracer_event_args: TracerEventArgs,
+    baseline: BaselineInfo,
     output: Option<Box<dyn Write + Send>>,
     tx: UnboundedSender<TracerEvent>,
     user: Option<User>,
@@ -85,8 +85,7 @@ impl Tracer {
       },
       mode,
       store: ProcessStateStore::new(),
-      env: std::env::vars().collect(),
-      cwd: std::env::current_dir()?,
+      baseline,
       #[cfg(feature = "seccomp-bpf")]
       seccomp_bpf: modifier_args.seccomp_bpf,
       args: PrinterArgs::from_cli(&tracing_args, &modifier_args),
@@ -515,16 +514,17 @@ impl Tracer {
         }
         if self.filter.intersects(TracerEventKind::Exec) {
           // TODO: optimize, we don't need to collect exec event for log mode
-          self
-            .tx
-            .send(TracerEvent::Exec(Tracer::collect_exec_event(p)))?;
+          self.tx.send(TracerEvent::Exec(Tracer::collect_exec_event(
+            &self.baseline.env,
+            p,
+          )))?;
           print_exec_trace(
             self.output.as_deref_mut(),
             p,
             exec_result,
             &self.args,
-            &self.env,
-            &self.cwd,
+            &self.baseline.env,
+            &self.baseline.cwd,
           )?;
         }
         p.exec_data = None;
@@ -540,16 +540,17 @@ impl Tracer {
           return Ok(());
         }
         if self.filter.intersects(TracerEventKind::Exec) {
-          self
-            .tx
-            .send(TracerEvent::Exec(Tracer::collect_exec_event(p)))?;
+          self.tx.send(TracerEvent::Exec(Tracer::collect_exec_event(
+            &self.baseline.env,
+            p,
+          )))?;
           print_exec_trace(
             self.output.as_deref_mut(),
             p,
             exec_result,
             &self.args,
-            &self.env,
-            &self.cwd,
+            &self.baseline.env,
+            &self.baseline.cwd,
           )?;
         }
         p.exec_data = None;
@@ -585,7 +586,8 @@ impl Tracer {
     ptrace_syscall(pid, Some(sig))
   }
 
-  fn collect_exec_event(state: &ProcessState) -> ExecEvent {
+  // This function does not take self due to borrow checker
+  fn collect_exec_event(env: &HashMap<String, String>, state: &ProcessState) -> ExecEvent {
     let exec_data = state.exec_data.as_ref().unwrap();
     ExecEvent {
       pid: state.pid,
@@ -594,7 +596,7 @@ impl Tracer {
       filename: exec_data.filename.clone(),
       argv: exec_data.argv.clone(),
       interpreter: exec_data.interpreters.clone(),
-      envp: exec_data.envp.clone(),
+      env_diff: diff_env(env, &exec_data.envp),
       result: 0,
     }
   }

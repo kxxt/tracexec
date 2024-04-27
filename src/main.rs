@@ -33,6 +33,7 @@ use crate::{
   cli::{args::TracingArgs, options::Color, CliCommand},
   event::TracerEvent,
   log::initialize_panic_handler,
+  proc::BaselineInfo,
   pty::{native_pty_system, PtySize, PtySystem},
   tracer::TracerMode,
   tui::app::App,
@@ -111,12 +112,14 @@ async fn main() -> color_eyre::Result<()> {
           Box::new(BufWriter::new(file))
         }
       };
+      let baseline = BaselineInfo::new()?;
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
       let mut tracer = tracer::Tracer::new(
         TracerMode::Cli,
         tracing_args,
         modifier_args,
         tracer_event_args,
+        baseline,
         Some(output),
         tracer_tx,
         user,
@@ -161,13 +164,21 @@ async fn main() -> color_eyre::Result<()> {
         diff_env: true,
         ..Default::default()
       };
-      let mut app = App::new(&tracing_args, &modifier_args, pty_master, active_pane)?;
+      let baseline = BaselineInfo::new()?;
+      let mut app = App::new(
+        &tracing_args,
+        &modifier_args,
+        baseline.clone(),
+        pty_master,
+        active_pane,
+      )?;
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
       let mut tracer = tracer::Tracer::new(
         tracer_mode,
         tracing_args,
         modifier_args,
         tracer_event_args,
+        baseline,
         None,
         tracer_tx,
         user,

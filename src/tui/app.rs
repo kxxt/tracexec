@@ -39,6 +39,7 @@ use crate::{
   },
   event::{Event, TracerEvent},
   printer::PrinterArgs,
+  proc::BaselineInfo,
   pty::{PtySize, UnixMasterPty},
 };
 
@@ -57,6 +58,7 @@ impl App {
   pub fn new(
     tracing_args: &TracingArgs,
     modifier_args: &ModifierArgs,
+    baseline: BaselineInfo,
     pty_master: Option<UnixMasterPty>,
     active_pane: ActivePane,
   ) -> color_eyre::Result<Self> {
@@ -66,7 +68,7 @@ impl App {
       ActivePane::Events
     };
     Ok(Self {
-      event_list: EventList::new(),
+      event_list: EventList::new(baseline),
       printer_args: PrinterArgs::from_cli(tracing_args, modifier_args),
       term: if let Some(pty_master) = pty_master {
         Some(PseudoTerminalPane::new(

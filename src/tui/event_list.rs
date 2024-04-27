@@ -22,7 +22,7 @@ use ratatui::{
   widgets::{HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget},
 };
 
-use crate::event::TracerEvent;
+use crate::{event::TracerEvent, proc::BaselineInfo};
 
 use super::partial_line::PartialLine;
 
@@ -38,10 +38,11 @@ pub struct EventList {
   pub inner_width: u16,
   pub max_width: usize,
   pub max_window_len: usize,
+  baseline: BaselineInfo,
 }
 
 impl EventList {
-  pub fn new() -> Self {
+  pub fn new(baseline: BaselineInfo) -> Self {
     Self {
       state: ListState::default(),
       items: vec![],
@@ -52,6 +53,7 @@ impl EventList {
       inner_width: 0,
       max_width: 0,
       max_window_len: 0,
+      baseline,
     }
   }
 
@@ -177,7 +179,7 @@ impl Widget for &mut EventList {
     let items: Vec<ListItem> = items
       .iter()
       .map(|evt| {
-        let full_line = evt.to_tui_line();
+        let full_line = evt.to_tui_line(&self.baseline);
         max_len = max_len.max(full_line.width());
         full_line
           .substring(self.horizontal_offset, area.width)

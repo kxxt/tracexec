@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{ffi::OsStr, path::PathBuf};
 
 use clap::ValueEnum;
 use crossterm::event::KeyEvent;
@@ -9,12 +9,15 @@ use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
   layout::Size,
   style::{Color, Stylize},
-  text::Line,
+  text::{Line, Span},
 };
 use strum::Display;
 use tokio::sync::mpsc::{self, error::SendError};
 
-use crate::proc::Interpreter;
+use crate::{
+  printer::escape_str_for_bash,
+  proc::{BaselineInfo, EnvDiff, Interpreter},
+};
 
 #[derive(Debug, Clone, Display, PartialEq)]
 pub enum Event {
@@ -60,14 +63,14 @@ pub struct ExecEvent {
   pub filename: PathBuf,
   pub argv: Vec<String>,
   pub interpreter: Vec<Interpreter>,
-  pub envp: Vec<String>,
+  pub env_diff: EnvDiff,
   pub result: i64,
 }
 
 macro_rules! tracer_event_spans {
-    ($pid: expr, $comm: expr, $($t:tt)*) => {
+    ($pid: expr, $comm: expr, $result:expr, $($t:tt)*) => {
         chain!([
-            Some($pid.to_string().fg(Color::Yellow)),
+            Some($pid.to_string().fg(if $result == 0 { Color::LightYellow } else { Color::LightRed })),
             Some(format!("<{}>", $comm).fg(Color::Cyan)),
             Some(": ".into()),
         ], [$($t)*])
@@ -75,7 +78,7 @@ macro_rules! tracer_event_spans {
 }
 
 impl TracerEvent {
-  pub fn to_tui_line(&self) -> Line {
+  pub fn to_tui_line(&self, baseline: &BaselineInfo) -> Line {
     match self {
       TracerEvent::Info(TracerMessage { ref msg, pid }) => chain!(
         ["info".bg(Color::LightBlue)],
@@ -105,6 +108,7 @@ impl TracerEvent {
         let spans = tracer_event_spans!(
           ppid,
           pcomm,
+          0,
           Some("new child ".fg(Color::Magenta)),
           Some(pid.to_string().fg(Color::Yellow)),
         );
@@ -112,38 +116,73 @@ impl TracerEvent {
       }
       TracerEvent::Exec(ExecEvent {
         pid,
-        cwd: _,
+        cwd,
         comm,
         filename,
         argv,
-        interpreter,
-        envp,
+        interpreter: _,
+        env_diff,
         result,
       }) => {
-        let spans = tracer_event_spans!(
+        let mut spans: Vec<Span> = tracer_event_spans!(
           pid,
           comm,
-          Some("exec ".fg(Color::Magenta)),
-          Some(filename.display().to_string().fg(Color::Green)),
-          Some(" argv: [".into()),
-          Some(argv.join(", ").fg(Color::Green)),
-          Some("]".into()),
-          Some(" interpreter: [".into()),
-          Some(
-            interpreter
-              .iter()
-              .map(|x| x.to_string())
-              .collect::<Vec<_>>()
-              .join(", ")
-              .fg(Color::Green)
-          ),
-          Some("]".into()),
-          Some(" envp: [".into()),
-          Some(envp.join(", ").fg(Color::Green)),
-          Some("] result: ".into()),
-          Some(result.to_string().fg(Color::Yellow)),
+          *result,
+          Some(format!("{:?} ", filename).fg(Color::LightBlue)),
+          Some("env".fg(Color::Magenta)),
+          // Handle argv[0]
+          argv.get(0).and_then(|arg0| {
+            if filename.file_name() != Some(OsStr::new(&arg0)) {
+              Some(format!(" -a {}", escape_str_for_bash!(arg0)).fg(Color::Green))
+            } else {
+              None
+            }
+          }),
+          // Handle cwd
+          if cwd != &baseline.cwd {
+            Some(format!(" -C {}", escape_str_for_bash!(cwd)).fg(Color::LightCyan))
+          } else {
+            None
+          },
+        )
+        .flatten()
+        .collect();
+        spans.extend(
+          env_diff
+            .removed
+            .iter()
+            .map(|k| format!(" -u {}", escape_str_for_bash!(k)).fg(Color::LightRed)),
         );
-        spans.flatten().collect()
+        spans.push(
+          // Option separator
+          " -".into(),
+        );
+        spans.extend(
+          // Added env vars
+          env_diff.added.iter().map(|(k, v)| {
+            format!(" {}={}", escape_str_for_bash!(k), escape_str_for_bash!(v)).fg(Color::Green)
+          }),
+        );
+        spans.extend(
+          // Modified env vars
+          env_diff.modified.iter().map(|(k, v)| {
+            format!(" {}={}", escape_str_for_bash!(k), escape_str_for_bash!(v)).fg(Color::Yellow)
+          }),
+        );
+        // Filename
+        spans.push(
+          format!(" {}", escape_str_for_bash!(filename))
+            .fg(Color::LightBlue)
+            .into(),
+        );
+        // Argv[1..]
+        spans.extend(
+          argv
+            .iter()
+            .skip(1)
+            .map(|arg| format!(" {}", escape_str_for_bash!(arg)).into()),
+        );
+        Line::default().spans(spans)
       }
       TracerEvent::RootChildExit { signal, exit_code } => format!(
         "RootChildExit: signal: {:?}, exit_code: {}",

@@ -162,6 +162,7 @@ pub fn parse_env_entry(item: &str) -> (&str, &str) {
   (head, &tail[1..])
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct EnvDiff {
   pub added: HashMap<String, String>,
   pub removed: HashSet<String>,
@@ -190,5 +191,19 @@ pub fn diff_env(original: &HashMap<String, String>, envp: &Vec<String>) -> EnvDi
     added,
     removed: removed.into_iter().map(|x| x.to_owned()).collect(),
     modified,
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct BaselineInfo {
+  pub cwd: PathBuf,
+  pub env: HashMap<String, String>,
+}
+
+impl BaselineInfo {
+  pub fn new() -> color_eyre::Result<Self> {
+    let cwd = std::env::current_dir()?;
+    let env = std::env::vars().collect();
+    Ok(Self { cwd, env })
   }
 }
