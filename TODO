@@ -1,5 +1,6 @@
 # TUI
 
+- Line wrapping for help text
 - Details view via popup
 - Copy to clipboard
 - Search and filter
