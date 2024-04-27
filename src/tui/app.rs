@@ -16,9 +16,10 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::borrow::Cow;
+use std::{borrow::Cow, default};
 
 use arboard::Clipboard;
+use clap::ValueEnum;
 use crossterm::event::KeyCode;
 use itertools::chain;
 use nix::{sys::signal::Signal, unistd::Pid};
@@ -29,6 +30,7 @@ use ratatui::{
   text::{Line, Span},
   widgets::{Block, Paragraph, StatefulWidget, Widget},
 };
+use strum::Display;
 use tokio::sync::mpsc;
 
 use crate::{
@@ -45,6 +47,14 @@ use crate::{
 
 use super::{event_list::EventList, pseudo_term::PseudoTerminalPane, ui::render_title, Tui};
 
+#[derive(Debug, Clone, PartialEq, Default, ValueEnum,Display)]
+#[strum(serialize_all = "kebab-case")]
+pub enum AppLayout {
+  #[default]
+  Horizontal,
+  Vertical,
+}
+
 pub struct App {
   pub event_list: EventList,
   pub printer_args: PrinterArgs,
@@ -53,6 +63,7 @@ pub struct App {
   pub active_pane: ActivePane,
   pub clipboard: Clipboard,
   pub split_percentage: u16,
+  pub layout: AppLayout,
 }
 
 impl App {
@@ -62,6 +73,7 @@ impl App {
     baseline: BaselineInfo,
     pty_master: Option<UnixMasterPty>,
     active_pane: ActivePane,
+    layout: AppLayout,
   ) -> color_eyre::Result<Self> {
     let active_pane = if pty_master.is_some() {
       active_pane
@@ -88,6 +100,7 @@ impl App {
       root_pid: None,
       active_pane,
       clipboard: Clipboard::new()?,
+      layout,
     })
   }
 
@@ -155,7 +168,9 @@ impl App {
                     }
                     // action_tx.send(Action::Render)?;
                   }
-                  KeyCode::Right | KeyCode::Char('l') => {
+                  KeyCode::Right | KeyCode::Char('l')
+                    if ke.modifiers != crossterm::event::KeyModifiers::ALT =>
+                  {
                     if ke.modifiers == crossterm::event::KeyModifiers::CONTROL {
                       action_tx.send(Action::PageRight)?;
                     } else if ke.modifiers == crossterm::event::KeyModifiers::NONE {
@@ -189,6 +204,9 @@ impl App {
                         Shell::Bash,
                       )))?;
                     }
+                  }
+                  KeyCode::Char('l') if ke.modifiers == crossterm::event::KeyModifiers::ALT => {
+                    action_tx.send(Action::SwitchLayout)?;
                   }
                   _ => {}
                 }
@@ -290,6 +308,12 @@ impl App {
           Action::GrowPane => {
             self.grow_pane();
           }
+          Action::SwitchLayout => {
+            self.layout = match self.layout {
+              AppLayout::Horizontal => AppLayout::Vertical,
+              AppLayout::Vertical => AppLayout::Horizontal,
+            }
+          }
           Action::SwitchActivePane => {
             self.active_pane = match self.active_pane {
               ActivePane::Events => ActivePane::Terminal,
@@ -339,15 +363,20 @@ impl Widget for &mut App {
       Constraint::Percentage(self.split_percentage),
       Constraint::Percentage(100 - self.split_percentage),
     ];
-    let [left_area, right_area] = Layout::horizontal(horizontal_constraints).areas(rest_area);
+    let [event_area, term_area] = (if self.layout == AppLayout::Horizontal {
+      Layout::horizontal
+    } else {
+      Layout::vertical
+    })(horizontal_constraints)
+    .areas(rest_area);
     render_title(header_area, buf, "tracexec event list");
 
-    if left_area.width < 10 || right_area.width < 10 {
+    if event_area.width < 4 || term_area.width < 4 {
       Paragraph::new("Terminal\nor\npane\ntoo\nsmall").render(rest_area, buf);
       return;
     }
 
-    if left_area.height < 4 || right_area.height < 4 {
+    if event_area.height < 4 || term_area.height < 4 {
       Paragraph::new("Terminal or pane too small").render(rest_area, buf);
       return;
     }
@@ -360,8 +389,8 @@ impl Widget for &mut App {
       } else {
         Color::White
       }));
-    self.event_list.render(block.inner(left_area), buf);
-    block.render(left_area, buf);
+    self.event_list.render(block.inner(event_area), buf);
+    block.render(event_area, buf);
     if let Some(term) = self.term.as_mut() {
       let block = Block::default()
         .title("Pseudo Terminal")
@@ -373,8 +402,8 @@ impl Widget for &mut App {
             Color::White
           }),
         );
-      term.render(block.inner(right_area), buf);
-      block.render(right_area, buf);
+      term.render(block.inner(term_area), buf);
+      block.render(term_area, buf);
     }
     self.render_help(footer_area, buf);
   }
@@ -416,6 +445,7 @@ impl App {
         help_item!("↑/↓/←/→/Pg{Up,Dn}", "Navigate"),
         help_item!("Ctrl+<-/->", "Scroll<->"),
         help_item!("G/S", "Grow/Shrink Pane"),
+        help_item!("Alt+L", "Layout"),
         help_item!("V", "View"),
         help_item!("C", "Copy"),
         help_item!("Q", "Quit")

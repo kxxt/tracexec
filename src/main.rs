@@ -141,6 +141,7 @@ async fn main() -> color_eyre::Result<()> {
       terminate_on_exit,
       active_pane,
       kill_on_exit,
+      layout,
     } => {
       let (tracer_mode, pty_master) = if tty {
         let pty_system = native_pty_system();
@@ -170,6 +171,7 @@ async fn main() -> color_eyre::Result<()> {
         baseline.clone(),
         pty_master,
         active_pane,
+        layout,
       )?;
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
       let tracer = Arc::new(tracer::Tracer::new(

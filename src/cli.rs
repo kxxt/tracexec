@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, Subcommand};
 
+use crate::tui::app::AppLayout;
+
 use self::{
   args::{ModifierArgs, TracerEventArgs, TracingArgs},
   options::{ActivePane, Color},
@@ -87,5 +89,13 @@ pub enum CliCommand {
       default_value_t
     )]
     active_pane: ActivePane,
+    #[clap(
+      long,
+      short = 'L',
+      help = "Set the layout of the TUI when it launches",
+      requires = "tty",
+      default_value_t
+    )]
+    layout: AppLayout
   },
 }
