@@ -309,6 +309,17 @@ impl Widget for &mut App {
     };
     let [left_area, right_area] = Layout::horizontal(horizontal_constraints).areas(rest_area);
     render_title(header_area, buf, "tracexec event list");
+
+    if left_area.width < 10 || right_area.width < 10 {
+      Paragraph::new("Terminal\ntoo\nsmall").render(rest_area, buf);
+      return;
+    }
+
+    if left_area.height < 4 || right_area.height < 4 {
+      Paragraph::new("Terminal too small").render(rest_area, buf);
+      return;
+    }
+
     let block = Block::default()
       .title("Events")
       .borders(ratatui::widgets::Borders::ALL)
