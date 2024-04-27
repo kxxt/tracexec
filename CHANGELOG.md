@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.1.0-alpha.5
+
+tracexec v0.1.0-alpha.5 released!
+
+Changes since v0.1.0-alpha.4:
+
+![tracexec v0.1.0-alpha.5](https://github.com/kxxt/tracexec/blob/main/screenshots/0.1.0-alpha.5.png?raw=true)
+
+### Added
+
+- Horizontal scrolling in the TUI
+- Use `Ctrl+S` to switch active pane in the TUI
+- Event filter option(--filter). (Meanwhile, the tracing args are dropped for TUI mode)
+- Option to set default active pane for TUI in the command line
+- PageUp/PageDown/PageLeft/PageRight to scroll faster in the TUI
+
+### Changed
+
+- Tracer thread now is named `tracer`.
+- Optimization: only render the visible part of the events in the TUI.
+- PTY master is now closed when TUI exits.
+- TUI now shows the cmdline for exec events.
+
+### Fixed
+
+- Fix hang when root child is stopped by other signals before ptrace is setup
+- Fix selection and resize for the event list in the TUI
+- Fix that TUI doesn't display failed exec events
+- Some typos
+
 ## v0.1.0-alpha.4
 
 tracexec v0.1.0-alpha.4 released!
