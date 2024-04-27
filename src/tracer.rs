@@ -5,6 +5,7 @@ use std::{
   os::fd::AsRawFd,
   path::PathBuf,
   process::exit,
+  sync::RwLock,
 };
 
 use cfg_if::cfg_if;
@@ -51,7 +52,7 @@ cfg_if! {
 pub struct Tracer {
   with_tty: bool,
   mode: TracerMode,
-  pub store: ProcessStateStore,
+  pub store: RwLock<ProcessStateStore>,
   args: PrinterArgs,
   filter: BitFlags<TracerEventKind>,
   baseline: BaselineInfo,
@@ -84,7 +85,7 @@ impl Tracer {
         TracerMode::Cli => true,
       },
       mode,
-      store: ProcessStateStore::new(),
+      store: RwLock::new(ProcessStateStore::new()),
       baseline,
       #[cfg(feature = "seccomp-bpf")]
       seccomp_bpf: modifier_args.seccomp_bpf,
@@ -217,7 +218,9 @@ impl Tracer {
     log::trace!("child stopped");
     let mut root_child_state = ProcessState::new(root_child, 0)?;
     root_child_state.ppid = Some(getpid());
-    self.store.insert(root_child_state);
+    {
+      self.store.write().unwrap().insert(root_child_state);
+    }
     // Set foreground process group of the terminal
     if let TracerMode::Cli = &self.mode {
       tcsetpgrp(stdin(), root_child)?;
@@ -249,35 +252,38 @@ impl Tracer {
           match sig {
             Signal::SIGSTOP => {
               log::trace!("sigstop event, child: {pid}");
-              if let Some(state) = self.store.get_current_mut(pid) {
-                if state.status == ProcessStatus::PtraceForkEventReceived {
-                  log::trace!("sigstop event received after ptrace fork event, pid: {pid}");
-                  state.status = ProcessStatus::Running;
-                  self.seccomp_aware_cont(pid)?;
-                } else if pid != root_child {
-                  log::error!("Unexpected SIGSTOP: {state:?}")
+              {
+                let mut store = self.store.write().unwrap();
+                if let Some(state) = store.get_current_mut(pid) {
+                  if state.status == ProcessStatus::PtraceForkEventReceived {
+                    log::trace!("sigstop event received after ptrace fork event, pid: {pid}");
+                    state.status = ProcessStatus::Running;
+                    self.seccomp_aware_cont(pid)?;
+                  } else if pid != root_child {
+                    log::error!("Unexpected SIGSTOP: {state:?}")
+                  } else {
+                    log::error!("Unexpected SIGSTOP: {state:?}")
+                    // let siginfo = ptrace::getsiginfo(pid)?;
+                    // log::trace!(
+                    //     "FIXME: this is weird, pid: {pid}, siginfo: {siginfo:?}"
+                    // );
+                    // let sender = siginfo._pad[1];
+                    // let tmp = format!("/proc/{sender}/status");
+                    // ptrace::detach(pid, Some(Signal::SIGSTOP))?;
+                    // trace_dbg!(process::Command::new("/bin/cat")
+                    //     .arg(tmp)
+                    //     .output()?);
+                    // self.seccomp_aware_cont(pid)?;
+                  }
                 } else {
-                  log::error!("Unexpected SIGSTOP: {state:?}")
-                  // let siginfo = ptrace::getsiginfo(pid)?;
-                  // log::trace!(
-                  //     "FIXME: this is weird, pid: {pid}, siginfo: {siginfo:?}"
-                  // );
-                  // let sender = siginfo._pad[1];
-                  // let tmp = format!("/proc/{sender}/status");
-                  // ptrace::detach(pid, Some(Signal::SIGSTOP))?;
-                  // trace_dbg!(process::Command::new("/bin/cat")
-                  //     .arg(tmp)
-                  //     .output()?);
-                  // self.seccomp_aware_cont(pid)?;
+                  log::trace!("sigstop event received before ptrace fork event, pid: {pid}");
+                  let mut state = ProcessState::new(pid, 0)?;
+                  state.status = ProcessStatus::SigstopReceived;
+                  store.insert(state);
                 }
-              } else {
-                log::trace!("sigstop event received before ptrace fork event, pid: {pid}");
-                let mut state = ProcessState::new(pid, 0)?;
-                state.status = ProcessStatus::SigstopReceived;
-                self.store.insert(state);
+                // https://stackoverflow.com/questions/29997244/occasionally-missing-ptrace-event-vfork-when-running-ptrace
+                // DO NOT send PTRACE_SYSCALL until we receive the PTRACE_EVENT_FORK, etc.
               }
-              // https://stackoverflow.com/questions/29997244/occasionally-missing-ptrace-event-vfork-when-running-ptrace
-              // DO NOT send PTRACE_SYSCALL until we receive the PTRACE_EVENT_FORK, etc.
             }
             Signal::SIGCHLD => {
               // From lurk:
@@ -296,7 +302,13 @@ impl Tracer {
         }
         WaitStatus::Exited(pid, code) => {
           log::trace!("exited: pid {}, code {:?}", pid, code);
-          self.store.get_current_mut(pid).unwrap().status = ProcessStatus::Exited(code);
+          self
+            .store
+            .write()
+            .unwrap()
+            .get_current_mut(pid)
+            .unwrap()
+            .status = ProcessStatus::Exited(code);
           if pid == root_child {
             filterable_event!(RootChildExit {
               signal: None,
@@ -315,7 +327,8 @@ impl Tracer {
               let new_child = Pid::from_raw(ptrace::getevent(pid)? as pid_t);
               log::trace!("ptrace fork event, evt {evt}, pid: {pid}, child: {new_child}");
               if self.filter.intersects(TracerEventKind::NewChild) {
-                let parent = self.store.get_current_mut(pid).unwrap();
+                let store = self.store.read().unwrap();
+                let parent = store.get_current(pid).unwrap();
                 self.tx.send(TracerEvent::NewChild {
                   ppid: parent.pid,
                   pcomm: parent.comm.clone(),
@@ -323,36 +336,40 @@ impl Tracer {
                 })?;
                 print_new_child(self.output.as_deref_mut(), parent, &self.args, new_child)?;
               }
-              if let Some(state) = self.store.get_current_mut(new_child) {
-                if state.status == ProcessStatus::SigstopReceived {
-                  log::trace!(
-                    "ptrace fork event received after sigstop, pid: {pid}, child: {new_child}"
-                  );
-                  state.status = ProcessStatus::Running;
-                  state.ppid = Some(pid);
-                  self.seccomp_aware_cont(new_child)?;
-                } else if new_child != root_child {
-                  filterable_event!(Error(TracerMessage {
+              {
+                let mut store = self.store.write().unwrap();
+                if let Some(state) = store.get_current_mut(new_child) {
+                  if state.status == ProcessStatus::SigstopReceived {
+                    log::trace!(
+                      "ptrace fork event received after sigstop, pid: {pid}, child: {new_child}"
+                    );
+                    state.status = ProcessStatus::Running;
+                    state.ppid = Some(pid);
+                    self.seccomp_aware_cont(new_child)?;
+                  } else if new_child != root_child {
+                    filterable_event!(Error(TracerMessage {
                     pid: Some(new_child),
                     msg: "Unexpected fork event! Please report this bug if you can provide a reproducible case.".to_string(),
                   })).send_if_match(&self.tx, self.filter)?;
-                  log::error!("Unexpected fork event: {state:?}")
+                    log::error!("Unexpected fork event: {state:?}")
+                  }
+                } else {
+                  log::trace!(
+                    "ptrace fork event received before sigstop, pid: {pid}, child: {new_child}"
+                  );
+                  let mut state = ProcessState::new(new_child, 0)?;
+                  state.status = ProcessStatus::PtraceForkEventReceived;
+                  state.ppid = Some(pid);
+                  store.insert(state);
                 }
-              } else {
-                log::trace!(
-                  "ptrace fork event received before sigstop, pid: {pid}, child: {new_child}"
-                );
-                let mut state = ProcessState::new(new_child, 0)?;
-                state.status = ProcessStatus::PtraceForkEventReceived;
-                state.ppid = Some(pid);
-                self.store.insert(state);
+                // Resume parent
+                self.seccomp_aware_cont(pid)?;
               }
-              // Resume parent
-              self.seccomp_aware_cont(pid)?;
             }
             nix::libc::PTRACE_EVENT_EXEC => {
               log::trace!("exec event");
-              let p = self.store.get_current_mut(pid).unwrap();
+              let mut store = self.store.write().unwrap();
+              let p = store.get_current_mut(pid).unwrap();
               assert!(!p.presyscall);
               // After execve or execveat, in syscall exit event,
               // the registers might be clobbered(e.g. aarch64).
@@ -389,7 +406,13 @@ impl Tracer {
           }
         }
         WaitStatus::PtraceSyscall(pid) => {
-          let presyscall = self.store.get_current_mut(pid).unwrap().presyscall;
+          let presyscall = self
+            .store
+            .write()
+            .unwrap()
+            .get_current_mut(pid)
+            .unwrap()
+            .presyscall;
           if presyscall {
             self.on_syscall_enter(pid)?;
           } else {
@@ -402,7 +425,8 @@ impl Tracer {
   }
 
   fn on_syscall_enter(&mut self, pid: Pid) -> color_eyre::Result<()> {
-    let p = self.store.get_current_mut(pid).unwrap();
+    let mut store = self.store.write().unwrap();
+    let p = store.get_current_mut(pid).unwrap();
     p.presyscall = !p.presyscall;
     // SYSCALL ENTRY
     let regs = match ptrace_getregs(pid) {
@@ -491,7 +515,8 @@ impl Tracer {
   fn on_syscall_exit(&mut self, pid: Pid) -> color_eyre::Result<()> {
     // SYSCALL EXIT
     // log::trace!("post syscall {}", p.syscall);
-    let p = self.store.get_current_mut(pid).unwrap();
+    let mut store = self.store.write().unwrap();
+    let p = store.get_current_mut(pid).unwrap();
     p.presyscall = !p.presyscall;
 
     let regs = match ptrace_getregs(pid) {

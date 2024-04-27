@@ -55,6 +55,11 @@ impl ProcessStateStore {
     // println!("Getting {pid}");
     self.processes.get_mut(&pid)?.last_mut()
   }
+
+  pub fn get_current(&self, pid: Pid) -> Option<&ProcessState> {
+    // The last process in the vector is the current process
+    self.processes.get(&pid)?.last()
+  }
 }
 
 impl ProcessState {
