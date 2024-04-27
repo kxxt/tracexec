@@ -33,6 +33,7 @@ use crate::{
   cli::{args::TracingArgs, options::Color, CliCommand},
   event::TracerEvent,
   log::initialize_panic_handler,
+  printer::PrinterOut,
   proc::BaselineInfo,
   pty::{native_pty_system, PtySize, PtySystem},
   tracer::TracerMode,
@@ -96,7 +97,7 @@ async fn main() -> color_eyre::Result<()> {
       tracer_event_args,
       output,
     } => {
-      let output: Box<dyn Write + Send> = match output {
+      let output: Box<PrinterOut> = match output {
         None => Box::new(stderr()),
         Some(ref x) if x.as_os_str() == "-" => Box::new(stdout()),
         Some(path) => {

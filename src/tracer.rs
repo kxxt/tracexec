@@ -74,7 +74,7 @@ impl Tracer {
     modifier_args: ModifierArgs,
     tracer_event_args: TracerEventArgs,
     baseline: BaselineInfo,
-    output: Option<Box<dyn Write + Send>>,
+    output: Option<Box<PrinterOut>>,
     tx: UnboundedSender<TracerEvent>,
     user: Option<User>,
   ) -> color_eyre::Result<Self> {

@@ -93,7 +93,7 @@ impl PrinterArgs {
   }
 }
 
-pub type PrinterOut = dyn Write + Send + 'static;
+pub type PrinterOut = dyn Write + Send + Sync + 'static;
 
 pub fn print_new_child(
   out: Option<&mut PrinterOut>,
