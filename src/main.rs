@@ -115,7 +115,7 @@ async fn main() -> color_eyre::Result<()> {
       };
       let baseline = BaselineInfo::new()?;
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
-      let mut tracer = tracer::Tracer::new(
+      let tracer = tracer::Tracer::new(
         TracerMode::Cli,
         tracing_args,
         modifier_args,
@@ -125,9 +125,7 @@ async fn main() -> color_eyre::Result<()> {
         tracer_tx,
         user,
       )?;
-      let tracer_thread = thread::Builder::new()
-        .name("tracer".to_string())
-        .spawn(move || tracer.start_root_process(cmd))?;
+      let tracer_thread = tracer.spawn(cmd)?;
       tracer_thread.join().unwrap()?;
       loop {
         if let Some(TracerEvent::RootChildExit { exit_code, .. }) = tracer_rx.recv().await {

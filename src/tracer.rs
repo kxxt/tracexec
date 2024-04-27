@@ -1,4 +1,5 @@
 use std::{
+  cell::RefCell,
   collections::HashMap,
   ffi::CString,
   io::{self, stdin, Write},
@@ -6,6 +7,7 @@ use std::{
   path::PathBuf,
   process::exit,
   sync::RwLock,
+  thread::{self, JoinHandle},
 };
 
 use cfg_if::cfg_if;
@@ -33,7 +35,7 @@ use crate::{
   cmdbuilder::CommandBuilder,
   event::{filterable_event, ExecEvent, TracerEvent, TracerEventKind, TracerMessage},
   inspect::{read_pathbuf, read_string, read_string_array},
-  printer::{print_exec_trace, print_new_child, PrinterArgs, PrinterOut},
+  printer::{Printer, PrinterArgs, PrinterOut},
   proc::{diff_env, read_comm, read_cwd, read_fd, read_interpreter_recursive, BaselineInfo},
   ptrace::{ptrace_getregs, ptrace_syscall},
   pty::{self, Child, UnixSlavePty},
@@ -53,10 +55,9 @@ pub struct Tracer {
   with_tty: bool,
   mode: TracerMode,
   pub store: RwLock<ProcessStateStore>,
-  args: PrinterArgs,
+  printer: Printer,
   filter: BitFlags<TracerEventKind>,
   baseline: BaselineInfo,
-  output: Option<Box<PrinterOut>>,
   #[cfg(feature = "seccomp-bpf")]
   seccomp_bpf: SeccompBpf,
   tx: UnboundedSender<TracerEvent>,
@@ -89,7 +90,6 @@ impl Tracer {
       baseline,
       #[cfg(feature = "seccomp-bpf")]
       seccomp_bpf: modifier_args.seccomp_bpf,
-      args: PrinterArgs::from_cli(&tracing_args, &modifier_args),
       tx,
       user,
       filter: {
@@ -102,11 +102,27 @@ impl Tracer {
         }
         filter
       },
-      output,
+      printer: Printer::new(PrinterArgs::from_cli(&tracing_args, &modifier_args), output),
     })
   }
 
+  thread_local! {
+    pub static PRINTER_OUT: RefCell<Option<Box<PrinterOut>>> = RefCell::new(None);
+  }
+
+  pub fn spawn(
+    mut self,
+    args: Vec<String>,
+  ) -> color_eyre::Result<JoinHandle<color_eyre::Result<()>>> {
+    Ok(
+      thread::Builder::new()
+        .name("tracer".to_string())
+        .spawn(move || self.start_root_process(args))?,
+    )
+  }
+
   pub fn start_root_process(&mut self, args: Vec<String>) -> color_eyre::Result<()> {
+    self.printer.init_thread_local();
     log::trace!("start_root_process: {:?}", args);
 
     // Check if we should enable seccomp-bpf
@@ -334,7 +350,7 @@ impl Tracer {
                   pcomm: parent.comm.clone(),
                   pid: new_child,
                 })?;
-                print_new_child(self.output.as_deref_mut(), parent, &self.args, new_child)?;
+                self.printer.print_new_child(parent, new_child)?;
               }
               {
                 let mut store = self.store.write().unwrap();
@@ -424,7 +440,7 @@ impl Tracer {
     }
   }
 
-  fn on_syscall_enter(&mut self, pid: Pid) -> color_eyre::Result<()> {
+  fn on_syscall_enter(&self, pid: Pid) -> color_eyre::Result<()> {
     let mut store = self.store.write().unwrap();
     let p = store.get_current_mut(pid).unwrap();
     p.presyscall = !p.presyscall;
@@ -477,7 +493,7 @@ impl Tracer {
           dir.join(pathname)
         }
       };
-      let interpreters = if self.args.trace_interpreter {
+      let interpreters = if self.printer.args.trace_interpreter {
         read_interpreter_recursive(&filename)
       } else {
         vec![]
@@ -494,7 +510,7 @@ impl Tracer {
       let filename = read_pathbuf(pid, syscall_arg!(regs, 0) as AddressType)?;
       let argv = read_string_array(pid, syscall_arg!(regs, 1) as AddressType)?;
       let envp = read_string_array(pid, syscall_arg!(regs, 2) as AddressType)?;
-      let interpreters = if self.args.trace_interpreter {
+      let interpreters = if self.printer.args.trace_interpreter {
         read_interpreter_recursive(&filename)
       } else {
         vec![]
@@ -512,7 +528,7 @@ impl Tracer {
     Ok(())
   }
 
-  fn on_syscall_exit(&mut self, pid: Pid) -> color_eyre::Result<()> {
+  fn on_syscall_exit(&self, pid: Pid) -> color_eyre::Result<()> {
     // SYSCALL EXIT
     // log::trace!("post syscall {}", p.syscall);
     let mut store = self.store.write().unwrap();
@@ -533,7 +549,7 @@ impl Tracer {
     match p.syscall {
       nix::libc::SYS_execve => {
         log::trace!("post execve in exec");
-        if self.args.successful_only && !p.is_exec_successful {
+        if self.printer.args.successful_only && !p.is_exec_successful {
           p.exec_data = None;
           self.seccomp_aware_cont(pid)?;
           return Ok(());
@@ -545,14 +561,9 @@ impl Tracer {
             p,
             exec_result,
           )))?;
-          print_exec_trace(
-            self.output.as_deref_mut(),
-            p,
-            exec_result,
-            &self.args,
-            &self.baseline.env,
-            &self.baseline.cwd,
-          )?;
+          self
+            .printer
+            .print_exec_trace(p, exec_result, &self.baseline.env, &self.baseline.cwd)?;
         }
         p.exec_data = None;
         p.is_exec_successful = false;
@@ -561,7 +572,7 @@ impl Tracer {
       }
       nix::libc::SYS_execveat => {
         log::trace!("post execveat in exec");
-        if self.args.successful_only && !p.is_exec_successful {
+        if self.printer.args.successful_only && !p.is_exec_successful {
           p.exec_data = None;
           self.seccomp_aware_cont(pid)?;
           return Ok(());
@@ -572,14 +583,9 @@ impl Tracer {
             p,
             exec_result,
           )))?;
-          print_exec_trace(
-            self.output.as_deref_mut(),
-            p,
-            exec_result,
-            &self.args,
-            &self.baseline.env,
-            &self.baseline.cwd,
-          )?;
+          self
+            .printer
+            .print_exec_trace(p, exec_result, &self.baseline.env, &self.baseline.cwd)?;
         }
         p.exec_data = None;
         p.is_exec_successful = false;

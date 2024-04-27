@@ -1,4 +1,5 @@
 use std::{
+  cell::RefCell,
   collections::HashMap,
   io::{self, Write},
   path::Path,
@@ -95,239 +96,6 @@ impl PrinterArgs {
 
 pub type PrinterOut = dyn Write + Send + Sync + 'static;
 
-pub fn print_new_child(
-  out: Option<&mut PrinterOut>,
-  state: &ProcessState,
-  args: &PrinterArgs,
-  child: Pid,
-) -> color_eyre::Result<()> {
-  let Some(out) = out else {
-    return Ok(());
-  };
-  write!(out, "{}", state.pid.bright_yellow())?;
-  if args.trace_comm {
-    write!(out, "<{}>", state.comm.cyan())?;
-  }
-  writeln!(out, ": {}: {}", "new child".purple(), child.bright_yellow())?;
-  out.flush()?;
-  Ok(())
-}
-
-pub fn print_exec_trace(
-  out: Option<&mut PrinterOut>,
-  state: &ProcessState,
-  result: i64,
-  args: &PrinterArgs,
-  env: &HashMap<String, String>,
-  cwd: &Path,
-) -> color_eyre::Result<()> {
-  // Preconditions:
-  // 1. execve syscall exit, which leads to 2
-  // 2. state.exec_data is Some
-  let Some(out) = out else {
-    return Ok(());
-  };
-  let exec_data = state.exec_data.as_ref().unwrap();
-  let list_printer = ListPrinter::new(args.color);
-  if result == 0 {
-    write!(out, "{}", state.pid.bright_yellow())?;
-  } else {
-    write!(out, "{}", state.pid.bright_red())?;
-  }
-  if args.trace_comm {
-    write!(out, "<{}>", state.comm.cyan())?;
-  }
-  write!(out, ":")?;
-  if args.trace_filename {
-    write!(out, " {:?}", exec_data.filename)?;
-  }
-  if args.trace_argv {
-    write!(out, " ")?;
-    list_printer.print_string_list(out, &exec_data.argv)?;
-  }
-  if args.trace_cwd {
-    write!(out, " {} {:?}", "at".purple(), exec_data.cwd)?;
-  }
-  if args.trace_interpreter && result == 0 {
-    write!(out, " {} ", "interpreter".purple(),)?;
-    match exec_data.interpreters.len() {
-      0 => {
-        write!(out, "{}", Interpreter::None)?;
-      }
-      1 => {
-        write!(out, "{}", exec_data.interpreters[0])?;
-      }
-      _ => {
-        list_printer.begin(out)?;
-        for (idx, interpreter) in exec_data.interpreters.iter().enumerate() {
-          if idx != 0 {
-            list_printer.comma(out)?;
-          }
-          write!(out, "{}", interpreter)?;
-        }
-        list_printer.end(out)?;
-      }
-    }
-  }
-  match args.trace_env {
-    EnvPrintFormat::Diff => {
-      // TODO: make it faster
-      //       This is mostly a proof of concept
-      write!(out, " {} ", "with".purple())?;
-      list_printer.begin(out)?;
-      let env = env.clone();
-      let mut first_item_written = false;
-      let mut write_separator = |out: &mut dyn Write| -> io::Result<()> {
-        if first_item_written {
-          list_printer.comma(out)?;
-        } else {
-          first_item_written = true;
-        }
-        Ok(())
-      };
-      let diff = diff_env(&env, &exec_data.envp);
-      for (k, v) in diff.added.into_iter() {
-        write_separator(out)?;
-        write!(
-          out,
-          "{}{:?}{}{:?}",
-          "+".bright_green().bold(),
-          k.green(),
-          "=".bright_green().bold(),
-          v.green()
-        )?;
-      }
-      for (k, v) in diff.modified.into_iter() {
-        write_separator(out)?;
-        write!(
-          out,
-          "{}{:?}{}{:?}",
-          "M".bright_yellow().bold(),
-          k.yellow(),
-          "=".bright_yellow().bold(),
-          v.bright_blue()
-        )?;
-      }
-      // Now we have the tracee removed entries in env
-      for k in diff.removed.into_iter() {
-        write_separator(out)?;
-        write!(
-          out,
-          "{}{:?}{}{:?}",
-          "-".bright_red().bold(),
-          k.bright_red().strikethrough(),
-          "=".bright_red().strikethrough(),
-          env.get(&k).unwrap().bright_red().strikethrough()
-        )?;
-      }
-      list_printer.end(out)?;
-      // Avoid trailing color
-      // https://unix.stackexchange.com/questions/212933/background-color-whitespace-when-end-of-the-terminal-reached
-      if owo_colors::control::should_colorize() {
-        write!(out, "\x1B[49m\x1B[K")?;
-      }
-    }
-    EnvPrintFormat::Raw => {
-      write!(out, " {} ", "with".purple())?;
-      list_printer.print_string_list(out, &exec_data.envp)?;
-    }
-    EnvPrintFormat::None => (),
-  }
-  let mut deferred_warning = DeferredWarnings {
-    warning: DeferredWarningKind::None,
-  };
-  if args.print_cmdline {
-    write!(out, " {}", "cmdline".purple())?;
-    write!(out, " env")?;
-    if cwd != exec_data.cwd {
-      if args.color >= ColorLevel::Normal {
-        write!(
-          out,
-          " -C {}",
-          escape_str_for_bash!(&exec_data.cwd).bright_cyan()
-        )?;
-      } else {
-        write!(out, " -C {}", escape_str_for_bash!(&exec_data.cwd))?;
-      }
-    }
-    let diff = diff_env(&env, &exec_data.envp);
-    // Now we have the tracee removed entries in env
-    for k in diff.removed.into_iter() {
-      if args.color >= ColorLevel::Normal {
-        write!(
-          out,
-          " {}{}",
-          "-u ".bright_red(),
-          escape_str_for_bash!(&k).bright_red()
-        )?;
-      } else {
-        write!(out, " -u={}", escape_str_for_bash!(&k))?;
-      }
-    }
-    if args.color >= ColorLevel::Normal {
-      for (k, v) in diff.added.into_iter() {
-        write!(
-          out,
-          " {}{}{}",
-          escape_str_for_bash!(&k).green(),
-          "=".green().bold(),
-          escape_str_for_bash!(&v).green()
-        )?;
-      }
-      for (k, v) in diff.modified.into_iter() {
-        write!(
-          out,
-          " {}{}{}",
-          escape_str_for_bash!(&k),
-          "=".bright_yellow().bold(),
-          escape_str_for_bash!(&v).bright_blue()
-        )?;
-      }
-    } else {
-      for (k, v) in chain!(diff.added.into_iter(), diff.modified.into_iter()) {
-        write!(
-          out,
-          " {}={}",
-          escape_str_for_bash!(&k),
-          escape_str_for_bash!(&v)
-        )?;
-      }
-    }
-    for (idx, arg) in exec_data.argv.iter().enumerate() {
-      if idx == 0 {
-        let escaped_filename = shell_quote::Bash::quote(&exec_data.filename);
-        let escaped_filename_lossy = String::from_utf8_lossy(&escaped_filename);
-        if !escaped_filename_lossy.ends_with(arg) {
-          deferred_warning.warning = DeferredWarningKind::Argv0AndFileNameDiffers;
-        }
-        write!(out, " {}", escaped_filename_lossy)?;
-        continue;
-      }
-      write!(out, " {}", escape_str_for_bash!(arg))?;
-    }
-  }
-  if result == 0 {
-    writeln!(out)?;
-  } else {
-    write!(out, " {} ", "=".purple())?;
-    if args.decode_errno {
-      writeln!(
-        out,
-        "{} ({})",
-        result.bright_red().bold(),
-        nix::errno::Errno::from_raw(-result as i32).red()
-      )?;
-    } else {
-      writeln!(out, "{}", result.bright_red().bold())?;
-    }
-  }
-  // It is critical to call [flush] before BufWriter<W> is dropped.
-  // Though dropping will attempt to flush the contents of the buffer, any errors that happen in the process of dropping will be ignored.
-  // Calling [flush] ensures that the buffer is empty and thus dropping will not even attempt file operations.
-  out.flush()?;
-  Ok(())
-}
-
 enum DeferredWarningKind {
   None,
   Argv0AndFileNameDiffers,
@@ -391,5 +159,257 @@ impl ListPrinter {
       }
     }
     self.end(out)
+  }
+}
+
+pub struct Printer {
+  pub args: PrinterArgs,
+  output: Option<Box<PrinterOut>>,
+}
+
+impl Printer {
+  pub fn new(args: PrinterArgs, output: Option<Box<PrinterOut>>) -> Self {
+    Printer { args, output }
+  }
+
+  thread_local! {
+    pub static OUT: RefCell<Option<Box<PrinterOut>>> = RefCell::new(None);
+  }
+
+  pub fn init_thread_local(&mut self) {
+    Printer::OUT.with(|out| {
+      *out.borrow_mut() = self.output.take();
+    });
+  }
+
+  pub fn print_new_child(&self, state: &ProcessState, child: Pid) -> color_eyre::Result<()> {
+    Self::OUT.with_borrow_mut(|out| {
+      let Some(out) = out else {
+        return Ok(());
+      };
+      write!(out, "{}", state.pid.bright_yellow())?;
+      if self.args.trace_comm {
+        write!(out, "<{}>", state.comm.cyan())?;
+      }
+      writeln!(out, ": {}: {}", "new child".purple(), child.bright_yellow())?;
+      out.flush()?;
+      Ok(())
+    })
+  }
+
+  pub fn print_exec_trace(
+    &self,
+    state: &ProcessState,
+    result: i64,
+    env: &HashMap<String, String>,
+    cwd: &Path,
+  ) -> color_eyre::Result<()> {
+    // Preconditions:
+    // 1. execve syscall exit, which leads to 2
+    // 2. state.exec_data is Some
+    Self::OUT.with_borrow_mut(|out| {
+      let Some(out) = out else {
+        return Ok(());
+      };
+      let exec_data = state.exec_data.as_ref().unwrap();
+      let list_printer = ListPrinter::new(self.args.color);
+      if result == 0 {
+        write!(out, "{}", state.pid.bright_yellow())?;
+      } else {
+        write!(out, "{}", state.pid.bright_red())?;
+      }
+      if self.args.trace_comm {
+        write!(out, "<{}>", state.comm.cyan())?;
+      }
+      write!(out, ":")?;
+      if self.args.trace_filename {
+        write!(out, " {:?}", exec_data.filename)?;
+      }
+      if self.args.trace_argv {
+        write!(out, " ")?;
+        list_printer.print_string_list(out, &exec_data.argv)?;
+      }
+      if self.args.trace_cwd {
+        write!(out, " {} {:?}", "at".purple(), exec_data.cwd)?;
+      }
+      if self.args.trace_interpreter && result == 0 {
+        write!(out, " {} ", "interpreter".purple(),)?;
+        match exec_data.interpreters.len() {
+          0 => {
+            write!(out, "{}", Interpreter::None)?;
+          }
+          1 => {
+            write!(out, "{}", exec_data.interpreters[0])?;
+          }
+          _ => {
+            list_printer.begin(out)?;
+            for (idx, interpreter) in exec_data.interpreters.iter().enumerate() {
+              if idx != 0 {
+                list_printer.comma(out)?;
+              }
+              write!(out, "{}", interpreter)?;
+            }
+            list_printer.end(out)?;
+          }
+        }
+      }
+      match self.args.trace_env {
+        EnvPrintFormat::Diff => {
+          // TODO: make it faster
+          //       This is mostly a proof of concept
+          write!(out, " {} ", "with".purple())?;
+          list_printer.begin(out)?;
+          let env = env.clone();
+          let mut first_item_written = false;
+          let mut write_separator = |out: &mut dyn Write| -> io::Result<()> {
+            if first_item_written {
+              list_printer.comma(out)?;
+            } else {
+              first_item_written = true;
+            }
+            Ok(())
+          };
+          let diff = diff_env(&env, &exec_data.envp);
+          for (k, v) in diff.added.into_iter() {
+            write_separator(out)?;
+            write!(
+              out,
+              "{}{:?}{}{:?}",
+              "+".bright_green().bold(),
+              k.green(),
+              "=".bright_green().bold(),
+              v.green()
+            )?;
+          }
+          for (k, v) in diff.modified.into_iter() {
+            write_separator(out)?;
+            write!(
+              out,
+              "{}{:?}{}{:?}",
+              "M".bright_yellow().bold(),
+              k.yellow(),
+              "=".bright_yellow().bold(),
+              v.bright_blue()
+            )?;
+          }
+          // Now we have the tracee removed entries in env
+          for k in diff.removed.into_iter() {
+            write_separator(out)?;
+            write!(
+              out,
+              "{}{:?}{}{:?}",
+              "-".bright_red().bold(),
+              k.bright_red().strikethrough(),
+              "=".bright_red().strikethrough(),
+              env.get(&k).unwrap().bright_red().strikethrough()
+            )?;
+          }
+          list_printer.end(out)?;
+          // Avoid trailing color
+          // https://unix.stackexchange.com/questions/212933/background-color-whitespace-when-end-of-the-terminal-reached
+          if owo_colors::control::should_colorize() {
+            write!(out, "\x1B[49m\x1B[K")?;
+          }
+        }
+        EnvPrintFormat::Raw => {
+          write!(out, " {} ", "with".purple())?;
+          list_printer.print_string_list(out, &exec_data.envp)?;
+        }
+        EnvPrintFormat::None => (),
+      }
+      let mut deferred_warning = DeferredWarnings {
+        warning: DeferredWarningKind::None,
+      };
+      if self.args.print_cmdline {
+        write!(out, " {}", "cmdline".purple())?;
+        write!(out, " env")?;
+        if cwd != exec_data.cwd {
+          if self.args.color >= ColorLevel::Normal {
+            write!(
+              out,
+              " -C {}",
+              escape_str_for_bash!(&exec_data.cwd).bright_cyan()
+            )?;
+          } else {
+            write!(out, " -C {}", escape_str_for_bash!(&exec_data.cwd))?;
+          }
+        }
+        let diff = diff_env(&env, &exec_data.envp);
+        // Now we have the tracee removed entries in env
+        for k in diff.removed.into_iter() {
+          if self.args.color >= ColorLevel::Normal {
+            write!(
+              out,
+              " {}{}",
+              "-u ".bright_red(),
+              escape_str_for_bash!(&k).bright_red()
+            )?;
+          } else {
+            write!(out, " -u={}", escape_str_for_bash!(&k))?;
+          }
+        }
+        if self.args.color >= ColorLevel::Normal {
+          for (k, v) in diff.added.into_iter() {
+            write!(
+              out,
+              " {}{}{}",
+              escape_str_for_bash!(&k).green(),
+              "=".green().bold(),
+              escape_str_for_bash!(&v).green()
+            )?;
+          }
+          for (k, v) in diff.modified.into_iter() {
+            write!(
+              out,
+              " {}{}{}",
+              escape_str_for_bash!(&k),
+              "=".bright_yellow().bold(),
+              escape_str_for_bash!(&v).bright_blue()
+            )?;
+          }
+        } else {
+          for (k, v) in chain!(diff.added.into_iter(), diff.modified.into_iter()) {
+            write!(
+              out,
+              " {}={}",
+              escape_str_for_bash!(&k),
+              escape_str_for_bash!(&v)
+            )?;
+          }
+        }
+        for (idx, arg) in exec_data.argv.iter().enumerate() {
+          if idx == 0 {
+            let escaped_filename = shell_quote::Bash::quote(&exec_data.filename);
+            let escaped_filename_lossy = String::from_utf8_lossy(&escaped_filename);
+            if !escaped_filename_lossy.ends_with(arg) {
+              deferred_warning.warning = DeferredWarningKind::Argv0AndFileNameDiffers;
+            }
+            write!(out, " {}", escaped_filename_lossy)?;
+            continue;
+          }
+          write!(out, " {}", escape_str_for_bash!(arg))?;
+        }
+      }
+      if result == 0 {
+        writeln!(out)?;
+      } else {
+        write!(out, " {} ", "=".purple())?;
+        if self.args.decode_errno {
+          writeln!(
+            out,
+            "{} ({})",
+            result.bright_red().bold(),
+            nix::errno::Errno::from_raw(-result as i32).red()
+          )?;
+        } else {
+          writeln!(out, "{}", result.bright_red().bold())?;
+        }
+      }
+      // It is critical to call [flush] before BufWriter<W> is dropped.
+      // Though dropping will attempt to flush the contents of the buffer, any errors that happen in the process of dropping will be ignored.
+      // Calling [flush] ensures that the buffer is empty and thus dropping will not even attempt file operations.
+      out.flush()?;
+      Ok(())
+    })
   }
 }
