@@ -1,6 +1,9 @@
+//! This module provides utilities about processing process information(e.g. comm, argv, envp).
+
 use core::fmt;
 use std::{
   borrow::Cow,
+  collections::{HashMap, HashSet},
   ffi::CString,
   fmt::{Display, Formatter},
   io::{self, BufRead, BufReader, Read},
@@ -157,4 +160,35 @@ pub fn parse_env_entry(item: &str) -> (&str, &str) {
   }
   let (head, tail) = item.split_at(sep_loc);
   (head, &tail[1..])
+}
+
+pub struct EnvDiff {
+  pub added: HashMap<String, String>,
+  pub removed: HashSet<String>,
+  pub modified: HashMap<String, String>,
+}
+
+pub fn diff_env(original: &HashMap<String, String>, envp: &Vec<String>) -> EnvDiff {
+  let mut added = HashMap::new();
+  let mut modified = HashMap::new();
+  // Use str to avoid cloning all env vars
+  let mut removed: HashSet<&str> = original.keys().map(|v| v.as_str()).collect();
+  for entry in envp.iter() {
+    let (key, value) = parse_env_entry(entry);
+    // Too bad that we still don't have if- and while-let-chains
+    // https://github.com/rust-lang/rust/issues/53667
+    if let Some(orig_v) = original.get(key).map(|x| x.as_str()) {
+      if orig_v != value {
+        modified.insert(key.to_owned(), value.to_owned());
+      }
+      removed.remove(key);
+    } else {
+      added.insert(key.to_owned(), value.to_owned());
+    }
+  }
+  EnvDiff {
+    added,
+    removed: removed.into_iter().map(|x| x.to_owned()).collect(),
+    modified,
+  }
 }

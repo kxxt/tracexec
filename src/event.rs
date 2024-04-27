@@ -64,7 +64,6 @@ pub struct ExecEvent {
   pub result: i64,
 }
 
-
 macro_rules! tracer_event_spans {
     ($pid: expr, $comm: expr, $($t:tt)*) => {
         chain!([

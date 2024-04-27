@@ -6,10 +6,11 @@ use std::{
 
 use crate::{
   cli::args::{ModifierArgs, TracingArgs},
-  proc::{parse_env_entry, Interpreter},
+  proc::{diff_env, Interpreter},
   state::ProcessState,
 };
 
+use itertools::chain;
 use nix::unistd::Pid;
 use owo_colors::{OwoColorize, Style};
 
@@ -172,7 +173,7 @@ pub fn print_exec_trace(
       //       This is mostly a proof of concept
       write!(out, " {} ", "with".purple())?;
       list_printer.begin(out)?;
-      let mut env = env.clone();
+      let env = env.clone();
       let mut first_item_written = false;
       let mut write_separator = |out: &mut dyn Write| -> io::Result<()> {
         if first_item_written {
@@ -182,37 +183,31 @@ pub fn print_exec_trace(
         }
         Ok(())
       };
-      for item in exec_data.envp.iter() {
-        let (k, v) = parse_env_entry(item);
-        // Too bad that we still don't have if- and while-let-chains
-        // https://github.com/rust-lang/rust/issues/53667
-        if let Some(orig_v) = env.get(k).map(|x| x.as_str()) {
-          if orig_v != v {
-            write_separator(out)?;
-            write!(
-              out,
-              "{}{:?}={:?}",
-              "M".bright_yellow().bold(),
-              k,
-              v.bright_blue()
-            )?;
-          }
-          // Remove existing entry
-          env.remove(k);
-        } else {
-          write_separator(out)?;
-          write!(
-            out,
-            "{}{:?}{}{:?}",
-            "+".bright_green().bold(),
-            k.green(),
-            "=".green(),
-            v.green()
-          )?;
-        }
+      let diff = diff_env(&env, &exec_data.envp);
+      for (k, v) in diff.added.into_iter() {
+        write_separator(out)?;
+        write!(
+          out,
+          "{}{:?}{}{:?}",
+          "+".bright_green().bold(),
+          k.green(),
+          "=".bright_green().bold(),
+          v.green()
+        )?;
+      }
+      for (k, v) in diff.modified.into_iter() {
+        write_separator(out)?;
+        write!(
+          out,
+          "{}{:?}{}{:?}",
+          "M".bright_yellow().bold(),
+          k.yellow(),
+          "=".bright_yellow().bold(),
+          v.bright_blue()
+        )?;
       }
       // Now we have the tracee removed entries in env
-      for (k, v) in env.iter() {
+      for k in diff.removed.into_iter() {
         write_separator(out)?;
         write!(
           out,
@@ -220,7 +215,7 @@ pub fn print_exec_trace(
           "-".bright_red().bold(),
           k.bright_red().strikethrough(),
           "=".bright_red().strikethrough(),
-          v.bright_red().strikethrough()
+          env.get(&k).unwrap().bright_red().strikethrough()
         )?;
       }
       list_printer.end(out)?;
@@ -253,62 +248,46 @@ pub fn print_exec_trace(
         write!(out, " -C {}", escape_str_for_bash!(&exec_data.cwd))?;
       }
     }
-    let mut env = env.clone();
-    let mut updated = Vec::new(); // k,v,is_new
-    for item in exec_data.envp.iter() {
-      let (k, v) = parse_env_entry(item);
-      // Too bad that we still don't have if- and while-let-chains
-      // https://github.com/rust-lang/rust/issues/53667
-      if let Some(orig_v) = env.get(k).map(|x| x.as_str()) {
-        if orig_v != v {
-          updated.push((k, v, false));
-        }
-        // Remove existing entry
-        env.remove(k);
-      } else {
-        updated.push((k, v, true));
-      }
-    }
+    let diff = diff_env(&env, &exec_data.envp);
     // Now we have the tracee removed entries in env
-    for (k, _v) in env.iter() {
+    for k in diff.removed.into_iter() {
       if args.color >= ColorLevel::Normal {
         write!(
           out,
           " {}{}",
           "-u ".bright_red(),
-          escape_str_for_bash!(k).bright_red()
+          escape_str_for_bash!(&k).bright_red()
         )?;
       } else {
-        write!(out, " -u={}", escape_str_for_bash!(k))?;
+        write!(out, " -u={}", escape_str_for_bash!(&k))?;
       }
     }
     if args.color >= ColorLevel::Normal {
-      for (k, v, is_new) in updated.into_iter() {
-        if is_new {
-          write!(
-            out,
-            " {}{}{}",
-            escape_str_for_bash!(k).green(),
-            "=".green().bold(),
-            escape_str_for_bash!(v).green()
-          )?;
-        } else {
-          write!(
-            out,
-            " {}{}{}",
-            escape_str_for_bash!(k),
-            "=".bold(),
-            escape_str_for_bash!(v).bright_blue()
-          )?;
-        }
+      for (k, v) in diff.added.into_iter() {
+        write!(
+          out,
+          " {}{}{}",
+          escape_str_for_bash!(&k).green(),
+          "=".green().bold(),
+          escape_str_for_bash!(&v).green()
+        )?;
+      }
+      for (k, v) in diff.modified.into_iter() {
+        write!(
+          out,
+          " {}{}{}",
+          escape_str_for_bash!(&k),
+          "=".bright_yellow().bold(),
+          escape_str_for_bash!(&v).bright_blue()
+        )?;
       }
     } else {
-      for (k, v, _) in updated.into_iter() {
+      for (k, v) in chain!(diff.added.into_iter(), diff.modified.into_iter()) {
         write!(
           out,
           " {}={}",
-          escape_str_for_bash!(k),
-          escape_str_for_bash!(v)
+          escape_str_for_bash!(&k),
+          escape_str_for_bash!(&v)
         )?;
       }
     }
