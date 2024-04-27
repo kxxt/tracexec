@@ -1,0 +1,18 @@
+# TUI
+
+- Support more layouts
+- Customizable pane sizes
+- Details view via popup
+- Copy to clipboard
+- Search and filter
+- Scroll bar
+- Terminal scrollback support
+- Mouse support
+- Customizable key bindings
+- Confirm message (maybe put this under title or help?) for copy target, quit, etc.
+- Better formatting of other events
+- Tree mode
+
+# Log Mode
+
+- Sync cmdline format with TUI mode
