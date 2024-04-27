@@ -1,12 +1,11 @@
 use std::{
-  cell::RefCell,
   collections::HashMap,
   ffi::CString,
-  io::{self, stdin, Write},
+  io::{self, stdin},
   os::fd::AsRawFd,
   path::PathBuf,
   process::exit,
-  sync::RwLock,
+  sync::{Arc, RwLock},
   thread::{self, JoinHandle},
 };
 
@@ -69,6 +68,15 @@ pub enum TracerMode {
   Cli,
 }
 
+impl PartialEq for TracerMode {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::Cli, Self::Cli) => true,
+      _ => false,
+    }
+  }
+}
+
 impl Tracer {
   pub fn new(
     mode: TracerMode,
@@ -76,7 +84,6 @@ impl Tracer {
     modifier_args: ModifierArgs,
     tracer_event_args: TracerEventArgs,
     baseline: BaselineInfo,
-    output: Option<Box<PrinterOut>>,
     tx: UnboundedSender<TracerEvent>,
     user: Option<User>,
   ) -> color_eyre::Result<Self> {
@@ -85,16 +92,27 @@ impl Tracer {
         TracerMode::Tui(tty) => tty.is_some(),
         TracerMode::Cli => true,
       },
-      mode,
       store: RwLock::new(ProcessStateStore::new()),
       baseline,
       #[cfg(feature = "seccomp-bpf")]
-      seccomp_bpf: modifier_args.seccomp_bpf,
+      seccomp_bpf: if modifier_args.seccomp_bpf == SeccompBpf::Auto {
+        // TODO: check if the kernel supports seccomp-bpf
+        // Let's just enable it for now and see if anyone complains
+        if user.is_some() {
+          // Seccomp-bpf enforces no-new-privs, so when using --user to trace set(u|g)id
+          // binaries, we disable seccomp-bpf by default.
+          SeccompBpf::Off
+        } else {
+          SeccompBpf::On
+        }
+      } else {
+        modifier_args.seccomp_bpf
+      },
       tx,
       user,
       filter: {
         let mut filter = tracer_event_args.filter();
-        if output.is_some() {
+        if mode == TracerMode::Cli {
           // FIXME: In logging mode, we rely on root child exit event to exit the process
           //        with the same exit code as the root child. It is not printed in logging mode.
           //        Ideally we should use another channel to send the exit code to the main thread.
@@ -102,40 +120,28 @@ impl Tracer {
         }
         filter
       },
-      printer: Printer::new(PrinterArgs::from_cli(&tracing_args, &modifier_args), output),
+      printer: Printer::new(PrinterArgs::from_cli(&tracing_args, &modifier_args)),
+      mode,
     })
   }
 
-  thread_local! {
-    pub static PRINTER_OUT: RefCell<Option<Box<PrinterOut>>> = RefCell::new(None);
-  }
-
   pub fn spawn(
-    mut self,
+    self: Arc<Self>,
     args: Vec<String>,
+    output: Option<Box<PrinterOut>>,
   ) -> color_eyre::Result<JoinHandle<color_eyre::Result<()>>> {
     Ok(
       thread::Builder::new()
         .name("tracer".to_string())
-        .spawn(move || self.start_root_process(args))?,
+        .spawn(|| {
+          self.printer.init_thread_local(output);
+          self.start_root_process(args)
+        })?,
     )
   }
 
-  pub fn start_root_process(&mut self, args: Vec<String>) -> color_eyre::Result<()> {
-    self.printer.init_thread_local();
+  fn start_root_process(self: Arc<Self>, args: Vec<String>) -> color_eyre::Result<()> {
     log::trace!("start_root_process: {:?}", args);
-
-    // Check if we should enable seccomp-bpf
-    #[cfg(feature = "seccomp-bpf")]
-    if self.seccomp_bpf == SeccompBpf::Auto {
-      // TODO: check if the kernel supports seccomp-bpf
-      // Let's just enable it for now and see if anyone complains
-      if self.user.is_none() {
-        // Seccomp-bpf enforces no-new-privs, so when using --user to trace set(u|g)id
-        // binaries, we disable seccomp-bpf by default.
-        self.seccomp_bpf = SeccompBpf::On;
-      }
-    }
 
     let mut cmd = CommandBuilder::new(&args[0]);
     cmd.args(args.iter().skip(1));

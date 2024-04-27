@@ -164,21 +164,20 @@ impl ListPrinter {
 
 pub struct Printer {
   pub args: PrinterArgs,
-  output: Option<Box<PrinterOut>>,
 }
 
 impl Printer {
-  pub fn new(args: PrinterArgs, output: Option<Box<PrinterOut>>) -> Self {
-    Printer { args, output }
+  pub fn new(args: PrinterArgs) -> Self {
+    Printer { args }
   }
 
   thread_local! {
     pub static OUT: RefCell<Option<Box<PrinterOut>>> = RefCell::new(None);
   }
 
-  pub fn init_thread_local(&mut self) {
+  pub fn init_thread_local(&self, output: Option<Box<PrinterOut>>) {
     Printer::OUT.with(|out| {
-      *out.borrow_mut() = self.output.take();
+      *out.borrow_mut() = output;
     });
   }
 

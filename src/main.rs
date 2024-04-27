@@ -18,7 +18,8 @@ mod tui;
 use std::{
   io::{stderr, stdout, BufWriter, Write},
   os::unix::ffi::OsStrExt,
-  process, thread,
+  process,
+  sync::Arc,
 };
 
 use atoi::atoi;
@@ -115,17 +116,16 @@ async fn main() -> color_eyre::Result<()> {
       };
       let baseline = BaselineInfo::new()?;
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
-      let tracer = tracer::Tracer::new(
+      let tracer = Arc::new(tracer::Tracer::new(
         TracerMode::Cli,
         tracing_args,
         modifier_args,
         tracer_event_args,
         baseline,
-        Some(output),
         tracer_tx,
         user,
-      )?;
-      let tracer_thread = tracer.spawn(cmd)?;
+      )?);
+      let tracer_thread = tracer.spawn(cmd, Some(output))?;
       tracer_thread.join().unwrap()?;
       loop {
         if let Some(TracerEvent::RootChildExit { exit_code, .. }) = tracer_rx.recv().await {
@@ -172,19 +172,16 @@ async fn main() -> color_eyre::Result<()> {
         active_pane,
       )?;
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
-      let mut tracer = tracer::Tracer::new(
+      let tracer = Arc::new(tracer::Tracer::new(
         tracer_mode,
         tracing_args,
         modifier_args,
         tracer_event_args,
         baseline,
-        None,
         tracer_tx,
         user,
-      )?;
-      let tracer_thread = thread::Builder::new()
-        .name("tracer".to_string())
-        .spawn(move || tracer.start_root_process(cmd))?;
+      )?);
+      let tracer_thread = tracer.spawn(cmd, None)?;
       let mut tui = tui::Tui::new()?.frame_rate(30.0);
       tui.enter(tracer_rx)?;
       app.run(&mut tui).await?;
