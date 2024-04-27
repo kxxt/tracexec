@@ -503,6 +503,7 @@ impl Tracer {
       e => e?,
     };
     let result = syscall_res_from_regs!(regs);
+    // If exec is successful, the register value might be clobbered.
     let exec_result = if p.is_exec_successful { 0 } else { result };
     match p.syscall {
       nix::libc::SYS_execve => {
@@ -517,6 +518,7 @@ impl Tracer {
           self.tx.send(TracerEvent::Exec(Tracer::collect_exec_event(
             &self.baseline.env,
             p,
+            exec_result,
           )))?;
           print_exec_trace(
             self.output.as_deref_mut(),
@@ -543,6 +545,7 @@ impl Tracer {
           self.tx.send(TracerEvent::Exec(Tracer::collect_exec_event(
             &self.baseline.env,
             p,
+            exec_result,
           )))?;
           print_exec_trace(
             self.output.as_deref_mut(),
@@ -587,7 +590,11 @@ impl Tracer {
   }
 
   // This function does not take self due to borrow checker
-  fn collect_exec_event(env: &HashMap<String, String>, state: &ProcessState) -> ExecEvent {
+  fn collect_exec_event(
+    env: &HashMap<String, String>,
+    state: &ProcessState,
+    result: i64,
+  ) -> ExecEvent {
     let exec_data = state.exec_data.as_ref().unwrap();
     ExecEvent {
       pid: state.pid,
@@ -597,7 +604,7 @@ impl Tracer {
       argv: exec_data.argv.clone(),
       interpreter: exec_data.interpreters.clone(),
       env_diff: diff_env(env, &exec_data.envp),
-      result: 0,
+      result,
     }
   }
 }
