@@ -96,6 +96,6 @@ pub enum CliCommand {
       requires = "tty",
       default_value_t
     )]
-    layout: AppLayout
+    layout: AppLayout,
   },
 }

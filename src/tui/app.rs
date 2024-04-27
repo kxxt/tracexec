@@ -16,7 +16,7 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::{borrow::Cow, default};
+use std::borrow::Cow;
 
 use arboard::Clipboard;
 use clap::ValueEnum;
@@ -47,7 +47,7 @@ use crate::{
 
 use super::{event_list::EventList, pseudo_term::PseudoTerminalPane, ui::render_title, Tui};
 
-#[derive(Debug, Clone, PartialEq, Default, ValueEnum,Display)]
+#[derive(Debug, Clone, PartialEq, Default, ValueEnum, Display)]
 #[strum(serialize_all = "kebab-case")]
 pub enum AppLayout {
   #[default]
@@ -64,6 +64,7 @@ pub struct App {
   pub clipboard: Clipboard,
   pub split_percentage: u16,
   pub layout: AppLayout,
+  pub should_handle_internal_resize: bool,
 }
 
 impl App {
@@ -101,6 +102,7 @@ impl App {
       active_pane,
       clipboard: Clipboard::new()?,
       layout,
+      should_handle_internal_resize: true,
     })
   }
 
@@ -276,25 +278,8 @@ impl App {
               term.handle_key_event(&ke).await;
             }
           }
-          Action::Resize(size) => {
-            // Set the window size of the event list
-            self.event_list.max_window_len = size.height as usize - 4 - 2;
-            self.event_list.window = (
-              self.event_list.window.0,
-              self.event_list.window.0 + self.event_list.max_window_len,
-            );
-            log::debug!("TUI: set event list window: {:?}", self.event_list.window);
-
-            let term_size = PtySize {
-              rows: size.height - 2 - 4,
-              cols: size.width / 2 - 2,
-              pixel_height: 0,
-              pixel_width: 0,
-            };
-
-            if let Some(term) = self.term.as_mut() {
-              term.resize(term_size)?;
-            }
+          Action::Resize(_size) => {
+            self.should_handle_internal_resize = true;
           }
           Action::ScrollLeft => {
             self.event_list.scroll_left();
@@ -304,15 +289,18 @@ impl App {
           }
           Action::ShrinkPane => {
             self.shrink_pane();
+            self.should_handle_internal_resize = true;
           }
           Action::GrowPane => {
             self.grow_pane();
+            self.should_handle_internal_resize = true;
           }
           Action::SwitchLayout => {
             self.layout = match self.layout {
               AppLayout::Horizontal => AppLayout::Vertical,
               AppLayout::Vertical => AppLayout::Horizontal,
-            }
+            };
+            self.should_handle_internal_resize = true;
           }
           Action::SwitchActivePane => {
             self.active_pane = match self.active_pane {
@@ -379,6 +367,28 @@ impl Widget for &mut App {
     if event_area.height < 4 || term_area.height < 4 {
       Paragraph::new("Terminal or pane too small").render(rest_area, buf);
       return;
+    }
+
+    // resize
+    if self.should_handle_internal_resize {
+      self.should_handle_internal_resize = false;
+      // Set the window size of the event list
+      self.event_list.max_window_len = event_area.height as usize - 2;
+      self.event_list.window = (
+        self.event_list.window.0,
+        self.event_list.window.0 + self.event_list.max_window_len,
+      );
+      log::debug!("TUI: set event list window: {:?}", self.event_list.window);
+      if let Some(term) = self.term.as_mut() {
+        term
+          .resize(PtySize {
+            rows: term_area.height as u16 - 2,
+            cols: term_area.width as u16 - 2,
+            pixel_width: 0,
+            pixel_height: 0,
+          })
+          .unwrap();
+      }
     }
 
     let block = Block::default()
