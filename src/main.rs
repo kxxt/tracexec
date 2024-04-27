@@ -156,7 +156,7 @@ async fn main() -> color_eyre::Result<()> {
         (TracerMode::Tui(None), None)
       };
       let tracing_args = TracingArgs {
-        show_cmdline: true,
+        show_cmdline: false, // We handle cmdline in TUI
         show_argv: true,
         show_interpreter: true,
         more_colors: false,
