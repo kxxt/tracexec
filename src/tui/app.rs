@@ -359,12 +359,12 @@ impl Widget for &mut App {
     .areas(rest_area);
     render_title(header_area, buf, "tracexec event list");
 
-    if event_area.width < 4 || term_area.width < 4 {
+    if event_area.width < 4 || (self.term.is_some() && term_area.width < 4) {
       Paragraph::new("Terminal\nor\npane\ntoo\nsmall").render(rest_area, buf);
       return;
     }
 
-    if event_area.height < 4 || term_area.height < 4 {
+    if event_area.height < 4 || (self.term.is_some() && term_area.height < 4) {
       Paragraph::new("Terminal or pane too small").render(rest_area, buf);
       return;
     }
