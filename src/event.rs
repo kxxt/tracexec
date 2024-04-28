@@ -70,7 +70,13 @@ pub struct ExecEvent {
 macro_rules! tracer_event_spans {
     ($pid: expr, $comm: expr, $result:expr, $($t:tt)*) => {
         chain!([
-            Some($pid.to_string().fg(if $result == 0 { Color::LightYellow } else { Color::LightRed })),
+            Some($pid.to_string().fg(if $result == 0 { 
+              Color::LightYellow
+            } else if $result == (-nix::libc::ENOENT).into() {
+              Color::LightRed
+            } else {
+              Color::Red
+            })),
             Some(format!("<{}>", $comm).fg(Color::Cyan)),
             Some(": ".into()),
         ], [$($t)*])
