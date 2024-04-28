@@ -28,7 +28,7 @@ use ratatui::{
   layout::{Constraint, Layout, Rect},
   style::{Color, Style, Styled, Stylize},
   text::{Line, Span},
-  widgets::{Block, Paragraph, StatefulWidget, Widget},
+  widgets::{Block, Paragraph, StatefulWidget, Widget, Wrap},
 };
 use strum::Display;
 use tokio::sync::mpsc;
@@ -421,12 +421,12 @@ impl Widget for &mut App {
 
 macro_rules! help_item {
   ($key: literal, $desc: literal) => {{
-    let mut key_string = String::from(" ");
+    let mut key_string = String::from("\u{00a0}");
     key_string.push_str($key);
-    key_string.push_str(" ");
-    let mut desc_string = String::from(" ");
+    key_string.push_str("\u{00a0}");
+    let mut desc_string = String::from("\u{00a0}");
     desc_string.push_str($desc);
-    desc_string.push_str(" ");
+    desc_string.push_str("\u{00a0}\u{200b}");
     [key(key_string), desc(desc_string)]
   }};
 }
@@ -448,13 +448,13 @@ impl App {
       d.fg(Color::Cyan).bg(Color::DarkGray).italic().bold()
     }
 
-    let iter = help_item!("Ctrl+S", "Switch Pane");
+    let iter = help_item!("Ctrl+S", "Switch\u{00a0}Pane");
     let iter: Box<dyn Iterator<Item = _>> = if self.active_pane == ActivePane::Events {
       Box::new(chain!(
         iter,
         help_item!("↑/↓/←/→/Pg{Up,Dn}", "Navigate"),
         help_item!("Ctrl+<-/->", "Scroll<->"),
-        help_item!("G/S", "Grow/Shrink Pane"),
+        help_item!("G/S", "Grow/Shrink\u{00a0}Pane"),
         help_item!("Alt+L", "Layout"),
         help_item!("V", "View"),
         help_item!("C", "Copy"),
@@ -465,6 +465,9 @@ impl App {
     };
 
     let line = Line::from_iter(iter);
-    Paragraph::new(line).centered().render(area, buf);
+    Paragraph::new(line)
+      .wrap(Wrap { trim: false })
+      .centered()
+      .render(area, buf);
   }
 }
