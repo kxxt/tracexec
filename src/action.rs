@@ -24,14 +24,14 @@ pub enum Action {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CopyTarget {
-  Commandline(Shell),
+  Commandline(SupportedShell),
   Env,
   Argv,
   Filename,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Shell {
+pub enum SupportedShell {
   Bash,
   Sh,
   Fish,

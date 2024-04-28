@@ -34,7 +34,7 @@ use strum::Display;
 use tokio::sync::mpsc;
 
 use crate::{
-  action::{Action, CopyTarget, Shell},
+  action::{Action, CopyTarget, SupportedShell},
   cli::{
     args::{ModifierArgs, TracingArgs},
     options::ActivePane,
@@ -203,7 +203,7 @@ impl App {
                   KeyCode::Char('c') => {
                     if ke.modifiers == crossterm::event::KeyModifiers::NONE {
                       action_tx.send(Action::CopyToClipboard(CopyTarget::Commandline(
-                        Shell::Bash,
+                        SupportedShell::Bash,
                       )))?;
                     }
                   }
