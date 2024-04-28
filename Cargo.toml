@@ -10,6 +10,7 @@ repository = "https://github.com/kxxt/tracexec"
 homepage = "https://github.com/kxxt/tracexec"
 keywords = ["trace", "ptrace", "strace", "utility"]
 categories = ["command-line-utilities", "development-tools::debugging"]
+default-run = "tracexec"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -60,3 +61,7 @@ arboard = { version = "3.3.2", no-default-features = true, features = [
 [features]
 default = ["seccomp-bpf"]
 seccomp-bpf = ["dep:seccompiler"]
+
+[[bin]]
+name = "exec-file"
+path = "fixtures/exec-file.rs"
