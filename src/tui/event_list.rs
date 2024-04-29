@@ -195,7 +195,7 @@ impl Widget for &mut EventList {
         Style::default()
           .add_modifier(Modifier::BOLD)
           .add_modifier(Modifier::REVERSED)
-          .fg(ratatui::style::Color::Cyan),
+          .bg(ratatui::style::Color::DarkGray),
       )
       .highlight_symbol(">")
       .highlight_spacing(HighlightSpacing::Always);

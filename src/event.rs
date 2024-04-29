@@ -135,56 +135,57 @@ impl TracerEvent {
           pid,
           comm,
           *result,
-          Some(format!("{:?} ", filename).fg(Color::LightBlue)),
+          Some(format!("{:?}", filename).fg(Color::LightBlue)),
+          Some(" ".into()),
           Some("env".fg(Color::Magenta)),
-          // Handle argv[0]
-          argv.first().and_then(|arg0| {
-            if filename.file_name() != Some(OsStr::new(&arg0)) {
-              Some(format!(" -a {}", escape_str_for_bash!(arg0)).fg(Color::Green))
-            } else {
-              None
-            }
-          }),
-          // Handle cwd
-          if cwd != &baseline.cwd {
-            Some(format!(" -C {}", escape_str_for_bash!(cwd)).fg(Color::LightCyan))
-          } else {
-            None
-          },
+          Some(" ".into()),
         )
         .flatten()
         .collect();
-        spans.extend(
-          env_diff
-            .removed
-            .iter()
-            .map(|k| format!(" -u {}", escape_str_for_bash!(k)).fg(Color::LightRed)),
-        );
+        let space: Span = " ".into();
+        // Handle argv[0]
+        argv.first().inspect(|&arg0| {
+          if filename.file_name() != Some(OsStr::new(&arg0)) {
+            spans.push(space.clone());
+            spans.push(format!("-a {}", escape_str_for_bash!(arg0)).fg(Color::Green))
+          }
+        });
+        // Handle cwd
+        if cwd != &baseline.cwd {
+          spans.push(space.clone());
+          spans.push(format!("-C {}", escape_str_for_bash!(cwd)).fg(Color::LightCyan));
+        }
+        // Handle env diff
+        for k in env_diff.removed.iter() {
+          spans.push(space.clone());
+          spans.push(format!("-u {}", escape_str_for_bash!(k)).fg(Color::LightRed));
+        }
         spans.push(
           // Option separator
           " -".into(),
         );
-        spans.extend(
+        for (k, v) in env_diff.added.iter() {
           // Added env vars
-          env_diff.added.iter().map(|(k, v)| {
-            format!(" {}={}", escape_str_for_bash!(k), escape_str_for_bash!(v)).fg(Color::Green)
-          }),
-        );
-        spans.extend(
+          spans.push(space.clone());
+          spans.push(
+            format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v)).fg(Color::Green),
+          );
+        }
+        for (k, v) in env_diff.modified.iter() {
           // Modified env vars
-          env_diff.modified.iter().map(|(k, v)| {
-            format!(" {}={}", escape_str_for_bash!(k), escape_str_for_bash!(v)).fg(Color::Yellow)
-          }),
-        );
+          spans.push(space.clone());
+          spans.push(
+            format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v)).fg(Color::Yellow),
+          );
+        }
+        spans.push(space.clone());
         // Filename
-        spans.push(format!(" {}", escape_str_for_bash!(filename)).fg(Color::LightBlue));
+        spans.push(format!("{}", escape_str_for_bash!(filename)).fg(Color::LightBlue));
         // Argv[1..]
-        spans.extend(
-          argv
-            .iter()
-            .skip(1)
-            .map(|arg| format!(" {}", escape_str_for_bash!(arg)).into()),
-        );
+        for arg in argv.iter().skip(1) {
+          spans.push(space.clone());
+          spans.push(format!("{}", escape_str_for_bash!(arg)).into());
+        }
         Line::default().spans(spans)
       }
       TracerEvent::RootChildExit { signal, exit_code } => format!(
