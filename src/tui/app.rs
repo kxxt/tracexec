@@ -360,7 +360,7 @@ impl Widget for &mut App {
       Layout::vertical
     })(horizontal_constraints)
     .areas(rest_area);
-    render_title(header_area, buf, "tracexec event list");
+    render_title(header_area, buf, format!(" tracexec {}", env!("CARGO_PKG_VERSION")));
 
     if event_area.width < 4 || (self.term.is_some() && term_area.width < 4) {
       Paragraph::new("Terminal\nor\npane\ntoo\nsmall").render(rest_area, buf);

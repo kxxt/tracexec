@@ -4,12 +4,12 @@ use ratatui::{
   buffer::Buffer,
   layout::Rect,
   style::{Color, Styled, Stylize},
-  text::Span,
+  text::{Span, Text},
   widgets::{Paragraph, Widget},
 };
 
-pub fn render_title(area: Rect, buf: &mut Buffer, title: &str) {
-  Paragraph::new(title).bold().centered().render(area, buf);
+pub fn render_title<'a>(area: Rect, buf: &mut Buffer, title: impl Into<Text<'a>>) {
+  Paragraph::new(title).bold().render(area, buf);
 }
 
 pub fn help_key<'a, T>(k: T) -> Span<'a>
