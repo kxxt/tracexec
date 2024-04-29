@@ -62,6 +62,7 @@ pub struct ExecEvent {
   pub comm: String,
   pub filename: PathBuf,
   pub argv: Arc<Vec<String>>,
+  pub envp: Arc<Vec<String>>,
   pub interpreter: Vec<Interpreter>,
   pub env_diff: EnvDiff,
   pub result: i64,
@@ -130,6 +131,7 @@ impl TracerEvent {
           interpreter: _,
           env_diff,
           result,
+          ..
         } = exec.as_ref();
         let mut spans: Vec<Span> = tracer_event_spans!(
           pid,

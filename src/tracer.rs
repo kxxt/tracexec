@@ -641,6 +641,7 @@ impl Tracer {
       comm: state.comm.clone(),
       filename: exec_data.filename.clone(),
       argv: exec_data.argv.clone(),
+      envp: exec_data.envp.clone(),
       interpreter: exec_data.interpreters.clone(),
       env_diff: diff_env(env, &exec_data.envp),
       result,
