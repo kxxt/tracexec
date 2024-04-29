@@ -81,6 +81,7 @@ impl App {
     pty_master: Option<UnixMasterPty>,
     active_pane: ActivePane,
     layout: AppLayout,
+    follow: bool,
   ) -> color_eyre::Result<Self> {
     let active_pane = if pty_master.is_some() {
       active_pane
@@ -88,7 +89,7 @@ impl App {
       ActivePane::Events
     };
     Ok(Self {
-      event_list: EventList::new(baseline),
+      event_list: EventList::new(baseline, follow),
       printer_args: PrinterArgs::from_cli(tracing_args, modifier_args),
       split_percentage: if pty_master.is_some() { 50 } else { 100 },
       term: if let Some(pty_master) = pty_master {
@@ -239,6 +240,9 @@ impl App {
                   KeyCode::Char('l') if ke.modifiers == crossterm::event::KeyModifiers::ALT => {
                     action_tx.send(Action::SwitchLayout)?;
                   }
+                  KeyCode::Char('f') => {
+                    action_tx.send(Action::ToggleFollow)?;
+                  }
                   KeyCode::F(1) => {
                     action_tx.send(Action::SetActivePopup(ActivePopup::Help))?;
                   }
@@ -260,6 +264,9 @@ impl App {
             }
           },
           Event::Render => {
+            if self.event_list.follow {
+              action_tx.send(Action::ScrollToBottom)?;
+            }
             action_tx.send(Action::Render)?;
           }
           Event::Resize(size) => {
@@ -330,6 +337,9 @@ impl App {
           }
           Action::ScrollToEnd => {
             self.event_list.scroll_to_end();
+          }
+          Action::ToggleFollow => {
+            self.event_list.toggle_follow();
           }
           Action::ShrinkPane => {
             self.shrink_pane();
@@ -502,7 +512,9 @@ impl App {
       help_key("PgUp/PgDn"),
       ". Use ".into(),
       help_key("(Shift +) Home/End"),
-      " to scroll to the (line start/line end)/top/bottom. ".into(),
+      " to scroll to the (line start/line end)/top/bottom. Press ".into(),
+      help_key("F"),
+      " to toggle follow mode, which will keep the list scrolled to bottom. ".into(),
       "To change pane size, press ".into(),
       help_key("G/S"),
       " when the active pane is event list. ".into(),
@@ -539,6 +551,7 @@ impl App {
         iter,
         help_item!("G/S", "Grow/Shrink\u{00a0}Pane"),
         help_item!("Alt+L", "Layout"),
+        help_item!("F", if self.event_list.follow { "Unfollow" } else { "Follow" }),
         help_item!("V", "View"),
         help_item!("C", "Copy"),
         help_item!("Q", "Quit"),

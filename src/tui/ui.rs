@@ -46,7 +46,7 @@ where
 }
 
 macro_rules! help_item {
-  ($key: literal, $desc: literal) => {{
+  ($key: expr, $desc: expr) => {{
     [
       crate::tui::ui::help_key($key),
       crate::tui::ui::help_desc($desc),

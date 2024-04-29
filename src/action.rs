@@ -3,9 +3,13 @@ use ratatui::layout::Size;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
+  // Application
   Quit,
+  // Rendering
   Render,
+  // Resize
   Resize(Size),
+  // Navigation
   NextItem,
   PrevItem,
   PageDown,
@@ -18,12 +22,19 @@ pub enum Action {
   ScrollToBottom,
   ScrollToStart,
   ScrollToEnd,
+  ToggleFollow,
+  // Sizing
   ShrinkPane,
   GrowPane,
+  // Layout
   SwitchLayout,
+  // Pane
   SwitchActivePane,
+  // Popup
   SetActivePopup(ActivePopup),
+  // Clipboard
   CopyToClipboard(CopyTarget),
+  // Terminal
   HandleTerminalKeyPress(KeyEvent),
 }
 

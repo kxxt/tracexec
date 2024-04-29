@@ -40,10 +40,11 @@ pub struct EventList {
   pub max_width: usize,
   pub max_window_len: usize,
   baseline: BaselineInfo,
+  pub follow: bool,
 }
 
 impl EventList {
-  pub fn new(baseline: BaselineInfo) -> Self {
+  pub fn new(baseline: BaselineInfo, follow: bool) -> Self {
     Self {
       state: ListState::default(),
       items: vec![],
@@ -55,7 +56,16 @@ impl EventList {
       max_width: 0,
       max_window_len: 0,
       baseline,
+      follow,
     }
+  }
+
+  pub fn toggle_follow(&mut self) {
+    self.follow = !self.follow;
+  }
+
+  pub fn stop_follow(&mut self) {
+    self.follow = false;
   }
 
   /// Try to slide down the window by one item
@@ -158,7 +168,8 @@ impl EventList {
   }
 
   pub fn scroll_right(&mut self) {
-    self.horizontal_offset = (self.horizontal_offset + 1).min(self.max_width.saturating_sub(self.inner_width as usize));
+    self.horizontal_offset =
+      (self.horizontal_offset + 1).min(self.max_width.saturating_sub(self.inner_width as usize));
   }
 
   pub fn scroll_to_top(&mut self) {

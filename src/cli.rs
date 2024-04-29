@@ -70,6 +70,8 @@ pub enum CliCommand {
       help = "Allocate a pseudo terminal and show it alongside the TUI"
     )]
     tty: bool,
+    #[clap(long, short, help = "Keep the event list scrolled to the bottom")]
+    follow: bool,
     #[clap(
       long,
       help = "Instead of waiting for the root child to exit, terminate when the TUI exits",
