@@ -146,7 +146,7 @@ impl TracerEvent {
         argv.first().inspect(|&arg0| {
           if filename.file_name() != Some(OsStr::new(&arg0)) {
             spans.push(space.clone());
-            spans.push(format!("-a {}", escape_str_for_bash!(arg0)).fg(Color::Green))
+            spans.push(format!("-a {}", escape_str_for_bash!(arg0)).fg(Color::White).italic())
           }
         });
         // Handle cwd
