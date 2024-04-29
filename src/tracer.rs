@@ -506,13 +506,13 @@ impl Tracer {
       } else {
         vec![]
       };
-      p.exec_data = Some(ExecData {
+      p.exec_data = Some(ExecData::new(
         filename,
         argv,
         envp,
-        cwd: read_cwd(pid)?,
+        read_cwd(pid)?,
         interpreters,
-      });
+      ));
     } else if syscallno == nix::libc::SYS_execve {
       log::trace!("pre execve {syscallno}",);
       let filename = read_pathbuf(pid, syscall_arg!(regs, 0) as AddressType)?;
@@ -523,13 +523,13 @@ impl Tracer {
       } else {
         vec![]
       };
-      p.exec_data = Some(ExecData {
+      p.exec_data = Some(ExecData::new(
         filename,
         argv,
         envp,
-        cwd: read_cwd(pid)?,
+        read_cwd(pid)?,
         interpreters,
-      });
+      ));
     } else if syscallno == SYS_clone || syscallno == SYS_clone3 {
     }
     self.syscall_enter_cont(pid)?;

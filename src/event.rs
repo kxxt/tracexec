@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, path::PathBuf};
+use std::{ffi::OsStr, path::PathBuf, sync::Arc};
 
 use clap::ValueEnum;
 use crossterm::event::KeyEvent;
@@ -61,7 +61,7 @@ pub struct ExecEvent {
   pub cwd: PathBuf,
   pub comm: String,
   pub filename: PathBuf,
-  pub argv: Vec<String>,
+  pub argv: Arc<Vec<String>>,
   pub interpreter: Vec<Interpreter>,
   pub env_diff: EnvDiff,
   pub result: i64,

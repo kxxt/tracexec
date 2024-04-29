@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ffi::CString, path::PathBuf};
+use std::{collections::HashMap, ffi::CString, path::PathBuf, sync::Arc};
 
 use nix::unistd::Pid;
 
@@ -33,10 +33,28 @@ pub enum ProcessStatus {
 #[derive(Debug)]
 pub struct ExecData {
   pub filename: PathBuf,
-  pub argv: Vec<String>,
-  pub envp: Vec<String>,
+  pub argv: Arc<Vec<String>>,
+  pub envp: Arc<Vec<String>>,
   pub cwd: PathBuf,
   pub interpreters: Vec<Interpreter>,
+}
+
+impl ExecData {
+  pub fn new(
+    filename: PathBuf,
+    argv: Vec<String>,
+    envp: Vec<String>,
+    cwd: PathBuf,
+    interpreters: Vec<Interpreter>,
+  ) -> Self {
+    Self {
+      filename,
+      argv: Arc::new(argv),
+      envp: Arc::new(envp),
+      cwd,
+      interpreters,
+    }
+  }
 }
 
 impl ProcessStateStore {
