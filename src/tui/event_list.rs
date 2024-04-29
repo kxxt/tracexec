@@ -18,7 +18,7 @@
 
 use ratatui::{
   prelude::{Buffer, Rect},
-  style::{Modifier, Style, Stylize},
+  style::{Color, Modifier, Style, Stylize},
   widgets::{HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget},
 };
 
@@ -194,8 +194,7 @@ impl Widget for &mut EventList {
       .highlight_style(
         Style::default()
           .add_modifier(Modifier::BOLD)
-          .add_modifier(Modifier::REVERSED)
-          .bg(ratatui::style::Color::DarkGray),
+          .bg(Color::DarkGray)
       )
       .highlight_symbol(">")
       .highlight_spacing(HighlightSpacing::Always);
