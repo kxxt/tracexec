@@ -1,5 +1,9 @@
+use std::sync::Arc;
+
 use crossterm::event::KeyEvent;
 use ratatui::layout::Size;
+
+use crate::event::TracerEvent;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
@@ -57,5 +61,6 @@ pub enum SupportedShell {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActivePopup {
   Help,
+  ViewDetails(Arc<TracerEvent>),
   CopyTargetSelection,
 }

@@ -16,6 +16,8 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+use std::{rc::Rc, sync::Arc};
+
 use ratatui::{
   prelude::{Buffer, Rect},
   style::{Color, Modifier, Style, Stylize},
@@ -28,7 +30,7 @@ use super::partial_line::PartialLine;
 
 pub struct EventList {
   pub state: ListState,
-  pub items: Vec<TracerEvent>,
+  pub items: Vec<Arc<TracerEvent>>,
   /// Current window of the event list, [start, end)
   pub window: (usize, usize),
   /// How many items are there in the window
@@ -39,7 +41,7 @@ pub struct EventList {
   pub inner_width: u16,
   pub max_width: usize,
   pub max_window_len: usize,
-  baseline: BaselineInfo,
+  pub baseline: Rc<BaselineInfo>,
   pub follow: bool,
 }
 
@@ -55,7 +57,7 @@ impl EventList {
       inner_width: 0,
       max_width: 0,
       max_window_len: 0,
-      baseline,
+      baseline: Rc::new(baseline),
       follow,
     }
   }
@@ -68,6 +70,69 @@ impl EventList {
     self.follow = false;
   }
 
+  pub fn unselect(&mut self) {
+    let offset = self.state.offset();
+    self.last_selected = self.state.selected();
+    self.state.select(None);
+    *self.state.offset_mut() = offset;
+  }
+
+  /// returns the selected item if there is any
+  pub fn selection(&self) -> Option<Arc<TracerEvent>> {
+    self
+      .state
+      .selected()
+      .map(|i| self.items[self.window.0 + i].clone())
+  }
+
+  // TODO: this is ugly due to borrow checking.
+  pub fn window(items: &[Arc<TracerEvent>], window: (usize, usize)) -> &[Arc<TracerEvent>] {
+    &items[window.0..window.1.min(items.len())]
+  }
+}
+
+impl Widget for &mut EventList {
+  fn render(self, area: Rect, buf: &mut Buffer)
+  where
+    Self: Sized,
+  {
+    self.inner_width = area.width - 1; // 1 for the selection indicator
+    let mut max_len = area.width as usize;
+    // Iterate through all elements in the `items` and stylize them.
+    let items = EventList::window(&self.items, self.window);
+    self.nr_items_in_window = items.len();
+    let items: Vec<ListItem> = items
+      .iter()
+      .map(|evt| {
+        let full_line = evt.to_tui_line(&self.baseline);
+        max_len = max_len.max(full_line.width());
+        full_line
+          .substring(self.horizontal_offset, area.width)
+          .into()
+      })
+      .collect();
+    // FIXME: It's a little late to set the max width here. The max width is already used
+    //        Though this should only affect the first render.
+    self.max_width = max_len;
+    // Create a List from all list items and highlight the currently selected one
+    let items = List::new(items)
+      .highlight_style(
+        Style::default()
+          .add_modifier(Modifier::BOLD)
+          .bg(Color::DarkGray),
+      )
+      .highlight_symbol(">")
+      .highlight_spacing(HighlightSpacing::Always);
+
+    // We can now render the item list
+    // (look careful we are using StatefulWidget's render.)
+    // ratatui::widgets::StatefulWidget::render as stateful_render
+    StatefulWidget::render(items, area, buf, &mut self.state);
+  }
+}
+
+/// Scrolling implementation for the EventList
+impl EventList {
   /// Try to slide down the window by one item
   /// Returns true if the window was slid down, false otherwise
   pub fn next_window(&mut self) -> bool {
@@ -118,13 +183,6 @@ impl EventList {
       None => self.last_selected.unwrap_or(0),
     };
     self.state.select(Some(i));
-  }
-
-  pub fn unselect(&mut self) {
-    let offset = self.state.offset();
-    self.last_selected = self.state.selected();
-    self.state.select(None);
-    *self.state.offset_mut() = offset;
   }
 
   pub fn page_down(&mut self) {
@@ -188,50 +246,5 @@ impl EventList {
 
   pub fn scroll_to_end(&mut self) {
     self.horizontal_offset = self.max_width.saturating_sub(self.inner_width as usize);
-  }
-
-  // TODO: this is ugly due to borrow checking.
-  pub fn window(items: &[TracerEvent], window: (usize, usize)) -> &[TracerEvent] {
-    &items[window.0..window.1.min(items.len())]
-  }
-}
-
-impl Widget for &mut EventList {
-  fn render(self, area: Rect, buf: &mut Buffer)
-  where
-    Self: Sized,
-  {
-    self.inner_width = area.width - 1; // 1 for the selection indicator
-    let mut max_len = area.width as usize;
-    // Iterate through all elements in the `items` and stylize them.
-    let items = EventList::window(&self.items, self.window);
-    self.nr_items_in_window = items.len();
-    let items: Vec<ListItem> = items
-      .iter()
-      .map(|evt| {
-        let full_line = evt.to_tui_line(&self.baseline);
-        max_len = max_len.max(full_line.width());
-        full_line
-          .substring(self.horizontal_offset, area.width)
-          .into()
-      })
-      .collect();
-    // FIXME: It's a little late to set the max width here. The max width is already used
-    //        Though this should only affect the first render.
-    self.max_width = max_len;
-    // Create a List from all list items and highlight the currently selected one
-    let items = List::new(items)
-      .highlight_style(
-        Style::default()
-          .add_modifier(Modifier::BOLD)
-          .bg(Color::DarkGray),
-      )
-      .highlight_symbol(">")
-      .highlight_spacing(HighlightSpacing::Always);
-
-    // We can now render the item list
-    // (look careful we are using StatefulWidget's render.)
-    // ratatui::widgets::StatefulWidget::render as stateful_render
-    StatefulWidget::render(items, area, buf, &mut self.state);
   }
 }

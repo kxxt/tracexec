@@ -38,6 +38,7 @@ use tokio_util::sync::CancellationToken;
 use crate::event::{Event, TracerEvent};
 
 pub mod app;
+pub mod details_popup;
 pub mod event_list;
 pub mod partial_line;
 pub mod pseudo_term;

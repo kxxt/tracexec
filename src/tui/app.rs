@@ -16,6 +16,8 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+use std::sync::Arc;
+
 use arboard::Clipboard;
 use clap::ValueEnum;
 use crossterm::event::KeyCode;
@@ -23,7 +25,7 @@ use itertools::chain;
 use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
   buffer::Buffer,
-  layout::{Constraint, Layout, Rect},
+  layout::{Constraint, Layout, Rect, Size},
   style::{Color, Style, Stylize},
   text::{Line, Text},
   widgets::{Block, Paragraph, Widget, Wrap},
@@ -45,6 +47,7 @@ use crate::{
 };
 
 use super::{
+  details_popup::DetailsPopup,
   event_list::EventList,
   pseudo_term::PseudoTerminalPane,
   sized_paragraph::SizedParagraph,
@@ -249,6 +252,11 @@ impl App {
                   KeyCode::F(1) => {
                     action_tx.send(Action::SetActivePopup(ActivePopup::Help))?;
                   }
+                  KeyCode::Char('v') => {
+                    if let Some(selected) = self.event_list.selection() {
+                      action_tx.send(Action::SetActivePopup(ActivePopup::ViewDetails(selected)))?;
+                    }
+                  }
                   _ => {}
                 }
               } else {
@@ -262,7 +270,7 @@ impl App {
               self.root_pid = Some(pid);
             }
             te => {
-              self.event_list.items.push(te);
+              self.event_list.items.push(te.into());
               // action_tx.send(Action::Render)?;
             }
           },
@@ -485,7 +493,7 @@ impl Widget for &mut App {
     }
 
     // popups
-    match self.popup {
+    match &self.popup {
       Some(ActivePopup::Help) => {
         let popup = Popup::new("Help", App::help(rest_area)).style(Style::new().black().on_gray());
         popup.render(area, buf);
@@ -493,12 +501,29 @@ impl Widget for &mut App {
       Some(ActivePopup::CopyTargetSelection) => {
         todo!("Copy target selection popup");
       }
+      Some(ActivePopup::ViewDetails(evt)) => {
+        self.render_details_popup(area, buf, rest_area.as_size(), evt.clone());
+      }
       None => {}
     }
   }
 }
 
 impl App {
+  fn render_details_popup(
+    &self,
+    area: Rect,
+    buf: &mut Buffer,
+    size: Size,
+    event: Arc<TracerEvent>,
+  ) {
+    let popup = Popup::new(
+      "Details",
+      DetailsPopup::new(event, size, self.event_list.baseline.clone()),
+    );
+    popup.render(area, buf);
+  }
+
   fn help<'a>(area: Rect) -> SizedParagraph<'a> {
     let line1 = Line::default().spans(vec![
       "Welcome to tracexec! The TUI consists of at most two panes: the event list and optionally the pseudo terminal if ".into(),
