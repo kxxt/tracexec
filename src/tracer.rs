@@ -70,6 +70,8 @@ pub enum TracerMode {
 
 impl PartialEq for TracerMode {
   fn eq(&self, other: &Self) -> bool {
+    // I think a plain match is more readable here
+    #[allow(clippy::match_like_matches_macro)]
     match (self, other) {
       (Self::Cli, Self::Cli) => true,
       _ => false,
@@ -631,9 +633,9 @@ impl Tracer {
     env: &HashMap<String, String>,
     state: &ProcessState,
     result: i64,
-  ) -> ExecEvent {
+  ) -> Box<ExecEvent> {
     let exec_data = state.exec_data.as_ref().unwrap();
-    ExecEvent {
+    Box::new(ExecEvent {
       pid: state.pid,
       cwd: exec_data.cwd.to_owned(),
       comm: state.comm.clone(),
@@ -642,6 +644,6 @@ impl Tracer {
       interpreter: exec_data.interpreters.clone(),
       env_diff: diff_env(env, &exec_data.envp),
       result,
-    }
+    })
   }
 }

@@ -169,7 +169,7 @@ pub struct EnvDiff {
   pub modified: HashMap<String, String>,
 }
 
-pub fn diff_env(original: &HashMap<String, String>, envp: &Vec<String>) -> EnvDiff {
+pub fn diff_env(original: &HashMap<String, String>, envp: &[String]) -> EnvDiff {
   let mut added = HashMap::new();
   let mut modified = HashMap::new();
   // Use str to avoid cloning all env vars

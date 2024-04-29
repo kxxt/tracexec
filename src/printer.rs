@@ -333,7 +333,7 @@ impl Printer {
             write!(out, " -C {}", escape_str_for_bash!(&exec_data.cwd))?;
           }
         }
-        let diff = diff_env(&env, &exec_data.envp);
+        let diff = diff_env(env, &exec_data.envp);
         // Now we have the tracee removed entries in env
         for k in diff.removed.into_iter() {
           if self.args.color >= ColorLevel::Normal {

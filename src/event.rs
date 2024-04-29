@@ -12,7 +12,7 @@ use ratatui::{
   text::{Line, Span},
 };
 use strum::Display;
-use tokio::sync::mpsc::{self, error::SendError};
+use tokio::sync::mpsc::{self};
 
 use crate::{
   printer::escape_str_for_bash,
@@ -41,7 +41,7 @@ pub enum TracerEvent {
     pcomm: String,
     pid: Pid,
   },
-  Exec(ExecEvent),
+  Exec(Box<ExecEvent>),
   RootChildSpawn(Pid),
   RootChildExit {
     signal: Option<Signal>,
@@ -70,7 +70,7 @@ pub struct ExecEvent {
 macro_rules! tracer_event_spans {
     ($pid: expr, $comm: expr, $result:expr, $($t:tt)*) => {
         chain!([
-            Some($pid.to_string().fg(if $result == 0 { 
+            Some($pid.to_string().fg(if $result == 0 {
               Color::LightYellow
             } else if $result == (-nix::libc::ENOENT).into() {
               Color::LightRed
@@ -120,16 +120,17 @@ impl TracerEvent {
         );
         spans.flatten().collect()
       }
-      TracerEvent::Exec(ExecEvent {
-        pid,
-        cwd,
-        comm,
-        filename,
-        argv,
-        interpreter: _,
-        env_diff,
-        result,
-      }) => {
+      TracerEvent::Exec(exec) => {
+        let ExecEvent {
+          pid,
+          cwd,
+          comm,
+          filename,
+          argv,
+          interpreter: _,
+          env_diff,
+          result,
+        } = exec.as_ref();
         let mut spans: Vec<Span> = tracer_event_spans!(
           pid,
           comm,
@@ -137,7 +138,7 @@ impl TracerEvent {
           Some(format!("{:?} ", filename).fg(Color::LightBlue)),
           Some("env".fg(Color::Magenta)),
           // Handle argv[0]
-          argv.get(0).and_then(|arg0| {
+          argv.first().and_then(|arg0| {
             if filename.file_name() != Some(OsStr::new(&arg0)) {
               Some(format!(" -a {}", escape_str_for_bash!(arg0)).fg(Color::Green))
             } else {
@@ -176,11 +177,7 @@ impl TracerEvent {
           }),
         );
         // Filename
-        spans.push(
-          format!(" {}", escape_str_for_bash!(filename))
-            .fg(Color::LightBlue)
-            .into(),
-        );
+        spans.push(format!(" {}", escape_str_for_bash!(filename)).fg(Color::LightBlue));
         // Argv[1..]
         spans.extend(
           argv
@@ -205,7 +202,7 @@ impl FilterableTracerEvent {
     self,
     tx: &mpsc::UnboundedSender<TracerEvent>,
     filter: BitFlags<TracerEventKind>,
-  ) -> Result<(), SendError<TracerEvent>> {
+  ) -> color_eyre::Result<()> {
     if let Some(evt) = self.filter_and_take(filter) {
       tx.send(evt)?;
     }

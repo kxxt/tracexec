@@ -16,7 +16,7 @@ mod tracer;
 mod tui;
 
 use std::{
-  io::{stderr, stdout, BufWriter, Write},
+  io::{stderr, stdout, BufWriter},
   os::unix::ffi::OsStrExt,
   process,
   sync::Arc,

@@ -28,7 +28,7 @@ use ratatui::{
   layout::{Constraint, Layout, Rect},
   style::{Color, Style, Styled, Stylize},
   text::{Line, Span},
-  widgets::{Block, Paragraph, StatefulWidget, Widget, Wrap},
+  widgets::{Block, Paragraph, Widget, Wrap},
 };
 use strum::Display;
 use tokio::sync::mpsc;
@@ -382,8 +382,8 @@ impl Widget for &mut App {
       if let Some(term) = self.term.as_mut() {
         term
           .resize(PtySize {
-            rows: term_area.height as u16 - 2,
-            cols: term_area.width as u16 - 2,
+            rows: term_area.height - 2,
+            cols: term_area.width - 2,
             pixel_width: 0,
             pixel_height: 0,
           })
