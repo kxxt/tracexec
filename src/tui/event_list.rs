@@ -158,7 +158,7 @@ impl EventList {
   }
 
   pub fn scroll_right(&mut self) {
-    self.horizontal_offset = (self.horizontal_offset + 1).min(self.max_width.saturating_sub(1));
+    self.horizontal_offset = (self.horizontal_offset + 1).min(self.max_width.saturating_sub(self.inner_width as usize));
   }
 
   pub fn scroll_to_top(&mut self) {
