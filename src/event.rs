@@ -138,7 +138,6 @@ impl TracerEvent {
           Some(format!("{:?}", filename).fg(Color::LightBlue)),
           Some(" ".into()),
           Some("env".fg(Color::Magenta)),
-          Some(" ".into()),
         )
         .flatten()
         .collect();
