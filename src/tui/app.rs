@@ -409,6 +409,7 @@ impl Widget for &mut App {
       buf,
       format!(" tracexec {}", env!("CARGO_PKG_VERSION")),
     );
+    self.render_help(footer_area, buf);
 
     if event_area.width < 4 || (self.term.is_some() && term_area.width < 4) {
       Paragraph::new("Terminal\nor\npane\ntoo\nsmall").render(rest_area, buf);
@@ -466,7 +467,6 @@ impl Widget for &mut App {
       term.render(block.inner(term_area), buf);
       block.render(term_area, buf);
     }
-    self.render_help(footer_area, buf);
 
     // popups
     match self.popup {
