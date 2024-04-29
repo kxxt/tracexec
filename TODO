@@ -1,3 +1,8 @@
+# General
+
+- Set baseline env from cmdline, which is compared against when diffing env.
+- Load env file from cmdline
+
 # TUI
 
 - Scroll to end/home.
