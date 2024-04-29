@@ -202,11 +202,19 @@ impl App {
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Home => {
-                    action_tx.send(Action::ScrollToTop)?;
+                    if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                      action_tx.send(Action::ScrollToTop)?;
+                    } else if ke.modifiers == crossterm::event::KeyModifiers::SHIFT {
+                      action_tx.send(Action::ScrollToStart)?;
+                    }
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::End => {
-                    action_tx.send(Action::ScrollToBottom)?;
+                    if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                      action_tx.send(Action::ScrollToBottom)?;
+                    } else if ke.modifiers == crossterm::event::KeyModifiers::SHIFT {
+                      action_tx.send(Action::ScrollToEnd)?;
+                    }
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Char('g') => {
@@ -316,6 +324,12 @@ impl App {
           }
           Action::ScrollToBottom => {
             self.event_list.scroll_to_bottom();
+          }
+          Action::ScrollToStart => {
+            self.event_list.scroll_to_start();
+          }
+          Action::ScrollToEnd => {
+            self.event_list.scroll_to_end();
           }
           Action::ShrinkPane => {
             self.shrink_pane();
@@ -487,8 +501,8 @@ impl App {
       " or ".into(),
       help_key("PgUp/PgDn"),
       ". Use ".into(),
-      help_key("Home/End"),
-      " to scroll to the top/bottom. ".into(),
+      help_key("(Shift +) Home/End"),
+      " to scroll to the (line start/line end)/top/bottom. ".into(),
       "To change pane size, press ".into(),
       help_key("G/S"),
       " when the active pane is event list. ".into(),

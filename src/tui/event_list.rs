@@ -35,6 +35,7 @@ pub struct EventList {
   pub nr_items_in_window: usize,
   last_selected: Option<usize>,
   pub horizontal_offset: usize,
+  /// width that could be used for the list items(not including the selection indicator)
   pub inner_width: u16,
   pub max_width: usize,
   pub max_window_len: usize,
@@ -168,6 +169,14 @@ impl EventList {
   pub fn scroll_to_bottom(&mut self) {
     self.window.0 = self.items.len().saturating_sub(self.max_window_len);
     self.window.1 = self.window.0 + self.max_window_len;
+  }
+
+  pub fn scroll_to_start(&mut self) {
+    self.horizontal_offset = 0;
+  }
+
+  pub fn scroll_to_end(&mut self) {
+    self.horizontal_offset = self.max_width.saturating_sub(self.inner_width as usize);
   }
 
   // TODO: this is ugly due to borrow checking.

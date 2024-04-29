@@ -16,6 +16,8 @@ pub enum Action {
   ScrollRight,
   ScrollToTop,
   ScrollToBottom,
+  ScrollToStart,
+  ScrollToEnd,
   ShrinkPane,
   GrowPane,
   SwitchLayout,
