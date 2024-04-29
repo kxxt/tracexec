@@ -160,6 +160,16 @@ impl EventList {
     self.horizontal_offset = (self.horizontal_offset + 1).min(self.max_width.saturating_sub(1));
   }
 
+  pub fn scroll_to_top(&mut self) {
+    self.window.0 = 0;
+    self.window.1 = self.max_window_len;
+  }
+
+  pub fn scroll_to_bottom(&mut self) {
+    self.window.0 = self.items.len().saturating_sub(self.max_window_len);
+    self.window.1 = self.window.0 + self.max_window_len;
+  }
+
   // TODO: this is ugly due to borrow checking.
   pub fn window(items: &[TracerEvent], window: (usize, usize)) -> &[TracerEvent] {
     &items[window.0..window.1.min(items.len())]

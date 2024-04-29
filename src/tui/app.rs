@@ -201,6 +201,14 @@ impl App {
                     action_tx.send(Action::PageUp)?;
                     // action_tx.send(Action::Render)?;
                   }
+                  KeyCode::Home => {
+                    action_tx.send(Action::ScrollToTop)?;
+                    // action_tx.send(Action::Render)?;
+                  }
+                  KeyCode::End => {
+                    action_tx.send(Action::ScrollToBottom)?;
+                    // action_tx.send(Action::Render)?;
+                  }
                   KeyCode::Char('g') => {
                     if ke.modifiers == crossterm::event::KeyModifiers::NONE {
                       action_tx.send(Action::GrowPane)?;
@@ -302,6 +310,12 @@ impl App {
           }
           Action::ScrollRight => {
             self.event_list.scroll_right();
+          }
+          Action::ScrollToTop => {
+            self.event_list.scroll_to_top();
+          }
+          Action::ScrollToBottom => {
+            self.event_list.scroll_to_bottom();
           }
           Action::ShrinkPane => {
             self.shrink_pane();
@@ -472,7 +486,10 @@ impl App {
       help_key("Ctrl+↑/↓/←/→/H/J/K/L"),
       " or ".into(),
       help_key("PgUp/PgDn"),
-      ". To change pane size, press ".into(),
+      ". Use ".into(),
+      help_key("Home/End"),
+      " to scroll to the top/bottom. ".into(),
+      "To change pane size, press ".into(),
       help_key("G/S"),
       " when the active pane is event list. ".into(),
       "To switch between horizontal and vertical layout, press ".into(),
