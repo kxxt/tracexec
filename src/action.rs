@@ -18,6 +18,7 @@ pub enum Action {
   GrowPane,
   SwitchLayout,
   SwitchActivePane,
+  SetActivePopup(ActivePopup),
   CopyToClipboard(CopyTarget),
   HandleTerminalKeyPress(KeyEvent),
 }
@@ -35,4 +36,10 @@ pub enum SupportedShell {
   Bash,
   Sh,
   Fish,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ActivePopup {
+  Help,
+  CopyTargetSelection,
 }

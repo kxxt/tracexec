@@ -25,14 +25,15 @@ use ratatui::{
   buffer::Buffer,
   layout::{Constraint, Layout, Rect},
   style::{Color, Style, Stylize},
-  text::Line,
+  text::{Line, Text},
   widgets::{Block, Paragraph, Widget, Wrap},
 };
 use strum::Display;
 use tokio::sync::mpsc;
+use tui_popup::Popup;
 
 use crate::{
-  action::{Action, CopyTarget, SupportedShell},
+  action::{Action, ActivePopup, CopyTarget, SupportedShell},
   cli::{
     args::{ModifierArgs, TracingArgs},
     options::ActivePane,
@@ -46,7 +47,8 @@ use crate::{
 use super::{
   event_list::EventList,
   pseudo_term::PseudoTerminalPane,
-  ui::{help_item, render_title},
+  sized_paragraph::SizedParagraph,
+  ui::{cli_flag, help_item, help_key, render_title},
   Tui,
 };
 
@@ -68,6 +70,7 @@ pub struct App {
   pub split_percentage: u16,
   pub layout: AppLayout,
   pub should_handle_internal_resize: bool,
+  pub popup: Option<ActivePopup>,
 }
 
 impl App {
@@ -106,6 +109,7 @@ impl App {
       clipboard: Clipboard::new()?,
       layout,
       should_handle_internal_resize: true,
+      popup: None,
     })
   }
 
@@ -142,12 +146,18 @@ impl App {
             {
               action_tx.send(Action::SwitchActivePane)?;
               // action_tx.send(Action::Render)?;
+              // Cancel all popups
+              self.popup = None;
             } else {
               log::trace!("TUI: Active pane: {}", self.active_pane);
               if self.active_pane == ActivePane::Events {
                 match ke.code {
                   KeyCode::Char('q') => {
-                    action_tx.send(Action::Quit)?;
+                    if self.popup.is_some() {
+                      self.popup = None;
+                    } else {
+                      action_tx.send(Action::Quit)?;
+                    }
                   }
                   KeyCode::Down | KeyCode::Char('j') => {
                     if ke.modifiers == crossterm::event::KeyModifiers::CONTROL {
@@ -212,6 +222,9 @@ impl App {
                   }
                   KeyCode::Char('l') if ke.modifiers == crossterm::event::KeyModifiers::ALT => {
                     action_tx.send(Action::SwitchLayout)?;
+                  }
+                  KeyCode::F(1) => {
+                    action_tx.send(Action::SetActivePopup(ActivePopup::Help))?;
                   }
                   _ => {}
                 }
@@ -316,6 +329,9 @@ impl App {
               self.clipboard.set_text("🥰")?;
             }
           }
+          Action::SetActivePopup(popup) => {
+            self.popup = Some(popup);
+          }
         }
       }
     }
@@ -360,7 +376,11 @@ impl Widget for &mut App {
       Layout::vertical
     })(horizontal_constraints)
     .areas(rest_area);
-    render_title(header_area, buf, format!(" tracexec {}", env!("CARGO_PKG_VERSION")));
+    render_title(
+      header_area,
+      buf,
+      format!(" tracexec {}", env!("CARGO_PKG_VERSION")),
+    );
 
     if event_area.width < 4 || (self.term.is_some() && term_area.width < 4) {
       Paragraph::new("Terminal\nor\npane\ntoo\nsmall").render(rest_area, buf);
@@ -419,10 +439,68 @@ impl Widget for &mut App {
       block.render(term_area, buf);
     }
     self.render_help(footer_area, buf);
+
+    // popups
+    match self.popup {
+      Some(ActivePopup::Help) => {
+        let popup = Popup::new("Help", App::help(rest_area)).style(Style::new().black().on_gray());
+        popup.render(area, buf);
+      }
+      Some(ActivePopup::CopyTargetSelection) => {
+        todo!("Copy target selection popup");
+      }
+      None => {}
+    }
   }
 }
 
 impl App {
+  fn help<'a>(area: Rect) -> SizedParagraph<'a> {
+    let line1 = Line::default().spans(vec![
+      "Welcome to tracexec! The TUI consists of at most two panes: the event list and optionally the pseudo terminal if ".into(),
+      cli_flag("--tty/-t"),
+      " is enabled. The event list displays the events emitted by the tracer. \
+       The active pane's border is highlighted in cyan. \
+       To switch active pane, press ".into(),
+      help_key("Ctrl+S"),
+      ". The keybinding list at the bottom of the screen shows the available keys for currently active pane or popup.".into(),
+    ]);
+    let line2 = Line::default().spans(vec![
+      "You can navigate the event list using the arrow keys or ".into(),
+      help_key("H/J/K/L"),
+      ". To scroll faster, use ".into(),
+      help_key("Ctrl+↑/↓/←/→/H/J/K/L"),
+      " or ".into(),
+      help_key("PgUp/PgDn"),
+      ". To change pane size, press ".into(),
+      help_key("G/S"),
+      " when the active pane is event list. ".into(),
+      "To switch between horizontal and vertical layout, press ".into(),
+      help_key("Alt+L"),
+      ". To view the details of the selected event, press ".into(),
+      help_key("V"),
+      ". To copy the selected event to the clipboard, press ".into(),
+      help_key("C"),
+      " then select what to copy. To quit, press ".into(),
+      help_key("Q"),
+      " while the event list is active.".into(),
+    ]);
+    let line3 = Line::default().spans(vec![
+      "When the pseudo terminal is active, you can interact with the terminal using the keyboard.",
+    ]);
+    let line4 = Line::default()
+      .spans(vec![
+        "Press ".into(),
+        help_key("Q"),
+        " to close this help popup.".into(),
+      ])
+      .centered();
+    let paragraph =
+      Paragraph::new(Text::from_iter([line1, line2, line3, line4])).wrap(Wrap { trim: false });
+    let perhaps_a_suitable_width = area.width.saturating_sub(6) as usize;
+    SizedParagraph::new(paragraph, perhaps_a_suitable_width)
+  }
+
   fn render_help(&self, area: Rect, buf: &mut Buffer) {
     let iter = help_item!("Ctrl+S", "Switch\u{00a0}Pane");
     let iter: Box<dyn Iterator<Item = _>> = if self.active_pane == ActivePane::Events {

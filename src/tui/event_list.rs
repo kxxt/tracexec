@@ -194,7 +194,7 @@ impl Widget for &mut EventList {
       .highlight_style(
         Style::default()
           .add_modifier(Modifier::BOLD)
-          .bg(Color::DarkGray)
+          .bg(Color::DarkGray),
       )
       .highlight_symbol(">")
       .highlight_spacing(HighlightSpacing::Always);

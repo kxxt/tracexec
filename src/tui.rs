@@ -41,6 +41,7 @@ pub mod app;
 pub mod event_list;
 pub mod partial_line;
 pub mod pseudo_term;
+pub mod sized_paragraph;
 pub mod ui;
 
 pub struct Tui {
