@@ -25,10 +25,10 @@ use itertools::chain;
 use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
   buffer::Buffer,
-  layout::{Constraint, Layout, Rect, Size},
+  layout::{Alignment, Constraint, Layout, Rect, Size},
   style::{Color, Style, Stylize},
   text::{Line, Text},
-  widgets::{Block, Paragraph, Widget, Wrap},
+  widgets::{Block, Borders, Paragraph, Widget, Wrap},
 };
 use strum::Display;
 use tokio::sync::mpsc;
@@ -521,6 +521,8 @@ impl App {
       "Details",
       DetailsPopup::new(event, size, self.event_list.baseline.clone()),
     );
+    // .borders(Borders::TOP | Borders::BOTTOM)
+    // .title_alignment(Alignment::Center);
     popup.render(area, buf);
   }
 
