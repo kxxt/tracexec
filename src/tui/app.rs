@@ -506,13 +506,12 @@ impl App {
     let iter: Box<dyn Iterator<Item = _>> = if self.active_pane == ActivePane::Events {
       Box::new(chain!(
         iter,
-        help_item!("↑/↓/←/→/Pg{Up,Dn}", "Navigate"),
-        help_item!("Ctrl+<-/->", "Scroll<->"),
         help_item!("G/S", "Grow/Shrink\u{00a0}Pane"),
         help_item!("Alt+L", "Layout"),
         help_item!("V", "View"),
         help_item!("C", "Copy"),
-        help_item!("Q", "Quit")
+        help_item!("Q", "Quit"),
+        help_item!("F1", "Help"),
       ))
     } else {
       Box::new(chain!(iter, help_item!("Ctrl+Shift+R", "FIXME")))
