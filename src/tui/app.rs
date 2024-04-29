@@ -16,8 +16,6 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::borrow::Cow;
-
 use arboard::Clipboard;
 use clap::ValueEnum;
 use crossterm::event::KeyCode;
@@ -26,8 +24,8 @@ use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
   buffer::Buffer,
   layout::{Constraint, Layout, Rect},
-  style::{Color, Style, Styled, Stylize},
-  text::{Line, Span},
+  style::{Color, Style, Stylize},
+  text::Line,
   widgets::{Block, Paragraph, Widget, Wrap},
 };
 use strum::Display;
@@ -45,7 +43,12 @@ use crate::{
   pty::{PtySize, UnixMasterPty},
 };
 
-use super::{event_list::EventList, pseudo_term::PseudoTerminalPane, ui::render_title, Tui};
+use super::{
+  event_list::EventList,
+  pseudo_term::PseudoTerminalPane,
+  ui::{help_item, render_title},
+  Tui,
+};
 
 #[derive(Debug, Clone, PartialEq, Default, ValueEnum, Display)]
 #[strum(serialize_all = "kebab-case")]
@@ -419,35 +422,8 @@ impl Widget for &mut App {
   }
 }
 
-macro_rules! help_item {
-  ($key: literal, $desc: literal) => {{
-    let mut key_string = String::from("\u{00a0}");
-    key_string.push_str($key);
-    key_string.push_str("\u{00a0}");
-    let mut desc_string = String::from("\u{00a0}");
-    desc_string.push_str($desc);
-    desc_string.push_str("\u{00a0}\u{200b}");
-    [key(key_string), desc(desc_string)]
-  }};
-}
-
 impl App {
   fn render_help(&self, area: Rect, buf: &mut Buffer) {
-    fn key<'a, T>(k: T) -> Span<'a>
-    where
-      T: Into<Cow<'a, str>>,
-      T: Styled<Item = Span<'a>>,
-    {
-      k.fg(Color::Black).bg(Color::Cyan).bold()
-    }
-    fn desc<'a, T>(d: T) -> Span<'a>
-    where
-      T: Into<Cow<'a, str>>,
-      T: Styled<Item = Span<'a>>,
-    {
-      d.fg(Color::Cyan).bg(Color::DarkGray).italic().bold()
-    }
-
     let iter = help_item!("Ctrl+S", "Switch\u{00a0}Pane");
     let iter: Box<dyn Iterator<Item = _>> = if self.active_pane == ActivePane::Events {
       Box::new(chain!(
