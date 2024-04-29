@@ -23,6 +23,8 @@
 
 //! Modified from https://github.com/wez/wezterm/tree/main/pty
 
+#![allow(unused)]
+
 use color_eyre::eyre::{bail, Error};
 use filedescriptor::FileDescriptor;
 use nix::libc::{self, pid_t, winsize};

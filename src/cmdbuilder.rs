@@ -23,6 +23,8 @@
 
 //! Modified from https://github.com/wez/wezterm/tree/main/pty
 
+#![allow(unused)]
+
 use color_eyre::eyre::{bail, Context};
 use nix::libc;
 use std::collections::BTreeMap;
