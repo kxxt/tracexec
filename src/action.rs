@@ -23,6 +23,7 @@ pub enum Action {
   ScrollToStart,
   ScrollToEnd,
   ToggleFollow,
+  StopFollow,
   // Sizing
   ShrinkPane,
   GrowPane,

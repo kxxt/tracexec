@@ -169,6 +169,7 @@ impl App {
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Up | KeyCode::Char('k') => {
+                    action_tx.send(Action::StopFollow)?;
                     if ke.modifiers == crossterm::event::KeyModifiers::CONTROL {
                       action_tx.send(Action::PageUp)?;
                     } else if ke.modifiers == crossterm::event::KeyModifiers::NONE {
@@ -199,11 +200,13 @@ impl App {
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::PageUp => {
+                    action_tx.send(Action::StopFollow)?;
                     action_tx.send(Action::PageUp)?;
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Home => {
                     if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                      action_tx.send(Action::StopFollow)?;
                       action_tx.send(Action::ScrollToTop)?;
                     } else if ke.modifiers == crossterm::event::KeyModifiers::SHIFT {
                       action_tx.send(Action::ScrollToStart)?;
@@ -340,6 +343,9 @@ impl App {
           }
           Action::ToggleFollow => {
             self.event_list.toggle_follow();
+          }
+          Action::StopFollow => {
+            self.event_list.stop_follow();
           }
           Action::ShrinkPane => {
             self.shrink_pane();
@@ -551,7 +557,14 @@ impl App {
         iter,
         help_item!("G/S", "Grow/Shrink\u{00a0}Pane"),
         help_item!("Alt+L", "Layout"),
-        help_item!("F", if self.event_list.follow { "Unfollow" } else { "Follow" }),
+        help_item!(
+          "F",
+          if self.event_list.follow {
+            "Unfollow"
+          } else {
+            "Follow"
+          }
+        ),
         help_item!("V", "View"),
         help_item!("C", "Copy"),
         help_item!("Q", "Quit"),
