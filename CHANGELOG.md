@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.1.0-alpha.6
+
+tracexec v0.1.0-alpha.6 released!
+
+![tracexec v0.1.0-alpha.6](https://github.com/kxxt/tracexec/blob/main/screenshots/0.1.0-alpha.6.png?raw=true)
+
+Changes since v0.1.0-alpha.5:
+
+### Added/Changed
+
+- The panes in the TUI can now be resized by `G` and `S` keys.
+- Vertical layout for the TUI is now supported. Use `--layout vertical` to enable it.
+(Or dynamically switch between horizontal and vertical layout by `Alt+L` in the TUI)
+- Line wrapping for bottom help text in the TUI.
+- Hide navigation key bindings from the bottom help text in the TUI.
+- Show verbose help text in the TUI when pressing `F1`.
+- In TUI, failed exec events with `ENOENT` are now given a special color.
+- Update the style of selected items and arg0 for the TUI.
+- Title now shows on the left top corner in the TUI (alongside version).
+- Scroll to (start/end)/top/bottom in the TUI by `(Shift + ) Home/End` keys.
+
+### Fixed
+
+- Don't render the TUI when the terminal is too small
+- Don't horizontally scroll past content.
+
 ## v0.1.0-alpha.5
 
 tracexec v0.1.0-alpha.5 released!
