@@ -23,7 +23,10 @@ use ratatui::{
   prelude::{Buffer, Rect},
   style::{Color, Modifier, Style},
   text::Line,
-  widgets::{block::Title, HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget},
+  widgets::{
+    block::Title, HighlightSpacing, List, ListItem, ListState, StatefulWidget, StatefulWidgetRef,
+    Widget,
+  },
 };
 
 use crate::{event::TracerEvent, proc::BaselineInfo};
@@ -38,12 +41,16 @@ pub struct EventList {
   /// Cache of the lines in the window
   lines_cache: VecDeque<Line<'static>>,
   should_refresh_lines_cache: bool,
+  /// Cache of the list items in the view
+  list_cache: List<'static>,
+  should_refresh_list_cache: bool,
   /// How many items are there in the window
   pub nr_items_in_window: usize,
   last_selected: Option<usize>,
-  pub horizontal_offset: usize,
+  horizontal_offset: usize,
   /// width that could be used for the list items(not including the selection indicator)
   pub inner_width: u16,
+  /// max width of the lines in the current window
   pub max_width: usize,
   pub max_window_len: usize,
   pub baseline: Rc<BaselineInfo>,
@@ -66,6 +73,8 @@ impl EventList {
       follow,
       lines_cache: VecDeque::new(),
       should_refresh_lines_cache: true,
+      should_refresh_list_cache: true,
+      list_cache: List::default(),
     }
   }
 
@@ -126,8 +135,13 @@ impl Widget for &mut EventList {
     let mut max_len = area.width as usize;
     // Iterate through all elements in the `items` and stylize them.
     let events_in_window = EventList::window(&self.events, self.window);
+    tracing::debug!(
+      "Should refresh line cache: {}",
+      self.should_refresh_lines_cache
+    );
     if self.should_refresh_lines_cache {
       self.should_refresh_lines_cache = false;
+      self.should_refresh_list_cache = true;
       // Initialize the line cache, which will be kept in sync by the navigation methods
       self.lines_cache = events_in_window
         .iter()
@@ -137,40 +151,47 @@ impl Widget for &mut EventList {
     self.nr_items_in_window = events_in_window.len();
     if self.nr_items_in_window > self.lines_cache.len() {
       // Push the new items to the cache
+      self.should_refresh_list_cache = true;
       for evt in events_in_window.iter().skip(self.lines_cache.len()) {
+        tracing::debug!("Pushing new item to line cache");
         self
           .lines_cache
           .push_back(evt.to_tui_line(&self.baseline, false));
       }
     }
-    let items: Vec<ListItem> = self
-      .lines_cache
-      .iter()
-      .map(|full_line| {
+    tracing::debug!(
+      "Should refresh list cache: {}",
+      self.should_refresh_list_cache
+    );
+    if self.should_refresh_list_cache {
+      self.should_refresh_list_cache = false;
+      let items = self.lines_cache.iter().map(|full_line| {
         max_len = max_len.max(full_line.width());
-        full_line
-          .clone()
-          .substring(self.horizontal_offset, area.width)
-          .into()
-      })
-      .collect();
-    // FIXME: It's a little late to set the max width here. The max width is already used
-    //        Though this should only affect the first render.
-    self.max_width = max_len;
-    // Create a List from all list items and highlight the currently selected one
-    let list = List::new(items)
-      .highlight_style(
-        Style::default()
-          .add_modifier(Modifier::BOLD)
-          .bg(Color::DarkGray),
-      )
-      .highlight_symbol(">")
-      .highlight_spacing(HighlightSpacing::Always);
+        ListItem::from(
+          full_line
+            .clone()
+            .substring(self.horizontal_offset, area.width),
+        )
+      });
+      // Create a List from all list items and highlight the currently selected one
+      let list = List::new(items)
+        .highlight_style(
+          Style::default()
+            .add_modifier(Modifier::BOLD)
+            .bg(Color::DarkGray),
+        )
+        .highlight_symbol(">")
+        .highlight_spacing(HighlightSpacing::Always);
+      // FIXME: It's a little late to set the max width here. The max width is already used
+      //        Though this should only affect the first render.
+      self.max_width = max_len;
+      self.list_cache = list;
+    }
 
     // We can now render the item list
     // (look careful we are using StatefulWidget's render.)
     // ratatui::widgets::StatefulWidget::render as stateful_render
-    StatefulWidget::render(list, area, buf, &mut self.state);
+    StatefulWidgetRef::render_ref(&self.list_cache, area, buf, &mut self.state);
   }
 }
 
@@ -195,6 +216,7 @@ impl EventList {
       self
         .lines_cache
         .push_back(self.events[self.last_item_in_window()].to_tui_line(&self.baseline, false));
+      self.should_refresh_list_cache = true;
       true
     } else {
       false
@@ -209,6 +231,7 @@ impl EventList {
       self
         .lines_cache
         .push_front(self.events[self.window.0].to_tui_line(&self.baseline, false));
+      self.should_refresh_list_cache = true;
       true
     } else {
       false
@@ -285,23 +308,46 @@ impl EventList {
   }
 
   pub fn page_left(&mut self) {
+    let old_offset = self.horizontal_offset;
     self.horizontal_offset = self
       .horizontal_offset
       .saturating_sub(self.inner_width as usize);
+    if self.horizontal_offset != old_offset {
+      self.should_refresh_list_cache = true;
+    }
   }
 
   pub fn page_right(&mut self) {
+    let old_offset = self.horizontal_offset;
     self.horizontal_offset = (self.horizontal_offset + self.inner_width as usize)
       .min(self.max_width.saturating_sub(self.inner_width as usize));
+    if self.horizontal_offset != old_offset {
+      self.should_refresh_list_cache = true;
+    }
   }
 
   pub fn scroll_left(&mut self) {
-    self.horizontal_offset = self.horizontal_offset.saturating_sub(1);
+    if self.horizontal_offset > 0 {
+      self.horizontal_offset = self.horizontal_offset.saturating_sub(1);
+      self.should_refresh_list_cache = true;
+      tracing::trace!(
+        "scroll_left: should_refresh_list_cache = {}",
+        self.should_refresh_list_cache
+      );
+    }
   }
 
   pub fn scroll_right(&mut self) {
-    self.horizontal_offset =
+    let new_offset =
       (self.horizontal_offset + 1).min(self.max_width.saturating_sub(self.inner_width as usize));
+    if new_offset != self.horizontal_offset {
+      self.horizontal_offset = new_offset;
+      self.should_refresh_list_cache = true;
+      tracing::trace!(
+        "scroll_right: should_refresh_list_cache = {}",
+        self.should_refresh_list_cache
+      );
+    }
   }
 
   pub fn scroll_to_top(&mut self) {
@@ -327,6 +373,7 @@ impl EventList {
       self
         .lines_cache
         .push_back(self.events[self.last_item_in_window()].to_tui_line(&self.baseline, false));
+      self.should_refresh_list_cache = true;
     } else {
       self.should_refresh_lines_cache = old_window != self.window;
       tracing::trace!(
@@ -337,10 +384,25 @@ impl EventList {
   }
 
   pub fn scroll_to_start(&mut self) {
-    self.horizontal_offset = 0;
+    if self.horizontal_offset > 0 {
+      self.horizontal_offset = 0;
+      self.should_refresh_list_cache = true;
+      tracing::trace!(
+        "scroll_to_start: should_refresh_list_cache = {}",
+        self.should_refresh_list_cache
+      );
+    }
   }
 
   pub fn scroll_to_end(&mut self) {
-    self.horizontal_offset = self.max_width.saturating_sub(self.inner_width as usize);
+    let new_offset = self.max_width.saturating_sub(self.inner_width as usize);
+    if self.horizontal_offset < new_offset {
+      self.horizontal_offset = new_offset;
+      self.should_refresh_list_cache = true;
+      tracing::trace!(
+        "scroll_to_end: should_refresh_list_cache = {}",
+        self.should_refresh_list_cache
+      );
+    }
   }
 }
