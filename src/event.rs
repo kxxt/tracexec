@@ -4,7 +4,7 @@ use clap::ValueEnum;
 use crossterm::event::KeyEvent;
 use enumflags2::BitFlags;
 use filterable_enum::FilterableEnum;
-use itertools::chain;
+use itertools::{chain, Itertools};
 use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
   layout::Size,
@@ -219,7 +219,7 @@ impl TracerEvent {
     };
     match target {
       CopyTarget::Commandline(_) => self.to_tui_line(baseline, true).to_string().into(),
-      CopyTarget::Env => "Environment".to_string().into(),
+      CopyTarget::Env => event.envp.iter().join("\n").into(),
       CopyTarget::EnvDiff => "Environment Diff".to_string().into(),
       CopyTarget::Argv => {
         let mut argv =
