@@ -504,10 +504,11 @@ impl Widget for &mut App {
       self.should_handle_internal_resize = false;
       // Set the window size of the event list
       self.event_list.max_window_len = event_area.height as usize - 2;
-      self.event_list.set_window((
-        self.event_list.get_window().0,
-        self.event_list.get_window().0 + self.event_list.max_window_len,
-      ));
+      self.event_list.window = (
+        self.event_list.window.0,
+        self.event_list.window.0 + self.event_list.max_window_len,
+      );
+      log::debug!("TUI: set event list window: {:?}", self.event_list.window);
       if let Some(term) = self.term.as_mut() {
         term
           .resize(PtySize {

@@ -86,17 +86,14 @@ macro_rules! tracer_event_spans {
 }
 
 impl TracerEvent {
-  /// Convert the event to a TUI line
-  ///
-  /// This method is resource intensive and the caller should cache the result
-  pub fn to_tui_line(&self, baseline: &BaselineInfo, cmdline_only: bool) -> Line<'static> {
+  pub fn to_tui_line(&self, baseline: &BaselineInfo, cmdline_only: bool) -> Line {
     match self {
       TracerEvent::Info(TracerMessage { ref msg, pid }) => chain!(
         ["info".bg(Color::LightBlue)],
         pid
           .map(|p| ["(".into(), p.to_string().fg(Color::Yellow), ")".into()])
           .unwrap_or_default(),
-        [": ".into(), msg.clone().into()]
+        [": ".into(), msg.as_str().into()]
       )
       .collect(),
       TracerEvent::Warning(TracerMessage { ref msg, pid }) => chain!(
@@ -104,7 +101,7 @@ impl TracerEvent {
         pid
           .map(|p| ["(".into(), p.to_string().fg(Color::Yellow), ")".into()])
           .unwrap_or_default(),
-        [": ".into(), msg.clone().into()]
+        [": ".into(), msg.as_str().into()]
       )
       .collect(),
       TracerEvent::Error(TracerMessage { ref msg, pid }) => chain!(
@@ -112,7 +109,7 @@ impl TracerEvent {
         pid
           .map(|p| ["(".into(), p.to_string().fg(Color::Yellow), ")".into()])
           .unwrap_or_default(),
-        [": ".into(), msg.clone().into()]
+        [": ".into(), msg.as_str().into()]
       )
       .collect(),
       TracerEvent::NewChild { ppid, pcomm, pid } => {
