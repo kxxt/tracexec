@@ -73,11 +73,11 @@ macro_rules! tracer_event_spans {
     ($pid: expr, $comm: expr, $result:expr, $($t:tt)*) => {
         chain!([
             Some($pid.to_string().fg(if $result == 0 {
-              Color::LightYellow
+              Color::LightGreen
             } else if $result == (-nix::libc::ENOENT).into() {
-              Color::LightRed
+              Color::LightYellow
             } else {
-              Color::Red
+              Color::LightRed
             })),
             Some(format!("<{}>", $comm).fg(Color::Cyan)),
             Some(": ".into()),
