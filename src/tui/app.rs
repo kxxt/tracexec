@@ -160,7 +160,9 @@ impl App {
                 // TODO: do this in a separate function
                 if let Some(popup) = &mut self.popup {
                   match popup {
-                    ActivePopup::Help => todo!(),
+                    ActivePopup::Help => {
+                      self.popup = None;
+                    }
                     ActivePopup::ViewDetails(_) => todo!(),
                     ActivePopup::CopyTargetSelection(state) => match ke.code {
                       KeyCode::Char('q') => {
@@ -614,7 +616,7 @@ impl App {
     let line4 = Line::default()
       .spans(vec![
         "Press ".into(),
-        help_key("Q"),
+        help_key("Any Key"),
         " to close this help popup.".into(),
       ])
       .centered();
