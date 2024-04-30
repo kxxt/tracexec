@@ -112,10 +112,10 @@ impl Tui {
               log::trace!("TUI event: tracer event!");
               _event_tx.send(Event::Tracer(tracer_event)).unwrap();
             }
-            maybe_event = crossterm_event => {
-              log::trace!("TUI event: crossterm event {maybe_event:?}!");
-                match maybe_event {
-                    Some(Ok(evt)) => {
+            Some(event) = crossterm_event => {
+              log::trace!("TUI event: crossterm event {event:?}!");
+                match event {
+                    Ok(evt) => {
                         match evt {
                             CrosstermEvent::Key(key) => {
                                 if key.kind == KeyEventKind::Press {
@@ -131,10 +131,9 @@ impl Tui {
                             _ => {},
                         }
                     }
-                    Some(Err(_)) => {
+                    Err(_) => {
                         _event_tx.send(Event::Error).unwrap();
                     }
-                    None => {},
                 }
             },
             _ = render_delay => {
