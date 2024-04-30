@@ -109,9 +109,9 @@ impl Widget for &mut EventList {
     self.inner_width = area.width - 1; // 1 for the selection indicator
     let mut max_len = area.width as usize;
     // Iterate through all elements in the `items` and stylize them.
-    let items = EventList::window(&self.events, self.window);
-    self.nr_items_in_window = items.len();
-    let items: Vec<ListItem> = items
+    let events_in_window = EventList::window(&self.events, self.window);
+    self.nr_items_in_window = events_in_window.len();
+    let items: Vec<ListItem> = events_in_window
       .iter()
       .map(|evt| {
         let full_line = evt.to_tui_line(&self.baseline, false);
@@ -125,7 +125,7 @@ impl Widget for &mut EventList {
     //        Though this should only affect the first render.
     self.max_width = max_len;
     // Create a List from all list items and highlight the currently selected one
-    let items = List::new(items)
+    let list = List::new(items)
       .highlight_style(
         Style::default()
           .add_modifier(Modifier::BOLD)
@@ -137,7 +137,7 @@ impl Widget for &mut EventList {
     // We can now render the item list
     // (look careful we are using StatefulWidget's render.)
     // ratatui::widgets::StatefulWidget::render as stateful_render
-    StatefulWidget::render(items, area, buf, &mut self.state);
+    StatefulWidget::render(list, area, buf, &mut self.state);
   }
 }
 
