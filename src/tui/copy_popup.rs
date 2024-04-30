@@ -55,7 +55,9 @@ impl CopyPopupState {
   }
 
   pub fn next(&mut self) {
-    self.state.select(Some(self.state.selected().unwrap() + 1))
+    self.state.select(Some(
+      (self.state.selected().unwrap() + 1).min(self.available_targets.len() - 1),
+    ))
   }
 
   pub fn prev(&mut self) {
