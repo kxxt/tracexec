@@ -8,7 +8,6 @@ use ratatui::{
   text::Span,
   widgets::{Block, Borders, Clear, HighlightSpacing, List, ListState, StatefulWidgetRef, Widget},
 };
-use tui_popup::SizedWidgetRef;
 
 use crate::{
   action::{CopyTarget, SupportedShell::Bash},
@@ -94,16 +93,12 @@ impl CopyPopupState {
   }
 
   pub fn help_items(&self) -> impl Iterator<Item = Span> {
-    self
-      .available_targets
-      .iter()
-      .map(|&key| {
-        help_item!(
-          key.to_ascii_uppercase().to_string(),
-          KEY_MAP.get(&key).unwrap().1
-        )
-      })
-      .flatten()
+    self.available_targets.iter().flat_map(|&key| {
+      help_item!(
+        key.to_ascii_uppercase().to_string(),
+        KEY_MAP.get(&key).unwrap().1
+      )
+    })
   }
 }
 
@@ -163,8 +158,8 @@ impl StatefulWidgetRef for CopyPopup {
 
 /// Create a rectangle centered in the given area.
 fn centered_popup_rect(width: u16, height: u16, area: Rect) -> Rect {
-  let height = height.saturating_add(2).try_into().unwrap_or(area.height);
-  let width = width.saturating_add(2).try_into().unwrap_or(area.width);
+  let height = height.saturating_add(2).min(area.height);
+  let width = width.saturating_add(2).min(area.width);
   Rect {
     x: area.width.saturating_sub(width) / 2,
     y: area.height.saturating_sub(height) / 2,

@@ -22,7 +22,7 @@ impl<'a> SizedParagraph<'a> {
 
 impl SizedWidgetRef for SizedParagraph<'_> {
   fn width(&self) -> usize {
-    self.width as usize
+    self.width
   }
 
   fn height(&self) -> usize {

@@ -25,7 +25,7 @@ use bytes::Bytes;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::prelude::{Buffer, Rect};
 
-use ratatui::widgets::{StatefulWidget, Widget};
+use ratatui::widgets::Widget;
 use std::io::{BufWriter, Write};
 use std::sync::Arc;
 use tokio::sync::mpsc::channel;

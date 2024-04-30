@@ -20,7 +20,7 @@ use std::{rc::Rc, sync::Arc};
 
 use ratatui::{
   prelude::{Buffer, Rect},
-  style::{Color, Modifier, Style, Stylize},
+  style::{Color, Modifier, Style},
   widgets::{HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget},
 };
 

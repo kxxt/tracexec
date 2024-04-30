@@ -26,7 +26,7 @@ where
 {
   let mut key_string = String::from("\u{00a0}");
   key_string.push_str(&k.into());
-  key_string.push_str("\u{00a0}");
+  key_string.push('\u{00a0}');
   key_string.fg(Color::Black).bg(Color::Cyan).bold()
 }
 pub fn help_desc<'a, T>(d: T) -> Span<'a>
@@ -36,7 +36,7 @@ where
 {
   let mut desc_string = String::from("\u{00a0}");
   desc_string.push_str(&d.into());
-  desc_string.push_str("\u{00a0}");
+  desc_string.push('\u{00a0}');
   desc_string
     .fg(Color::Cyan)
     .bg(Color::DarkGray)
