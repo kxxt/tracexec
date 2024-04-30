@@ -49,6 +49,7 @@ pub enum Action {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CopyTarget {
+  Line,
   Commandline(SupportedShell),
   Env,
   Argv,

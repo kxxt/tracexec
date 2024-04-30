@@ -48,6 +48,7 @@ impl CopyPopupState {
       3 => CopyTarget::Argv,
       4 => CopyTarget::Filename,
       5 => CopyTarget::SyscallResult,
+      6 => CopyTarget::Line,
       _ => unreachable!(),
     }
   }
@@ -60,6 +61,7 @@ impl CopyPopupState {
       'a' | 'A' => 3,
       'n' | 'N' => 4,
       's' | 'S' => 5,
+      'l' | 'L' => 6,
       _ => return None,
     };
     self.state.select(Some(id));
@@ -76,6 +78,7 @@ impl StatefulWidgetRef for CopyPopup {
       "(A)rguments",
       "File(N)ame",
       "(S)yscall result",
+      "Current (L)ine",
     ])
     .block(
       Block::default()
@@ -91,7 +94,7 @@ impl StatefulWidgetRef for CopyPopup {
     )
     .highlight_symbol(">")
     .highlight_spacing(HighlightSpacing::Always);
-    let popup_area = centered_popup_rect(35, 6, area);
+    let popup_area = centered_popup_rect(35, list.len() as u16, area);
     Clear.render(popup_area, buf);
     StatefulWidgetRef::render_ref(&list, popup_area, buf, &mut state.state);
   }

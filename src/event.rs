@@ -211,6 +211,7 @@ impl TracerEvent {
 impl TracerEvent {
   pub fn text_for_copy(&self, baseline: &BaselineInfo, target: CopyTarget) -> String {
     match target {
+      CopyTarget::Line => self.to_tui_line(baseline, false).to_string(),
       CopyTarget::Commandline(_) => self.to_tui_line(baseline, true).to_string(),
       CopyTarget::Env => "Environment".to_string(),
       CopyTarget::EnvDiff => "Environment Diff".to_string(),
