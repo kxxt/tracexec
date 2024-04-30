@@ -108,12 +108,12 @@ impl Tui {
             _ = _cancellation_token.cancelled() => {
                 break;
             }
-            tracer_event = tracer_event => {
-                if let Some(tracer_event) = tracer_event {
-                    _event_tx.send(Event::Tracer(tracer_event)).unwrap()
-                }
+            Some(tracer_event) = tracer_event => {
+              log::trace!("TUI event: tracer event!");
+              _event_tx.send(Event::Tracer(tracer_event)).unwrap();
             }
             maybe_event = crossterm_event => {
+              log::trace!("TUI event: crossterm event {maybe_event:?}!");
                 match maybe_event {
                     Some(Ok(evt)) => {
                         match evt {
@@ -138,6 +138,7 @@ impl Tui {
                 }
             },
             _ = render_delay => {
+              log::trace!("TUI event: Render!");
                 _event_tx.send(Event::Render).unwrap();
             },
         }
