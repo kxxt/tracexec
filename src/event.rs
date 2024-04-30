@@ -15,6 +15,7 @@ use strum::Display;
 use tokio::sync::mpsc::{self};
 
 use crate::{
+  action::CopyTarget,
   printer::escape_str_for_bash,
   proc::{BaselineInfo, EnvDiff, Interpreter},
 };
@@ -199,6 +200,19 @@ impl TracerEvent {
       )
       .into(),
       TracerEvent::RootChildSpawn(pid) => format!("RootChildSpawn: {}", pid).into(),
+    }
+  }
+}
+
+impl TracerEvent {
+  pub fn text_for_copy(&self, target: CopyTarget) -> String {
+    match target {
+      CopyTarget::Commandline(_) => "Commandline".to_string(),
+      CopyTarget::Env => "Environment".to_string(),
+      CopyTarget::EnvDiff => "Environment Diff".to_string(),
+      CopyTarget::Argv => "Argv".to_string(),
+      CopyTarget::Filename => "Filename".to_string(),
+      CopyTarget::SyscallResult => "Syscall Result".to_string(),
     }
   }
 }

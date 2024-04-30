@@ -3,9 +3,9 @@ use std::sync::Arc;
 use crossterm::event::KeyEvent;
 use ratatui::layout::Size;
 
-use crate::event::TracerEvent;
+use crate::{event::TracerEvent, tui::copy_popup::CopyPopupState};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Action {
   // Application
   Quit,
@@ -38,7 +38,11 @@ pub enum Action {
   // Popup
   SetActivePopup(ActivePopup),
   // Clipboard
-  CopyToClipboard(CopyTarget),
+  ShowCopyDialog(Arc<TracerEvent>),
+  CopyToClipboard {
+    target: CopyTarget,
+    event: Arc<TracerEvent>,
+  },
   // Terminal
   HandleTerminalKeyPress(KeyEvent),
 }
@@ -49,6 +53,8 @@ pub enum CopyTarget {
   Env,
   Argv,
   Filename,
+  SyscallResult,
+  EnvDiff,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -58,9 +64,9 @@ pub enum SupportedShell {
   Fish,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum ActivePopup {
   Help,
   ViewDetails(Arc<TracerEvent>),
-  CopyTargetSelection,
+  CopyTargetSelection(CopyPopupState),
 }

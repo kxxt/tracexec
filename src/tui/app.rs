@@ -25,17 +25,17 @@ use itertools::chain;
 use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
   buffer::Buffer,
-  layout::{Alignment, Constraint, Layout, Rect, Size},
+  layout::{Constraint, Layout, Rect, Size},
   style::{Color, Style, Stylize},
   text::{Line, Text},
-  widgets::{Block, Borders, Paragraph, Widget, Wrap},
+  widgets::{Block, Paragraph, StatefulWidgetRef, Widget, Wrap},
 };
 use strum::Display;
 use tokio::sync::mpsc;
 use tui_popup::Popup;
 
 use crate::{
-  action::{Action, ActivePopup, CopyTarget, SupportedShell},
+  action::{Action, ActivePopup},
   cli::{
     args::{ModifierArgs, TracingArgs},
     options::ActivePane,
@@ -47,6 +47,7 @@ use crate::{
 };
 
 use super::{
+  copy_popup::{CopyPopup, CopyPopupState},
   details_popup::DetailsPopup,
   event_list::EventList,
   pseudo_term::PseudoTerminalPane,
@@ -155,6 +156,44 @@ impl App {
             } else {
               log::trace!("TUI: Active pane: {}", self.active_pane);
               if self.active_pane == ActivePane::Events {
+                // Handle popups
+                // TODO: do this in a separate function
+                if let Some(popup) = &mut self.popup {
+                  match popup {
+                    ActivePopup::Help => todo!(),
+                    ActivePopup::ViewDetails(_) => todo!(),
+                    ActivePopup::CopyTargetSelection(state) => match ke.code {
+                      KeyCode::Char('q') => {
+                        self.popup = None;
+                      }
+                      KeyCode::Down | KeyCode::Char('j') => {
+                        state.next();
+                      }
+                      KeyCode::Up | KeyCode::Char('k') => {
+                        state.prev();
+                      }
+                      KeyCode::Enter => {
+                        action_tx.send(Action::CopyToClipboard {
+                          event: state.event.clone(),
+                          target: state.selected(),
+                        })?;
+                        self.popup = None;
+                      }
+                      KeyCode::Char(c) => {
+                        if let Some(target) = state.select_by_key(c) {
+                          action_tx.send(Action::CopyToClipboard {
+                            event: state.event.clone(),
+                            target,
+                          })?;
+                          self.popup = None;
+                        }
+                      }
+                      _ => {}
+                    },
+                  }
+                  continue;
+                }
+
                 match ke.code {
                   KeyCode::Char('q') => {
                     if self.popup.is_some() {
@@ -238,9 +277,9 @@ impl App {
                   }
                   KeyCode::Char('c') => {
                     if ke.modifiers == crossterm::event::KeyModifiers::NONE {
-                      action_tx.send(Action::CopyToClipboard(CopyTarget::Commandline(
-                        SupportedShell::Bash,
-                      )))?;
+                      if let Some(selected) = self.event_list.selection() {
+                        action_tx.send(Action::ShowCopyDialog(selected))?;
+                      }
                     }
                   }
                   KeyCode::Char('l') if ke.modifiers == crossterm::event::KeyModifiers::ALT => {
@@ -295,7 +334,7 @@ impl App {
 
       // Handle actions
       while let Ok(action) = action_rx.try_recv() {
-        if action != Action::Render {
+        if !matches!(action, Action::Render) {
           log::debug!("action: {action:?}");
         }
         match action {
@@ -376,10 +415,13 @@ impl App {
               ActivePane::Terminal => ActivePane::Events,
             }
           }
-          Action::CopyToClipboard(_target) => {
-            if let Some(_selected) = self.event_list.state.selected() {
-              self.clipboard.set_text("🥰")?;
-            }
+          Action::ShowCopyDialog(e) => {
+            self.popup = Some(ActivePopup::CopyTargetSelection(CopyPopupState::new(e)));
+          }
+          Action::CopyToClipboard { event, target } => {
+            let text = event.text_for_copy(target);
+            // TODO: don't crash the app if clipboard fails
+            self.clipboard.set_text(text)?;
           }
           Action::SetActivePopup(popup) => {
             self.popup = Some(popup);
@@ -493,18 +535,23 @@ impl Widget for &mut App {
     }
 
     // popups
-    match &self.popup {
-      Some(ActivePopup::Help) => {
-        let popup = Popup::new("Help", App::help(rest_area)).style(Style::new().black().on_gray());
-        popup.render(area, buf);
+    if let Some(popup) = self.popup.as_mut() {
+      match popup {
+        ActivePopup::Help => {
+          let popup =
+            Popup::new("Help", App::help(rest_area)).style(Style::new().black().on_gray());
+          popup.render(area, buf);
+        }
+        ActivePopup::CopyTargetSelection(state) => {
+          CopyPopup.render_ref(area, buf, state);
+        }
+        _ => {}
       }
-      Some(ActivePopup::CopyTargetSelection) => {
-        todo!("Copy target selection popup");
-      }
-      Some(ActivePopup::ViewDetails(evt)) => {
-        self.render_details_popup(area, buf, rest_area.as_size(), evt.clone());
-      }
-      None => {}
+    }
+
+    if let Some(ActivePopup::ViewDetails(evt)) = &self.popup {
+      // Handled separately to pass borrow checker
+      self.render_details_popup(area, buf, rest_area.as_size(), evt.clone());
     }
   }
 }
