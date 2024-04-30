@@ -320,13 +320,13 @@ impl App {
             }
             te => {
               self.event_list.events.push(te.into());
+              if self.event_list.follow {
+                action_tx.send(Action::ScrollToBottom)?;
+              }
               // action_tx.send(Action::Render)?;
             }
           },
           Event::Render => {
-            if self.event_list.follow {
-              action_tx.send(Action::ScrollToBottom)?;
-            }
             action_tx.send(Action::Render)?;
           }
           Event::Resize(size) => {
