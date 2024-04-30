@@ -220,7 +220,28 @@ impl TracerEvent {
     match target {
       CopyTarget::Commandline(_) => self.to_tui_line(baseline, true).to_string().into(),
       CopyTarget::Env => event.envp.iter().join("\n").into(),
-      CopyTarget::EnvDiff => "Environment Diff".to_string().into(),
+      CopyTarget::EnvDiff => {
+        let mut result = String::new();
+        result.push_str("# Added:\n");
+        for (k, v) in event.env_diff.added.iter() {
+          result.push_str(&format!("{}={}\n", k, v));
+        }
+        result.push_str("# Modified: (original first)\n");
+        for (k, v) in event.env_diff.modified.iter() {
+          result.push_str(&format!(
+            "{}={}\n{}={}\n",
+            k,
+            baseline.env.get(k).unwrap(),
+            k,
+            v
+          ));
+        }
+        result.push_str("# Removed:\n");
+        for k in event.env_diff.removed.iter() {
+          result.push_str(&format!("{}={}\n", k, baseline.env.get(k).unwrap()));
+        }
+        result.into()
+      }
       CopyTarget::Argv => {
         let mut argv =
           Vec::with_capacity(event.argv.iter().map(|s| s.len() + 3).sum::<usize>() + 2);
