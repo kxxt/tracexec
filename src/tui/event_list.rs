@@ -31,7 +31,7 @@ use super::partial_line::PartialLine;
 
 pub struct EventList {
   pub state: ListState,
-  pub items: Vec<Arc<TracerEvent>>,
+  pub events: Vec<Arc<TracerEvent>>,
   /// Current window of the event list, [start, end)
   pub window: (usize, usize),
   /// How many items are there in the window
@@ -50,7 +50,7 @@ impl EventList {
   pub fn new(baseline: BaselineInfo, follow: bool) -> Self {
     Self {
       state: ListState::default(),
-      items: vec![],
+      events: vec![],
       last_selected: None,
       window: (0, 0),
       nr_items_in_window: 0,
@@ -85,7 +85,7 @@ impl EventList {
 
   /// returns the selected item if there is any
   pub fn selection(&self) -> Option<Arc<TracerEvent>> {
-    self.selection_index().map(|i| self.items[i].clone())
+    self.selection_index().map(|i| self.events[i].clone())
   }
 
   // TODO: this is ugly due to borrow checking.
@@ -96,7 +96,7 @@ impl EventList {
   pub fn statistics(&self) -> Title {
     let id = self.selection_index().unwrap_or(0);
     Title::default()
-      .content(format!("{}/{}──", id + 1, self.items.len()))
+      .content(format!("{}/{}──", id + 1, self.events.len()))
       .alignment(Right)
   }
 }
@@ -109,7 +109,7 @@ impl Widget for &mut EventList {
     self.inner_width = area.width - 1; // 1 for the selection indicator
     let mut max_len = area.width as usize;
     // Iterate through all elements in the `items` and stylize them.
-    let items = EventList::window(&self.items, self.window);
+    let items = EventList::window(&self.events, self.window);
     self.nr_items_in_window = items.len();
     let items: Vec<ListItem> = items
       .iter()
@@ -146,7 +146,7 @@ impl EventList {
   /// Try to slide down the window by one item
   /// Returns true if the window was slid down, false otherwise
   pub fn next_window(&mut self) -> bool {
-    if self.window.1 < self.items.len() {
+    if self.window.1 < self.events.len() {
       self.window.0 += 1;
       self.window.1 += 1;
       true
@@ -196,13 +196,13 @@ impl EventList {
   }
 
   pub fn page_down(&mut self) {
-    if self.window.1 + self.max_window_len <= self.items.len() {
+    if self.window.1 + self.max_window_len <= self.events.len() {
       self.window.0 += self.max_window_len;
       self.window.1 += self.max_window_len;
     } else {
       // If we can't slide down the window by the number of items in the window
       // just set the window to the last items
-      self.window.0 = self.items.len().saturating_sub(self.max_window_len);
+      self.window.0 = self.events.len().saturating_sub(self.max_window_len);
       self.window.1 = self.window.0 + self.max_window_len;
     }
   }
@@ -246,7 +246,7 @@ impl EventList {
   }
 
   pub fn scroll_to_bottom(&mut self) {
-    self.window.0 = self.items.len().saturating_sub(self.max_window_len);
+    self.window.0 = self.events.len().saturating_sub(self.max_window_len);
     self.window.1 = self.window.0 + self.max_window_len;
   }
 

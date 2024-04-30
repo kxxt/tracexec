@@ -319,7 +319,7 @@ impl App {
               self.root_pid = Some(pid);
             }
             te => {
-              self.event_list.items.push(te.into());
+              self.event_list.events.push(te.into());
               // action_tx.send(Action::Render)?;
             }
           },
