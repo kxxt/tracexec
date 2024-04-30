@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.0-alpha.7
+
+tracexec v0.1.0-alpha.7 released!
+
+Changes since v0.1.0-alpha.6:
+
+### Added/Changed
+
+- TUI: A basic details view is added.
+- TUI: Copy to clipboard feature is added.
+- TUI: Press any key to close the help dialog.
+- Internal refactor and optimization.
+
 ## v0.1.0-alpha.6
 
 tracexec v0.1.0-alpha.6 released!
