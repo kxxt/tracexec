@@ -232,7 +232,7 @@ impl TracerEvent {
         unsafe { String::from_utf8_unchecked(argv) }.into()
       }
       CopyTarget::Filename => event.filename.to_string_lossy(),
-      CopyTarget::SyscallResult => "Syscall Result".to_string().into(),
+      CopyTarget::SyscallResult => event.result.to_string().into(),
       CopyTarget::Line => unreachable!(),
     }
   }
