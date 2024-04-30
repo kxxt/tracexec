@@ -1,5 +1,6 @@
 use std::{cmp::min, sync::Arc};
 
+use lazy_static::lazy_static;
 use ratatui::{
   buffer::Buffer,
   layout::{Alignment::Center, Rect},
@@ -20,13 +21,37 @@ pub struct CopyPopup;
 pub struct CopyPopupState {
   pub event: Arc<TracerEvent>,
   pub state: ListState,
+  pub available_targets: Vec<char>,
+}
+
+lazy_static! {
+  pub static ref KEY_MAP: bimap::BiHashMap<char, &'static str> = [
+    ('c', "(C)ommand line"),
+    ('e', "(E)nvironment variables"),
+    ('d', "(D)iff of environment variables"),
+    ('a', "(A)rguments"),
+    ('n', "File(N)ame"),
+    ('s', "(S)yscall result"),
+    ('l', "Current (L)ine"),
+  ]
+  .into_iter()
+  .collect();
 }
 
 impl CopyPopupState {
   pub fn new(event: Arc<TracerEvent>) -> Self {
     let mut state = ListState::default();
     state.select(Some(0));
-    Self { event, state }
+    let available_targets = if let TracerEvent::Exec(_) = &event.as_ref() {
+      KEY_MAP.left_values().copied().collect()
+    } else {
+      vec!['l']
+    };
+    Self {
+      event,
+      state,
+      available_targets,
+    }
   }
 
   pub fn next(&mut self) {
@@ -41,45 +66,37 @@ impl CopyPopupState {
 
   pub fn selected(&self) -> CopyTarget {
     let id = self.state.selected().unwrap_or(0);
-    match id {
-      0 => CopyTarget::Commandline(Bash),
-      1 => CopyTarget::Env,
-      2 => CopyTarget::EnvDiff,
-      3 => CopyTarget::Argv,
-      4 => CopyTarget::Filename,
-      5 => CopyTarget::SyscallResult,
-      6 => CopyTarget::Line,
+    let key = self.available_targets[id];
+    match key {
+      'c' => CopyTarget::Commandline(Bash),
+      'e' => CopyTarget::Env,
+      'd' => CopyTarget::EnvDiff,
+      'a' => CopyTarget::Argv,
+      'n' => CopyTarget::Filename,
+      's' => CopyTarget::SyscallResult,
+      'l' => CopyTarget::Line,
       _ => unreachable!(),
     }
   }
 
   pub fn select_by_key(&mut self, key: char) -> Option<CopyTarget> {
-    let id = match key {
-      'c' | 'C' => 0,
-      'e' | 'E' => 1,
-      'd' | 'D' => 2,
-      'a' | 'A' => 3,
-      'n' | 'N' => 4,
-      's' | 'S' => 5,
-      'l' | 'L' => 6,
-      _ => return None,
-    };
-    self.state.select(Some(id));
-    Some(self.selected())
+    if let Some(id) = self.available_targets.iter().position(|&k| k == key) {
+      self.state.select(Some(id));
+      Some(self.selected())
+    } else {
+      None
+    }
   }
 }
 
 impl StatefulWidgetRef for CopyPopup {
   fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut CopyPopupState) {
-    let list = List::new([
-      "(C)ommand line",
-      "(E)nvironment variables",
-      "(D)iff of environment variables",
-      "(A)rguments",
-      "File(N)ame",
-      "(S)yscall result",
-      "Current (L)ine",
-    ])
+    let list = List::from_iter(
+      state
+        .available_targets
+        .iter()
+        .map(|&key| *KEY_MAP.get_by_left(&key).unwrap()),
+    )
     .block(
       Block::default()
         .title("Copy")
