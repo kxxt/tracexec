@@ -1,10 +1,11 @@
-use std::{cmp::min, sync::Arc};
+use std::{cmp::min, collections::BTreeMap, sync::Arc};
 
 use lazy_static::lazy_static;
 use ratatui::{
   buffer::Buffer,
   layout::{Alignment::Center, Rect},
   style::{Color, Modifier, Style},
+  text::Span,
   widgets::{Block, Borders, Clear, HighlightSpacing, List, ListState, StatefulWidgetRef, Widget},
 };
 use tui_popup::SizedWidgetRef;
@@ -13,6 +14,8 @@ use crate::{
   action::{CopyTarget, SupportedShell::Bash},
   event::TracerEvent,
 };
+
+use super::help::help_item;
 
 #[derive(Debug, Clone)]
 pub struct CopyPopup;
@@ -25,14 +28,14 @@ pub struct CopyPopupState {
 }
 
 lazy_static! {
-  pub static ref KEY_MAP: bimap::BiHashMap<char, &'static str> = [
-    ('c', "(C)ommand line"),
-    ('e', "(E)nvironment variables"),
-    ('d', "(D)iff of environment variables"),
-    ('a', "(A)rguments"),
-    ('n', "File(N)ame"),
-    ('s', "(S)yscall result"),
-    ('l', "Current (L)ine"),
+  pub static ref KEY_MAP: BTreeMap<char, (&'static str, &'static str)> = [
+    ('c', ("(C)ommand line", "Cmdline")),
+    ('e', ("(E)nvironment variables", "Env")),
+    ('d', ("(D)iff of environment variables", "Diff of Env")),
+    ('a', ("(A)rguments", "Argv")),
+    ('n', ("File(N)ame", "Filename")),
+    ('s', ("(S)yscall result", "Result")),
+    ('l', ("Current (L)ine", "Line")),
   ]
   .into_iter()
   .collect();
@@ -43,7 +46,7 @@ impl CopyPopupState {
     let mut state = ListState::default();
     state.select(Some(0));
     let available_targets = if let TracerEvent::Exec(_) = &event.as_ref() {
-      KEY_MAP.left_values().copied().collect()
+      KEY_MAP.keys().copied().collect()
     } else {
       vec!['l']
     };
@@ -89,6 +92,19 @@ impl CopyPopupState {
       None
     }
   }
+
+  pub fn help_items(&self) -> impl Iterator<Item = Span> {
+    self
+      .available_targets
+      .iter()
+      .map(|&key| {
+        help_item!(
+          key.to_ascii_uppercase().to_string(),
+          KEY_MAP.get(&key).unwrap().1
+        )
+      })
+      .flatten()
+  }
 }
 
 impl StatefulWidgetRef for CopyPopup {
@@ -97,7 +113,7 @@ impl StatefulWidgetRef for CopyPopup {
       state
         .available_targets
         .iter()
-        .map(|&key| *KEY_MAP.get_by_left(&key).unwrap()),
+        .map(|&key| KEY_MAP.get(&key).unwrap().0),
     )
     .block(
       Block::default()

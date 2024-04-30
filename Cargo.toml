@@ -58,7 +58,6 @@ arboard = { version = "3.3.2", no-default-features = true, features = [
     "wayland-data-control",
 ] }
 tui-popup = "0.3.0"
-bimap = "0.6.3"
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 
 [features]

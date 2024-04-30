@@ -21,6 +21,7 @@ use std::sync::Arc;
 use arboard::Clipboard;
 use clap::ValueEnum;
 use crossterm::event::KeyCode;
+
 use itertools::chain;
 use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
@@ -575,10 +576,22 @@ impl App {
   }
 
   fn render_help(&self, area: Rect, buf: &mut Buffer) {
-    let iter = help_item!("Ctrl+S", "Switch\u{00a0}Pane");
-    let iter: Box<dyn Iterator<Item = _>> = if self.active_pane == ActivePane::Events {
-      Box::new(chain!(
-        iter,
+    let mut items = Vec::from_iter(help_item!("Ctrl+S", "Switch\u{00a0}Pane"));
+
+    if let Some(popup) = &self.popup {
+      items.extend(help_item!("Q", "Close Popup"));
+      match popup {
+        ActivePopup::ViewDetails(_) => {
+          items.extend(help_item!("X", "TODO"));
+        }
+        ActivePopup::CopyTargetSelection(state) => {
+          items.extend(help_item!("Enter", "Choose"));
+          items.extend(state.help_items())
+        }
+        _ => {}
+      }
+    } else if self.active_pane == ActivePane::Events {
+      items.extend(chain!(
         help_item!("G/S", "Grow/Shrink\u{00a0}Pane"),
         help_item!("Alt+L", "Layout"),
         help_item!(
@@ -595,10 +608,10 @@ impl App {
         help_item!("F1", "Help"),
       ))
     } else {
-      Box::new(chain!(iter, help_item!("Ctrl+Shift+R", "FIXME")))
+      items.extend(help_item!("Ctrl+Shift+R", "FIXME"));
     };
 
-    let line = Line::from_iter(iter);
+    let line = Line::default().spans(items);
     Paragraph::new(line)
       .wrap(Wrap { trim: false })
       .centered()
