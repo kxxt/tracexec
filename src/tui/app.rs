@@ -421,7 +421,7 @@ impl App {
             self.popup = Some(ActivePopup::CopyTargetSelection(CopyPopupState::new(e)));
           }
           Action::CopyToClipboard { event, target } => {
-            let text = event.text_for_copy(target);
+            let text = event.text_for_copy(&self.event_list.baseline, target);
             // TODO: don't crash the app if clipboard fails
             self.clipboard.set_text(text)?;
           }

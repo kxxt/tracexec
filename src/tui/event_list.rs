@@ -104,7 +104,7 @@ impl Widget for &mut EventList {
     let items: Vec<ListItem> = items
       .iter()
       .map(|evt| {
-        let full_line = evt.to_tui_line(&self.baseline);
+        let full_line = evt.to_tui_line(&self.baseline, false);
         max_len = max_len.max(full_line.width());
         full_line
           .substring(self.horizontal_offset, area.width)

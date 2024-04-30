@@ -31,7 +31,7 @@ impl DetailsPopup {
 
 impl WidgetRef for DetailsPopup {
   fn render_ref(&self, area: Rect, buf: &mut Buffer) {
-    Paragraph::new(self.event.to_tui_line(&self.baseline))
+    Paragraph::new(self.event.to_tui_line(&self.baseline, true))
       .wrap(Wrap { trim: false })
       .render(area, buf);
   }

@@ -86,7 +86,7 @@ macro_rules! tracer_event_spans {
 }
 
 impl TracerEvent {
-  pub fn to_tui_line(&self, baseline: &BaselineInfo) -> Line {
+  pub fn to_tui_line(&self, baseline: &BaselineInfo, cmdline_only: bool) -> Line {
     match self {
       TracerEvent::Info(TracerMessage { ref msg, pid }) => chain!(
         ["info".bg(Color::LightBlue)],
@@ -134,16 +134,20 @@ impl TracerEvent {
           result,
           ..
         } = exec.as_ref();
-        let mut spans: Vec<Span> = tracer_event_spans!(
-          pid,
-          comm,
-          *result,
-          Some(format!("{:?}", filename).fg(Color::LightBlue)),
-          Some(" ".into()),
-          Some("env".fg(Color::Magenta)),
-        )
-        .flatten()
-        .collect();
+        let mut spans: Vec<Span> = if !cmdline_only {
+          tracer_event_spans!(
+            pid,
+            comm,
+            *result,
+            Some(format!("{:?}", filename).fg(Color::LightBlue)),
+            Some(" ".into()),
+            Some("env".fg(Color::Magenta)),
+          )
+          .flatten()
+          .collect()
+        } else {
+          vec!["env".fg(Color::Magenta)]
+        };
         let space: Span = " ".into();
         // Handle argv[0]
         argv.first().inspect(|&arg0| {
@@ -205,9 +209,9 @@ impl TracerEvent {
 }
 
 impl TracerEvent {
-  pub fn text_for_copy(&self, target: CopyTarget) -> String {
+  pub fn text_for_copy(&self, baseline: &BaselineInfo, target: CopyTarget) -> String {
     match target {
-      CopyTarget::Commandline(_) => "Commandline".to_string(),
+      CopyTarget::Commandline(_) => self.to_tui_line(baseline, true).to_string(),
       CopyTarget::Env => "Environment".to_string(),
       CopyTarget::EnvDiff => "Environment Diff".to_string(),
       CopyTarget::Argv => "Argv".to_string(),
