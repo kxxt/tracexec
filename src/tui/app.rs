@@ -164,7 +164,12 @@ impl App {
                     ActivePopup::Help => {
                       self.popup = None;
                     }
-                    ActivePopup::ViewDetails(_) => todo!(),
+                    ActivePopup::ViewDetails(_) => match ke.code {
+                      KeyCode::Char('q') => {
+                        self.popup = None;
+                      }
+                      _ => {}
+                    },
                     ActivePopup::CopyTargetSelection(state) => match ke.code {
                       KeyCode::Char('q') => {
                         self.popup = None;
