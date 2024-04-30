@@ -6,7 +6,6 @@
 # TUI
 
 - Details view via popup
-- Copy to clipboard
 - Search and filter
 - Scroll bar
 - Terminal scrollback support
