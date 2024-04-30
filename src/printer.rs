@@ -116,7 +116,7 @@ impl Drop for DeferredWarnings {
   }
 }
 
-struct ListPrinter {
+pub struct ListPrinter {
   style: owo_colors::Style,
 }
 
