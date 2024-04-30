@@ -19,9 +19,10 @@
 use std::{rc::Rc, sync::Arc};
 
 use ratatui::{
+  layout::Alignment::Right,
   prelude::{Buffer, Rect},
   style::{Color, Modifier, Style},
-  widgets::{HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget},
+  widgets::{block::Title, HighlightSpacing, List, ListItem, ListState, StatefulWidget, Widget},
 };
 
 use crate::{event::TracerEvent, proc::BaselineInfo};
@@ -77,17 +78,26 @@ impl EventList {
     *self.state.offset_mut() = offset;
   }
 
+  /// returns the index of the selected item if there is any
+  pub fn selection_index(&self) -> Option<usize> {
+    self.state.selected().map(|i| self.window.0 + i)
+  }
+
   /// returns the selected item if there is any
   pub fn selection(&self) -> Option<Arc<TracerEvent>> {
-    self
-      .state
-      .selected()
-      .map(|i| self.items[self.window.0 + i].clone())
+    self.selection_index().map(|i| self.items[i].clone())
   }
 
   // TODO: this is ugly due to borrow checking.
   pub fn window(items: &[Arc<TracerEvent>], window: (usize, usize)) -> &[Arc<TracerEvent>] {
     &items[window.0..window.1.min(items.len())]
+  }
+
+  pub fn statistics(&self) -> Title {
+    let id = self.selection_index().unwrap_or(0);
+    Title::default()
+      .content(format!("{}/{}──", id + 1, self.items.len()))
+      .alignment(Right)
   }
 }
 

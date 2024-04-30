@@ -528,9 +528,11 @@ impl Widget for &mut App {
         Color::Cyan
       } else {
         Color::White
-      }));
-    self.event_list.render(block.inner(event_area), buf);
+      }))
+      .title(self.event_list.statistics());
+    let inner = block.inner(event_area);
     block.render(event_area, buf);
+    self.event_list.render(inner, buf);
     if let Some(term) = self.term.as_mut() {
       let block = Block::default()
         .title("Pseudo Terminal")
