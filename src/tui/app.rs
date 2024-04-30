@@ -27,7 +27,7 @@ use ratatui::{
   buffer::Buffer,
   layout::{Constraint, Layout, Rect, Size},
   style::{Color, Style, Stylize},
-  text::{Line, Text},
+  text::Line,
   widgets::{Block, Paragraph, StatefulWidgetRef, Widget, Wrap},
 };
 use strum::Display;
@@ -50,9 +50,9 @@ use super::{
   copy_popup::{CopyPopup, CopyPopupState},
   details_popup::DetailsPopup,
   event_list::EventList,
+  help::{help, help_item},
   pseudo_term::PseudoTerminalPane,
-  sized_paragraph::SizedParagraph,
-  ui::{cli_flag, help_item, help_key, render_title},
+  ui::render_title,
   Tui,
 };
 
@@ -540,8 +540,7 @@ impl Widget for &mut App {
     if let Some(popup) = self.popup.as_mut() {
       match popup {
         ActivePopup::Help => {
-          let popup =
-            Popup::new("Help", App::help(rest_area)).style(Style::new().black().on_gray());
+          let popup = Popup::new("Help", help(rest_area)).style(Style::new().black().on_gray());
           popup.render(area, buf);
         }
         ActivePopup::CopyTargetSelection(state) => {
@@ -573,57 +572,6 @@ impl App {
     // .borders(Borders::TOP | Borders::BOTTOM)
     // .title_alignment(Alignment::Center);
     popup.render(area, buf);
-  }
-
-  fn help<'a>(area: Rect) -> SizedParagraph<'a> {
-    let line1 = Line::default().spans(vec![
-      "Welcome to tracexec! The TUI consists of at most two panes: the event list and optionally the pseudo terminal if ".into(),
-      cli_flag("--tty/-t"),
-      " is enabled. The event list displays the events emitted by the tracer. \
-       The active pane's border is highlighted in cyan. \
-       To switch active pane, press ".into(),
-      help_key("Ctrl+S"),
-      ". The keybinding list at the bottom of the screen shows the available keys for currently active pane or popup.".into(),
-    ]);
-    let line2 = Line::default().spans(vec![
-      "You can navigate the event list using the arrow keys or ".into(),
-      help_key("H/J/K/L"),
-      ". To scroll faster, use ".into(),
-      help_key("Ctrl+↑/↓/←/→/H/J/K/L"),
-      " or ".into(),
-      help_key("PgUp/PgDn"),
-      ". Use ".into(),
-      help_key("(Shift +) Home/End"),
-      " to scroll to the (line start/line end)/top/bottom. Press ".into(),
-      help_key("F"),
-      " to toggle follow mode, which will keep the list scrolled to bottom. ".into(),
-      "To change pane size, press ".into(),
-      help_key("G/S"),
-      " when the active pane is event list. ".into(),
-      "To switch between horizontal and vertical layout, press ".into(),
-      help_key("Alt+L"),
-      ". To view the details of the selected event, press ".into(),
-      help_key("V"),
-      ". To copy the selected event to the clipboard, press ".into(),
-      help_key("C"),
-      " then select what to copy. To quit, press ".into(),
-      help_key("Q"),
-      " while the event list is active.".into(),
-    ]);
-    let line3 = Line::default().spans(vec![
-      "When the pseudo terminal is active, you can interact with the terminal using the keyboard.",
-    ]);
-    let line4 = Line::default()
-      .spans(vec![
-        "Press ".into(),
-        help_key("Any Key"),
-        " to close this help popup.".into(),
-      ])
-      .centered();
-    let paragraph =
-      Paragraph::new(Text::from_iter([line1, line2, line3, line4])).wrap(Wrap { trim: false });
-    let perhaps_a_suitable_width = area.width.saturating_sub(6) as usize;
-    SizedParagraph::new(paragraph, perhaps_a_suitable_width)
   }
 
   fn render_help(&self, area: Rect, buf: &mut Buffer) {

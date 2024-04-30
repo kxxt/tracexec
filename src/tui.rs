@@ -41,6 +41,7 @@ pub mod app;
 pub mod copy_popup;
 pub mod details_popup;
 pub mod event_list;
+pub mod help;
 pub mod partial_line;
 pub mod pseudo_term;
 pub mod sized_paragraph;
