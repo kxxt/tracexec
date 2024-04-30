@@ -41,7 +41,7 @@ use crate::{
   tui::app::App,
 };
 
-#[tokio::main]
+#[tokio::main(worker_threads = 2)]
 async fn main() -> color_eyre::Result<()> {
   let mut cli = Cli::parse();
   if cli.color == Color::Auto && std::env::var_os("NO_COLOR").is_some() {
