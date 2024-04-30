@@ -71,7 +71,7 @@ pub struct App {
   pub term: Option<PseudoTerminalPane>,
   pub root_pid: Option<Pid>,
   pub active_pane: ActivePane,
-  pub clipboard: Clipboard,
+  pub clipboard: Option<Clipboard>,
   pub split_percentage: u16,
   pub layout: AppLayout,
   pub should_handle_internal_resize: bool,
@@ -112,7 +112,7 @@ impl App {
       },
       root_pid: None,
       active_pane,
-      clipboard: Clipboard::new()?,
+      clipboard: Clipboard::new().ok(),
       layout,
       should_handle_internal_resize: true,
       popup: None,
@@ -284,7 +284,9 @@ impl App {
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Char('c') => {
-                    if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                    if ke.modifiers == crossterm::event::KeyModifiers::NONE
+                      && self.clipboard.is_some()
+                    {
                       if let Some(selected) = self.event_list.selection() {
                         action_tx.send(Action::ShowCopyDialog(selected))?;
                       }
@@ -429,7 +431,9 @@ impl App {
           Action::CopyToClipboard { event, target } => {
             let text = event.text_for_copy(&self.event_list.baseline, target);
             // TODO: don't crash the app if clipboard fails
-            self.clipboard.set_text(text)?;
+            if let Some(clipboard) = self.clipboard.as_mut() {
+              clipboard.set_text(text)?;
+            }
           }
           Action::SetActivePopup(popup) => {
             self.popup = Some(popup);
@@ -596,6 +600,9 @@ impl App {
         _ => {}
       }
     } else if self.active_pane == ActivePane::Events {
+      if self.clipboard.is_some() {
+        items.extend(help_item!("C", "Copy"));
+      }
       items.extend(chain!(
         help_item!("G/S", "Grow/Shrink\u{00a0}Pane"),
         help_item!("Alt+L", "Layout"),
@@ -608,7 +615,6 @@ impl App {
           }
         ),
         help_item!("V", "View"),
-        help_item!("C", "Copy"),
         help_item!("Q", "Quit"),
         help_item!("F1", "Help"),
       ))
