@@ -19,10 +19,14 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use ratatui::{
-  layout::Alignment::Right, prelude::{Buffer, Rect}, style::{Color, Modifier, Style}, symbols::scrollbar::Set, text::Line, widgets::{
+  layout::Alignment::Right,
+  prelude::{Buffer, Rect},
+  style::{Color, Modifier, Style},
+  text::Line,
+  widgets::{
     block::Title, HighlightSpacing, List, ListItem, ListState, Scrollbar, ScrollbarState,
     StatefulWidget, StatefulWidgetRef, Widget,
-  }
+  },
 };
 
 use crate::{event::TracerEvent, proc::BaselineInfo};
@@ -80,13 +84,6 @@ impl EventList {
 
   pub fn stop_follow(&mut self) {
     self.follow = false;
-  }
-
-  pub fn unselect(&mut self) {
-    let offset = self.state.offset();
-    self.last_selected = self.state.selected();
-    self.state.select(None);
-    *self.state.offset_mut() = offset;
   }
 
   /// returns the index of the selected item if there is any
@@ -192,7 +189,8 @@ impl Widget for &mut EventList {
     // Render scrollbars
     if self.max_width + 1 > area.width as usize {
       // Render horizontal scrollbar, assumming there is a border we can overwrite
-      let scrollbar = Scrollbar::new(ratatui::widgets::ScrollbarOrientation::HorizontalBottom).thumb_symbol("■");
+      let scrollbar =
+        Scrollbar::new(ratatui::widgets::ScrollbarOrientation::HorizontalBottom).thumb_symbol("■");
       let scrollbar_area = Rect {
         x: area.x,
         y: area.y + area.height,
@@ -218,6 +216,15 @@ impl EventList {
       .1
       .saturating_sub(1)
       .min(self.events.len().saturating_sub(1))
+  }
+
+  /// Returns the index(relative) of the last item in the window
+  fn last_item_in_window_relative(&self) -> usize {
+    self
+      .window
+      .1
+      .saturating_sub(self.window.0)
+      .saturating_sub(1)
   }
 
   /// Try to slide down the window by one item
@@ -295,6 +302,7 @@ impl EventList {
       self.window.1 = self.window.0 + self.max_window_len;
       self.should_refresh_lines_cache = old_window != self.window;
     }
+    self.state.select(Some(self.last_item_in_window_relative()));
     tracing::trace!(
       "pgdn: should_refresh_lines_cache = {}",
       self.should_refresh_lines_cache
@@ -315,6 +323,7 @@ impl EventList {
       self.window.1 = self.window.0 + self.max_window_len;
       self.should_refresh_lines_cache = old_window != self.window;
     }
+    self.state.select(Some(0));
     tracing::trace!(
       "pgup: should_refresh_lines_cache = {}",
       self.should_refresh_lines_cache
@@ -369,6 +378,7 @@ impl EventList {
     self.window.0 = 0;
     self.window.1 = self.max_window_len;
     self.should_refresh_lines_cache = old_window != self.window;
+    self.state.select(Some(0));
     tracing::trace!(
       "top: should_refresh_lines_cache = {}",
       self.should_refresh_lines_cache
@@ -379,6 +389,7 @@ impl EventList {
     let old_window = self.window;
     self.window.0 = self.events.len().saturating_sub(self.max_window_len);
     self.window.1 = self.window.0 + self.max_window_len;
+    self.state.select(Some(self.last_item_in_window_relative()));
     if self.window.0.saturating_sub(old_window.0) == 1
       && self.window.1.saturating_sub(old_window.1) == 1
     {
