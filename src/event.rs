@@ -1,4 +1,4 @@
-use std::{borrow::Cow, ffi::OsStr, path::PathBuf, sync::Arc, usize};
+use std::{borrow::Cow, ffi::OsStr, io::Write, path::PathBuf, sync::Arc, usize};
 
 use clap::ValueEnum;
 use crossterm::event::KeyEvent;
@@ -245,20 +245,44 @@ impl TracerEvent {
         }
         result.into()
       }
-      CopyTarget::Argv => {
-        let mut argv =
-          Vec::with_capacity(event.argv.iter().map(|s| s.len() + 3).sum::<usize>() + 2);
-        let list_printer = ListPrinter::new(crate::printer::ColorLevel::Less);
-        list_printer
-          .print_string_list(&mut argv, &event.argv)
-          .unwrap();
-        // SAFETY: argv is printed in debug format, which is always UTF-8
-        unsafe { String::from_utf8_unchecked(argv) }.into()
-      }
+      CopyTarget::Argv => Self::argv_to_string(&event.argv).into(),
       CopyTarget::Filename => event.filename.to_string_lossy(),
       CopyTarget::SyscallResult => event.result.to_string().into(),
       CopyTarget::Line => unreachable!(),
     }
+  }
+
+  pub fn argv_to_string(argv: &[String]) -> String {
+    let mut result = Vec::with_capacity(argv.iter().map(|s| s.len() + 3).sum::<usize>() + 2);
+    let list_printer = ListPrinter::new(crate::printer::ColorLevel::Less);
+    list_printer.print_string_list(&mut result, &argv).unwrap();
+    // SAFETY: argv is printed in debug format, which is always UTF-8
+    unsafe { String::from_utf8_unchecked(result) }.into()
+  }
+
+  pub fn interpreters_to_string(interpreters: &[Interpreter]) -> String {
+    let mut result = Vec::new();
+    let list_printer = ListPrinter::new(crate::printer::ColorLevel::Less);
+    match interpreters.len() {
+      0 => {
+        write!(result, "{}", Interpreter::None).unwrap();
+      }
+      1 => {
+        write!(result, "{}", interpreters[0]).unwrap();
+      }
+      _ => {
+        list_printer.begin(&mut result).unwrap();
+        for (idx, interpreter) in interpreters.iter().enumerate() {
+          if idx != 0 {
+            list_printer.comma(&mut result).unwrap();
+          }
+          write!(result, "{}", interpreter).unwrap();
+        }
+        list_printer.end(&mut result).unwrap();
+      }
+    }
+    // SAFETY: interpreters is printed in debug format, which is always UTF-8
+    unsafe { String::from_utf8_unchecked(result) }.into()
   }
 }
 

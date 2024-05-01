@@ -145,6 +145,12 @@ async fn main() -> color_eyre::Result<()> {
       follow,
       frame_rate,
     } => {
+      // Disable owo-colors when running TUI
+      owo_colors::control::set_should_colorize(false);
+      log::debug!(
+        "should colorize: {}",
+        owo_colors::control::should_colorize()
+      );
       let (tracer_mode, pty_master) = if tty {
         let pty_system = native_pty_system();
         let pair = pty_system.openpty(PtySize {
