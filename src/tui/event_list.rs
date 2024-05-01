@@ -24,8 +24,8 @@ use ratatui::{
   style::{Color, Modifier, Style},
   text::Line,
   widgets::{
-    block::Title, HighlightSpacing, List, ListItem, ListState, Scrollbar, ScrollbarState,
-    StatefulWidget, StatefulWidgetRef, Widget,
+    block::Title, HighlightSpacing, List, ListItem, ListState, Scrollbar, ScrollbarOrientation,
+    ScrollbarState, StatefulWidget, StatefulWidgetRef, Widget,
   },
 };
 
@@ -189,8 +189,7 @@ impl Widget for &mut EventList {
     // Render scrollbars
     if self.max_width + 1 > area.width as usize {
       // Render horizontal scrollbar, assumming there is a border we can overwrite
-      let scrollbar =
-        Scrollbar::new(ratatui::widgets::ScrollbarOrientation::HorizontalBottom).thumb_symbol("■");
+      let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom).thumb_symbol("■");
       let scrollbar_area = Rect {
         x: area.x,
         y: area.y + area.height,
@@ -202,6 +201,22 @@ impl Widget for &mut EventList {
         buf,
         &mut ScrollbarState::new(self.max_width + 1 - area.width as usize)
           .position(self.horizontal_offset),
+      );
+    }
+    if self.events.len() > area.height as usize {
+      // Render vertical scrollbar
+      let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
+      let scrollbar_area = Rect {
+        x: area.x + area.width,
+        y: area.y,
+        width: 1,
+        height: area.height,
+      };
+      scrollbar.render(
+        scrollbar_area,
+        buf,
+        &mut ScrollbarState::new(self.events.len() - area.height as usize)
+          .position(self.window.0 + self.state.selected().unwrap_or(0)),
       );
     }
   }
