@@ -7,9 +7,10 @@ use ratatui::{
   layout::{Rect, Size},
   style::{Color, Stylize},
   text::{Line, Span},
-  widgets::{Paragraph, Widget, WidgetRef, Wrap},
+  widgets::{Paragraph, StatefulWidget, Widget, WidgetRef, Wrap},
 };
 use tui_popup::SizedWidgetRef;
+use tui_scrollview::{ScrollView, ScrollViewState};
 
 use crate::{event::TracerEvent, proc::BaselineInfo};
 
@@ -84,9 +85,27 @@ impl WidgetRef for DetailsPopup {
       .flat_map(|(label, line)| [Self::label(label), line.clone()])
       .collect_vec();
 
-    Paragraph::new(text)
-      .wrap(Wrap { trim: false })
-      .render(area, buf);
+    let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
+    let size = Size {
+      width: area.width - 1,
+      height: paragraph
+        .line_count(area.width - 1)
+        .try_into()
+        .unwrap_or(u16::MAX),
+    };
+    let mut scrollview = ScrollView::new(size);
+
+    scrollview.render_widget(
+      paragraph,
+      Rect {
+        x: 0,
+        y: 0,
+        width: size.width,
+        height: size.height,
+      },
+    );
+
+    scrollview.render(area, buf, &mut ScrollViewState::default());
   }
 }
 

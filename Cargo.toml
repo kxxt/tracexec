@@ -59,6 +59,7 @@ arboard = { version = "3.3.2", no-default-features = true, features = [
 ] }
 tui-popup = "0.3.0"
 thiserror = "1.0.59"
+tui-scrollview = "0.3.5"
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 
 [features]
