@@ -103,7 +103,7 @@ pub enum CliCommand {
       long,
       short = 'F',
       help = "Set the frame rate of the TUI",
-      default_value = "30.0",
+      default_value = "60.0",
       value_parser = frame_rate_parser
     )]
     frame_rate: f64,
