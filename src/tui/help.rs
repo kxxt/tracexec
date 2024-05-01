@@ -64,7 +64,11 @@ pub fn help<'a>(area: Rect) -> SizedParagraph<'a> {
        The active pane's border is highlighted in cyan. \
        To switch active pane, press ".into(),
       help_key("Ctrl+S"),
-      ". The keybinding list at the bottom of the screen shows the available keys for currently active pane or popup.".into(),
+      ". To send ".into(),
+      help_key("Ctrl+S"),
+      " to the pseudo terminal, press ".into(),
+      help_key("Alt+S"),
+      " when event list is active. The keybinding list at the bottom of the screen shows the available keys for currently active pane or popup.".into(),
     ]);
   let line2 = Line::default().spans(vec![
     "You can navigate the event list using the arrow keys or ".into(),

@@ -18,7 +18,7 @@
 
 use arboard::Clipboard;
 use clap::ValueEnum;
-use crossterm::event::{KeyCode, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use itertools::chain;
 use nix::{sys::signal::Signal, unistd::Pid};
@@ -145,9 +145,9 @@ impl App {
           Event::Key(ke) => {
             if ke.code == KeyCode::Char('s') && ke.modifiers.contains(KeyModifiers::CONTROL) {
               action_tx.send(Action::SwitchActivePane)?;
-              // action_tx.send(Action::Render)?;
               // Cancel all popups
               self.popup = None;
+              // action_tx.send(Action::Render)?;
             } else {
               log::trace!("TUI: Active pane: {}", self.active_pane);
               if self.active_pane == ActivePane::Events {
@@ -324,6 +324,11 @@ impl App {
                   KeyCode::Char('s') => {
                     if ke.modifiers == KeyModifiers::NONE {
                       action_tx.send(Action::ShrinkPane)?;
+                    } else if ke.modifiers == KeyModifiers::ALT {
+                      action_tx.send(Action::HandleTerminalKeyPress(KeyEvent::new(
+                        KeyCode::Char('s'),
+                        KeyModifiers::CONTROL,
+                      )))?;
                     }
                     // action_tx.send(Action::Render)?;
                   }
