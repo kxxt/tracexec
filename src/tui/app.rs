@@ -205,6 +205,9 @@ impl App {
                           clipboard.set_text(state.selected())?;
                         }
                       }
+                      KeyCode::Tab => {
+                        state.circle_tab();
+                      }
                       _ => {}
                     },
                     ActivePopup::CopyTargetSelection(state) => match ke.code {
@@ -621,7 +624,7 @@ impl App {
       match popup {
         ActivePopup::ViewDetails(_) => {
           items.extend(help_item!("W/S", "Move Focus"));
-          items.extend(help_item!("←/→", "Switch Tab"));
+          items.extend(help_item!("←/Tab/→", "Switch Tab"));          
         }
         ActivePopup::CopyTargetSelection(state) => {
           items.extend(help_item!("Enter", "Choose"));

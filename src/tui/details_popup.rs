@@ -189,6 +189,10 @@ impl DetailsPopupState {
   pub fn prev_tab(&mut self) {
     self.tab_index = self.tab_index.saturating_sub(1);
   }
+
+  pub fn circle_tab(&mut self) {
+    self.tab_index = (self.tab_index + 1) % self.available_tabs.len();
+  }
 }
 
 impl Deref for DetailsPopupState {
