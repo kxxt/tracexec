@@ -6,7 +6,6 @@
 # TUI
 
 - Search and filter
-- Scroll bar
 - Terminal scrollback support
 - Mouse support
 - Customizable key bindings
