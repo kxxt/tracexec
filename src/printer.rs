@@ -1,8 +1,9 @@
 use std::{
   cell::RefCell,
   collections::HashMap,
+  ffi::OsStr,
   io::{self, Write},
-  path::Path,
+  path::{Path, PathBuf},
 };
 
 use crate::{
@@ -98,7 +99,7 @@ pub type PrinterOut = dyn Write + Send + Sync + 'static;
 
 enum DeferredWarningKind {
   None,
-  Argv0AndFileNameDiffers,
+  NoArgv0,
 }
 
 struct DeferredWarnings {
@@ -109,8 +110,8 @@ impl Drop for DeferredWarnings {
   fn drop(&mut self) {
     match self.warning {
       DeferredWarningKind::None => (),
-      DeferredWarningKind::Argv0AndFileNameDiffers => {
-        log::warn!("argv[0] and filename differs. The printed commandline might be incorrect!")
+      DeferredWarningKind::NoArgv0 => {
+        log::warn!("No argv[0] provided! The printed commandline might be incorrect!")
       }
     }
   }
@@ -318,12 +319,24 @@ impl Printer {
         }
         EnvPrintFormat::None => (),
       }
-      let mut deferred_warning = DeferredWarnings {
+      let mut _deferred_warning = DeferredWarnings {
         warning: DeferredWarningKind::None,
       };
       if self.args.print_cmdline {
         write!(out, " {}", "cmdline".purple())?;
         write!(out, " env")?;
+        if let Some(arg0) = exec_data.argv.first() {
+          if &exec_data.filename.file_name() != &Some(OsStr::new(arg0)) {
+            write!(
+              out,
+              " {} {}",
+              "-a".bright_white().italic(),
+              escape_str_for_bash!(arg0).bright_white().italic()
+            )?;
+          }
+        } else {
+          _deferred_warning.warning = DeferredWarningKind::NoArgv0;
+        }
         if cwd != exec_data.cwd {
           if self.args.color >= ColorLevel::Normal {
             write!(
@@ -378,16 +391,7 @@ impl Printer {
             )?;
           }
         }
-        for (idx, arg) in exec_data.argv.iter().enumerate() {
-          if idx == 0 {
-            let escaped_filename = shell_quote::Bash::quote(&exec_data.filename);
-            let escaped_filename_lossy = String::from_utf8_lossy(&escaped_filename);
-            if !escaped_filename_lossy.ends_with(arg) {
-              deferred_warning.warning = DeferredWarningKind::Argv0AndFileNameDiffers;
-            }
-            write!(out, " {}", escaped_filename_lossy)?;
-            continue;
-          }
+        for arg in exec_data.argv.iter() {
           write!(out, " {}", escape_str_for_bash!(arg))?;
         }
       }
