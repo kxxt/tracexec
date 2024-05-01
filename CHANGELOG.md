@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.1.0-alpha.8
+
+tracexec v0.1.0-alpha.8 released!
+
+Changes since v0.1.0-alpha.7:
+
+### Added/Changed
+
+- TUI: show basic statistics of events
+- TUI: change colors for exec results.
+- TUI: set frame rate from CLI by `--frame-rate/-F` option.
+- TUI: default frame rate is now 60(previously 30).
+- TUI: Add more details and scrollbar to the details popup.
+- TUI: Copy to clipboard now works for the details popup.
+
+### Optimizations
+
+- Tweak tokio worker thread count.
+- Reduce idle CPU usage in TUI mode.
+    - Lines and List are now cached for the event list.
+
+### Fixed
+
+- The formatting of interpreters now correctly respects color settings(e.g. NO_COLOR).
+
 ## v0.1.0-alpha.7
 
 tracexec v0.1.0-alpha.7 released!

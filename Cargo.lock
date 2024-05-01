@@ -1775,7 +1775,7 @@ dependencies = [
 
 [[package]]
 name = "tracexec"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.8"
 dependencies = [
  "arboard",
  "atoi",
