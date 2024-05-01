@@ -18,7 +18,7 @@
 
 use arboard::Clipboard;
 use clap::ValueEnum;
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyModifiers};
 
 use itertools::chain;
 use nix::{sys::signal::Signal, unistd::Pid};
@@ -143,11 +143,7 @@ impl App {
             action_tx.send(Action::Quit)?;
           }
           Event::Key(ke) => {
-            if ke.code == KeyCode::Char('s')
-              && ke
-                .modifiers
-                .contains(crossterm::event::KeyModifiers::CONTROL)
-            {
+            if ke.code == KeyCode::Char('s') && ke.modifiers.contains(KeyModifiers::CONTROL) {
               action_tx.send(Action::SwitchActivePane)?;
               // action_tx.send(Action::Render)?;
               // Cancel all popups
@@ -164,10 +160,36 @@ impl App {
                     }
                     ActivePopup::ViewDetails(state) => match ke.code {
                       KeyCode::Down | KeyCode::Char('j') => {
-                        state.next();
+                        if ke.modifiers == KeyModifiers::CONTROL {
+                          state.scroll_page_down();
+                        } else if ke.modifiers == KeyModifiers::NONE {
+                          state.scroll_down()
+                        }
                       }
                       KeyCode::Up | KeyCode::Char('k') => {
+                        if ke.modifiers == KeyModifiers::CONTROL {
+                          state.scroll_page_up();
+                        } else if ke.modifiers == KeyModifiers::NONE {
+                          state.scroll_up()
+                        }
+                      }
+                      KeyCode::PageDown => {
+                        state.scroll_page_down();
+                      }
+                      KeyCode::PageUp => {
+                        state.scroll_page_up();
+                      }
+                      KeyCode::Home => {
+                        state.scroll_to_top();
+                      }
+                      KeyCode::End => {
+                        state.scroll_to_bottom();
+                      }
+                      KeyCode::Char('w') => {
                         state.prev();
+                      }
+                      KeyCode::Char('s') => {
+                        state.next();
                       }
                       KeyCode::Char('q') => {
                         self.popup = None;
@@ -215,36 +237,34 @@ impl App {
                     }
                   }
                   KeyCode::Down | KeyCode::Char('j') => {
-                    if ke.modifiers == crossterm::event::KeyModifiers::CONTROL {
+                    if ke.modifiers == KeyModifiers::CONTROL {
                       action_tx.send(Action::PageDown)?;
-                    } else if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                    } else if ke.modifiers == KeyModifiers::NONE {
                       action_tx.send(Action::NextItem)?;
                     }
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Up | KeyCode::Char('k') => {
                     action_tx.send(Action::StopFollow)?;
-                    if ke.modifiers == crossterm::event::KeyModifiers::CONTROL {
+                    if ke.modifiers == KeyModifiers::CONTROL {
                       action_tx.send(Action::PageUp)?;
-                    } else if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                    } else if ke.modifiers == KeyModifiers::NONE {
                       action_tx.send(Action::PrevItem)?;
                     }
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Left | KeyCode::Char('h') => {
-                    if ke.modifiers == crossterm::event::KeyModifiers::CONTROL {
+                    if ke.modifiers == KeyModifiers::CONTROL {
                       action_tx.send(Action::PageLeft)?;
-                    } else if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                    } else if ke.modifiers == KeyModifiers::NONE {
                       action_tx.send(Action::ScrollLeft)?;
                     }
                     // action_tx.send(Action::Render)?;
                   }
-                  KeyCode::Right | KeyCode::Char('l')
-                    if ke.modifiers != crossterm::event::KeyModifiers::ALT =>
-                  {
-                    if ke.modifiers == crossterm::event::KeyModifiers::CONTROL {
+                  KeyCode::Right | KeyCode::Char('l') if ke.modifiers != KeyModifiers::ALT => {
+                    if ke.modifiers == KeyModifiers::CONTROL {
                       action_tx.send(Action::PageRight)?;
-                    } else if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                    } else if ke.modifiers == KeyModifiers::NONE {
                       action_tx.send(Action::ScrollRight)?;
                     }
                     // action_tx.send(Action::Render)?;
@@ -259,44 +279,42 @@ impl App {
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Home => {
-                    if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                    if ke.modifiers == KeyModifiers::NONE {
                       action_tx.send(Action::StopFollow)?;
                       action_tx.send(Action::ScrollToTop)?;
-                    } else if ke.modifiers == crossterm::event::KeyModifiers::SHIFT {
+                    } else if ke.modifiers == KeyModifiers::SHIFT {
                       action_tx.send(Action::ScrollToStart)?;
                     }
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::End => {
-                    if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                    if ke.modifiers == KeyModifiers::NONE {
                       action_tx.send(Action::ScrollToBottom)?;
-                    } else if ke.modifiers == crossterm::event::KeyModifiers::SHIFT {
+                    } else if ke.modifiers == KeyModifiers::SHIFT {
                       action_tx.send(Action::ScrollToEnd)?;
                     }
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Char('g') => {
-                    if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                    if ke.modifiers == KeyModifiers::NONE {
                       action_tx.send(Action::GrowPane)?;
                     }
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Char('s') => {
-                    if ke.modifiers == crossterm::event::KeyModifiers::NONE {
+                    if ke.modifiers == KeyModifiers::NONE {
                       action_tx.send(Action::ShrinkPane)?;
                     }
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Char('c') => {
-                    if ke.modifiers == crossterm::event::KeyModifiers::NONE
-                      && self.clipboard.is_some()
-                    {
+                    if ke.modifiers == KeyModifiers::NONE && self.clipboard.is_some() {
                       if let Some(selected) = self.event_list.selection() {
                         action_tx.send(Action::ShowCopyDialog(selected))?;
                       }
                     }
                   }
-                  KeyCode::Char('l') if ke.modifiers == crossterm::event::KeyModifiers::ALT => {
+                  KeyCode::Char('l') if ke.modifiers == KeyModifiers::ALT => {
                     action_tx.send(Action::SwitchLayout)?;
                   }
                   KeyCode::Char('f') => {
@@ -591,7 +609,7 @@ impl App {
       items.extend(help_item!("Q", "Close Popup"));
       match popup {
         ActivePopup::ViewDetails(_) => {
-          items.extend(help_item!("X", "TODO"));
+          items.extend(help_item!("W/S", "Move Focus"));
         }
         ActivePopup::CopyTargetSelection(state) => {
           items.extend(help_item!("Enter", "Choose"));

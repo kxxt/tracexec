@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+  ops::{Deref, DerefMut},
+  sync::Arc,
+};
 
 use itertools::Itertools;
 use nix::errno::Errno;
@@ -24,6 +27,7 @@ pub struct DetailsPopupState {
   baseline: Arc<BaselineInfo>,
   details: Vec<(&'static str, Line<'static>)>,
   active_index: usize,
+  scroll: ScrollViewState,
 }
 
 impl DetailsPopupState {
@@ -70,6 +74,7 @@ impl DetailsPopupState {
       baseline,
       details,
       active_index: 0,
+      scroll: Default::default(),
     }
   }
 
@@ -79,6 +84,20 @@ impl DetailsPopupState {
 
   pub fn prev(&mut self) {
     self.active_index = self.active_index.saturating_sub(1);
+  }
+}
+
+impl Deref for DetailsPopupState {
+  type Target = ScrollViewState;
+
+  fn deref(&self) -> &Self::Target {
+    &self.scroll
+  }
+}
+
+impl DerefMut for DetailsPopupState {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.scroll
   }
 }
 
@@ -120,7 +139,7 @@ impl StatefulWidgetRef for DetailsPopup {
     );
     Clear.render(area, buf);
     block.render(area, buf);
-    scrollview.render(inner, buf, &mut ScrollViewState::default());
+    scrollview.render(inner, buf, &mut state.scroll);
   }
 
   type State = DetailsPopupState;
