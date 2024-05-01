@@ -143,6 +143,7 @@ async fn main() -> color_eyre::Result<()> {
       kill_on_exit,
       layout,
       follow,
+      frame_rate,
     } => {
       let (tracer_mode, pty_master) = if tty {
         let pty_system = native_pty_system();
@@ -185,8 +186,9 @@ async fn main() -> color_eyre::Result<()> {
         tracer_tx,
         user,
       )?);
-      let tracer_thread = tracer.spawn(cmd, None)?;
-      let mut tui = tui::Tui::new()?.frame_rate(30.0);
+      let tracer_thread: std::thread::JoinHandle<Result<(), color_eyre::eyre::Error>> =
+        tracer.spawn(cmd, None)?;
+      let mut tui = tui::Tui::new()?.frame_rate(frame_rate);
       tui.enter(tracer_rx)?;
       app.run(&mut tui).await?;
       // Now when TUI exits, the tracer thread is still running.

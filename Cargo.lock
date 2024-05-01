@@ -1738,6 +1738,7 @@ dependencies = [
  "shell-quote",
  "signal-hook",
  "strum",
+ "thiserror",
  "tokio",
  "tokio-util",
  "tracing",

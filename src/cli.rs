@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{num::ParseFloatError, path::PathBuf};
 
 use clap::{ArgAction, Parser, Subcommand};
 
@@ -99,5 +99,40 @@ pub enum CliCommand {
       default_value_t
     )]
     layout: AppLayout,
+    #[clap(
+      long,
+      short = 'F',
+      help = "Set the frame rate of the TUI",
+      default_value = "30.0",
+      value_parser = frame_rate_parser
+    )]
+    frame_rate: f64,
   },
+}
+
+#[derive(thiserror::Error, Debug)]
+enum ParseFrameRateError {
+  #[error("Failed to parse frame rate {0} as a floating point number")]
+  ParseFloatError(ParseFloatError),
+  #[error("Invalid frame rate")]
+  InvalidFrameRate,
+  #[error("Frame rate too low, must be at least 5.0")]
+  FrameRateTooLow,
+}
+
+impl From<ParseFloatError> for ParseFrameRateError {
+  fn from(e: ParseFloatError) -> Self {
+    Self::ParseFloatError(e)
+  }
+}
+
+fn frame_rate_parser(s: &str) -> Result<f64, ParseFrameRateError> {
+  let v = s.parse::<f64>()?;
+  if v < 0.0 || v.is_nan() || v.is_infinite() {
+    return Err(ParseFrameRateError::InvalidFrameRate);
+  } else if v < 5.0 {
+    return Err(ParseFrameRateError::FrameRateTooLow);
+  } else {
+    Ok(v)
+  }
 }
