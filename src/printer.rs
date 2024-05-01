@@ -12,7 +12,7 @@ use crate::{
 };
 
 use itertools::chain;
-use nix::unistd::Pid;
+use nix::{libc::ENOENT, unistd::Pid};
 use owo_colors::{OwoColorize, Style};
 
 macro_rules! escape_str_for_bash {
@@ -213,6 +213,8 @@ impl Printer {
       let exec_data = state.exec_data.as_ref().unwrap();
       let list_printer = ListPrinter::new(self.args.color);
       if result == 0 {
+        write!(out, "{}", state.pid.bright_green())?;
+      } else if result == -ENOENT as i64 {
         write!(out, "{}", state.pid.bright_yellow())?;
       } else {
         write!(out, "{}", state.pid.bright_red())?;
