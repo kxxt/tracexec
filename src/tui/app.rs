@@ -185,6 +185,12 @@ impl App {
                       KeyCode::End => {
                         state.scroll_to_bottom();
                       }
+                      KeyCode::Right | KeyCode::Char('l') => {
+                        state.next_tab();
+                      }
+                      KeyCode::Left | KeyCode::Char('h') => {
+                        state.prev_tab();
+                      }
                       KeyCode::Char('w') => {
                         state.prev();
                       }
@@ -615,6 +621,7 @@ impl App {
       match popup {
         ActivePopup::ViewDetails(_) => {
           items.extend(help_item!("W/S", "Move Focus"));
+          items.extend(help_item!("←/→", "Switch Tab"));
         }
         ActivePopup::CopyTargetSelection(state) => {
           items.extend(help_item!("Enter", "Choose"));

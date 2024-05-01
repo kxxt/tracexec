@@ -169,6 +169,12 @@ pub struct EnvDiff {
   pub modified: HashMap<String, String>,
 }
 
+impl EnvDiff {
+  pub fn is_modified_or_removed(&self, key: &str) -> bool {
+    self.modified.contains_key(key) || self.removed.contains(key)
+  }
+}
+
 pub fn diff_env(original: &HashMap<String, String>, envp: &[String]) -> EnvDiff {
   let mut added = HashMap::new();
   let mut modified = HashMap::new();
