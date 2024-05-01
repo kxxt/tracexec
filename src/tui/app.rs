@@ -192,17 +192,23 @@ impl App {
                         state.prev_tab();
                       }
                       KeyCode::Char('w') => {
-                        state.prev();
+                        if state.active_tab() == "Info" {
+                          state.prev();
+                        }
                       }
                       KeyCode::Char('s') => {
-                        state.next();
+                        if state.active_tab() == "Info" {
+                          state.next();
+                        }
                       }
                       KeyCode::Char('q') => {
                         self.popup = None;
                       }
                       KeyCode::Char('c') => {
-                        if let Some(clipboard) = self.clipboard.as_mut() {
-                          clipboard.set_text(state.selected())?;
+                        if state.active_tab() == "Info" {
+                          if let Some(clipboard) = self.clipboard.as_mut() {
+                            clipboard.set_text(state.selected())?;
+                          }
                         }
                       }
                       KeyCode::Tab => {
