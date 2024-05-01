@@ -193,6 +193,10 @@ impl DetailsPopupState {
   pub fn circle_tab(&mut self) {
     self.tab_index = (self.tab_index + 1) % self.available_tabs.len();
   }
+
+  pub fn active_tab(&self) -> &'static str {
+    self.available_tabs[self.tab_index]
+  }
 }
 
 impl Deref for DetailsPopupState {
