@@ -130,10 +130,10 @@ impl Widget for &mut EventList {
     let mut max_len = area.width as usize - 1;
     // Iterate through all elements in the `items` and stylize them.
     let events_in_window = EventList::window(&self.events, self.window);
-    tracing::debug!(
-      "Should refresh line cache: {}",
-      self.should_refresh_lines_cache
-    );
+    // tracing::debug!(
+    //   "Should refresh line cache: {}",
+    //   self.should_refresh_lines_cache
+    // );
     if self.should_refresh_lines_cache {
       self.should_refresh_lines_cache = false;
       self.should_refresh_list_cache = true;
@@ -154,10 +154,10 @@ impl Widget for &mut EventList {
           .push_back(evt.to_tui_line(&self.baseline, false));
       }
     }
-    tracing::debug!(
-      "Should refresh list cache: {}",
-      self.should_refresh_list_cache
-    );
+    // tracing::debug!(
+    //   "Should refresh list cache: {}",
+    //   self.should_refresh_list_cache
+    // );
     if self.should_refresh_list_cache {
       self.should_refresh_list_cache = false;
       let items = self.lines_cache.iter().map(|full_line| {
