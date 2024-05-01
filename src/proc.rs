@@ -10,7 +10,7 @@ use std::{
   path::{Path, PathBuf},
 };
 
-use color_eyre::owo_colors::OwoColorize;
+use owo_colors::OwoColorize;
 
 use nix::{libc::AT_FDCWD, unistd::Pid};
 
