@@ -112,7 +112,11 @@ impl EventList {
   pub fn statistics(&self) -> Title {
     let id = self.selection_index().unwrap_or(0);
     Title::default()
-      .content(format!("{}/{}──", id + 1, self.events.len()))
+      .content(format!(
+        "{}/{}──",
+        (id + 1).min(self.events.len()),
+        self.events.len()
+      ))
       .alignment(Right)
   }
 }
@@ -123,7 +127,7 @@ impl Widget for &mut EventList {
     Self: Sized,
   {
     self.inner_width = area.width - 1; // 1 for the selection indicator
-    let mut max_len = area.width as usize;
+    let mut max_len = area.width as usize - 1;
     // Iterate through all elements in the `items` and stylize them.
     let events_in_window = EventList::window(&self.events, self.window);
     tracing::debug!(
