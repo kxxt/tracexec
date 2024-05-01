@@ -183,15 +183,27 @@ impl DetailsPopupState {
   }
 
   pub fn next_tab(&mut self) {
+    let old = self.tab_index;
     self.tab_index = (self.tab_index + 1).min(self.available_tabs.len() - 1);
+    if old != self.tab_index {
+      self.scroll.scroll_to_top();
+    }
   }
 
   pub fn prev_tab(&mut self) {
+    let old = self.tab_index;
     self.tab_index = self.tab_index.saturating_sub(1);
+    if old != self.tab_index {
+      self.scroll.scroll_to_top();
+    }
   }
 
   pub fn circle_tab(&mut self) {
+    let old = self.tab_index;
     self.tab_index = (self.tab_index + 1) % self.available_tabs.len();
+    if old != self.tab_index {
+      self.scroll.scroll_to_top();
+    }
   }
 
   pub fn active_tab(&self) -> &'static str {
