@@ -16,8 +16,6 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::sync::Arc;
-
 use arboard::Clipboard;
 use clap::ValueEnum;
 use crossterm::event::KeyCode;
@@ -26,7 +24,7 @@ use itertools::chain;
 use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
   buffer::Buffer,
-  layout::{Constraint, Layout, Rect, Size},
+  layout::{Constraint, Layout, Rect},
   style::{Color, Style, Stylize},
   text::Line,
   widgets::{Block, Paragraph, StatefulWidgetRef, Widget, Wrap},
@@ -49,7 +47,7 @@ use crate::{
 
 use super::{
   copy_popup::{CopyPopup, CopyPopupState},
-  details_popup::DetailsPopup,
+  details_popup::{DetailsPopup, DetailsPopupState},
   event_list::EventList,
   help::{help, help_item},
   pseudo_term::PseudoTerminalPane,
@@ -164,7 +162,13 @@ impl App {
                     ActivePopup::Help => {
                       self.popup = None;
                     }
-                    ActivePopup::ViewDetails(_) => match ke.code {
+                    ActivePopup::ViewDetails(state) => match ke.code {
+                      KeyCode::Down | KeyCode::Char('j') => {
+                        state.next();
+                      }
+                      KeyCode::Up | KeyCode::Char('k') => {
+                        state.prev();
+                      }
                       KeyCode::Char('q') => {
                         self.popup = None;
                       }
@@ -303,7 +307,9 @@ impl App {
                   }
                   KeyCode::Char('v') => {
                     if let Some(selected) = self.event_list.selection() {
-                      action_tx.send(Action::SetActivePopup(ActivePopup::ViewDetails(selected)))?;
+                      action_tx.send(Action::SetActivePopup(ActivePopup::ViewDetails(
+                        DetailsPopupState::new(selected, self.event_list.baseline.clone()),
+                      )))?;
                     }
                   }
                   _ => {}
@@ -561,28 +567,21 @@ impl Widget for &mut App {
       }
     }
 
-    if let Some(ActivePopup::ViewDetails(evt)) = &self.popup {
+    if let Some(ActivePopup::ViewDetails(_)) = &self.popup {
       // Handled separately to pass borrow checker
-      self.render_details_popup(area, buf, rest_area.as_size(), evt.clone());
+      self.render_details_popup(rest_area, buf);
     }
   }
 }
 
 impl App {
-  fn render_details_popup(
-    &self,
-    area: Rect,
-    buf: &mut Buffer,
-    size: Size,
-    event: Arc<TracerEvent>,
-  ) {
-    let popup = Popup::new(
-      "Details",
-      DetailsPopup::new(event, size, self.event_list.baseline.clone()),
-    );
+  fn render_details_popup(&mut self, area: Rect, buf: &mut Buffer) {
+    let Some(ActivePopup::ViewDetails(state)) = self.popup.as_mut() else {
+      return;
+    };
     // .borders(Borders::TOP | Borders::BOTTOM)
     // .title_alignment(Alignment::Center);
-    popup.render(area, buf);
+    DetailsPopup.render_ref(area, buf, state);
   }
 
   fn render_help(&self, area: Rect, buf: &mut Buffer) {

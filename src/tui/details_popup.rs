@@ -1,29 +1,33 @@
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 
 use itertools::Itertools;
 use nix::errno::Errno;
 use ratatui::{
   buffer::Buffer,
-  layout::{Rect, Size},
+  layout::{Alignment::Center, Rect, Size},
   style::{Color, Stylize},
   text::{Line, Span},
-  widgets::{Paragraph, StatefulWidget, Widget, WidgetRef, Wrap},
+  widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, StatefulWidgetRef, Widget, Wrap},
 };
 use tui_popup::SizedWidgetRef;
 use tui_scrollview::{ScrollView, ScrollViewState};
 
 use crate::{event::TracerEvent, proc::BaselineInfo};
 
+use super::help::{help_desc, help_key};
+
+pub struct DetailsPopup;
+
 #[derive(Debug, Clone)]
-pub struct DetailsPopup {
+pub struct DetailsPopupState {
   event: Arc<TracerEvent>,
-  size: Size,
-  baseline: Rc<BaselineInfo>,
+  baseline: Arc<BaselineInfo>,
   details: Vec<(&'static str, Line<'static>)>,
+  active_index: usize,
 }
 
-impl DetailsPopup {
-  pub fn new(event: Arc<TracerEvent>, size: Size, baseline: Rc<BaselineInfo>) -> Self {
+impl DetailsPopupState {
+  pub fn new(event: Arc<TracerEvent>, baseline: Arc<BaselineInfo>) -> Self {
     let mut details = vec![(
       if matches!(event.as_ref(), TracerEvent::Exec(_)) {
         " Cmdline "
@@ -63,26 +67,30 @@ impl DetailsPopup {
     };
     Self {
       event,
-      size: Size {
-        width: size.width,
-        height: size.height - 2,
-      },
       baseline,
       details,
+      active_index: 0,
     }
   }
 
-  fn label<'a>(content: &'a str) -> Line<'a> {
-    content.bold().fg(Color::Black).bg(Color::LightGreen).into()
+  pub fn next(&mut self) {
+    self.active_index = (self.active_index + 1).min(self.details.len() - 1);
+  }
+
+  pub fn prev(&mut self) {
+    self.active_index = self.active_index.saturating_sub(1);
   }
 }
 
-impl WidgetRef for DetailsPopup {
-  fn render_ref(&self, area: Rect, buf: &mut Buffer) {
-    let text = self
+impl StatefulWidgetRef for DetailsPopup {
+  fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut DetailsPopupState) {
+    let text = state
       .details
       .iter()
-      .flat_map(|(label, line)| [Self::label(label), line.clone()])
+      .enumerate()
+      .flat_map(|(idx, (label, line))| {
+        [Self::label(label, idx == state.active_index), line.clone()]
+      })
       .collect_vec();
 
     let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
@@ -93,8 +101,14 @@ impl WidgetRef for DetailsPopup {
         .try_into()
         .unwrap_or(u16::MAX),
     };
-    let mut scrollview = ScrollView::new(size);
 
+    let block = Block::new()
+      .title(" Details ")
+      .borders(Borders::TOP | Borders::BOTTOM)
+      .title_alignment(Center);
+    let inner = block.inner(area);
+
+    let mut scrollview = ScrollView::new(size);
     scrollview.render_widget(
       paragraph,
       Rect {
@@ -104,17 +118,26 @@ impl WidgetRef for DetailsPopup {
         height: size.height,
       },
     );
-
-    scrollview.render(area, buf, &mut ScrollViewState::default());
+    Clear.render(area, buf);
+    block.render(area, buf);
+    scrollview.render(inner, buf, &mut ScrollViewState::default());
   }
+
+  type State = DetailsPopupState;
 }
 
-impl SizedWidgetRef for DetailsPopup {
-  fn width(&self) -> usize {
-    self.size.width as usize
-  }
-
-  fn height(&self) -> usize {
-    self.size.height as usize
+impl DetailsPopup {
+  fn label<'a>(content: &'a str, active: bool) -> Line<'a> {
+    if !active {
+      content.bold().fg(Color::Black).bg(Color::LightGreen).into()
+    } else {
+      Line::from_iter([
+        content.bold().fg(Color::White).bg(Color::LightMagenta),
+        " ".into(),
+        "<- ".bold().fg(Color::LightGreen),
+        help_key("C"),
+        help_desc("Copy"),
+      ])
+    }
   }
 }

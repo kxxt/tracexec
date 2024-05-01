@@ -16,17 +16,14 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::{collections::VecDeque, rc::Rc, sync::Arc};
+use std::{collections::VecDeque, sync::Arc};
 
 use ratatui::{
   layout::Alignment::Right,
   prelude::{Buffer, Rect},
   style::{Color, Modifier, Style},
   text::Line,
-  widgets::{
-    block::Title, HighlightSpacing, List, ListItem, ListState, StatefulWidget, StatefulWidgetRef,
-    Widget,
-  },
+  widgets::{block::Title, HighlightSpacing, List, ListItem, ListState, StatefulWidgetRef, Widget},
 };
 
 use crate::{event::TracerEvent, proc::BaselineInfo};
@@ -53,7 +50,7 @@ pub struct EventList {
   /// max width of the lines in the current window
   pub max_width: usize,
   pub max_window_len: usize,
-  pub baseline: Rc<BaselineInfo>,
+  pub baseline: Arc<BaselineInfo>,
   pub follow: bool,
 }
 
@@ -69,7 +66,7 @@ impl EventList {
       inner_width: 0,
       max_width: 0,
       max_window_len: 0,
-      baseline: Rc::new(baseline),
+      baseline: Arc::new(baseline),
       follow,
       lines_cache: VecDeque::new(),
       should_refresh_lines_cache: true,
