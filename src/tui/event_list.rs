@@ -46,7 +46,6 @@ pub struct EventList {
   should_refresh_list_cache: bool,
   /// How many items are there in the window
   pub nr_items_in_window: usize,
-  last_selected: Option<usize>,
   horizontal_offset: usize,
   /// width that could be used for the list items(not including the selection indicator)
   pub inner_width: u16,
@@ -62,7 +61,6 @@ impl EventList {
     Self {
       state: ListState::default(),
       events: vec![],
-      last_selected: None,
       window: (0, 0),
       nr_items_in_window: 0,
       horizontal_offset: 0,
@@ -225,33 +223,60 @@ impl Widget for &mut EventList {
 /// Scrolling implementation for the EventList
 impl EventList {
   /// Returns the index(absolute) of the last item in the window
-  fn last_item_in_window(&self) -> usize {
-    self
-      .window
-      .1
-      .saturating_sub(1)
-      .min(self.events.len().saturating_sub(1))
+  fn last_item_in_window_absolute(&self) -> Option<usize> {
+    if self.events.len() == 0 {
+      return None;
+    }
+    Some(
+      self
+        .window
+        .1
+        .saturating_sub(1)
+        .min(self.events.len().saturating_sub(1)),
+    )
   }
 
   /// Returns the index(relative) of the last item in the window
-  fn last_item_in_window_relative(&self) -> usize {
-    self
-      .window
-      .1
-      .saturating_sub(self.window.0)
-      .saturating_sub(1)
+  fn last_item_in_window_relative(&self) -> Option<usize> {
+    if self.events.len() > 0 {
+      Some(
+        self
+          .window
+          .1
+          .saturating_sub(self.window.0)
+          .saturating_sub(1),
+      )
+    } else {
+      None
+    }
+  }
+
+  fn select_last(&mut self) {
+    if self.events.len() > 0 {
+      self.state.select(self.last_item_in_window_relative());
+    }
+  }
+
+  fn select_first(&mut self) {
+    if self.events.len() > 0 {
+      self.state.select(Some(0));
+    }
   }
 
   /// Try to slide down the window by one item
   /// Returns true if the window was slid down, false otherwise
   pub fn next_window(&mut self) -> bool {
+    if self.events.len() == 0 {
+      return false;
+    }
     if self.window.1 < self.events.len() {
       self.window.0 += 1;
       self.window.1 += 1;
       self.lines_cache.pop_front();
-      self
-        .lines_cache
-        .push_back(self.events[self.last_item_in_window()].to_tui_line(&self.baseline, false));
+      self.lines_cache.push_back(
+        self.events[self.last_item_in_window_absolute().unwrap()]
+          .to_tui_line(&self.baseline, false),
+      );
       self.should_refresh_list_cache = true;
       true
     } else {
@@ -277,31 +302,43 @@ impl EventList {
   pub fn next(&mut self) {
     // i is the number of the selected item relative to the window
     let i = match self.state.selected() {
-      Some(i) => if i >= self.window.1 - self.window.0 - 1 {
-        self.next_window();
-        i
-      } else {
-        i + 1
+      Some(i) => Some(
+        if i >= self.window.1 - self.window.0 - 1 {
+          self.next_window();
+          i
+        } else {
+          i + 1
+        }
+        .min(self.nr_items_in_window.saturating_sub(1)),
+      ),
+      None => {
+        if self.events.len() > 0 {
+          Some(0)
+        } else {
+          None
+        }
       }
-      .min(self.nr_items_in_window - 1),
-      None => self.last_selected.unwrap_or(0),
     };
-    self.state.select(Some(i));
+    self.state.select(i);
   }
 
   pub fn previous(&mut self) {
     let i = match self.state.selected() {
-      Some(i) => {
-        if i == 0 {
-          self.previous_window();
-          i
+      Some(i) => Some(if i == 0 {
+        self.previous_window();
+        i
+      } else {
+        i - 1
+      }),
+      None => {
+        if self.events.len() > 0 {
+          Some(0)
         } else {
-          i - 1
+          None
         }
       }
-      None => self.last_selected.unwrap_or(0),
     };
-    self.state.select(Some(i));
+    self.state.select(i);
   }
 
   pub fn page_down(&mut self) {
@@ -317,7 +354,7 @@ impl EventList {
       self.window.1 = self.window.0 + self.max_window_len;
       self.should_refresh_lines_cache = old_window != self.window;
     }
-    self.state.select(Some(self.last_item_in_window_relative()));
+    self.state.select(self.last_item_in_window_relative());
     tracing::trace!(
       "pgdn: should_refresh_lines_cache = {}",
       self.should_refresh_lines_cache
@@ -338,7 +375,7 @@ impl EventList {
       self.window.1 = self.window.0 + self.max_window_len;
       self.should_refresh_lines_cache = old_window != self.window;
     }
-    self.state.select(Some(0));
+    self.select_first();
     tracing::trace!(
       "pgup: should_refresh_lines_cache = {}",
       self.should_refresh_lines_cache
@@ -393,7 +430,7 @@ impl EventList {
     self.window.0 = 0;
     self.window.1 = self.max_window_len;
     self.should_refresh_lines_cache = old_window != self.window;
-    self.state.select(Some(0));
+    self.select_first();
     tracing::trace!(
       "top: should_refresh_lines_cache = {}",
       self.should_refresh_lines_cache
@@ -401,18 +438,22 @@ impl EventList {
   }
 
   pub fn scroll_to_bottom(&mut self) {
+    if self.events.len() == 0 {
+      return;
+    }
     let old_window = self.window;
     self.window.0 = self.events.len().saturating_sub(self.max_window_len);
     self.window.1 = self.window.0 + self.max_window_len;
-    self.state.select(Some(self.last_item_in_window_relative()));
+    self.select_last();
     if self.window.0.saturating_sub(old_window.0) == 1
       && self.window.1.saturating_sub(old_window.1) == 1
     {
       // Special optimization for follow mode where scroll to bottom is called continuously
       self.lines_cache.pop_front();
-      self
-        .lines_cache
-        .push_back(self.events[self.last_item_in_window()].to_tui_line(&self.baseline, false));
+      self.lines_cache.push_back(
+        self.events[self.last_item_in_window_absolute().unwrap()]
+          .to_tui_line(&self.baseline, false),
+      );
       self.should_refresh_list_cache = true;
     } else {
       self.should_refresh_lines_cache = old_window != self.window;
