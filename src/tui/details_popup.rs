@@ -92,6 +92,10 @@ impl DetailsPopupState {
   pub fn prev(&mut self) {
     self.active_index = self.active_index.saturating_sub(1);
   }
+
+  pub fn selected(&self) -> String {
+    self.details[self.active_index].1.to_string()
+  }
 }
 
 impl Deref for DetailsPopupState {
@@ -114,9 +118,7 @@ impl StatefulWidgetRef for DetailsPopup {
       .details
       .iter()
       .enumerate()
-      .flat_map(|(idx, (label, line))| {
-        [self.label(label, idx == state.active_index), line.clone()]
-      })
+      .flat_map(|(idx, (label, line))| [self.label(label, idx == state.active_index), line.clone()])
       .collect_vec();
 
     let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });

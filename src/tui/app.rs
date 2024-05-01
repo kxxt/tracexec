@@ -194,6 +194,11 @@ impl App {
                       KeyCode::Char('q') => {
                         self.popup = None;
                       }
+                      KeyCode::Char('c') => {
+                        if let Some(clipboard) = self.clipboard.as_mut() {
+                          clipboard.set_text(state.selected())?;
+                        }
+                      }
                       _ => {}
                     },
                     ActivePopup::CopyTargetSelection(state) => match ke.code {
