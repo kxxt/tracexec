@@ -599,7 +599,7 @@ impl App {
     };
     // .borders(Borders::TOP | Borders::BOTTOM)
     // .title_alignment(Alignment::Center);
-    DetailsPopup.render_ref(area, buf, state);
+    DetailsPopup::new(self.clipboard.is_some()).render_ref(area, buf, state);
   }
 
   fn render_help(&self, area: Rect, buf: &mut Buffer) {

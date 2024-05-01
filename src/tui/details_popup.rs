@@ -12,14 +12,21 @@ use ratatui::{
   text::{Line, Span},
   widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, StatefulWidgetRef, Widget, Wrap},
 };
-use tui_popup::SizedWidgetRef;
 use tui_scrollview::{ScrollView, ScrollViewState};
 
 use crate::{event::TracerEvent, proc::BaselineInfo};
 
 use super::help::{help_desc, help_key};
 
-pub struct DetailsPopup;
+pub struct DetailsPopup {
+  enable_copy: bool,
+}
+
+impl DetailsPopup {
+  pub fn new(enable_copy: bool) -> Self {
+    Self { enable_copy }
+  }
+}
 
 #[derive(Debug, Clone)]
 pub struct DetailsPopupState {
@@ -108,7 +115,7 @@ impl StatefulWidgetRef for DetailsPopup {
       .iter()
       .enumerate()
       .flat_map(|(idx, (label, line))| {
-        [Self::label(label, idx == state.active_index), line.clone()]
+        [self.label(label, idx == state.active_index), line.clone()]
       })
       .collect_vec();
 
@@ -146,17 +153,19 @@ impl StatefulWidgetRef for DetailsPopup {
 }
 
 impl DetailsPopup {
-  fn label<'a>(content: &'a str, active: bool) -> Line<'a> {
+  fn label<'a>(&self, content: &'a str, active: bool) -> Line<'a> {
     if !active {
       content.bold().fg(Color::Black).bg(Color::LightGreen).into()
     } else {
-      Line::from_iter([
+      let mut spans = vec![
         content.bold().fg(Color::White).bg(Color::LightMagenta),
         " ".into(),
         "<- ".bold().fg(Color::LightGreen),
-        help_key("C"),
-        help_desc("Copy"),
-      ])
+      ];
+      if self.enable_copy {
+        spans.extend([help_key("C"), help_desc("Copy")]);
+      }
+      spans.into()
     }
   }
 }
