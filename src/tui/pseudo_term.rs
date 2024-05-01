@@ -120,25 +120,13 @@ impl PseudoTerminalPane {
       KeyCode::Char(ch) => {
         let mut send = vec![ch as u8];
         if key.modifiers == KeyModifiers::CONTROL {
-          match ch {
-            'n' => {
-              // Ignore Ctrl+n within a pane
-              return true;
-            }
-            'x' => {
-              // Close the pane
-              return false;
-            }
-            _ => {
-              let char = ch.to_ascii_uppercase();
-              let ascii_val = char as u8;
-              // Since char is guaranteed to be an ASCII character,
-              // we can safely subtract 64 to get
-              // the corresponding control character
-              let ascii_to_send = ascii_val - 64;
-              send = vec![ascii_to_send];
-            }
-          }
+          let char = ch.to_ascii_uppercase();
+          let ascii_val = char as u8;
+          // Since char is guaranteed to be an ASCII character,
+          // we can safely subtract 64 to get
+          // the corresponding control character
+          let ascii_to_send = ascii_val - 64;
+          send = vec![ascii_to_send];
         }
         send
       }
