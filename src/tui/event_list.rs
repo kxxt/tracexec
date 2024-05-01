@@ -19,11 +19,10 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use ratatui::{
-  layout::Alignment::Right,
-  prelude::{Buffer, Rect},
-  style::{Color, Modifier, Style},
-  text::Line,
-  widgets::{block::Title, HighlightSpacing, List, ListItem, ListState, StatefulWidgetRef, Widget},
+  layout::Alignment::Right, prelude::{Buffer, Rect}, style::{Color, Modifier, Style}, symbols::scrollbar::Set, text::Line, widgets::{
+    block::Title, HighlightSpacing, List, ListItem, ListState, Scrollbar, ScrollbarState,
+    StatefulWidget, StatefulWidgetRef, Widget,
+  }
 };
 
 use crate::{event::TracerEvent, proc::BaselineInfo};
@@ -189,6 +188,24 @@ impl Widget for &mut EventList {
     // (look careful we are using StatefulWidget's render.)
     // ratatui::widgets::StatefulWidget::render as stateful_render
     StatefulWidgetRef::render_ref(&self.list_cache, area, buf, &mut self.state);
+
+    // Render scrollbars
+    if self.max_width + 1 > area.width as usize {
+      // Render horizontal scrollbar, assumming there is a border we can overwrite
+      let scrollbar = Scrollbar::new(ratatui::widgets::ScrollbarOrientation::HorizontalBottom).thumb_symbol("■");
+      let scrollbar_area = Rect {
+        x: area.x,
+        y: area.y + area.height,
+        width: area.width,
+        height: 1,
+      };
+      scrollbar.render(
+        scrollbar_area,
+        buf,
+        &mut ScrollbarState::new(self.max_width + 1 - area.width as usize)
+          .position(self.horizontal_offset),
+      );
+    }
   }
 }
 
