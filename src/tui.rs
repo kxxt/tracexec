@@ -115,30 +115,30 @@ impl Tui {
             Some(event) = crossterm_event => {
               log::trace!("TUI event: crossterm event {event:?}!");
                 match event {
-                    Ok(evt) => {
-                        match evt {
-                            CrosstermEvent::Key(key) => {
-                                if key.kind == KeyEventKind::Press {
-                                    _event_tx.send(Event::Key(key)).unwrap();
-                                }
-                            },
-                            CrosstermEvent::Resize(cols, rows) => {
-                                _event_tx.send(Event::Resize(Size {
-                                    width: cols,
-                                    height: rows,
-                                })).unwrap();
-                            },
-                            _ => {},
-                        }
+                  Ok(evt) => {
+                    match evt {
+                      CrosstermEvent::Key(key) => {
+                          if key.kind == KeyEventKind::Press {
+                              _event_tx.send(Event::Key(key)).unwrap();
+                          }
+                      },
+                      CrosstermEvent::Resize(cols, rows) => {
+                          _event_tx.send(Event::Resize(Size {
+                              width: cols,
+                              height: rows,
+                          })).unwrap();
+                      },
+                      _ => {},
                     }
-                    Err(_) => {
-                        _event_tx.send(Event::Error).unwrap();
-                    }
+                  }
+                Err(_) => {
+                  _event_tx.send(Event::Error).unwrap();
                 }
+              }
             },
             _ = render_delay => {
-              log::trace!("TUI event: Render!");
-                _event_tx.send(Event::Render).unwrap();
+              // log::trace!("TUI event: Render!");
+              _event_tx.send(Event::Render).unwrap();
             },
         }
       }
