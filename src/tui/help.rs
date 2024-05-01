@@ -38,7 +38,7 @@ where
   desc_string.push_str(&d.into());
   desc_string.push('\u{00a0}');
   desc_string
-    .fg(Color::Cyan)
+    .fg(Color::LightGreen)
     .bg(Color::DarkGray)
     .italic()
     .bold()
