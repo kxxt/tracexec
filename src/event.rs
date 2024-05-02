@@ -173,10 +173,6 @@ impl TracerEvent {
           spans.push(space.clone());
           spans.push(format!("-u {}", escape_str_for_bash!(k)).fg(Color::LightRed));
         }
-        spans.push(
-          // Option separator
-          " -".into(),
-        );
         for (k, v) in env_diff.added.iter() {
           // Added env vars
           spans.push(space.clone());
