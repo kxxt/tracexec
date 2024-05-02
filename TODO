@@ -13,7 +13,6 @@
 - Confirm message (maybe put this under title or help?) for copy target, quit, etc.
 - Better formatting of other events
 - Tree mode
-- Forwarding warnings to TUI
 - (Maybe) switch to manual rendering by using Notify and batch frequent rerenders.
 
 # Log Mode
