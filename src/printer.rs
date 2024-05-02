@@ -108,24 +108,36 @@ enum DeferredWarningKind {
 
 struct DeferredWarnings {
   warning: DeferredWarningKind,
+  pid: Pid,
 }
 
 impl Drop for DeferredWarnings {
   fn drop(&mut self) {
-    match self.warning {
-      DeferredWarningKind::NoArgv0 => {
-        log::warn!("No argv[0] provided! The printed commandline might be incorrect!")
-      }
-      DeferredWarningKind::FailedReadingArgv(e) => {
-        log::warn!("Failed to read argv: {}", e)
-      }
-      DeferredWarningKind::FailedReadingFilename(e) => {
-        log::warn!("Failed to read filename: {}", e)
-      }
-      DeferredWarningKind::FailedReadingEnvp(e) => {
-        log::warn!("Failed to read envp: {}", e)
-      }
-    }
+    Printer::OUT.with_borrow_mut(|out| {
+      if let Some(out) = out {
+        write!(out, "{}", self.pid.bright_red()).unwrap();
+        write!(out, "[{}]: ", "warning".bright_yellow()).unwrap();
+        match self.warning {
+          DeferredWarningKind::NoArgv0 => {
+            write!(
+              out,
+              "No argv[0] provided! The printed commandline might be incorrect!"
+            )
+            .unwrap();
+          }
+          DeferredWarningKind::FailedReadingArgv(e) => {
+            write!(out, "Failed to read argv: {}", e).unwrap();
+          }
+          DeferredWarningKind::FailedReadingFilename(e) => {
+            write!(out, "Failed to read filename: {}", e).unwrap();
+          }
+          DeferredWarningKind::FailedReadingEnvp(e) => {
+            write!(out, "Failed to read envp: {}", e).unwrap();
+          }
+        };
+        writeln!(out).unwrap();
+      };
+    })
   }
 }
 
@@ -219,6 +231,10 @@ impl Printer {
     // Preconditions:
     // 1. execve syscall exit, which leads to 2
     // 2. state.exec_data is Some
+
+    // Defer the warnings so that they are printed after the main message
+    let mut _deferred_warnings = vec![];
+
     Self::OUT.with_borrow_mut(|out| {
       let Some(out) = out else {
         return Ok(());
@@ -237,8 +253,6 @@ impl Printer {
       }
       write!(out, ":")?;
 
-      let mut _deferred_warnings = vec![];
-
       match exec_data.filename.as_ref() {
         Ok(filename) => {
           if self.args.trace_filename {
@@ -256,6 +270,7 @@ impl Printer {
           )?;
           _deferred_warnings.push(DeferredWarnings {
             warning: DeferredWarningKind::FailedReadingFilename(*e),
+            pid: state.pid,
           });
         }
       }
@@ -264,6 +279,7 @@ impl Printer {
         Err(e) => {
           _deferred_warnings.push(DeferredWarnings {
             warning: DeferredWarningKind::FailedReadingArgv(*e),
+            pid: state.pid,
           });
         }
         Ok(argv) => {
@@ -383,6 +399,7 @@ impl Printer {
           }
           _deferred_warnings.push(DeferredWarnings {
             warning: DeferredWarningKind::FailedReadingEnvp(*e),
+            pid: state.pid,
           });
         }
       }
@@ -406,6 +423,7 @@ impl Printer {
             } else {
               _deferred_warnings.push(DeferredWarnings {
                 warning: DeferredWarningKind::NoArgv0,
+                pid: state.pid,
               });
             }
             if cwd != exec_data.cwd {
@@ -477,6 +495,7 @@ impl Printer {
           Err(e) => {
             _deferred_warnings.push(DeferredWarnings {
               warning: DeferredWarningKind::FailedReadingArgv(*e),
+              pid: state.pid,
             });
           }
         }
