@@ -326,7 +326,7 @@ impl Printer {
         write!(out, " {}", "cmdline".purple())?;
         write!(out, " env")?;
         if let Some(arg0) = exec_data.argv.first() {
-          if &exec_data.filename.file_name() != &Some(OsStr::new(arg0)) {
+          if exec_data.filename.as_os_str() != OsStr::new(arg0) {
             write!(
               out,
               " {} {}",
@@ -391,7 +391,12 @@ impl Printer {
             )?;
           }
         }
-        for arg in exec_data.argv.iter() {
+        write!(
+          out,
+          " {}",
+          escape_str_for_bash!(exec_data.filename.to_string_lossy().as_ref())
+        )?;
+        for arg in exec_data.argv.iter().skip(1) {
           write!(out, " {}", escape_str_for_bash!(arg))?;
         }
       }

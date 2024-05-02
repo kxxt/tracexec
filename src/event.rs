@@ -154,7 +154,7 @@ impl TracerEvent {
         let space: Span = " ".into();
         // Handle argv[0]
         argv.first().inspect(|&arg0| {
-          if filename.file_name() != Some(OsStr::new(&arg0)) {
+          if filename.as_os_str() != OsStr::new(arg0) {
             spans.push(space.clone());
             spans.push(
               format!("-a {}", escape_str_for_bash!(arg0))
