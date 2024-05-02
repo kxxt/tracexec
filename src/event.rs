@@ -225,6 +225,7 @@ impl TracerEvent {
             }
           }
           Err(_) => {
+            spans.push(space.clone());
             spans.push(
               "[failed to read argv]"
                 .fg(Color::LightRed)
