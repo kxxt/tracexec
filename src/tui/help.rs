@@ -16,7 +16,7 @@ where
   T: Into<Cow<'a, str>>,
   T: Styled<Item = Span<'a>>,
 {
-  f.fg(Color::Yellow).bold()
+  f.fg(Color::Yellow).bg(Color::DarkGray).bold()
 }
 
 pub fn help_key<'a, T>(k: T) -> Span<'a>
