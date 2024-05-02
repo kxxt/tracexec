@@ -44,7 +44,7 @@ impl TracerEventArgs {
 pub struct TracingArgs {
   #[clap(
     long,
-    help = "Print commandline that reproduces what was executed. Note that when filename and argv[0] differs, it probably won't give you the correct commandline for now. Implies --successful-only",
+    help = "Print commandline that (hopefully) reproduces what was executed. Note: file descriptors are not handled for now.",
     conflicts_with_all = ["show_env", "diff_env", "show_argv"]
 )]
   pub show_cmdline: bool,

@@ -74,7 +74,7 @@ impl PrinterArgs {
       },
       trace_cwd: tracing_args.show_cwd,
       print_cmdline: tracing_args.show_cmdline,
-      successful_only: modifier_args.successful_only || tracing_args.show_cmdline,
+      successful_only: modifier_args.successful_only,
       trace_interpreter: tracing_args.show_interpreter,
       trace_filename: match (
         tracing_args.show_filename,
