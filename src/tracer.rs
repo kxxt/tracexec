@@ -480,6 +480,7 @@ impl Tracer {
       let pathname_is_empty = pathname.is_empty();
       let pathname = PathBuf::from(pathname);
       let argv = read_string_array(pid, syscall_arg!(regs, 2) as AddressType)?;
+      self.warn_if_argv_empty(&argv, pid)?;
       let envp = read_string_array(pid, syscall_arg!(regs, 3) as AddressType)?;
       let flags = syscall_arg!(regs, 4) as i32;
       let filename = match (
@@ -517,6 +518,7 @@ impl Tracer {
       log::trace!("pre execve {syscallno}",);
       let filename = read_pathbuf(pid, syscall_arg!(regs, 0) as AddressType)?;
       let argv = read_string_array(pid, syscall_arg!(regs, 1) as AddressType)?;
+      self.warn_if_argv_empty(&argv, pid)?;
       let envp = read_string_array(pid, syscall_arg!(regs, 2) as AddressType)?;
       let interpreters = if self.printer.args.trace_interpreter {
         read_interpreter_recursive(&filename)
@@ -626,6 +628,16 @@ impl Tracer {
       return ptrace_cont(pid, Some(sig));
     }
     ptrace_syscall(pid, Some(sig))
+  }
+
+  fn warn_if_argv_empty(&self, argv: &[String], pid: Pid) -> color_eyre::Result<()> {
+    if argv.is_empty() && self.filter.intersects(TracerEventKind::Warning) {
+      self.tx.send(TracerEvent::Warning(TracerMessage {
+        pid: Some(pid),
+        msg: "Empty argv, the printed cmdline is not accurate!".to_string(),
+      }))?;
+    }
+    Ok(())
   }
 
   // This function does not take self due to borrow checker
