@@ -93,27 +93,27 @@ impl TracerEvent {
   pub fn to_tui_line(&self, baseline: &BaselineInfo, cmdline_only: bool) -> Line<'static> {
     match self {
       TracerEvent::Info(TracerMessage { ref msg, pid }) => chain!(
-        ["info".bg(Color::LightBlue)],
         pid
-          .map(|p| ["(".into(), p.to_string().fg(Color::Yellow), ")".into()])
+          .map(|p| [p.to_string().fg(Color::LightMagenta)])
           .unwrap_or_default(),
-        [": ".into(), msg.clone().into()]
+        ["[info]".fg(Color::LightBlue).bold()],
+        [": ".into(), msg.clone().bold().light_blue()]
       )
       .collect(),
       TracerEvent::Warning(TracerMessage { ref msg, pid }) => chain!(
-        ["warn".bg(Color::Yellow)],
         pid
-          .map(|p| ["(".into(), p.to_string().fg(Color::Yellow), ")".into()])
+          .map(|p| [p.to_string().fg(Color::LightMagenta)])
           .unwrap_or_default(),
-        [": ".into(), msg.clone().into()]
+        ["[warn]".fg(Color::Yellow).bold()],
+        [": ".into(), msg.clone().bold().light_yellow()]
       )
       .collect(),
       TracerEvent::Error(TracerMessage { ref msg, pid }) => chain!(
-        ["error".bg(Color::Red)],
         pid
-          .map(|p| ["(".into(), p.to_string().fg(Color::Yellow), ")".into()])
+          .map(|p| [p.to_string().fg(Color::LightMagenta)])
           .unwrap_or_default(),
-        [": ".into(), msg.clone().into()]
+        ["error".bg(Color::Red).bold()],
+        [": ".into(), msg.clone().bold().light_red()]
       )
       .collect(),
       TracerEvent::NewChild { ppid, pcomm, pid } => {
