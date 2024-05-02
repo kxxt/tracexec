@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.1.0-beta.1
+
+tracexec v0.1.0-beta.1 released!
+
+Changes since v0.1.0-alpha.8:
+
+### Added
+
+- Add "Environment" tab to the details popup in TUI.
+- Add scroll bars to event list in TUI.
+- Handle argv[0] in logging mode.
+- Send `Ctrl+S` to pty by pressing `Alt+S` when event list is active in TUI.
+
+### Changed
+
+- TUI now automatically selects the first/last event when the list is scrolled to the top/bottom or page up/down.
+- In logging mode, the color of pid now matches TUI.
+
+### Fixed
+
+- Don't use option separator `-` in cmdline because it implies `--ignore-environment`.
+- Fix the logic of argv[0] handling for both logging and TUI mode.
+- Handle edge cases for the TUI event list when there are no events.
+- Two off-by-one errors in the TUI event list.
+- Clean up legacy code in pseduo terminal handling.
+- Some typos.
+
 ## v0.1.0-alpha.8
 
 tracexec v0.1.0-alpha.8 released!
