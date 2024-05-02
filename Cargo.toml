@@ -69,3 +69,7 @@ seccomp-bpf = ["dep:seccompiler"]
 [[bin]]
 name = "exec-file"
 path = "fixtures/exec-file.rs"
+
+[[bin]]
+name = "empty-argv"
+path = "fixtures/empty-argv.rs"
