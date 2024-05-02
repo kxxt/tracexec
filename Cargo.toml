@@ -73,3 +73,8 @@ path = "fixtures/exec-file.rs"
 [[bin]]
 name = "empty-argv"
 path = "fixtures/empty-argv.rs"
+
+
+[[bin]]
+name = "corrupted-envp"
+path = "fixtures/corrupted-envp.rs"
