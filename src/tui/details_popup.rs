@@ -73,7 +73,7 @@ impl DetailsPopupState {
         (" Comm ", exec.comm.to_string().into()),
         (
           " Filename ",
-          Span::from(exec.filename.to_string_lossy().to_string()).into(),
+          Span::from(TracerEvent::filename_to_cow(&exec.filename).into_owned()).into(),
         ),
         (" Argv ", TracerEvent::argv_to_string(&exec.argv).into()),
         (
@@ -81,79 +81,84 @@ impl DetailsPopupState {
           TracerEvent::interpreters_to_string(&exec.interpreter).into(),
         ),
       ]);
-      let mut env = exec
-        .env_diff
-        .added
-        .iter()
-        .map(|(key, value)| {
-          let spans = vec![
-            "+".fg(Color::LightGreen),
-            key.to_string().bold().light_green(),
-            "=".yellow().bold(),
-            value.to_string().light_green(),
-          ];
-          Line::default().spans(spans)
-        })
-        .collect_vec();
-      env.extend(
-        exec
-          .env_diff
-          .removed
-          .iter()
-          .map(|key| {
-            let value = baseline.env.get(key).unwrap();
-            let spans = vec![
-              "-".fg(Color::LightRed),
-              key.to_string().bold().light_red(),
-              "=".yellow().bold(),
-              value.to_string().light_red(),
-            ];
-            Line::default().spans(spans)
-          })
-          .collect_vec(),
-      );
-      env.extend(
-        exec
-          .env_diff
-          .modified
-          .iter()
-          .flat_map(|(key, new)| {
-            let old = baseline.env.get(key).unwrap();
-            let spans_old = vec![
-              "-".fg(Color::LightRed),
-              key.to_string().light_red(),
-              "=".yellow().bold(),
-              old.to_string().light_red(),
-            ];
-            let spans_new = vec![
-              "+".fg(Color::LightGreen),
-              key.to_string().bold().light_green(),
-              "=".yellow().bold(),
-              new.to_string().light_green(),
-            ];
-            vec![
-              Line::default().spans(spans_old),
-              Line::default().spans(spans_new),
-            ]
-          })
-          .collect_vec(),
-      );
-      env.extend(
-        // Unchanged env
-        baseline
-          .env
-          .iter()
-          .filter(|(key, _)| !exec.env_diff.is_modified_or_removed(key))
-          .map(|(key, value)| {
-            let spans = vec![
-              " ".into(),
-              key.to_string().bold().white(),
-              "=".yellow(),
-              value.to_string().white(),
-            ];
-            Line::default().spans(spans)
-          }),
-      );
+      let env = match exec.env_diff.as_ref() {
+        Ok(env_diff) => {
+          let mut env = env_diff
+            .added
+            .iter()
+            .map(|(key, value)| {
+              let spans = vec![
+                "+".fg(Color::LightGreen),
+                key.to_string().bold().light_green(),
+                "=".yellow().bold(),
+                value.to_string().light_green(),
+              ];
+              Line::default().spans(spans)
+            })
+            .collect_vec();
+          env.extend(
+            env_diff
+              .removed
+              .iter()
+              .map(|key| {
+                let value = baseline.env.get(key).unwrap();
+                let spans = vec![
+                  "-".fg(Color::LightRed),
+                  key.to_string().bold().light_red(),
+                  "=".yellow().bold(),
+                  value.to_string().light_red(),
+                ];
+                Line::default().spans(spans)
+              })
+              .collect_vec(),
+          );
+          env.extend(
+            env_diff
+              .modified
+              .iter()
+              .flat_map(|(key, new)| {
+                let old = baseline.env.get(key).unwrap();
+                let spans_old = vec![
+                  "-".fg(Color::LightRed),
+                  key.to_string().light_red(),
+                  "=".yellow().bold(),
+                  old.to_string().light_red(),
+                ];
+                let spans_new = vec![
+                  "+".fg(Color::LightGreen),
+                  key.to_string().bold().light_green(),
+                  "=".yellow().bold(),
+                  new.to_string().light_green(),
+                ];
+                vec![
+                  Line::default().spans(spans_old),
+                  Line::default().spans(spans_new),
+                ]
+              })
+              .collect_vec(),
+          );
+          env.extend(
+            // Unchanged env
+            baseline
+              .env
+              .iter()
+              .filter(|(key, _)| !env_diff.is_modified_or_removed(key))
+              .map(|(key, value)| {
+                let spans = vec![
+                  " ".into(),
+                  key.to_string().bold().white(),
+                  "=".yellow(),
+                  value.to_string().white(),
+                ];
+                Line::default().spans(spans)
+              }),
+          );
+          env
+        }
+        Err(e) => {
+          vec![Line::from(format!("Failed to read envp: {}", e))]
+        }
+      };
       (Some(env), vec!["Info", "Environment"])
     } else {
       (None, vec!["Info"])

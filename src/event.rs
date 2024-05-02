@@ -16,6 +16,7 @@ use tokio::sync::mpsc::{self};
 
 use crate::{
   action::CopyTarget,
+  inspect::InspectError,
   printer::{escape_str_for_bash, ListPrinter},
   proc::{BaselineInfo, EnvDiff, Interpreter},
 };
@@ -61,11 +62,11 @@ pub struct ExecEvent {
   pub pid: Pid,
   pub cwd: PathBuf,
   pub comm: String,
-  pub filename: PathBuf,
-  pub argv: Arc<Vec<String>>,
-  pub envp: Arc<Vec<String>>,
+  pub filename: Result<PathBuf, InspectError>,
+  pub argv: Arc<Result<Vec<String>, InspectError>>,
+  pub envp: Arc<Result<Vec<String>, InspectError>>,
   pub interpreter: Vec<Interpreter>,
-  pub env_diff: EnvDiff,
+  pub env_diff: Result<EnvDiff, InspectError>,
   pub result: i64,
 }
 
@@ -137,12 +138,20 @@ impl TracerEvent {
           result,
           ..
         } = exec.as_ref();
+        let filename_or_err = match filename {
+          Ok(filename) => filename.to_string_lossy().into_owned().fg(Color::LightBlue),
+          Err(e) => format!("[failed to read filename: {e}]")
+            .light_red()
+            .bold()
+            .slow_blink(),
+        };
+
         let mut spans: Vec<Span> = if !cmdline_only {
           tracer_event_spans!(
             pid,
             comm,
             *result,
-            Some(format!("{:?}", filename).fg(Color::LightBlue)),
+            Some(filename_or_err),
             Some(" ".into()),
             Some("env".fg(Color::Magenta)),
           )
@@ -153,47 +162,77 @@ impl TracerEvent {
         };
         let space: Span = " ".into();
         // Handle argv[0]
-        argv.first().inspect(|&arg0| {
-          if filename.as_os_str() != OsStr::new(arg0) {
-            spans.push(space.clone());
-            spans.push(
-              format!("-a {}", escape_str_for_bash!(arg0))
-                .fg(Color::White)
-                .italic(),
-            )
-          }
+        let _ = argv.as_deref().inspect(|v| {
+          v.first().inspect(|&arg0| {
+            if filename.is_ok() && filename.as_ref().unwrap().as_os_str() != OsStr::new(arg0) {
+              spans.push(space.clone());
+              spans.push(
+                format!("-a {}", escape_str_for_bash!(arg0))
+                  .fg(Color::White)
+                  .italic(),
+              )
+            }
+          });
         });
         // Handle cwd
         if cwd != &baseline.cwd {
           spans.push(space.clone());
           spans.push(format!("-C {}", escape_str_for_bash!(cwd)).fg(Color::LightCyan));
         }
-        // Handle env diff
-        for k in env_diff.removed.iter() {
-          spans.push(space.clone());
-          spans.push(format!("-u {}", escape_str_for_bash!(k)).fg(Color::LightRed));
-        }
-        for (k, v) in env_diff.added.iter() {
-          // Added env vars
-          spans.push(space.clone());
-          spans.push(
-            format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v)).fg(Color::Green),
-          );
-        }
-        for (k, v) in env_diff.modified.iter() {
-          // Modified env vars
-          spans.push(space.clone());
-          spans.push(
-            format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v)).fg(Color::Yellow),
-          );
+        if let Ok(env_diff) = env_diff {
+          // Handle env diff
+          for k in env_diff.removed.iter() {
+            spans.push(space.clone());
+            spans.push(format!("-u {}", escape_str_for_bash!(k)).fg(Color::LightRed));
+          }
+          for (k, v) in env_diff.added.iter() {
+            // Added env vars
+            spans.push(space.clone());
+            spans.push(
+              format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v)).fg(Color::Green),
+            );
+          }
+          for (k, v) in env_diff.modified.iter() {
+            // Modified env vars
+            spans.push(space.clone());
+            spans.push(
+              format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v)).fg(Color::Yellow),
+            );
+          }
         }
         spans.push(space.clone());
         // Filename
-        spans.push(format!("{}", escape_str_for_bash!(filename)).fg(Color::LightBlue));
+        match filename {
+          Ok(filename) => {
+            spans.push(format!("{}", escape_str_for_bash!(filename)).fg(Color::LightBlue));
+          }
+          Err(_) => {
+            spans.push(
+              "[failed to read filename]"
+                .fg(Color::LightRed)
+                .slow_blink()
+                .underlined()
+                .bold(),
+            );
+          }
+        }
         // Argv[1..]
-        for arg in argv.iter().skip(1) {
-          spans.push(space.clone());
-          spans.push(format!("{}", escape_str_for_bash!(arg)).into());
+        match argv.as_ref() {
+          Ok(argv) => {
+            for arg in argv.iter().skip(1) {
+              spans.push(space.clone());
+              spans.push(format!("{}", escape_str_for_bash!(arg)).into());
+            }
+          }
+          Err(_) => {
+            spans.push(
+              "[failed to read argv]"
+                .fg(Color::LightRed)
+                .slow_blink()
+                .underlined()
+                .bold(),
+            );
+          }
         }
         Line::default().spans(spans)
       }
@@ -218,15 +257,21 @@ impl TracerEvent {
     };
     match target {
       CopyTarget::Commandline(_) => self.to_tui_line(baseline, true).to_string().into(),
-      CopyTarget::Env => event.envp.iter().join("\n").into(),
+      CopyTarget::Env => match event.envp.as_ref() {
+        Ok(envp) => envp.iter().join("\n").into(),
+        Err(e) => format!("[failed to read envp: {e}]").into(),
+      },
       CopyTarget::EnvDiff => {
+        let Ok(env_diff) = event.env_diff.as_ref() else {
+          return "[failed to read envp]".into();
+        };
         let mut result = String::new();
         result.push_str("# Added:\n");
-        for (k, v) in event.env_diff.added.iter() {
+        for (k, v) in env_diff.added.iter() {
           result.push_str(&format!("{}={}\n", k, v));
         }
         result.push_str("# Modified: (original first)\n");
-        for (k, v) in event.env_diff.modified.iter() {
+        for (k, v) in env_diff.modified.iter() {
           result.push_str(&format!(
             "{}={}\n{}={}\n",
             k,
@@ -236,19 +281,29 @@ impl TracerEvent {
           ));
         }
         result.push_str("# Removed:\n");
-        for k in event.env_diff.removed.iter() {
+        for k in env_diff.removed.iter() {
           result.push_str(&format!("{}={}\n", k, baseline.env.get(k).unwrap()));
         }
         result.into()
       }
       CopyTarget::Argv => Self::argv_to_string(&event.argv).into(),
-      CopyTarget::Filename => event.filename.to_string_lossy(),
+      CopyTarget::Filename => Self::filename_to_cow(&event.filename),
       CopyTarget::SyscallResult => event.result.to_string().into(),
       CopyTarget::Line => unreachable!(),
     }
   }
 
-  pub fn argv_to_string(argv: &[String]) -> String {
+  pub fn filename_to_cow(filename: &Result<PathBuf, InspectError>) -> Cow<str> {
+    match filename {
+      Ok(filename) => filename.to_string_lossy(),
+      Err(_) => "[failed to read filename]".into(),
+    }
+  }
+
+  pub fn argv_to_string(argv: &Result<Vec<String>, InspectError>) -> String {
+    let Ok(argv) = argv else {
+      return "[failed to read argv]".into();
+    };
     let mut result = Vec::with_capacity(argv.iter().map(|s| s.len() + 3).sum::<usize>() + 2);
     let list_printer = ListPrinter::new(crate::printer::ColorLevel::Less);
     list_printer.print_string_list(&mut result, &argv).unwrap();

@@ -4,13 +4,19 @@ use std::{
   path::PathBuf,
 };
 
-use nix::{sys::ptrace, sys::ptrace::AddressType, unistd::Pid};
+use nix::{
+  errno::Errno,
+  sys::ptrace::{self, AddressType},
+  unistd::Pid,
+};
+
+pub type InspectError = Errno;
 
 pub fn read_generic_string<TString>(
   pid: Pid,
   address: AddressType,
   ctor: impl Fn(Vec<u8>) -> TString,
-) -> color_eyre::Result<TString> {
+) -> Result<TString, InspectError> {
   let mut buf = Vec::new();
   let mut address = address;
   const WORD_SIZE: usize = 8; // FIXME
@@ -18,7 +24,7 @@ pub fn read_generic_string<TString>(
     let word = match ptrace::read(pid, address) {
       Err(e) => {
         log::warn!("Cannot read tracee {pid} memory {address:?}: {e}");
-        return Ok(ctor(buf));
+        return Err(e);
       }
       Ok(word) => word,
     };
@@ -34,15 +40,15 @@ pub fn read_generic_string<TString>(
 }
 
 #[allow(unused)]
-pub fn read_cstring(pid: Pid, address: AddressType) -> color_eyre::Result<CString> {
+pub fn read_cstring(pid: Pid, address: AddressType) -> Result<CString, InspectError> {
   read_generic_string(pid, address, |x| CString::new(x).unwrap())
 }
 
-pub fn read_pathbuf(pid: Pid, address: AddressType) -> color_eyre::Result<PathBuf> {
+pub fn read_pathbuf(pid: Pid, address: AddressType) -> Result<PathBuf, InspectError> {
   read_generic_string(pid, address, |x| PathBuf::from(OsString::from_vec(x)))
 }
 
-pub fn read_string(pid: Pid, address: AddressType) -> color_eyre::Result<String> {
+pub fn read_string(pid: Pid, address: AddressType) -> Result<String, InspectError> {
   // Waiting on https://github.com/rust-lang/libs-team/issues/116
   read_generic_string(pid, address, |x| String::from_utf8_lossy(&x).into_owned())
 }
@@ -50,15 +56,15 @@ pub fn read_string(pid: Pid, address: AddressType) -> color_eyre::Result<String>
 pub fn read_null_ended_array<TItem>(
   pid: Pid,
   mut address: AddressType,
-  reader: impl Fn(Pid, AddressType) -> color_eyre::Result<TItem>,
-) -> color_eyre::Result<Vec<TItem>> {
+  reader: impl Fn(Pid, AddressType) -> Result<TItem, InspectError>,
+) -> Result<Vec<TItem>, InspectError> {
   let mut res = Vec::new();
   const WORD_SIZE: usize = 8; // FIXME
   loop {
     let ptr = match ptrace::read(pid, address) {
       Err(e) => {
         log::warn!("Cannot read tracee {pid} memory {address:?}: {e}");
-        return Ok(res);
+        return Err(e);
       }
       Ok(ptr) => ptr,
     };
@@ -72,10 +78,10 @@ pub fn read_null_ended_array<TItem>(
 }
 
 #[allow(unused)]
-pub fn read_cstring_array(pid: Pid, address: AddressType) -> color_eyre::Result<Vec<CString>> {
+pub fn read_cstring_array(pid: Pid, address: AddressType) -> Result<Vec<CString>, InspectError> {
   read_null_ended_array(pid, address, read_cstring)
 }
 
-pub fn read_string_array(pid: Pid, address: AddressType) -> color_eyre::Result<Vec<String>> {
+pub fn read_string_array(pid: Pid, address: AddressType) -> Result<Vec<String>, InspectError> {
   read_null_ended_array(pid, address, read_string)
 }

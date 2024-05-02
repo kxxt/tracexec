@@ -33,7 +33,7 @@ use crate::{
   cli::args::{ModifierArgs, TracerEventArgs, TracingArgs},
   cmdbuilder::CommandBuilder,
   event::{filterable_event, ExecEvent, TracerEvent, TracerEventKind, TracerMessage},
-  inspect::{read_pathbuf, read_string, read_string_array},
+  inspect::{read_pathbuf, read_string, read_string_array, InspectError},
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{diff_env, read_comm, read_cwd, read_fd, read_interpreter_recursive, BaselineInfo},
   ptrace::{ptrace_getregs, ptrace_syscall},
@@ -476,34 +476,42 @@ impl Tracer {
       //              char *const _Nullable envp[],
       //              int flags);
       let dirfd = syscall_arg!(regs, 0) as i32;
-      let pathname = read_string(pid, syscall_arg!(regs, 1) as AddressType)?;
-      let pathname_is_empty = pathname.is_empty();
-      let pathname = PathBuf::from(pathname);
-      let argv = read_string_array(pid, syscall_arg!(regs, 2) as AddressType)?;
-      self.warn_if_argv_empty(&argv, pid)?;
-      let envp = read_string_array(pid, syscall_arg!(regs, 3) as AddressType)?;
       let flags = syscall_arg!(regs, 4) as i32;
-      let filename = match (
-        pathname.is_absolute(),
-        pathname_is_empty && ((flags & AT_EMPTY_PATH) != 0),
-      ) {
-        (true, _) => {
-          // If pathname is absolute, then dirfd is ignored.
-          pathname
+      let filename = match read_string(pid, syscall_arg!(regs, 1) as AddressType) {
+        Ok(pathname) => {
+          let pathname_is_empty = pathname.is_empty();
+          let pathname = PathBuf::from(pathname);
+          let filename = match (
+            pathname.is_absolute(),
+            pathname_is_empty && ((flags & AT_EMPTY_PATH) != 0),
+          ) {
+            (true, _) => {
+              // If pathname is absolute, then dirfd is ignored.
+              pathname
+            }
+            (false, true) => {
+              // If  pathname  is an empty string and the AT_EMPTY_PATH flag is specified, then the file descriptor dirfd
+              // specifies the file to be executed
+              read_fd(pid, dirfd)?
+            }
+            (false, false) => {
+              // pathname is relative to dirfd
+              let dir = read_fd(pid, dirfd)?;
+              dir.join(pathname)
+            }
+          };
+          Ok(filename)
         }
-        (false, true) => {
-          // If  pathname  is an empty string and the AT_EMPTY_PATH flag is specified, then the file descriptor dirfd
-          // specifies the file to be executed
-          read_fd(pid, dirfd)?
-        }
-        (false, false) => {
-          // pathname is relative to dirfd
-          let dir = read_fd(pid, dirfd)?;
-          dir.join(pathname)
-        }
+        Err(e) => Err(e),
       };
-      let interpreters = if self.printer.args.trace_interpreter {
-        read_interpreter_recursive(&filename)
+      self.warn_for_filename(&filename, pid)?;
+      let argv = read_string_array(pid, syscall_arg!(regs, 2) as AddressType);
+      self.warn_for_argv(&argv, pid)?;
+      let envp = read_string_array(pid, syscall_arg!(regs, 3) as AddressType);
+      self.warn_for_envp(&envp, pid)?;
+
+      let interpreters = if self.printer.args.trace_interpreter && filename.is_ok() {
+        read_interpreter_recursive(&filename.as_deref().unwrap())
       } else {
         vec![]
       };
@@ -516,12 +524,14 @@ impl Tracer {
       ));
     } else if syscallno == nix::libc::SYS_execve {
       log::trace!("pre execve {syscallno}",);
-      let filename = read_pathbuf(pid, syscall_arg!(regs, 0) as AddressType)?;
-      let argv = read_string_array(pid, syscall_arg!(regs, 1) as AddressType)?;
-      self.warn_if_argv_empty(&argv, pid)?;
-      let envp = read_string_array(pid, syscall_arg!(regs, 2) as AddressType)?;
-      let interpreters = if self.printer.args.trace_interpreter {
-        read_interpreter_recursive(&filename)
+      let filename = read_pathbuf(pid, syscall_arg!(regs, 0) as AddressType);
+      self.warn_for_filename(&filename, pid)?;
+      let argv = read_string_array(pid, syscall_arg!(regs, 1) as AddressType);
+      self.warn_for_argv(&argv, pid)?;
+      let envp = read_string_array(pid, syscall_arg!(regs, 2) as AddressType);
+      self.warn_for_envp(&envp, pid)?;
+      let interpreters = if self.printer.args.trace_interpreter && filename.is_ok() {
+        read_interpreter_recursive(&filename.as_deref().unwrap())
       } else {
         vec![]
       };
@@ -630,12 +640,60 @@ impl Tracer {
     ptrace_syscall(pid, Some(sig))
   }
 
-  fn warn_if_argv_empty(&self, argv: &[String], pid: Pid) -> color_eyre::Result<()> {
-    if argv.is_empty() && self.filter.intersects(TracerEventKind::Warning) {
-      self.tx.send(TracerEvent::Warning(TracerMessage {
-        pid: Some(pid),
-        msg: "Empty argv, the printed cmdline is not accurate!".to_string(),
-      }))?;
+  fn warn_for_argv(
+    &self,
+    argv: &Result<Vec<String>, InspectError>,
+    pid: Pid,
+  ) -> color_eyre::Result<()> {
+    if self.filter.intersects(TracerEventKind::Warning) {
+      match argv.as_deref() {
+        Ok(argv) => {
+          if argv.is_empty() {
+            self.tx.send(TracerEvent::Warning(TracerMessage {
+              pid: Some(pid),
+              msg: "Empty argv, the printed cmdline is not accurate!".to_string(),
+            }))?;
+          }
+        }
+        Err(e) => {
+          self.tx.send(TracerEvent::Warning(TracerMessage {
+            pid: Some(pid),
+            msg: format!("Failed to read argv: {:?}", e),
+          }))?;
+        }
+      }
+    }
+    Ok(())
+  }
+
+  fn warn_for_envp(
+    &self,
+    envp: &Result<Vec<String>, InspectError>,
+    pid: Pid,
+  ) -> color_eyre::Result<()> {
+    if self.filter.intersects(TracerEventKind::Warning) {
+      if let Err(e) = envp.as_deref() {
+        self.tx.send(TracerEvent::Warning(TracerMessage {
+          pid: Some(pid),
+          msg: format!("Failed to read envp: {:?}", e),
+        }))?;
+      }
+    }
+    Ok(())
+  }
+
+  fn warn_for_filename(
+    &self,
+    filename: &Result<PathBuf, InspectError>,
+    pid: Pid,
+  ) -> color_eyre::Result<()> {
+    if self.filter.intersects(TracerEventKind::Warning) {
+      if let Err(e) = filename.as_deref() {
+        self.tx.send(TracerEvent::Warning(TracerMessage {
+          pid: Some(pid),
+          msg: format!("Failed to read filename: {:?}", e),
+        }))?;
+      }
     }
     Ok(())
   }
@@ -655,7 +713,11 @@ impl Tracer {
       argv: exec_data.argv.clone(),
       envp: exec_data.envp.clone(),
       interpreter: exec_data.interpreters.clone(),
-      env_diff: diff_env(env, &exec_data.envp),
+      env_diff: exec_data
+        .envp
+        .as_deref()
+        .map(|envp| diff_env(&env, &envp))
+        .map_err(|e| *e),
       result,
     })
   }

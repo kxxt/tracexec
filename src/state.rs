@@ -2,7 +2,10 @@ use std::{collections::HashMap, ffi::CString, path::PathBuf, sync::Arc};
 
 use nix::unistd::Pid;
 
-use crate::proc::{read_argv, read_comm, Interpreter};
+use crate::{
+  inspect::InspectError,
+  proc::{read_argv, read_comm, Interpreter},
+};
 
 pub struct ProcessStateStore {
   processes: HashMap<Pid, Vec<ProcessState>>,
@@ -32,18 +35,18 @@ pub enum ProcessStatus {
 
 #[derive(Debug)]
 pub struct ExecData {
-  pub filename: PathBuf,
-  pub argv: Arc<Vec<String>>,
-  pub envp: Arc<Vec<String>>,
+  pub filename: Result<PathBuf, InspectError>,
+  pub argv: Arc<Result<Vec<String>, InspectError>>,
+  pub envp: Arc<Result<Vec<String>, InspectError>>,
   pub cwd: PathBuf,
   pub interpreters: Vec<Interpreter>,
 }
 
 impl ExecData {
   pub fn new(
-    filename: PathBuf,
-    argv: Vec<String>,
-    envp: Vec<String>,
+    filename: Result<PathBuf, InspectError>,
+    argv: Result<Vec<String>, InspectError>,
+    envp: Result<Vec<String>, InspectError>,
     cwd: PathBuf,
     interpreters: Vec<Interpreter>,
   ) -> Self {

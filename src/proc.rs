@@ -132,17 +132,14 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
 }
 
 pub fn parse_env_entry(item: &str) -> (&str, &str) {
-  let mut sep_loc = item
-    .as_bytes()
-    .iter()
-    .position(|&x| x == b'=')
-    .unwrap_or_else(|| {
-      log::warn!(
-        "Invalid envp entry: {:?}, assuming value to empty string!",
-        item
-      );
-      item.len()
-    });
+  log::trace!("Parsing envp entry: {:?}", item);
+  let Some(mut sep_loc) = item.as_bytes().iter().position(|&x| x == b'=') else {
+    log::warn!(
+      "Invalid envp entry: {:?}, assuming value to empty string!",
+      item
+    );
+    return (item, "");
+  };
   if sep_loc == 0 {
     // Find the next equal sign
     sep_loc = item

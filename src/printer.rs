@@ -8,6 +8,8 @@ use std::{
 
 use crate::{
   cli::args::{ModifierArgs, TracingArgs},
+  event::TracerEvent,
+  inspect::InspectError,
   proc::{diff_env, Interpreter},
   state::ProcessState,
 };
@@ -98,8 +100,10 @@ impl PrinterArgs {
 pub type PrinterOut = dyn Write + Send + Sync + 'static;
 
 enum DeferredWarningKind {
-  None,
   NoArgv0,
+  FailedReadingArgv(InspectError),
+  FailedReadingFilename(InspectError),
+  FailedReadingEnvp(InspectError),
 }
 
 struct DeferredWarnings {
@@ -109,9 +113,17 @@ struct DeferredWarnings {
 impl Drop for DeferredWarnings {
   fn drop(&mut self) {
     match self.warning {
-      DeferredWarningKind::None => (),
       DeferredWarningKind::NoArgv0 => {
         log::warn!("No argv[0] provided! The printed commandline might be incorrect!")
+      }
+      DeferredWarningKind::FailedReadingArgv(e) => {
+        log::warn!("Failed to read argv: {}", e)
+      }
+      DeferredWarningKind::FailedReadingFilename(e) => {
+        log::warn!("Failed to read filename: {}", e)
+      }
+      DeferredWarningKind::FailedReadingEnvp(e) => {
+        log::warn!("Failed to read envp: {}", e)
       }
     }
   }
@@ -224,13 +236,44 @@ impl Printer {
         write!(out, "<{}>", state.comm.cyan())?;
       }
       write!(out, ":")?;
-      if self.args.trace_filename {
-        write!(out, " {:?}", exec_data.filename)?;
+
+      let mut _deferred_warnings = vec![];
+
+      match exec_data.filename.as_ref() {
+        Ok(filename) => {
+          if self.args.trace_filename {
+            write!(out, " {:?}", filename)?;
+          }
+        }
+        Err(e) => {
+          write!(
+            out,
+            " {}",
+            format!("[Failed to read filename: {e}]")
+              .bright_red()
+              .blink()
+              .bold()
+          )?;
+          _deferred_warnings.push(DeferredWarnings {
+            warning: DeferredWarningKind::FailedReadingFilename(*e),
+          });
+        }
       }
-      if self.args.trace_argv {
-        write!(out, " ")?;
-        list_printer.print_string_list(out, &exec_data.argv)?;
+
+      match exec_data.argv.as_ref() {
+        Err(e) => {
+          _deferred_warnings.push(DeferredWarnings {
+            warning: DeferredWarningKind::FailedReadingArgv(*e),
+          });
+        }
+        Ok(argv) => {
+          if self.args.trace_argv {
+            write!(out, " ")?;
+            list_printer.print_string_list(out, argv)?;
+          }
+        }
       }
+
       if self.args.trace_cwd {
         write!(out, " {} {:?}", "at".purple(), exec_data.cwd)?;
       }
@@ -255,149 +298,187 @@ impl Printer {
           }
         }
       }
-      match self.args.trace_env {
-        EnvPrintFormat::Diff => {
-          // TODO: make it faster
-          //       This is mostly a proof of concept
-          write!(out, " {} ", "with".purple())?;
-          list_printer.begin(out)?;
-          let env = env.clone();
-          let mut first_item_written = false;
-          let mut write_separator = |out: &mut dyn Write| -> io::Result<()> {
-            if first_item_written {
-              list_printer.comma(out)?;
-            } else {
-              first_item_written = true;
+      match exec_data.envp.as_ref() {
+        Ok(envp) => {
+          match self.args.trace_env {
+            EnvPrintFormat::Diff => {
+              // TODO: make it faster
+              //       This is mostly a proof of concept
+              write!(out, " {} ", "with".purple())?;
+              list_printer.begin(out)?;
+              let env = env.clone();
+              let mut first_item_written = false;
+              let mut write_separator = |out: &mut dyn Write| -> io::Result<()> {
+                if first_item_written {
+                  list_printer.comma(out)?;
+                } else {
+                  first_item_written = true;
+                }
+                Ok(())
+              };
+
+              let diff = diff_env(&env, envp);
+              for (k, v) in diff.added.into_iter() {
+                write_separator(out)?;
+                write!(
+                  out,
+                  "{}{:?}{}{:?}",
+                  "+".bright_green().bold(),
+                  k.green(),
+                  "=".bright_green().bold(),
+                  v.green()
+                )?;
+              }
+              for (k, v) in diff.modified.into_iter() {
+                write_separator(out)?;
+                write!(
+                  out,
+                  "{}{:?}{}{:?}",
+                  "M".bright_yellow().bold(),
+                  k.yellow(),
+                  "=".bright_yellow().bold(),
+                  v.bright_blue()
+                )?;
+              }
+              // Now we have the tracee removed entries in env
+              for k in diff.removed.into_iter() {
+                write_separator(out)?;
+                write!(
+                  out,
+                  "{}{:?}{}{:?}",
+                  "-".bright_red().bold(),
+                  k.bright_red().strikethrough(),
+                  "=".bright_red().strikethrough(),
+                  env.get(&k).unwrap().bright_red().strikethrough()
+                )?;
+              }
+              list_printer.end(out)?;
+              // Avoid trailing color
+              // https://unix.stackexchange.com/questions/212933/background-color-whitespace-when-end-of-the-terminal-reached
+              if owo_colors::control::should_colorize() {
+                write!(out, "\x1B[49m\x1B[K")?;
+              }
             }
-            Ok(())
-          };
-          let diff = diff_env(&env, &exec_data.envp);
-          for (k, v) in diff.added.into_iter() {
-            write_separator(out)?;
-            write!(
-              out,
-              "{}{:?}{}{:?}",
-              "+".bright_green().bold(),
-              k.green(),
-              "=".bright_green().bold(),
-              v.green()
-            )?;
-          }
-          for (k, v) in diff.modified.into_iter() {
-            write_separator(out)?;
-            write!(
-              out,
-              "{}{:?}{}{:?}",
-              "M".bright_yellow().bold(),
-              k.yellow(),
-              "=".bright_yellow().bold(),
-              v.bright_blue()
-            )?;
-          }
-          // Now we have the tracee removed entries in env
-          for k in diff.removed.into_iter() {
-            write_separator(out)?;
-            write!(
-              out,
-              "{}{:?}{}{:?}",
-              "-".bright_red().bold(),
-              k.bright_red().strikethrough(),
-              "=".bright_red().strikethrough(),
-              env.get(&k).unwrap().bright_red().strikethrough()
-            )?;
-          }
-          list_printer.end(out)?;
-          // Avoid trailing color
-          // https://unix.stackexchange.com/questions/212933/background-color-whitespace-when-end-of-the-terminal-reached
-          if owo_colors::control::should_colorize() {
-            write!(out, "\x1B[49m\x1B[K")?;
+            EnvPrintFormat::Raw => {
+              write!(out, " {} ", "with".purple())?;
+              list_printer.print_string_list(out, envp)?;
+            }
+            EnvPrintFormat::None => (),
           }
         }
-        EnvPrintFormat::Raw => {
-          write!(out, " {} ", "with".purple())?;
-          list_printer.print_string_list(out, &exec_data.envp)?;
+        Err(e) => {
+          match self.args.trace_env {
+            EnvPrintFormat::Diff | EnvPrintFormat::Raw => {
+              write!(
+                out,
+                " {} {}",
+                "with".purple(),
+                format!("[Failed to read envp: {e}]")
+                  .bright_red()
+                  .blink()
+                  .bold()
+              )?;
+            }
+            EnvPrintFormat::None => {}
+          }
+          _deferred_warnings.push(DeferredWarnings {
+            warning: DeferredWarningKind::FailedReadingEnvp(*e),
+          });
         }
-        EnvPrintFormat::None => (),
       }
-      let mut _deferred_warning = DeferredWarnings {
-        warning: DeferredWarningKind::None,
-      };
       if self.args.print_cmdline {
         write!(out, " {}", "cmdline".purple())?;
         write!(out, " env")?;
-        if let Some(arg0) = exec_data.argv.first() {
-          if exec_data.filename.as_os_str() != OsStr::new(arg0) {
+        match exec_data.argv.as_ref() {
+          Ok(argv) => {
+            if let Some(arg0) = argv.first() {
+              // filename warning is already handled
+              if let Ok(filename) = exec_data.filename.as_ref() {
+                if filename.as_os_str() != OsStr::new(arg0) {
+                  write!(
+                    out,
+                    " {} {}",
+                    "-a".bright_white().italic(),
+                    escape_str_for_bash!(arg0).bright_white().italic()
+                  )?;
+                }
+              }
+            } else {
+              _deferred_warnings.push(DeferredWarnings {
+                warning: DeferredWarningKind::NoArgv0,
+              });
+            }
+            if cwd != exec_data.cwd {
+              if self.args.color >= ColorLevel::Normal {
+                write!(
+                  out,
+                  " -C {}",
+                  escape_str_for_bash!(&exec_data.cwd).bright_cyan()
+                )?;
+              } else {
+                write!(out, " -C {}", escape_str_for_bash!(&exec_data.cwd))?;
+              }
+            }
+            // envp warning is already handled
+            if let Ok(envp) = exec_data.envp.as_ref() {
+              let diff = diff_env(env, &envp);
+              // Now we have the tracee removed entries in env
+              for k in diff.removed.into_iter() {
+                if self.args.color >= ColorLevel::Normal {
+                  write!(
+                    out,
+                    " {}{}",
+                    "-u ".bright_red(),
+                    escape_str_for_bash!(&k).bright_red()
+                  )?;
+                } else {
+                  write!(out, " -u={}", escape_str_for_bash!(&k))?;
+                }
+              }
+              if self.args.color >= ColorLevel::Normal {
+                for (k, v) in diff.added.into_iter() {
+                  write!(
+                    out,
+                    " {}{}{}",
+                    escape_str_for_bash!(&k).green(),
+                    "=".green().bold(),
+                    escape_str_for_bash!(&v).green()
+                  )?;
+                }
+                for (k, v) in diff.modified.into_iter() {
+                  write!(
+                    out,
+                    " {}{}{}",
+                    escape_str_for_bash!(&k),
+                    "=".bright_yellow().bold(),
+                    escape_str_for_bash!(&v).bright_blue()
+                  )?;
+                }
+              } else {
+                for (k, v) in chain!(diff.added.into_iter(), diff.modified.into_iter()) {
+                  write!(
+                    out,
+                    " {}={}",
+                    escape_str_for_bash!(&k),
+                    escape_str_for_bash!(&v)
+                  )?;
+                }
+              }
+            }
             write!(
               out,
-              " {} {}",
-              "-a".bright_white().italic(),
-              escape_str_for_bash!(arg0).bright_white().italic()
+              " {}",
+              escape_str_for_bash!(TracerEvent::filename_to_cow(&exec_data.filename).as_ref())
             )?;
+            for arg in argv.iter().skip(1) {
+              write!(out, " {}", escape_str_for_bash!(arg))?;
+            }
           }
-        } else {
-          _deferred_warning.warning = DeferredWarningKind::NoArgv0;
-        }
-        if cwd != exec_data.cwd {
-          if self.args.color >= ColorLevel::Normal {
-            write!(
-              out,
-              " -C {}",
-              escape_str_for_bash!(&exec_data.cwd).bright_cyan()
-            )?;
-          } else {
-            write!(out, " -C {}", escape_str_for_bash!(&exec_data.cwd))?;
+          Err(e) => {
+            _deferred_warnings.push(DeferredWarnings {
+              warning: DeferredWarningKind::FailedReadingArgv(*e),
+            });
           }
-        }
-        let diff = diff_env(env, &exec_data.envp);
-        // Now we have the tracee removed entries in env
-        for k in diff.removed.into_iter() {
-          if self.args.color >= ColorLevel::Normal {
-            write!(
-              out,
-              " {}{}",
-              "-u ".bright_red(),
-              escape_str_for_bash!(&k).bright_red()
-            )?;
-          } else {
-            write!(out, " -u={}", escape_str_for_bash!(&k))?;
-          }
-        }
-        if self.args.color >= ColorLevel::Normal {
-          for (k, v) in diff.added.into_iter() {
-            write!(
-              out,
-              " {}{}{}",
-              escape_str_for_bash!(&k).green(),
-              "=".green().bold(),
-              escape_str_for_bash!(&v).green()
-            )?;
-          }
-          for (k, v) in diff.modified.into_iter() {
-            write!(
-              out,
-              " {}{}{}",
-              escape_str_for_bash!(&k),
-              "=".bright_yellow().bold(),
-              escape_str_for_bash!(&v).bright_blue()
-            )?;
-          }
-        } else {
-          for (k, v) in chain!(diff.added.into_iter(), diff.modified.into_iter()) {
-            write!(
-              out,
-              " {}={}",
-              escape_str_for_bash!(&k),
-              escape_str_for_bash!(&v)
-            )?;
-          }
-        }
-        write!(
-          out,
-          " {}",
-          escape_str_for_bash!(exec_data.filename.to_string_lossy().as_ref())
-        )?;
-        for arg in exec_data.argv.iter().skip(1) {
-          write!(out, " {}", escape_str_for_bash!(arg))?;
         }
       }
       if result == 0 {
