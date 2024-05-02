@@ -228,7 +228,7 @@ impl Widget for &mut EventList {
 impl EventList {
   /// Returns the index(absolute) of the last item in the window
   fn last_item_in_window_absolute(&self) -> Option<usize> {
-    if self.events.len() == 0 {
+    if self.events.is_empty() {
       return None;
     }
     Some(
@@ -242,7 +242,7 @@ impl EventList {
 
   /// Returns the index(relative) of the last item in the window
   fn last_item_in_window_relative(&self) -> Option<usize> {
-    if self.events.len() > 0 {
+    if !self.events.is_empty() {
       Some(
         self
           .window
@@ -256,13 +256,13 @@ impl EventList {
   }
 
   fn select_last(&mut self) {
-    if self.events.len() > 0 {
+    if !self.events.is_empty() {
       self.state.select(self.last_item_in_window_relative());
     }
   }
 
   fn select_first(&mut self) {
-    if self.events.len() > 0 {
+    if !self.events.is_empty() {
       self.state.select(Some(0));
     }
   }
@@ -270,7 +270,7 @@ impl EventList {
   /// Try to slide down the window by one item
   /// Returns true if the window was slid down, false otherwise
   pub fn next_window(&mut self) -> bool {
-    if self.events.len() == 0 {
+    if self.events.is_empty() {
       return false;
     }
     if self.window.1 < self.events.len() {
@@ -316,7 +316,7 @@ impl EventList {
         .min(self.nr_items_in_window.saturating_sub(1)),
       ),
       None => {
-        if self.events.len() > 0 {
+        if !self.events.is_empty() {
           Some(0)
         } else {
           None
@@ -335,7 +335,7 @@ impl EventList {
         i - 1
       }),
       None => {
-        if self.events.len() > 0 {
+        if !self.events.is_empty() {
           Some(0)
         } else {
           None
@@ -442,7 +442,7 @@ impl EventList {
   }
 
   pub fn scroll_to_bottom(&mut self) {
-    if self.events.len() == 0 {
+    if self.events.is_empty() {
       return;
     }
     let old_window = self.window;

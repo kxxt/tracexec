@@ -129,9 +129,9 @@ impl From<ParseFloatError> for ParseFrameRateError {
 fn frame_rate_parser(s: &str) -> Result<f64, ParseFrameRateError> {
   let v = s.parse::<f64>()?;
   if v < 0.0 || v.is_nan() || v.is_infinite() {
-    return Err(ParseFrameRateError::InvalidFrameRate);
+    Err(ParseFrameRateError::InvalidFrameRate)
   } else if v < 5.0 {
-    return Err(ParseFrameRateError::FrameRateTooLow);
+    Err(ParseFrameRateError::FrameRateTooLow)
   } else {
     Ok(v)
   }

@@ -3,7 +3,7 @@ use std::{
   collections::HashMap,
   ffi::OsStr,
   io::{self, Write},
-  path::{Path, PathBuf},
+  path::Path,
 };
 
 use crate::{
@@ -421,7 +421,7 @@ impl Printer {
             }
             // envp warning is already handled
             if let Ok(envp) = exec_data.envp.as_ref() {
-              let diff = diff_env(env, &envp);
+              let diff = diff_env(env, envp);
               // Now we have the tracee removed entries in env
               for k in diff.removed.into_iter() {
                 if self.args.color >= ColorLevel::Normal {

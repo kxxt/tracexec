@@ -306,9 +306,9 @@ impl TracerEvent {
     };
     let mut result = Vec::with_capacity(argv.iter().map(|s| s.len() + 3).sum::<usize>() + 2);
     let list_printer = ListPrinter::new(crate::printer::ColorLevel::Less);
-    list_printer.print_string_list(&mut result, &argv).unwrap();
+    list_printer.print_string_list(&mut result, argv).unwrap();
     // SAFETY: argv is printed in debug format, which is always UTF-8
-    unsafe { String::from_utf8_unchecked(result) }.into()
+    unsafe { String::from_utf8_unchecked(result) }
   }
 
   pub fn interpreters_to_string(interpreters: &[Interpreter]) -> String {
@@ -333,7 +333,7 @@ impl TracerEvent {
       }
     }
     // SAFETY: interpreters is printed in debug format, which is always UTF-8
-    unsafe { String::from_utf8_unchecked(result) }.into()
+    unsafe { String::from_utf8_unchecked(result) }
   }
 }
 

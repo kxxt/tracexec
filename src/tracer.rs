@@ -511,7 +511,7 @@ impl Tracer {
       self.warn_for_envp(&envp, pid)?;
 
       let interpreters = if self.printer.args.trace_interpreter && filename.is_ok() {
-        read_interpreter_recursive(&filename.as_deref().unwrap())
+        read_interpreter_recursive(filename.as_deref().unwrap())
       } else {
         vec![]
       };
@@ -531,7 +531,7 @@ impl Tracer {
       let envp = read_string_array(pid, syscall_arg!(regs, 2) as AddressType);
       self.warn_for_envp(&envp, pid)?;
       let interpreters = if self.printer.args.trace_interpreter && filename.is_ok() {
-        read_interpreter_recursive(&filename.as_deref().unwrap())
+        read_interpreter_recursive(filename.as_deref().unwrap())
       } else {
         vec![]
       };
@@ -716,7 +716,7 @@ impl Tracer {
       env_diff: exec_data
         .envp
         .as_deref()
-        .map(|envp| diff_env(&env, &envp))
+        .map(|envp| diff_env(env, envp))
         .map_err(|e| *e),
       result,
     })

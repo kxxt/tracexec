@@ -2,7 +2,7 @@ use nix::libc::execve;
 
 fn main() {
   let i = std::env::args()
-    .nth(0)
+    .next()
     .unwrap_or_else(|| "0".to_string())
     .parse()
     .unwrap_or(0);
