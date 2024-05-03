@@ -27,6 +27,7 @@ use nix::{
   },
 };
 use tokio::sync::mpsc::UnboundedSender;
+use tracing::trace;
 
 use crate::{
   arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
@@ -115,7 +116,8 @@ impl Tracer {
       tx,
       user,
       filter: {
-        let mut filter = tracer_event_args.filter();
+        let mut filter = tracer_event_args.filter()?;
+        trace!("Event filter: {:?}", filter);
         if mode == TracerMode::Cli {
           // FIXME: In logging mode, we rely on root child exit event to exit the process
           //        with the same exit code as the root child. It is not printed in logging mode.

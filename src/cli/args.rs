@@ -1,4 +1,5 @@
-use clap::Args;
+use clap::{ArgAction, Args, ValueEnum};
+use color_eyre::eyre::bail;
 use enumflags2::BitFlags;
 
 use crate::event::TracerEventKind;
@@ -30,25 +31,68 @@ pub struct ModifierArgs {
 #[derive(Args, Debug, Default)]
 pub struct TracerEventArgs {
   // TODO:
-  //   1. This isn't really compatible with logging mode
-  //   2. Option to exclude some events instead of including some
-  //   3. Option to include all events
+  //   This isn't really compatible with logging mode
   #[clap(
     long,
-    value_delimiter = ',',
-    num_args = 1..,
-    help = "Only show events in this filter",
-    default_values_t = [TracerEventKind::Warning, TracerEventKind::Error, TracerEventKind::Exec, TracerEventKind::RootChildExit]
+    help = "Set the default filter to show all events. This option can be used in combination with --filter-exclude to exclude some unwanted events.",
+    conflicts_with = "filter"
   )]
-  pub filter: Vec<TracerEventKind>,
+  pub show_all_events: bool,
+  #[clap(
+    long,
+    help = "Set the default filter for events.",
+    value_parser = tracer_event_filter_parser,
+    default_value = "warning,error,exec,root-child-exit"
+  )]
+  pub filter: BitFlags<TracerEventKind>,
+  #[clap(
+    long,
+    help = "Aside from the default filter, also include the events specified here.",
+    required = false,
+    value_parser = tracer_event_filter_parser,
+    default_value_t = BitFlags::empty()
+  )]
+  pub filter_include: BitFlags<TracerEventKind>,
+  #[clap(
+    long,
+    help = "Exclude the events specified here from the default filter.",
+    value_parser = tracer_event_filter_parser,
+    default_value_t = BitFlags::empty()
+  )]
+  pub filter_exclude: BitFlags<TracerEventKind>,
+}
+
+fn tracer_event_filter_parser(filter: &str) -> Result<BitFlags<TracerEventKind>, String> {
+  let mut result = BitFlags::empty();
+  if filter == "<empty>" {
+    return Ok(result);
+  }
+  for f in filter.split(',') {
+    let kind = TracerEventKind::from_str(f, false)?;
+    if result.contains(kind) {
+      return Err(format!(
+        "Event kind '{}' is already included in the filter",
+        kind
+      ));
+    }
+    result |= kind;
+  }
+  Ok(result)
 }
 
 impl TracerEventArgs {
-  pub fn filter(&self) -> BitFlags<TracerEventKind> {
-    self
-      .filter
-      .iter()
-      .fold(BitFlags::empty(), |acc, f| acc | *f)
+  pub fn filter(&self) -> color_eyre::Result<BitFlags<TracerEventKind>> {
+    let default_filter = if self.show_all_events {
+      BitFlags::all()
+    } else {
+      self.filter
+    };
+    if self.filter_include.intersects(self.filter_exclude) {
+      bail!("filter_include and filter_exclude cannot contain common events");
+    }
+    let mut filter = default_filter | self.filter_include;
+    filter.remove(self.filter_exclude);
+    Ok(filter)
   }
 }
 
