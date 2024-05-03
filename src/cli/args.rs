@@ -13,6 +13,18 @@ pub struct ModifierArgs {
   pub seccomp_bpf: SeccompBpf,
   #[clap(long, help = "Only show successful calls", default_value_t = false)]
   pub successful_only: bool,
+  #[clap(
+    long,
+    help = "[Experimental] Try to reproduce file descriptors in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.",
+    default_value_t = false
+  )]
+  pub fd_in_cmdline: bool,
+  #[clap(
+    long,
+    help = "[Experimental] Try to reproduce stdio in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.",
+    default_value_t = false
+  )]
+  pub stdio_in_cmdline: bool,
 }
 
 #[derive(Args, Debug, Default)]

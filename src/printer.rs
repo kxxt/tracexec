@@ -63,6 +63,8 @@ pub struct PrinterArgs {
   pub trace_filename: bool,
   pub decode_errno: bool,
   pub color: ColorLevel,
+  pub stdio_in_cmdline: bool,
+  pub fd_in_cmdline: bool,
 }
 
 impl PrinterArgs {
@@ -89,8 +91,16 @@ impl PrinterArgs {
       ) {
         (false, _, true, false) => FdPrintFormat::Raw,
         (_, true, _, _) => FdPrintFormat::None,
-        // The default is diff fd
-        _ => FdPrintFormat::Diff,
+        (true, _, _, _) => FdPrintFormat::Diff,
+        _ => {
+          // The default is diff fd,
+          // but if fd_in_cmdline is enabled, we disable diff fd by default
+          if modifier_args.fd_in_cmdline {
+            FdPrintFormat::None
+          } else {
+            FdPrintFormat::Diff
+          }
+        }
       },
       trace_cwd: tracing_args.show_cwd,
       print_cmdline: tracing_args.show_cmdline,
@@ -113,6 +123,8 @@ impl PrinterArgs {
         (false, true) => ColorLevel::Less,
         _ => unreachable!(),
       },
+      stdio_in_cmdline: modifier_args.stdio_in_cmdline || modifier_args.fd_in_cmdline,
+      fd_in_cmdline: modifier_args.fd_in_cmdline,
     }
   }
 }
@@ -492,6 +504,52 @@ impl Printer {
       if self.args.print_cmdline {
         write!(out, " {}", "cmdline".purple())?;
         write!(out, " env")?;
+
+        if self.args.stdio_in_cmdline {
+          let fdinfo = exec_data.fdinfo.stdin();
+          let fdinfo_orig = self.baseline.fdinfo.stdin();
+          if fdinfo.path != fdinfo_orig.path {
+            write!(
+              out,
+              " {}{}",
+              "<".bright_yellow().bold(),
+              escape_str_for_bash!(&fdinfo.path).bright_yellow().bold()
+            )?;
+          }
+          let fdinfo = exec_data.fdinfo.stdout();
+          let fdinfo_orig = self.baseline.fdinfo.stdout();
+          if fdinfo.path != fdinfo_orig.path {
+            write!(
+              out,
+              " {}{}",
+              ">".bright_yellow().bold(),
+              escape_str_for_bash!(&fdinfo.path).bright_yellow().bold()
+            )?;
+          }
+          let fdinfo = exec_data.fdinfo.stderr();
+          let fdinfo_orig = self.baseline.fdinfo.stderr();
+          if fdinfo.path != fdinfo_orig.path {
+            write!(
+              out,
+              " {}{}",
+              "2>".bright_yellow().bold(),
+              escape_str_for_bash!(&fdinfo.path).bright_yellow().bold()
+            )?;
+          }
+        }
+
+        if self.args.fd_in_cmdline {
+          for (fd, fdinfo) in exec_data.fdinfo.fdinfo.iter() {
+            write!(
+              out,
+              " {}{}{}",
+              fd.bright_green().bold(),
+              ">".bright_green().bold(),
+              escape_str_for_bash!(&fdinfo.path).bright_green().bold()
+            )?;
+          }
+        }
+
         match exec_data.argv.as_ref() {
           Ok(argv) => {
             if let Some(arg0) = argv.first() {
