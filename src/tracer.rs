@@ -729,6 +729,7 @@ impl Tracer {
         .map(|envp| diff_env(env, envp))
         .map_err(|e| *e),
       result,
+      fdinfo: exec_data.fdinfo.clone(),
     })
   }
 }

@@ -29,7 +29,7 @@ use ratatui::{
   },
 };
 
-use crate::{event::TracerEvent, proc::BaselineInfo};
+use crate::{cli::args::ModifierArgs, event::TracerEvent, proc::BaselineInfo};
 
 use super::partial_line::PartialLine;
 
@@ -54,10 +54,11 @@ pub struct EventList {
   pub max_window_len: usize,
   pub baseline: Arc<BaselineInfo>,
   pub follow: bool,
+  pub modifier_args: ModifierArgs,
 }
 
 impl EventList {
-  pub fn new(baseline: BaselineInfo, follow: bool) -> Self {
+  pub fn new(baseline: BaselineInfo, follow: bool, modifier_args: ModifierArgs) -> Self {
     Self {
       state: ListState::default(),
       events: vec![],
@@ -73,6 +74,7 @@ impl EventList {
       should_refresh_lines_cache: true,
       should_refresh_list_cache: true,
       list_cache: List::default(),
+      modifier_args,
     }
   }
 
@@ -140,7 +142,7 @@ impl Widget for &mut EventList {
       // Initialize the line cache, which will be kept in sync by the navigation methods
       self.lines_cache = events_in_window
         .iter()
-        .map(|evt| evt.to_tui_line(&self.baseline, false))
+        .map(|evt| evt.to_tui_line(&self.baseline, false, &self.modifier_args))
         .collect();
     }
     self.nr_items_in_window = events_in_window.len();
@@ -151,7 +153,7 @@ impl Widget for &mut EventList {
         tracing::debug!("Pushing new item to line cache");
         self
           .lines_cache
-          .push_back(evt.to_tui_line(&self.baseline, false));
+          .push_back(evt.to_tui_line(&self.baseline, false, &self.modifier_args));
       }
     }
     // tracing::debug!(
@@ -278,8 +280,11 @@ impl EventList {
       self.window.1 += 1;
       self.lines_cache.pop_front();
       self.lines_cache.push_back(
-        self.events[self.last_item_in_window_absolute().unwrap()]
-          .to_tui_line(&self.baseline, false),
+        self.events[self.last_item_in_window_absolute().unwrap()].to_tui_line(
+          &self.baseline,
+          false,
+          &self.modifier_args,
+        ),
       );
       self.should_refresh_list_cache = true;
       true
@@ -295,7 +300,11 @@ impl EventList {
       self.lines_cache.pop_back();
       self
         .lines_cache
-        .push_front(self.events[self.window.0].to_tui_line(&self.baseline, false));
+        .push_front(self.events[self.window.0].to_tui_line(
+          &self.baseline,
+          false,
+          &self.modifier_args,
+        ));
       self.should_refresh_list_cache = true;
       true
     } else {
@@ -455,8 +464,11 @@ impl EventList {
       // Special optimization for follow mode where scroll to bottom is called continuously
       self.lines_cache.pop_front();
       self.lines_cache.push_back(
-        self.events[self.last_item_in_window_absolute().unwrap()]
-          .to_tui_line(&self.baseline, false),
+        self.events[self.last_item_in_window_absolute().unwrap()].to_tui_line(
+          &self.baseline,
+          false,
+          &self.modifier_args,
+        ),
       );
       self.should_refresh_list_cache = true;
     } else {

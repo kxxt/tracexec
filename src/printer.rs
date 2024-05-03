@@ -123,7 +123,7 @@ impl PrinterArgs {
         (false, true) => ColorLevel::Less,
         _ => unreachable!(),
       },
-      stdio_in_cmdline: modifier_args.stdio_in_cmdline || modifier_args.fd_in_cmdline,
+      stdio_in_cmdline: modifier_args.stdio_in_cmdline,
       fd_in_cmdline: modifier_args.fd_in_cmdline,
     }
   }

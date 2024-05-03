@@ -42,7 +42,7 @@ pub fn read_cwd(pid: Pid) -> std::io::Result<PathBuf> {
   Ok(buf)
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct FileDescriptorInfoCollection {
   pub fdinfo: BTreeMap<c_int, FileDescriptorInfo>,
 }
@@ -75,7 +75,7 @@ impl FileDescriptorInfoCollection {
   }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct FileDescriptorInfo {
   pub fd: c_int,
   pub path: PathBuf,

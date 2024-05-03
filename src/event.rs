@@ -16,9 +16,10 @@ use tokio::sync::mpsc::{self};
 
 use crate::{
   action::CopyTarget,
+  cli::args::ModifierArgs,
   inspect::InspectError,
   printer::{escape_str_for_bash, ListPrinter},
-  proc::{BaselineInfo, EnvDiff, Interpreter},
+  proc::{BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter},
 };
 
 #[derive(Debug, Clone, Display, PartialEq)]
@@ -67,6 +68,7 @@ pub struct ExecEvent {
   pub envp: Arc<Result<Vec<String>, InspectError>>,
   pub interpreter: Vec<Interpreter>,
   pub env_diff: Result<EnvDiff, InspectError>,
+  pub fdinfo: Arc<FileDescriptorInfoCollection>,
   pub result: i64,
 }
 
@@ -90,7 +92,12 @@ impl TracerEvent {
   /// Convert the event to a TUI line
   ///
   /// This method is resource intensive and the caller should cache the result
-  pub fn to_tui_line(&self, baseline: &BaselineInfo, cmdline_only: bool) -> Line<'static> {
+  pub fn to_tui_line(
+    &self,
+    baseline: &BaselineInfo,
+    cmdline_only: bool,
+    modifier: &ModifierArgs,
+  ) -> Line<'static> {
     match self {
       TracerEvent::Info(TracerMessage { ref msg, pid }) => chain!(
         pid
@@ -136,6 +143,7 @@ impl TracerEvent {
           interpreter: _,
           env_diff,
           result,
+          fdinfo,
           ..
         } = exec.as_ref();
         let filename_or_err = match filename {
@@ -161,6 +169,80 @@ impl TracerEvent {
           vec!["env".fg(Color::Magenta)]
         };
         let space: Span = " ".into();
+
+        // Handle file descriptors
+
+        if modifier.stdio_in_cmdline {
+          let fdinfo_orig = baseline.fdinfo.stdin().unwrap();
+          if let Some(fdinfo) = fdinfo.stdin() {
+            if fdinfo.path != fdinfo_orig.path {
+              spans.push(space.clone());
+              spans.push("<".light_yellow().bold());
+              spans.push(
+                escape_str_for_bash!(&fdinfo.path)
+                  .into_owned()
+                  .light_yellow()
+                  .bold(),
+              );
+            }
+          } else {
+            // stdin is closed
+            spans.push(space.clone());
+            spans.push("0>&-".light_red().bold());
+          }
+          let fdinfo_orig = baseline.fdinfo.stdout().unwrap();
+          if let Some(fdinfo) = fdinfo.stdout() {
+            if fdinfo.path != fdinfo_orig.path {
+              spans.push(space.clone());
+              spans.push(">".light_yellow().bold());
+              spans.push(
+                escape_str_for_bash!(&fdinfo.path)
+                  .into_owned()
+                  .light_yellow()
+                  .bold(),
+              )
+            }
+          } else {
+            // stdout is closed
+            spans.push(space.clone());
+            spans.push("1>&-".light_red().bold());
+          }
+          let fdinfo_orig = baseline.fdinfo.stderr().unwrap();
+          if let Some(fdinfo) = fdinfo.stderr() {
+            if fdinfo.path != fdinfo_orig.path {
+              spans.push(space.clone());
+              spans.push("2>".light_yellow().bold());
+              spans.push(
+                escape_str_for_bash!(&fdinfo.path)
+                  .into_owned()
+                  .light_yellow()
+                  .bold(),
+              );
+            }
+          } else {
+            // stderr is closed
+            spans.push(space.clone());
+            spans.push("2>&-".light_red().bold());
+          }
+        }
+
+        if modifier.fd_in_cmdline {
+          for (&fd, fdinfo) in fdinfo.fdinfo.iter() {
+            if fd < 3 {
+              continue;
+            }
+            spans.push(space.clone());
+            spans.push(fd.to_string().light_green().bold());
+            spans.push(">".light_green().bold());
+            spans.push(
+              escape_str_for_bash!(&fdinfo.path)
+                .into_owned()
+                .light_green()
+                .bold(),
+            )
+          }
+        }
+
         // Handle argv[0]
         let _ = argv.as_deref().inspect(|v| {
           v.first().inspect(|&arg0| {
@@ -248,16 +330,27 @@ impl TracerEvent {
 }
 
 impl TracerEvent {
-  pub fn text_for_copy<'a>(&'a self, baseline: &BaselineInfo, target: CopyTarget) -> Cow<'a, str> {
+  pub fn text_for_copy<'a>(
+    &'a self,
+    baseline: &BaselineInfo,
+    target: CopyTarget,
+    modifier_args: &ModifierArgs,
+  ) -> Cow<'a, str> {
     if let CopyTarget::Line = target {
-      return self.to_tui_line(baseline, false).to_string().into();
+      return self
+        .to_tui_line(baseline, false, modifier_args)
+        .to_string()
+        .into();
     }
     // Other targets are only available for Exec events
     let TracerEvent::Exec(event) = self else {
       panic!("Copy target {:?} is only available for Exec events", target);
     };
     match target {
-      CopyTarget::Commandline(_) => self.to_tui_line(baseline, true).to_string().into(),
+      CopyTarget::Commandline(_) => self
+        .to_tui_line(baseline, true, modifier_args)
+        .to_string()
+        .into(),
       CopyTarget::Env => match event.envp.as_ref() {
         Ok(envp) => envp.iter().join("\n").into(),
         Err(e) => format!("[failed to read envp: {e}]").into(),

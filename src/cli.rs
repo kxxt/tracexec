@@ -1,6 +1,6 @@
 use std::{num::ParseFloatError, path::PathBuf};
 
-use clap::{ArgAction, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 
 use crate::tui::app::AppLayout;
 

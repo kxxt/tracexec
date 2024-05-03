@@ -1,4 +1,4 @@
-use clap::{ArgAction, Args, ValueEnum};
+use clap::{Args, ValueEnum};
 use color_eyre::eyre::bail;
 use enumflags2::BitFlags;
 
@@ -7,7 +7,7 @@ use crate::event::TracerEventKind;
 #[cfg(feature = "seccomp-bpf")]
 use super::options::SeccompBpf;
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Default, Clone)]
 pub struct ModifierArgs {
   #[cfg(feature = "seccomp-bpf")]
   #[clap(long, help = "seccomp-bpf filtering option", default_value_t = SeccompBpf::Auto)]
@@ -26,6 +26,13 @@ pub struct ModifierArgs {
     default_value_t = false
   )]
   pub stdio_in_cmdline: bool,
+}
+
+impl ModifierArgs {
+  pub fn processed(mut self) -> Self {
+    self.stdio_in_cmdline = self.fd_in_cmdline || self.stdio_in_cmdline;
+    self
+  }
 }
 
 #[derive(Args, Debug, Default)]

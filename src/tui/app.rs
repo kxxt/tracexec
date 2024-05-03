@@ -92,7 +92,7 @@ impl App {
       ActivePane::Events
     };
     Ok(Self {
-      event_list: EventList::new(baseline, follow),
+      event_list: EventList::new(baseline, follow, modifier_args.to_owned()),
       printer_args: PrinterArgs::from_cli(tracing_args, modifier_args),
       split_percentage: if pty_master.is_some() { 50 } else { 100 },
       term: if let Some(pty_master) = pty_master {
@@ -478,7 +478,11 @@ impl App {
             self.popup = Some(ActivePopup::CopyTargetSelection(CopyPopupState::new(e)));
           }
           Action::CopyToClipboard { event, target } => {
-            let text = event.text_for_copy(&self.event_list.baseline, target);
+            let text = event.text_for_copy(
+              &self.event_list.baseline,
+              target,
+              &self.event_list.modifier_args,
+            );
             // TODO: don't crash the app if clipboard fails
             if let Some(clipboard) = self.clipboard.as_mut() {
               clipboard.set_text(text)?;

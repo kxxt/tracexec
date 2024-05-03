@@ -87,6 +87,7 @@ async fn main() -> color_eyre::Result<()> {
       tracer_event_args,
       output,
     } => {
+      let modifier_args = modifier_args.processed();
       let output: Box<PrinterOut> = match output {
         None => Box::new(stderr()),
         Some(ref x) if x.as_os_str() == "-" => Box::new(stdout()),
@@ -134,6 +135,7 @@ async fn main() -> color_eyre::Result<()> {
       follow,
       frame_rate,
     } => {
+      let modifier_args = modifier_args.processed();
       // Disable owo-colors when running TUI
       owo_colors::control::set_should_colorize(false);
       log::debug!(
