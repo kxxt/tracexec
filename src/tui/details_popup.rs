@@ -89,6 +89,30 @@ impl DetailsPopupState {
           " Interpreters ",
           TracerEvent::interpreters_to_string(&exec.interpreter).into(),
         ),
+        (
+          " Stdin ",
+          if let Some(stdin) = exec.fdinfo.stdin() {
+            stdin.path.display().to_string().into()
+          } else {
+            "Closed".light_red().into()
+          },
+        ),
+        (
+          " Stdout ",
+          if let Some(stdout) = exec.fdinfo.stdout() {
+            stdout.path.display().to_string().into()
+          } else {
+            "Closed".light_red().into()
+          },
+        ),
+        (
+          " Stderr ",
+          if let Some(stderr) = exec.fdinfo.stderr() {
+            stderr.path.display().to_string().into()
+          } else {
+            "Closed".light_red().into()
+          },
+        ),
       ]);
       let env = match exec.env_diff.as_ref() {
         Ok(env_diff) => {
