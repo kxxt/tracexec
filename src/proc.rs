@@ -11,12 +11,15 @@ use std::{
   path::{Path, PathBuf},
 };
 
+use filedescriptor::AsRawFileDescriptor;
 use owo_colors::OwoColorize;
 
 use nix::{
   libc::AT_FDCWD,
   unistd::{getpid, Pid},
 };
+
+use crate::pty::{PtyFd, UnixSlavePty};
 
 pub fn read_argv(pid: Pid) -> color_eyre::Result<Vec<CString>> {
   let filename = format!("/proc/{pid}/cmdline");
@@ -72,6 +75,18 @@ impl FileDescriptorInfoCollection {
     fdinfo.insert(2, read_fdinfo(pid, 2)?);
 
     Ok(Self { fdinfo })
+  }
+
+  pub fn with_pts(pts: &UnixSlavePty) -> color_eyre::Result<Self> {
+    let mut result = Self::default();
+    let ptyfd = &pts.fd;
+    let raw_fd = ptyfd.as_raw_file_descriptor();
+    let mut info = read_fdinfo(getpid(), raw_fd)?;
+    for fd in 0..3 {
+      info.fd = fd;
+      result.fdinfo.insert(fd, read_fdinfo(getpid(), raw_fd)?);
+    }
+    Ok(result)
   }
 }
 
@@ -307,6 +322,13 @@ impl BaselineInfo {
     let cwd = std::env::current_dir()?;
     let env = std::env::vars().collect();
     let fdinfo = FileDescriptorInfoCollection::new_baseline()?;
+    Ok(Self { cwd, env, fdinfo })
+  }
+
+  pub fn with_pts(pts: &UnixSlavePty) -> color_eyre::Result<Self> {
+    let cwd = std::env::current_dir()?;
+    let env = std::env::vars().collect();
+    let fdinfo = FileDescriptorInfoCollection::with_pts(pts)?;
     Ok(Self { cwd, env, fdinfo })
   }
 }

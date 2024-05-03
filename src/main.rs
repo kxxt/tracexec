@@ -142,7 +142,7 @@ async fn main() -> color_eyre::Result<()> {
         "should colorize: {}",
         owo_colors::control::should_colorize()
       );
-      let (tracer_mode, pty_master) = if tty {
+      let (baseline, tracer_mode, pty_master) = if tty {
         let pty_system = native_pty_system();
         let pair = pty_system.openpty(PtySize {
           rows: 24,
@@ -150,9 +150,13 @@ async fn main() -> color_eyre::Result<()> {
           pixel_width: 0,
           pixel_height: 0,
         })?;
-        (TracerMode::Tui(Some(pair.slave)), Some(pair.master))
+        (
+          BaselineInfo::with_pts(&pair.slave)?,
+          TracerMode::Tui(Some(pair.slave)),
+          Some(pair.master),
+        )
       } else {
-        (TracerMode::Tui(None), None)
+        (BaselineInfo::new()?, TracerMode::Tui(None), None)
       };
       let tracing_args = TracingArgs {
         show_cmdline: false, // We handle cmdline in TUI
@@ -163,7 +167,6 @@ async fn main() -> color_eyre::Result<()> {
         diff_env: true,
         ..Default::default()
       };
-      let baseline = BaselineInfo::new()?;
       let mut app = App::new(
         &tracing_args,
         &modifier_args,
