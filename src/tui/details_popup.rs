@@ -39,6 +39,7 @@ pub struct DetailsPopupState {
   active_index: usize,
   scroll: ScrollViewState,
   env: Option<Vec<Line<'static>>>,
+  fdinfo: Option<Vec<Line<'static>>>,
   available_tabs: Vec<&'static str>,
   tab_index: usize,
 }
@@ -55,7 +56,7 @@ impl DetailsPopupState {
       event.to_tui_line(&baseline, true, &modifier_args),
     )];
     let event_cloned = event.clone();
-    let (env, available_tabs) = if let TracerEvent::Exec(exec) = event_cloned.as_ref() {
+    let (env, fdinfo, available_tabs) = if let TracerEvent::Exec(exec) = event_cloned.as_ref() {
       details.extend([
         (" Cmdline with stdio ", {
           modifier_args.stdio_in_cmdline = true;
@@ -192,14 +193,87 @@ impl DetailsPopupState {
           vec![Line::from(format!("Failed to read envp: {}", e))]
         }
       };
-      (Some(env), vec!["Info", "Environment"])
+      let mut fdinfo = vec![];
+      for (&fd, info) in exec.fdinfo.fdinfo.iter() {
+        fdinfo.push(
+          vec![
+            " File Descriptor "
+              .bold()
+              .fg(Color::Black)
+              .bg(Color::LightGreen)
+              .bold(),
+            format!(" {} ", fd)
+              .bold()
+              .fg(Color::White)
+              .bg(Color::LightMagenta),
+          ]
+          .into(),
+        );
+        // Path
+        fdinfo.push(
+          vec![
+            "Path".bold().white(),
+            ": ".into(),
+            info.path.display().to_string().into(),
+          ]
+          .into(),
+        );
+        // Mount Info
+        fdinfo.push(
+          vec![
+            "Mount Info".bold().white(),
+            ": ".into(),
+            info.mnt_id.to_string().into(),
+            " (".bold().light_green(),
+            info.mnt.clone().into(),
+            ")".bold().light_green(),
+          ]
+          .into(),
+        );
+        // Pos
+        fdinfo.push(
+          vec![
+            "Position".bold().white(),
+            ": ".into(),
+            info.pos.to_string().into(),
+          ]
+          .into(),
+        );
+        // ino
+        fdinfo.push(
+          vec![
+            "Inode Number".bold().white(),
+            ": ".into(),
+            info.ino.to_string().into(),
+          ]
+          .into(),
+        );
+        // TODO: decode flags
+        // extra
+        if !info.extra.is_empty() {
+          fdinfo.push("Extra Information:".bold().white().into());
+          fdinfo.extend(
+            info
+              .extra
+              .iter()
+              .map(|l| vec!["•".light_green(), l.clone().into()].into()),
+          );
+        }
+      }
+
+      (
+        Some(env),
+        Some(fdinfo),
+        vec!["Info", "Environment", "FdInfo"],
+      )
     } else {
-      (None, vec!["Info"])
+      (None, None, vec!["Info"])
     };
     Self {
       event,
       baseline,
       details,
+      fdinfo,
       active_index: 0,
       scroll: Default::default(),
       env,
@@ -289,10 +363,11 @@ impl StatefulWidgetRef for DetailsPopup {
     tabs.render_ref(Rect::new(start, 0, tabs_width, 1), buf);
 
     // Tab Info
-    let paragraph = if state.tab_index == 0 {
-      self.info_paragraph(state)
-    } else {
-      self.env_paragraph(state)
+    let paragraph = match state.tab_index {
+      0 => self.info_paragraph(state),
+      1 => self.env_paragraph(state),
+      2 => self.fd_paragraph(state),
+      _ => unreachable!(),
     };
 
     let size = Size {
@@ -347,6 +422,11 @@ impl DetailsPopup {
 
   fn env_paragraph(&self, state: &DetailsPopupState) -> Paragraph {
     let text = state.env.clone().unwrap();
+    Paragraph::new(text).wrap(Wrap { trim: false })
+  }
+
+  fn fd_paragraph(&self, state: &DetailsPopupState) -> Paragraph {
+    let text = state.fdinfo.clone().unwrap();
     Paragraph::new(text).wrap(Wrap { trim: false })
   }
 }
