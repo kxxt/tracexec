@@ -358,7 +358,8 @@ impl StatefulWidgetRef for DetailsPopup {
       .iter()
       .map(|s| s.len() as u16)
       .sum::<u16>()
-      + 2 * state.available_tabs.len() as u16;
+      + 2 * state.available_tabs.len() as u16 // space
+      + state.available_tabs.len().saturating_sub(1) as u16; // vertical bar
     let start = screen.right().saturating_sub(tabs_width);
     tabs.render_ref(Rect::new(start, 0, tabs_width, 1), buf);
 
