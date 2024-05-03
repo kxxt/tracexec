@@ -3,7 +3,7 @@
 use core::fmt;
 use std::{
   borrow::Cow,
-  collections::{HashMap, HashSet},
+  collections::{BTreeMap, HashMap, HashSet},
   ffi::CString,
   fmt::{Display, Formatter},
   io::{self, BufRead, BufReader, Read},
@@ -41,7 +41,7 @@ pub fn read_cwd(pid: Pid) -> std::io::Result<PathBuf> {
 
 #[derive(Debug, Clone, Default)]
 pub struct FileDescriptorInfoCollection {
-  fdinfo: HashMap<c_int, FileDescriptorInfo>,
+  pub fdinfo: BTreeMap<c_int, FileDescriptorInfo>,
 }
 
 impl FileDescriptorInfoCollection {
@@ -97,6 +97,7 @@ pub fn read_fdinfo(pid: Pid, fd: i32) -> color_eyre::Result<FileDescriptorInfo> 
       _ => info.extra.push(line),
     }
   }
+  info.path = read_fd(pid, fd)?;
   info.mnt = get_mountinfo_by_mnt_id(pid, info.mnt_id)?;
   Ok(info)
 }
