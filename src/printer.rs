@@ -539,7 +539,10 @@ impl Printer {
         }
 
         if self.args.fd_in_cmdline {
-          for (fd, fdinfo) in exec_data.fdinfo.fdinfo.iter() {
+          for (&fd, fdinfo) in exec_data.fdinfo.fdinfo.iter() {
+            if fd == 0 || fd == 1 || fd == 2 {
+              continue;
+            }
             write!(
               out,
               " {}{}{}",
