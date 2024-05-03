@@ -3,7 +3,6 @@
 - Set baseline env from cmdline, which is compared against when diffing env.
 - Load env file from cmdline
 - Show inherited file descriptors and potentially include them in cmdline (like `2> /dev/null`).
-    - Fix the edge case that stdio is closed.
 
 # TUI
 

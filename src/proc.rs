@@ -48,16 +48,16 @@ pub struct FileDescriptorInfoCollection {
 }
 
 impl FileDescriptorInfoCollection {
-  pub fn stdin(&self) -> &FileDescriptorInfo {
-    &self.fdinfo[&0]
+  pub fn stdin(&self) -> Option<&FileDescriptorInfo> {
+    self.fdinfo.get(&0)
   }
 
-  pub fn stdout(&self) -> &FileDescriptorInfo {
-    &self.fdinfo[&1]
+  pub fn stdout(&self) -> Option<&FileDescriptorInfo> {
+    self.fdinfo.get(&1)
   }
 
-  pub fn stderr(&self) -> &FileDescriptorInfo {
-    &self.fdinfo[&2]
+  pub fn stderr(&self) -> Option<&FileDescriptorInfo> {
+    self.fdinfo.get(&2)
   }
 
   pub fn get(&self, fd: c_int) -> Option<&FileDescriptorInfo> {

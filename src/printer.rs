@@ -265,20 +265,70 @@ impl Printer {
         let list_printer = ListPrinter::new(self.args.color);
         list_printer.begin(out)?;
         // Stdio
-        for i in 0..3 {
-          let fdinfo = fds.fdinfo.get(&i).unwrap();
-          let fdinfo_orig = self.baseline.fdinfo.get(i).unwrap();
+        let mut printed = 0;
+        let mut last = fds.fdinfo.len();
+        let fdinfo_orig = self.baseline.fdinfo.get(0).unwrap();
+        if let Some(fdinfo) = fds.fdinfo.get(&0) {
+          printed += 1;
           if fdinfo.path != fdinfo_orig.path {
-            write!(out, "{}", i.bright_yellow().bold())?;
+            write!(out, "{}", "stdin".bright_yellow().bold())?;
             write!(out, "={}", fdinfo.path.display().bright_yellow())?;
+            if printed < last {
+              list_printer.comma(out)?;
+            }
+          }
+        } else {
+          printed += 1;
+          write!(out, "{}", "closed: stdin".bright_red().bold())?;
+          if printed < last {
+            last += 1;
             list_printer.comma(out)?;
           }
         }
-        let last = fds.fdinfo.len().saturating_sub(1 + 3);
-        for (i, (fd, fdinfo)) in fds.fdinfo.iter().skip(3).enumerate() {
+        let fdinfo_orig = self.baseline.fdinfo.get(1).unwrap();
+        if let Some(fdinfo) = fds.fdinfo.get(&1) {
+          printed += 1;
+          if fdinfo.path != fdinfo_orig.path {
+            write!(out, "{}", "stdout".bright_yellow().bold())?;
+            write!(out, "={}", fdinfo.path.display().bright_yellow())?;
+            if printed < last {
+              list_printer.comma(out)?;
+            }
+          }
+        } else {
+          printed += 1;
+          write!(out, "{}", "closed: stdout".bright_red().bold(),)?;
+          if printed < last {
+            last += 1;
+            list_printer.comma(out)?;
+          }
+        }
+        let fdinfo_orig = self.baseline.fdinfo.get(2).unwrap();
+        if let Some(fdinfo) = fds.fdinfo.get(&2) {
+          printed += 1;
+          if fdinfo.path != fdinfo_orig.path {
+            write!(out, "{}", "stderr".bright_yellow().bold())?;
+            write!(out, "={}", fdinfo.path.display().bright_yellow())?;
+            if printed < last {
+              list_printer.comma(out)?;
+            }
+          }
+        } else {
+          printed += 1;
+          write!(out, "{}", "closed: stderr".bright_red().bold(),)?;
+          if printed < last {
+            last += 1;
+            list_printer.comma(out)?;
+          }
+        }
+        for (&fd, fdinfo) in fds.fdinfo.iter() {
+          if fd < 3 {
+            continue;
+          }
           write!(out, "{}", fd.bright_green().bold())?;
           write!(out, "={}", fdinfo.path.display().bright_green())?;
-          if i != last {
+          printed += 1;
+          if printed < last {
             list_printer.comma(out)?;
           }
         }
@@ -506,41 +556,53 @@ impl Printer {
         write!(out, " env")?;
 
         if self.args.stdio_in_cmdline {
-          let fdinfo = exec_data.fdinfo.stdin();
-          let fdinfo_orig = self.baseline.fdinfo.stdin();
-          if fdinfo.path != fdinfo_orig.path {
-            write!(
-              out,
-              " {}{}",
-              "<".bright_yellow().bold(),
-              escape_str_for_bash!(&fdinfo.path).bright_yellow().bold()
-            )?;
+          let fdinfo_orig = self.baseline.fdinfo.stdin().unwrap();
+          if let Some(fdinfo) = exec_data.fdinfo.stdin() {
+            if fdinfo.path != fdinfo_orig.path {
+              write!(
+                out,
+                " {}{}",
+                "<".bright_yellow().bold(),
+                escape_str_for_bash!(&fdinfo.path).bright_yellow().bold()
+              )?;
+            }
+          } else {
+            // stdin is closed
+            write!(out, " {}", "0>&-".bright_red().bold())?;
           }
-          let fdinfo = exec_data.fdinfo.stdout();
-          let fdinfo_orig = self.baseline.fdinfo.stdout();
-          if fdinfo.path != fdinfo_orig.path {
-            write!(
-              out,
-              " {}{}",
-              ">".bright_yellow().bold(),
-              escape_str_for_bash!(&fdinfo.path).bright_yellow().bold()
-            )?;
+          let fdinfo_orig = self.baseline.fdinfo.stdout().unwrap();
+          if let Some(fdinfo) = exec_data.fdinfo.stdout() {
+            if fdinfo.path != fdinfo_orig.path {
+              write!(
+                out,
+                " {}{}",
+                ">".bright_yellow().bold(),
+                escape_str_for_bash!(&fdinfo.path).bright_yellow().bold()
+              )?;
+            }
+          } else {
+            // stdout is closed
+            write!(out, " {}", "1>&-".bright_red().bold())?;
           }
-          let fdinfo = exec_data.fdinfo.stderr();
-          let fdinfo_orig = self.baseline.fdinfo.stderr();
-          if fdinfo.path != fdinfo_orig.path {
-            write!(
-              out,
-              " {}{}",
-              "2>".bright_yellow().bold(),
-              escape_str_for_bash!(&fdinfo.path).bright_yellow().bold()
-            )?;
+          let fdinfo_orig = self.baseline.fdinfo.stderr().unwrap();
+          if let Some(fdinfo) = exec_data.fdinfo.stderr() {
+            if fdinfo.path != fdinfo_orig.path {
+              write!(
+                out,
+                " {}{}",
+                "2>".bright_yellow().bold(),
+                escape_str_for_bash!(&fdinfo.path).bright_yellow().bold()
+              )?;
+            }
+          } else {
+            // stderr is closed
+            write!(out, " {}", "2>&-".bright_red().bold())?;
           }
         }
 
         if self.args.fd_in_cmdline {
           for (&fd, fdinfo) in exec_data.fdinfo.fdinfo.iter() {
-            if fd == 0 || fd == 1 || fd == 2 {
+            if fd < 3 {
               continue;
             }
             write!(
