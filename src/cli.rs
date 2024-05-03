@@ -17,10 +17,6 @@ pub mod options;
 pub struct Cli {
   #[arg(long, default_value_t = Color::Auto, help = "Control whether colored output is enabled")]
   pub color: Color,
-  #[arg(short, long, action = ArgAction::Count)]
-  pub verbose: u8,
-  #[arg(short, long, conflicts_with = "verbose")]
-  pub quiet: bool,
   #[arg(
     short = 'C',
     long,

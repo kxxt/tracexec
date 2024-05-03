@@ -58,17 +58,6 @@ async fn main() -> color_eyre::Result<()> {
   }
   initialize_panic_handler();
   log::initialize_logging()?;
-  // TODO: separate output verbosity from log level
-  // pretty_env_logger::formatted_builder()
-  //     .filter_level(match (cli.quiet, cli.verbose) {
-  //         // Don't follow RUST_LOG environment variable.
-  //         (true, _) => log::LevelFilter::Error,
-  //         (false, 0) => log::LevelFilter::Warn,
-  //         (false, 1) => log::LevelFilter::Info,
-  //         (false, 2) => log::LevelFilter::Debug,
-  //         (false, _) => log::LevelFilter::Trace,
-  //     })
-  //     .init();
   log::trace!("Commandline args: {:?}", cli);
   if let Some(cwd) = cli.cwd {
     std::env::set_current_dir(cwd)?;
