@@ -58,7 +58,7 @@ pub struct Tracer {
   pub store: RwLock<ProcessStateStore>,
   printer: Printer,
   filter: BitFlags<TracerEventKind>,
-  baseline: BaselineInfo,
+  baseline: Arc<BaselineInfo>,
   #[cfg(feature = "seccomp-bpf")]
   seccomp_bpf: SeccompBpf,
   tx: UnboundedSender<TracerEvent>,
@@ -91,13 +91,13 @@ impl Tracer {
     tx: UnboundedSender<TracerEvent>,
     user: Option<User>,
   ) -> color_eyre::Result<Self> {
+    let baseline = Arc::new(baseline);
     Ok(Self {
       with_tty: match &mode {
         TracerMode::Tui(tty) => tty.is_some(),
         TracerMode::Cli => true,
       },
       store: RwLock::new(ProcessStateStore::new()),
-      baseline,
       #[cfg(feature = "seccomp-bpf")]
       seccomp_bpf: if modifier_args.seccomp_bpf == SeccompBpf::Auto {
         // TODO: check if the kernel supports seccomp-bpf
@@ -124,7 +124,11 @@ impl Tracer {
         }
         filter
       },
-      printer: Printer::new(PrinterArgs::from_cli(&tracing_args, &modifier_args)),
+      printer: Printer::new(
+        PrinterArgs::from_cli(&tracing_args, &modifier_args),
+        baseline.clone(),
+      ),
+      baseline,
       mode,
     })
   }

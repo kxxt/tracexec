@@ -13,7 +13,10 @@ use std::{
 
 use owo_colors::OwoColorize;
 
-use nix::{libc::AT_FDCWD, unistd::Pid};
+use nix::{
+  libc::AT_FDCWD,
+  unistd::{getpid, Pid},
+};
 
 pub fn read_argv(pid: Pid) -> color_eyre::Result<Vec<CString>> {
   let filename = format!("/proc/{pid}/cmdline");
@@ -55,6 +58,20 @@ impl FileDescriptorInfoCollection {
 
   pub fn stderr(&self) -> &FileDescriptorInfo {
     &self.fdinfo[&2]
+  }
+
+  pub fn get(&self, fd: c_int) -> Option<&FileDescriptorInfo> {
+    self.fdinfo.get(&fd)
+  }
+
+  pub fn new_baseline() -> color_eyre::Result<Self> {
+    let mut fdinfo = BTreeMap::new();
+    let pid = getpid();
+    fdinfo.insert(0, read_fdinfo(pid, 0)?);
+    fdinfo.insert(1, read_fdinfo(pid, 1)?);
+    fdinfo.insert(2, read_fdinfo(pid, 2)?);
+
+    Ok(Self { fdinfo })
   }
 }
 
@@ -282,12 +299,14 @@ pub fn diff_env(original: &HashMap<String, String>, envp: &[String]) -> EnvDiff 
 pub struct BaselineInfo {
   pub cwd: PathBuf,
   pub env: HashMap<String, String>,
+  pub fdinfo: FileDescriptorInfoCollection,
 }
 
 impl BaselineInfo {
   pub fn new() -> color_eyre::Result<Self> {
     let cwd = std::env::current_dir()?;
     let env = std::env::vars().collect();
-    Ok(Self { cwd, env })
+    let fdinfo = FileDescriptorInfoCollection::new_baseline()?;
+    Ok(Self { cwd, env, fdinfo })
   }
 }

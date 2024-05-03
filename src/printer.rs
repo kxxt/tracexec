@@ -4,13 +4,14 @@ use std::{
   ffi::OsStr,
   io::{self, Write},
   path::Path,
+  sync::Arc,
 };
 
 use crate::{
   cli::args::{ModifierArgs, TracingArgs},
   event::TracerEvent,
   inspect::InspectError,
-  proc::{diff_env, Interpreter},
+  proc::{diff_env, BaselineInfo, FileDescriptorInfoCollection, Interpreter},
   state::ProcessState,
 };
 
@@ -35,6 +36,13 @@ pub enum EnvPrintFormat {
   None,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum FdPrintFormat {
+  Diff,
+  Raw,
+  None,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum ColorLevel {
   Less,
@@ -47,6 +55,7 @@ pub struct PrinterArgs {
   pub trace_comm: bool,
   pub trace_argv: bool,
   pub trace_env: EnvPrintFormat,
+  pub trace_fd: FdPrintFormat,
   pub trace_cwd: bool,
   pub print_cmdline: bool,
   pub successful_only: bool,
@@ -71,6 +80,17 @@ impl PrinterArgs {
         (true, ..) | (.., true) => EnvPrintFormat::None,
         (false, .., true, _) | (false, _, true, ..) => EnvPrintFormat::Raw,
         _ => EnvPrintFormat::Diff, // diff_env is enabled by default
+      },
+      trace_fd: match (
+        tracing_args.diff_fd,
+        tracing_args.no_diff_fd,
+        tracing_args.show_fd,
+        tracing_args.no_show_fd,
+      ) {
+        (false, _, true, false) => FdPrintFormat::Raw,
+        (_, true, _, _) => FdPrintFormat::None,
+        // The default is diff fd
+        _ => FdPrintFormat::Diff,
       },
       trace_cwd: tracing_args.show_cwd,
       print_cmdline: tracing_args.show_cmdline,
@@ -189,11 +209,12 @@ impl ListPrinter {
 
 pub struct Printer {
   pub args: PrinterArgs,
+  baseline: Arc<BaselineInfo>,
 }
 
 impl Printer {
-  pub fn new(args: PrinterArgs) -> Self {
-    Printer { args }
+  pub fn new(args: PrinterArgs, baseline: Arc<BaselineInfo>) -> Self {
+    Printer { args, baseline }
   }
 
   thread_local! {
@@ -219,6 +240,55 @@ impl Printer {
       out.flush()?;
       Ok(())
     })
+  }
+
+  pub fn print_fd(
+    &self,
+    out: &mut dyn Write,
+    fds: &FileDescriptorInfoCollection,
+  ) -> io::Result<()> {
+    match self.args.trace_fd {
+      FdPrintFormat::Diff => {
+        write!(out, " {} ", "fd".purple())?;
+        let list_printer = ListPrinter::new(self.args.color);
+        list_printer.begin(out)?;
+        // Stdio
+        for i in 0..3 {
+          let fdinfo = fds.fdinfo.get(&i).unwrap();
+          let fdinfo_orig = self.baseline.fdinfo.get(i).unwrap();
+          if fdinfo.path != fdinfo_orig.path {
+            write!(out, "{}", i.bright_yellow().bold())?;
+            write!(out, "={}", fdinfo.path.display().bright_yellow())?;
+            list_printer.comma(out)?;
+          }
+        }
+        let last = fds.fdinfo.len().saturating_sub(1 + 3);
+        for (i, (fd, fdinfo)) in fds.fdinfo.iter().skip(3).enumerate() {
+          write!(out, "{}", fd.bright_green().bold())?;
+          write!(out, "={}", fdinfo.path.display().bright_green())?;
+          if i != last {
+            list_printer.comma(out)?;
+          }
+        }
+        list_printer.end(out)?;
+      }
+      FdPrintFormat::Raw => {
+        write!(out, " {} ", "fd".purple())?;
+        let list_printer = ListPrinter::new(self.args.color);
+        list_printer.begin(out)?;
+        let last = fds.fdinfo.len() - 1;
+        for (idx, (fd, fdinfo)) in fds.fdinfo.iter().enumerate() {
+          write!(out, "{}", fd.bright_cyan().bold())?;
+          write!(out, "={}", fdinfo.path.display())?;
+          if idx != last {
+            list_printer.comma(out)?;
+          }
+        }
+        list_printer.end(out)?;
+      }
+      FdPrintFormat::None => {}
+    }
+    Ok(())
   }
 
   pub fn print_exec_trace(
@@ -290,10 +360,16 @@ impl Printer {
         }
       }
 
+      // CWD
+
       if self.args.trace_cwd {
         write!(out, " {} {:?}", "at".purple(), exec_data.cwd)?;
       }
+
+      // Interpreter
+
       if self.args.trace_interpreter && result == 0 {
+        // FIXME: show interpreter for errnos other than ENOENT
         write!(out, " {} ", "interpreter".purple(),)?;
         match exec_data.interpreters.len() {
           0 => {
@@ -314,6 +390,13 @@ impl Printer {
           }
         }
       }
+
+      // File descriptors
+
+      self.print_fd(out, &exec_data.fdinfo)?;
+
+      // Environment
+
       match exec_data.envp.as_ref() {
         Ok(envp) => {
           match self.args.trace_env {
@@ -403,6 +486,9 @@ impl Printer {
           });
         }
       }
+
+      // Command line
+
       if self.args.print_cmdline {
         write!(out, " {}", "cmdline".purple())?;
         write!(out, " env")?;
@@ -500,6 +586,9 @@ impl Printer {
           }
         }
       }
+
+      // Result
+
       if result == 0 {
         writeln!(out)?;
       } else {

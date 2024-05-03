@@ -57,6 +57,26 @@ pub struct TracingArgs {
   // BEGIN ugly: https://github.com/clap-rs/clap/issues/815
   #[clap(
     long,
+    help = "Diff file descriptors with the original std{in/out/err}",
+    conflicts_with = "no_diff_fd"
+  )]
+  pub diff_fd: bool,
+  #[clap(
+    long,
+    help = "Do not diff file descriptors",
+    conflicts_with = "diff_fd"
+  )]
+  pub no_diff_fd: bool,
+  #[clap(long, help = "Show file descriptors", conflicts_with = "diff_fd")]
+  pub show_fd: bool,
+  #[clap(
+    long,
+    help = "Do not show file descriptors",
+    conflicts_with = "show_fd"
+  )]
+  pub no_show_fd: bool,
+  #[clap(
+    long,
     help = "Diff environment variables with the original environment",
     conflicts_with = "no_diff_env",
     conflicts_with = "show_env",
