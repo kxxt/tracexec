@@ -346,11 +346,27 @@ impl TracerEvent {
     let TracerEvent::Exec(event) = self else {
       panic!("Copy target {:?} is only available for Exec events", target);
     };
+    let mut modifier_args = ModifierArgs::default();
     match target {
       CopyTarget::Commandline(_) => self
-        .to_tui_line(baseline, true, modifier_args)
+        .to_tui_line(baseline, true, &modifier_args)
         .to_string()
         .into(),
+      CopyTarget::CommandlineWithStdio(_) => {
+        modifier_args.stdio_in_cmdline = true;
+        self
+          .to_tui_line(baseline, true, &modifier_args)
+          .to_string()
+          .into()
+      }
+      CopyTarget::CommandlineWithFds(_) => {
+        modifier_args.fd_in_cmdline = true;
+        modifier_args.stdio_in_cmdline = true;
+        self
+          .to_tui_line(baseline, true, &modifier_args)
+          .to_string()
+          .into()
+      }
       CopyTarget::Env => match event.envp.as_ref() {
         Ok(envp) => envp.iter().join("\n").into(),
         Err(e) => format!("[failed to read envp: {e}]").into(),

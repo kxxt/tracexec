@@ -54,6 +54,8 @@ pub enum Action {
 pub enum CopyTarget {
   Line,
   Commandline(SupportedShell),
+  CommandlineWithStdio(SupportedShell),
+  CommandlineWithFds(SupportedShell),
   Env,
   Argv,
   Filename,

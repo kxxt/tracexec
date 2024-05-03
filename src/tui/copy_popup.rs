@@ -29,11 +29,16 @@ pub struct CopyPopupState {
 lazy_static! {
   pub static ref KEY_MAP: BTreeMap<char, (&'static str, &'static str)> = [
     ('c', ("(C)ommand line", "Cmdline")),
+    ('s', ("Command line with (S)tdio", "Cmdline with stdio")),
+    (
+      'f',
+      ("Command line with (F)ile descriptors", "Cmdline with Fds")
+    ),
     ('e', ("(E)nvironment variables", "Env")),
     ('d', ("(D)iff of environment variables", "Diff of Env")),
     ('a', ("(A)rguments", "Argv")),
     ('n', ("File(N)ame", "Filename")),
-    ('s', ("(S)yscall result", "Result")),
+    ('r', ("Syscall (R)esult", "Result")),
     ('l', ("Current (L)ine", "Line")),
   ]
   .into_iter()
@@ -73,11 +78,13 @@ impl CopyPopupState {
     let key = self.available_targets[id];
     match key {
       'c' => CopyTarget::Commandline(Bash),
+      's' => CopyTarget::CommandlineWithStdio(Bash),
+      'f' => CopyTarget::CommandlineWithFds(Bash),
       'e' => CopyTarget::Env,
       'd' => CopyTarget::EnvDiff,
       'a' => CopyTarget::Argv,
       'n' => CopyTarget::Filename,
-      's' => CopyTarget::SyscallResult,
+      'r' => CopyTarget::SyscallResult,
       'l' => CopyTarget::Line,
       _ => unreachable!(),
     }
@@ -124,7 +131,7 @@ impl StatefulWidgetRef for CopyPopup {
     )
     .highlight_symbol(">")
     .highlight_spacing(HighlightSpacing::Always);
-    let popup_area = centered_popup_rect(35, list.len() as u16, area);
+    let popup_area = centered_popup_rect(38, list.len() as u16, area);
     Clear.render(popup_area, buf);
     StatefulWidgetRef::render_ref(&list, popup_area, buf, &mut state.state);
   }
