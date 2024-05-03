@@ -35,7 +35,9 @@ use crate::{
   event::{filterable_event, ExecEvent, TracerEvent, TracerEventKind, TracerMessage},
   inspect::{read_pathbuf, read_string, read_string_array, InspectError},
   printer::{Printer, PrinterArgs, PrinterOut},
-  proc::{diff_env, read_comm, read_cwd, read_fd, read_interpreter_recursive, BaselineInfo},
+  proc::{
+    diff_env, read_comm, read_cwd, read_fd, read_fds, read_interpreter_recursive, BaselineInfo,
+  },
   ptrace::{ptrace_getregs, ptrace_syscall},
   pty::{self, Child, UnixSlavePty},
   state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
@@ -521,6 +523,7 @@ impl Tracer {
         envp,
         read_cwd(pid)?,
         interpreters,
+        read_fds(pid)?,
       ));
     } else if syscallno == nix::libc::SYS_execve {
       log::trace!("pre execve {syscallno}",);
@@ -541,6 +544,7 @@ impl Tracer {
         envp,
         read_cwd(pid)?,
         interpreters,
+        read_fds(pid)?,
       ));
     } else if syscallno == SYS_clone || syscallno == SYS_clone3 {
     }

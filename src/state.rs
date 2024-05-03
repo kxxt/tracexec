@@ -4,7 +4,7 @@ use nix::unistd::Pid;
 
 use crate::{
   inspect::InspectError,
-  proc::{read_argv, read_comm, Interpreter},
+  proc::{read_argv, read_comm, FileDescriptorInfoCollection, Interpreter},
 };
 
 pub struct ProcessStateStore {
@@ -40,6 +40,7 @@ pub struct ExecData {
   pub envp: Arc<Result<Vec<String>, InspectError>>,
   pub cwd: PathBuf,
   pub interpreters: Vec<Interpreter>,
+  pub fdinfo: Arc<FileDescriptorInfoCollection>,
 }
 
 impl ExecData {
@@ -49,6 +50,7 @@ impl ExecData {
     envp: Result<Vec<String>, InspectError>,
     cwd: PathBuf,
     interpreters: Vec<Interpreter>,
+    fdinfo: FileDescriptorInfoCollection,
   ) -> Self {
     Self {
       filename,
@@ -56,6 +58,7 @@ impl ExecData {
       envp: Arc::new(envp),
       cwd,
       interpreters,
+      fdinfo: Arc::new(fdinfo),
     }
   }
 }

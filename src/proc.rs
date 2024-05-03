@@ -7,6 +7,7 @@ use std::{
   ffi::CString,
   fmt::{Display, Formatter},
   io::{self, BufRead, BufReader, Read},
+  os::raw::c_int,
   path::{Path, PathBuf},
 };
 
@@ -38,12 +39,91 @@ pub fn read_cwd(pid: Pid) -> std::io::Result<PathBuf> {
   Ok(buf)
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct FileDescriptorInfoCollection {
+  fdinfo: HashMap<c_int, FileDescriptorInfo>,
+}
+
+impl FileDescriptorInfoCollection {
+  pub fn stdin(&self) -> &FileDescriptorInfo {
+    &self.fdinfo[&0]
+  }
+
+  pub fn stdout(&self) -> &FileDescriptorInfo {
+    &self.fdinfo[&1]
+  }
+
+  pub fn stderr(&self) -> &FileDescriptorInfo {
+    &self.fdinfo[&2]
+  }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FileDescriptorInfo {
+  pub fd: c_int,
+  pub path: PathBuf,
+  pub pos: usize,
+  pub flags: c_int,
+  pub mnt_id: c_int,
+  pub ino: c_int,
+  pub mnt: String,
+  pub extra: Vec<String>,
+}
+
 pub fn read_fd(pid: Pid, fd: i32) -> std::io::Result<PathBuf> {
   if fd == AT_FDCWD {
     return read_cwd(pid);
   }
   let filename = format!("/proc/{pid}/fd/{fd}");
   std::fs::read_link(filename)
+}
+
+/// Read /proc/{pid}/fdinfo/{fd} to get more information about the file descriptor.
+pub fn read_fdinfo(pid: Pid, fd: i32) -> color_eyre::Result<FileDescriptorInfo> {
+  let filename = format!("/proc/{pid}/fdinfo/{fd}");
+  let file = std::fs::File::open(filename)?;
+  let reader = BufReader::new(file);
+  let mut info = FileDescriptorInfo::default();
+  for line in reader.lines() {
+    let line = line?;
+    let mut parts = line.split_ascii_whitespace();
+    let key = parts.next().unwrap_or("");
+    let value = parts.next().unwrap_or("");
+    match key {
+      "pos:" => info.pos = value.parse()?,
+      "flags:" => info.flags = value.parse()?,
+      "mnt_id:" => info.mnt_id = value.parse()?,
+      "ino:" => info.ino = value.parse()?,
+      _ => info.extra.push(line),
+    }
+  }
+  info.mnt = get_mountinfo_by_mnt_id(pid, info.mnt_id)?;
+  Ok(info)
+}
+
+pub fn read_fds(pid: Pid) -> color_eyre::Result<FileDescriptorInfoCollection> {
+  let mut collection = FileDescriptorInfoCollection::default();
+  let filename = format!("/proc/{pid}/fdinfo");
+  for entry in std::fs::read_dir(filename)? {
+    let entry = entry?;
+    let fd = entry.file_name().to_string_lossy().parse()?;
+    collection.fdinfo.insert(fd, read_fdinfo(pid, fd)?);
+  }
+  Ok(collection)
+}
+
+pub fn get_mountinfo_by_mnt_id(pid: Pid, mnt_id: c_int) -> color_eyre::Result<String> {
+  let filename = format!("/proc/{pid}/mountinfo");
+  let file = std::fs::File::open(filename)?;
+  let reader = BufReader::new(file);
+  for line in reader.lines() {
+    let line = line?;
+    let parts = line.split_once(|x| x == ' ');
+    if parts.map(|(mount_id, _)| mount_id.parse()) == Some(Ok(mnt_id)) {
+      return Ok(line);
+    }
+  }
+  return Ok("Not found. This is proably a pipe or something else.".to_string());
 }
 
 #[derive(Debug, Clone, PartialEq)]
