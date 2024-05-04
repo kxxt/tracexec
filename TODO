@@ -2,6 +2,7 @@
 
 - Set baseline env from cmdline, which is compared against when diffing env.
 - Load env file from cmdline
+- Load settings from profile
 
 # TUI
 
