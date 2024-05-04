@@ -19,7 +19,7 @@ use nix::{
   unistd::{getpid, Pid},
 };
 
-use crate::pty::{PtyFd, UnixSlavePty};
+use crate::pty::UnixSlavePty;
 
 pub fn read_argv(pid: Pid) -> color_eyre::Result<Vec<CString>> {
   let filename = format!("/proc/{pid}/cmdline");
@@ -156,7 +156,7 @@ pub fn get_mountinfo_by_mnt_id(pid: Pid, mnt_id: c_int) -> color_eyre::Result<St
       return Ok(line);
     }
   }
-  return Ok("Not found. This is proably a pipe or something else.".to_string());
+  Ok("Not found. This is proably a pipe or something else.".to_string())
 }
 
 #[derive(Debug, Clone, PartialEq)]
