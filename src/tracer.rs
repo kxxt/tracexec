@@ -255,7 +255,13 @@ impl Tracer {
     }
     // Set foreground process group of the terminal
     if let TracerMode::Cli = &self.mode {
-      tcsetpgrp(stdin(), root_child)?;
+      match tcsetpgrp(stdin(), root_child) {
+        Ok(_) => {}
+        Err(Errno::ENOTTY) => {
+          log::warn!("tcsetpgrp failed: ENOTTY");
+        }
+        r => r?,
+      }
     }
     let mut ptrace_opts = {
       use nix::sys::ptrace::Options;
