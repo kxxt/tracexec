@@ -121,7 +121,8 @@ impl StatefulWidgetRef for CopyPopup {
       Block::default()
         .title("Copy")
         .title_alignment(Center)
-        .borders(Borders::ALL),
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::LightGreen)),
     )
     .highlight_style(
       Style::default()
