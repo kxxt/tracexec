@@ -63,6 +63,10 @@ tui-scrollview = "0.3.5"
 bitflags = "2.5.0"
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 
+[dev-dependencies]
+assert_cmd = "2.0.14"
+predicates = "3.1.0"
+
 [features]
 default = ["seccomp-bpf"]
 seccomp-bpf = ["dep:seccompiler"]

@@ -11,6 +11,8 @@ use self::{
 
 pub mod args;
 pub mod options;
+#[cfg(test)]
+mod test;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about)]
