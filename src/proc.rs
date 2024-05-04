@@ -15,6 +15,7 @@ use filedescriptor::AsRawFileDescriptor;
 use owo_colors::OwoColorize;
 
 use nix::{
+  fcntl::OFlag,
   libc::AT_FDCWD,
   unistd::{getpid, Pid},
 };
@@ -90,16 +91,31 @@ impl FileDescriptorInfoCollection {
   }
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FileDescriptorInfo {
   pub fd: c_int,
   pub path: PathBuf,
   pub pos: usize,
-  pub flags: c_int,
+  pub flags: OFlag,
   pub mnt_id: c_int,
   pub ino: c_int,
   pub mnt: String,
   pub extra: Vec<String>,
+}
+
+impl Default for FileDescriptorInfo {
+  fn default() -> Self {
+    Self {
+      fd: Default::default(),
+      path: Default::default(),
+      pos: Default::default(),
+      flags: OFlag::empty(),
+      mnt_id: Default::default(),
+      ino: Default::default(),
+      mnt: Default::default(),
+      extra: Default::default(),
+    }
+  }
 }
 
 pub fn read_fd(pid: Pid, fd: i32) -> std::io::Result<PathBuf> {
@@ -123,7 +139,7 @@ pub fn read_fdinfo(pid: Pid, fd: i32) -> color_eyre::Result<FileDescriptorInfo> 
     let value = parts.next().unwrap_or("");
     match key {
       "pos:" => info.pos = value.parse()?,
-      "flags:" => info.flags = value.parse()?,
+      "flags:" => info.flags = OFlag::from_bits_truncate(value.parse()?),
       "mnt_id:" => info.mnt_id = value.parse()?,
       "ino:" => info.ino = value.parse()?,
       _ => info.extra.push(line),
