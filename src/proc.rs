@@ -156,7 +156,7 @@ pub fn get_mountinfo_by_mnt_id(pid: Pid, mnt_id: c_int) -> color_eyre::Result<St
       return Ok(line);
     }
   }
-  Ok("Not found. This is proably a pipe or something else.".to_string())
+  Ok("Not found. This is probably a pipe or something else.".to_string())
 }
 
 #[derive(Debug, Clone, PartialEq)]
