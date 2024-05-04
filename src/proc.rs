@@ -139,7 +139,7 @@ pub fn read_fdinfo(pid: Pid, fd: i32) -> color_eyre::Result<FileDescriptorInfo> 
     let value = parts.next().unwrap_or("");
     match key {
       "pos:" => info.pos = value.parse()?,
-      "flags:" => info.flags = OFlag::from_bits_truncate(value.parse()?),
+      "flags:" => info.flags = OFlag::from_bits_truncate(c_int::from_str_radix(value, 8)?),
       "mnt_id:" => info.mnt_id = value.parse()?,
       "ino:" => info.ino = value.parse()?,
       _ => info.extra.push(line),
