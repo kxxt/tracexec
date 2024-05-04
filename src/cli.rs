@@ -15,7 +15,7 @@ pub mod options;
 #[derive(Parser, Debug)]
 #[clap(author, version, about)]
 pub struct Cli {
-  #[arg(long, default_value_t = Color::Auto, help = "Control whether colored output is enabled")]
+  #[arg(long, default_value_t = Color::Auto, help = "Control whether colored output is enabled. This flag has no effect on TUI mode.")]
   pub color: Color,
   #[arg(
     short = 'C',
