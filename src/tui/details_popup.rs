@@ -3,12 +3,12 @@ use std::{
   sync::Arc,
 };
 
-use itertools::Itertools;
-use nix::errno::Errno;
+use itertools::{chain, Itertools};
+use nix::{errno::Errno, fcntl::OFlag};
 use ratatui::{
   buffer::Buffer,
   layout::{Alignment::Center, Rect, Size},
-  style::{Color, Style, Stylize},
+  style::{Color, Style, Styled, Stylize},
   text::{Line, Span},
   widgets::{
     Block, Borders, Clear, Paragraph, StatefulWidget, StatefulWidgetRef, Tabs, Widget, WidgetRef,
@@ -218,6 +218,45 @@ impl DetailsPopupState {
           ]
           .into(),
         );
+        // Flags
+        let flags = info.flags.iter().map(|f| {
+          let style = match f {
+            OFlag::O_CLOEXEC => Style::new().fg(Color::LightGreen).bold(), // Close on exec
+            OFlag::O_RDONLY | OFlag::O_WRONLY | OFlag::O_RDWR => {
+              Style::new().fg(Color::LightBlue).bold() // Access Mode
+            }
+            OFlag::O_CREAT
+            | OFlag::O_DIRECTORY
+            | OFlag::O_EXCL
+            | OFlag::O_NOCTTY
+            | OFlag::O_NOFOLLOW
+            | OFlag::O_TMPFILE
+            | OFlag::O_TRUNC => Style::new().fg(Color::LightCyan).bold(), // File creation flags
+            #[allow(unreachable_patterns)]
+            OFlag::O_APPEND
+            | OFlag::O_ASYNC
+            | OFlag::O_DIRECT
+            | OFlag::O_DSYNC
+            | OFlag::O_LARGEFILE // will be 0x0 if __USE_LARGEFILE64
+            | OFlag::O_NOATIME
+            | OFlag::O_NONBLOCK
+            | OFlag::O_NDELAY // Same as O_NONBLOCK
+            | OFlag::O_PATH
+            | OFlag::O_SYNC => {
+              Style::new().fg(Color::LightYellow).bold() // 
+            }
+            _ => Style::new().fg(Color::LightRed).bold(), // Other flags
+          };
+          let mut flag_display = String::new();
+          bitflags::parser::to_writer(&f, &mut flag_display).unwrap();
+          flag_display.push(' ');
+          flag_display.set_style(style)
+        });
+        fdinfo.push(
+          chain!(["Flags".bold().white(), ": ".into()], flags)
+            .collect_vec()
+            .into(),
+        );
         // Mount Info
         fdinfo.push(
           vec![
@@ -248,7 +287,6 @@ impl DetailsPopupState {
           ]
           .into(),
         );
-        // TODO: decode flags
         // extra
         if !info.extra.is_empty() {
           fdinfo.push("Extra Information:".bold().white().into());

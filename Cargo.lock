@@ -1626,6 +1626,7 @@ dependencies = [
  "arboard",
  "atoi",
  "better-panic",
+ "bitflags",
  "bytes",
  "cfg-if",
  "clap",
