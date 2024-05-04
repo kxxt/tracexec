@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.1.0-beta.2
+
+tracexec v0.1.0-beta.2 released!
+
+![tracexec v0.1.0-beta.2](https://github.com/kxxt/tracexec/blob/main/screenshots/0.1.0-beta.2.gif?raw=true)
+
+Changes since v0.1.0-beta.1:
+
+### Added
+
+- Tracing and diffing file descriptors.
+- Option to show stdio/fds in cmdline.
+- TUI: show detailed information of file descriptors in the FdInfo tab of details popup.
+
+### Changed
+
+- Update dependencies.
+- TUI: Make CLI flags in help dialog more readable.
+- Warn if argv is empty.
+- Warn on bad envp/argv/filename.
+- Log: `--show-cmdline` no longer implies `--successful-only`
+- Warnings are now shown in TUI/Log mode.
+- `--verbose/--quiet` is removed from CLI. Use `--filter/--filter-include/--filter-exclude` instead.
+
+### Fixed
+
+- Don't crash when tracee closes its stdio.
+- TUI: fix truncated tabs.
+
 ## v0.1.0-beta.1
 
 tracexec v0.1.0-beta.1 released!
@@ -46,7 +75,7 @@ Changes since v0.1.0-alpha.7:
 
 - Tweak tokio worker thread count.
 - Reduce idle CPU usage in TUI mode.
-    - Lines and List are now cached for the event list.
+  - Lines and List are now cached for the event list.
 
 ### Fixed
 
@@ -77,7 +106,7 @@ Changes since v0.1.0-alpha.5:
 
 - The panes in the TUI can now be resized by `G` and `S` keys.
 - Vertical layout for the TUI is now supported. Use `--layout vertical` to enable it.
-(Or dynamically switch between horizontal and vertical layout by `Alt+L` in the TUI)
+  (Or dynamically switch between horizontal and vertical layout by `Alt+L` in the TUI)
 - Line wrapping for bottom help text in the TUI.
 - Hide navigation key bindings from the bottom help text in the TUI.
 - Show verbose help text in the TUI when pressing `F1`.
@@ -132,7 +161,7 @@ Changes since v0.1.0-alpha.3:
 - Added `-C` option to change the working directory of tracexec.
 - Added terminate/kill on exit option to TUI command.
 - Added `--user` option to run as a different user. (This is mostly useful for tracing setuid/setgid binaries. Thanks to strace for the idea.)
-    - Automatically disable seccomp-bpf when using `--user` because seccomp-bpf enforces no-new-privs.
+  - Automatically disable seccomp-bpf when using `--user` because seccomp-bpf enforces no-new-privs.
 
 ![tracexec tracing across setuid binaries](https://github.com/kxxt/tracexec/blob/6fac526/screenshots/trace-suid.png?raw=true)
 
@@ -140,7 +169,6 @@ Changes since v0.1.0-alpha.3:
 
 - Fix wrong cwd used to spawn child processes. This bug was introduced when switching to use `CommandBuilder` in v0.1.0-alpha.3.
 - Fix `RUST_LOG` env var getting overwritten by tracexec. tracexec should not touch the environment variables at all.
-
 
 ## v0.1.0-alpha.3
 
@@ -159,8 +187,8 @@ tracexec v0.0.5 released!
 Changes since v0.0.4:
 
 - Seccomp-bpf optimization is implemented and enabled by default. This almost reduces the performance overhead of tracexec to zero.
-    - `--seccomp-bpf` option is added to control this feature.
-    - Added a warning when running on untested low kernel versions (<4.8).
+  - `--seccomp-bpf` option is added to control this feature.
+  - Added a warning when running on untested low kernel versions (<4.8).
 - Bug fixes for `--no-show-env`.
 - List is now highlighted when using `--more-colors`.
 
@@ -169,8 +197,8 @@ Changes since v0.0.4:
 Changes since v0.0.4:
 
 - Seccomp-bpf optimization is implemented and enabled by default. This almost reduces the performance overhead of tracexec to zero.
-    - `--seccomp-bpf` option is added to control this feature.
-    - Added a warning when running on untested low kernel versions (<4.8).
+  - `--seccomp-bpf` option is added to control this feature.
+  - Added a warning when running on untested low kernel versions (<4.8).
 - Bug fixes for `--no-show-env`.
 - List is now highlighted when using `--more-colors`.
 
@@ -235,7 +263,7 @@ Changes since v0.0.0-experimental.7:
 - --print-cmdline: show cmdline hint
 - more colors
 - deps: update shell-quote to 0.3.2, which makes the output of `--print-cmdline` more aesthetically pleasing.
-- feat: --print-children for  a message when a child is created
+- feat: --print-children for a message when a child is created
 - docs: update README.
 - Github: add release workflow
 
@@ -245,7 +273,6 @@ Changes since v0.0.0-experimental.7:
 - Add aarch64 support.
 - Fix code that previously relies on x86_64 specific behaviors.
 - feat: also trace execveat
-
 
 ## v0.0.0-experimental.4
 
