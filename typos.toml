@@ -1,0 +1,6 @@
+[default]
+extend-ignore-identifiers-re = ["[rR]atatui"]
+extend-ignore-re = ["\\(L\\)ine"]
+
+[default.extend-words]
+"Sur" = "Sur"

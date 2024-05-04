@@ -53,7 +53,7 @@ Changes since v0.1.0-alpha.8:
 - Fix the logic of argv[0] handling for both logging and TUI mode.
 - Handle edge cases for the TUI event list when there are no events.
 - Two off-by-one errors in the TUI event list.
-- Clean up legacy code in pseduo terminal handling.
+- Clean up legacy code in pseudo terminal handling.
 - Some typos.
 
 ## v0.1.0-alpha.8

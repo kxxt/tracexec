@@ -229,7 +229,7 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
   if let Err(e) = reader.read_until(b'\n', &mut buf) {
     return Interpreter::Error(e.to_string());
   };
-  // Get trimed shebang line [start, end) indices
+  // Get trimmed shebang line [start, end) indices
   // If the shebang line is empty, we don't care
   let start = buf
     .iter()

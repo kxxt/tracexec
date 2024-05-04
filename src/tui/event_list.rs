@@ -192,7 +192,7 @@ impl Widget for &mut EventList {
 
     // Render scrollbars
     if self.max_width + 1 > area.width as usize {
-      // Render horizontal scrollbar, assumming there is a border we can overwrite
+      // Render horizontal scrollbar, assuming there is a border we can overwrite
       let scrollbar = Scrollbar::new(ScrollbarOrientation::HorizontalBottom).thumb_symbol("■");
       let scrollbar_area = Rect {
         x: area.x,

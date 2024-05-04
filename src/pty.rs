@@ -292,7 +292,7 @@ impl ChildKiller for std::process::Child {
       // are that on success the process is dead or shortly about to
       // terminate.  Since SIGUP doesn't guarantee termination, we
       // give the process a bit of a grace period to shutdown or do whatever
-      // it is doing in its signal handler befre we proceed with the
+      // it is doing in its signal handler before we proceed with the
       // full on kill.
       for attempt in 0..5 {
         if attempt > 0 {
