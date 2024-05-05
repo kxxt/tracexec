@@ -172,8 +172,71 @@ impl TracerEvent {
         };
         let space: Span = " ".into();
 
-        // Handle file descriptors
+        // Handle argv[0]
+        let _ = argv.as_deref().inspect(|v| {
+          v.first().inspect(|&arg0| {
+            if filename.is_ok() && filename.as_ref().unwrap().as_os_str() != OsStr::new(arg0) {
+              spans.push(space.clone());
+              spans.push(format!("-a {}", escape_str_for_bash!(arg0)).set_style(THEME.arg0))
+            }
+          });
+        });
+        // Handle cwd
+        if cwd != &baseline.cwd {
+          spans.push(space.clone());
+          spans.push(format!("-C {}", escape_str_for_bash!(cwd)).set_style(THEME.cwd));
+        }
+        if env_in_cmdline {
+          if let Ok(env_diff) = env_diff {
+            // Handle env diff
+            for k in env_diff.removed.iter() {
+              spans.push(space.clone());
+              spans
+                .push(format!("-u {}", escape_str_for_bash!(k)).set_style(THEME.deleted_env_var));
+            }
+            for (k, v) in env_diff.added.iter() {
+              // Added env vars
+              spans.push(space.clone());
+              spans.push(
+                format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v))
+                  .set_style(THEME.added_env_var),
+              );
+            }
+            for (k, v) in env_diff.modified.iter() {
+              // Modified env vars
+              spans.push(space.clone());
+              spans.push(
+                format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v))
+                  .set_style(THEME.modified_env_var),
+              );
+            }
+          }
+        }
+        spans.push(space.clone());
+        // Filename
+        match filename {
+          Ok(filename) => {
+            spans.push(format!("{}", escape_str_for_bash!(filename)).set_style(THEME.filename));
+          }
+          Err(_) => {
+            spans.push("[failed to read filename]".set_style(THEME.inline_tracer_error));
+          }
+        }
+        // Argv[1..]
+        match argv.as_ref() {
+          Ok(argv) => {
+            for arg in argv.iter().skip(1) {
+              spans.push(space.clone());
+              spans.push(format!("{}", escape_str_for_bash!(arg)).set_style(THEME.argv));
+            }
+          }
+          Err(_) => {
+            spans.push(space.clone());
+            spans.push("[failed to read argv]".set_style(THEME.inline_tracer_error));
+          }
+        }
 
+        // Handle file descriptors
         if modifier.stdio_in_cmdline {
           let fdinfo_orig = baseline.fdinfo.stdin().unwrap();
           if let Some(fdinfo) = fdinfo.stdin() {
@@ -241,69 +304,6 @@ impl TracerEvent {
           }
         }
 
-        // Handle argv[0]
-        let _ = argv.as_deref().inspect(|v| {
-          v.first().inspect(|&arg0| {
-            if filename.is_ok() && filename.as_ref().unwrap().as_os_str() != OsStr::new(arg0) {
-              spans.push(space.clone());
-              spans.push(format!("-a {}", escape_str_for_bash!(arg0)).set_style(THEME.arg0))
-            }
-          });
-        });
-        // Handle cwd
-        if cwd != &baseline.cwd {
-          spans.push(space.clone());
-          spans.push(format!("-C {}", escape_str_for_bash!(cwd)).set_style(THEME.cwd));
-        }
-        if env_in_cmdline {
-          if let Ok(env_diff) = env_diff {
-            // Handle env diff
-            for k in env_diff.removed.iter() {
-              spans.push(space.clone());
-              spans
-                .push(format!("-u {}", escape_str_for_bash!(k)).set_style(THEME.deleted_env_var));
-            }
-            for (k, v) in env_diff.added.iter() {
-              // Added env vars
-              spans.push(space.clone());
-              spans.push(
-                format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v))
-                  .set_style(THEME.added_env_var),
-              );
-            }
-            for (k, v) in env_diff.modified.iter() {
-              // Modified env vars
-              spans.push(space.clone());
-              spans.push(
-                format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v))
-                  .set_style(THEME.modified_env_var),
-              );
-            }
-          }
-        }
-        spans.push(space.clone());
-        // Filename
-        match filename {
-          Ok(filename) => {
-            spans.push(format!("{}", escape_str_for_bash!(filename)).set_style(THEME.filename));
-          }
-          Err(_) => {
-            spans.push("[failed to read filename]".set_style(THEME.inline_tracer_error));
-          }
-        }
-        // Argv[1..]
-        match argv.as_ref() {
-          Ok(argv) => {
-            for arg in argv.iter().skip(1) {
-              spans.push(space.clone());
-              spans.push(format!("{}", escape_str_for_bash!(arg)).set_style(THEME.argv));
-            }
-          }
-          Err(_) => {
-            spans.push(space.clone());
-            spans.push("[failed to read argv]".set_style(THEME.inline_tracer_error));
-          }
-        }
         Line::default().spans(spans)
       }
       TracerEvent::RootChildExit { signal, exit_code } => format!(
