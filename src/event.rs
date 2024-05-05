@@ -148,21 +148,11 @@ impl TracerEvent {
           fdinfo,
           ..
         } = exec.as_ref();
-        let filename_or_err = match filename {
-          Ok(filename) => filename
-            .to_string_lossy()
-            .into_owned()
-            .set_style(THEME.filename),
-          Err(e) => format!("[failed to read filename: {e}]").set_style(THEME.inline_tracer_error),
-        };
-
         let mut spans: Vec<Span> = if !cmdline_only {
           tracer_event_spans!(
             pid,
             comm,
             *result,
-            Some(filename_or_err),
-            Some(" ".into()),
             Some("env".set_style(THEME.tracer_event)),
           )
           .flatten()
