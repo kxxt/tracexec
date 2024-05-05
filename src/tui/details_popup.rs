@@ -58,11 +58,11 @@ impl DetailsPopupState {
       details.extend([
         (" Cmdline with stdio ", {
           modifier_args.stdio_in_cmdline = true;
-          event.to_tui_line(&baseline, false, &modifier_args, true)
+          event.to_tui_line(&baseline, true, &modifier_args, true)
         }),
         (" Cmdline with file descriptors ", {
           modifier_args.fd_in_cmdline = true;
-          event.to_tui_line(&baseline, false, &modifier_args, true)
+          event.to_tui_line(&baseline, true, &modifier_args, true)
         }),
         (" Pid ", Line::from(exec.pid.to_string())),
         (" Result ", {
