@@ -33,7 +33,6 @@ use crate::{
   cli::args::{ModifierArgs, TracerEventArgs, TracingArgs},
   cmdbuilder::CommandBuilder,
   event::{filterable_event, ExecEvent, TracerEvent, TracerEventKind, TracerMessage},
-  inspect::{read_pathbuf, read_string, read_string_array, InspectError},
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{
     diff_env, read_comm, read_cwd, read_fd, read_fds, read_interpreter_recursive, BaselineInfo,
@@ -41,11 +40,15 @@ use crate::{
   pty::{self, Child, UnixSlavePty},
 };
 
+use self::inspect::{read_pathbuf, read_string, read_string_array};
 use self::ptrace::*;
 use self::state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus};
 
-pub mod ptrace;
+mod inspect;
+mod ptrace;
 pub mod state;
+
+pub use inspect::InspectError;
 
 cfg_if! {
     if #[cfg(feature = "seccomp-bpf")] {

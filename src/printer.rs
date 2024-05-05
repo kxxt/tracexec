@@ -10,9 +10,9 @@ use std::{
 use crate::{
   cli::args::{ModifierArgs, TracingArgs},
   event::TracerEvent,
-  inspect::InspectError,
   proc::{diff_env, BaselineInfo, FileDescriptorInfoCollection, Interpreter},
   tracer::state::ProcessState,
+  tracer::InspectError,
 };
 
 use itertools::chain;

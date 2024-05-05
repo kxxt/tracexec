@@ -17,9 +17,9 @@ use tokio::sync::mpsc::{self};
 use crate::{
   action::CopyTarget,
   cli::args::ModifierArgs,
-  inspect::InspectError,
   printer::{escape_str_for_bash, ListPrinter},
   proc::{BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter},
+  tracer::InspectError,
 };
 
 #[derive(Debug, Clone, Display, PartialEq)]

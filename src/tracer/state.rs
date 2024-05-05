@@ -3,8 +3,8 @@ use std::{collections::HashMap, ffi::CString, path::PathBuf, sync::Arc};
 use nix::unistd::Pid;
 
 use crate::{
-  inspect::InspectError,
   proc::{read_argv, read_comm, FileDescriptorInfoCollection, Interpreter},
+  tracer::InspectError,
 };
 
 pub struct ProcessStateStore {

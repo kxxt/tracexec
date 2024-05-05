@@ -3,7 +3,6 @@ mod arch;
 mod cli;
 mod cmdbuilder;
 mod event;
-mod inspect;
 mod log;
 mod printer;
 mod proc;
