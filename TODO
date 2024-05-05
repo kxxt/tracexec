@@ -14,4 +14,4 @@
 - Better formatting of other events
 - Tree mode
 - (Maybe) switch to manual rendering by using Notify and batch frequent rerenders.
-  - Maybe use an atomic bool to indicate whether to rerender or not. Cancel a sheduled rerender if the bool is false.
+  - Maybe use an atomic bool to indicate whether to rerender or not. Cancel a scheduled rerender if the bool is false.
