@@ -594,7 +594,7 @@ impl Widget for &mut App {
     self.event_list.render(inner, buf);
     if let Some(term) = self.term.as_mut() {
       let block = Block::default()
-        .title("Pseudo Terminal")
+        .title("Terminal")
         .borders(ratatui::widgets::Borders::ALL)
         .border_style(
           Style::default().fg(if self.active_pane == ActivePane::Terminal {
