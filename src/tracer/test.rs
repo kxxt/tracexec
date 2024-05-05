@@ -62,9 +62,17 @@ async fn tracer_emits_exec_event(tracer: (Arc<Tracer>, UnboundedReceiver<TracerE
       assert_eq!(filename, &PathBuf::from("/bin/true"));
       // The environment is not modified
       let env_diff = exec.env_diff.as_ref().unwrap();
-      assert!(env_diff.added.is_empty());
-      assert!(env_diff.removed.is_empty());
-      assert!(env_diff.modified.is_empty());
+      assert!(env_diff.added.is_empty(), "added env: {:?}", env_diff.added);
+      assert!(
+        env_diff.removed.is_empty(),
+        "removed env: {:?}",
+        env_diff.removed
+      );
+      assert!(
+        env_diff.modified.is_empty(),
+        "modified env: {:?}",
+        env_diff.modified
+      );
       // Successful exit
       assert_eq!(exec.result, 0);
       // CWD is the same as the baseline
@@ -75,7 +83,7 @@ async fn tracer_emits_exec_event(tracer: (Arc<Tracer>, UnboundedReceiver<TracerE
       assert_eq!(exec.comm, "tracer");
       // Interpreter: doesn't contain errors
       for interp in exec.interpreter.iter() {
-        assert!(!matches!(interp, Interpreter::Error(_)));
+        assert!(!matches!(interp, Interpreter::Error(_)), "error: {:?}", interp);
       }
       return;
     }
