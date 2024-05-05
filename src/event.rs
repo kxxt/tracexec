@@ -8,11 +8,11 @@ use itertools::{chain, Itertools};
 use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
   layout::Size,
-  style::{Color, Stylize},
+  style::Styled,
   text::{Line, Span},
 };
 use strum::Display;
-use tokio::sync::mpsc::{self};
+use tokio::sync::mpsc;
 
 use crate::{
   action::CopyTarget,
@@ -20,6 +20,7 @@ use crate::{
   printer::{escape_str_for_bash, ListPrinter},
   proc::{BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter},
   tracer::InspectError,
+  tui::theme::THEME,
 };
 
 #[derive(Debug, Clone, Display, PartialEq)]
@@ -75,14 +76,14 @@ pub struct ExecEvent {
 macro_rules! tracer_event_spans {
     ($pid: expr, $comm: expr, $result:expr, $($t:tt)*) => {
         chain!([
-            Some($pid.to_string().fg(if $result == 0 {
-              Color::LightGreen
+            Some($pid.to_string().set_style(if $result == 0 {
+              THEME.pid_success
             } else if $result == (-nix::libc::ENOENT).into() {
-              Color::LightYellow
+              THEME.pid_enoent
             } else {
-              Color::LightRed
+              THEME.pid_failure
             })),
-            Some(format!("<{}>", $comm).fg(Color::Cyan)),
+            Some(format!("<{}>", $comm).set_style(THEME.comm)),
             Some(": ".into()),
         ], [$($t)*])
     };
@@ -102,26 +103,26 @@ impl TracerEvent {
     match self {
       TracerEvent::Info(TracerMessage { ref msg, pid }) => chain!(
         pid
-          .map(|p| [p.to_string().fg(Color::LightMagenta)])
+          .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
-        ["[info]".fg(Color::LightBlue).bold()],
-        [": ".into(), msg.clone().bold().light_blue()]
+        ["[info]".set_style(THEME.tracer_info)],
+        [": ".into(), msg.clone().set_style(THEME.tracer_info)]
       )
       .collect(),
       TracerEvent::Warning(TracerMessage { ref msg, pid }) => chain!(
         pid
-          .map(|p| [p.to_string().fg(Color::LightMagenta)])
+          .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
-        ["[warn]".fg(Color::Yellow).bold()],
-        [": ".into(), msg.clone().bold().light_yellow()]
+        ["[warn]".set_style(THEME.tracer_warning)],
+        [": ".into(), msg.clone().set_style(THEME.tracer_warning)]
       )
       .collect(),
       TracerEvent::Error(TracerMessage { ref msg, pid }) => chain!(
         pid
-          .map(|p| [p.to_string().fg(Color::LightMagenta)])
+          .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
-        ["error".bg(Color::Red).bold()],
-        [": ".into(), msg.clone().bold().light_red()]
+        ["error".set_style(THEME.tracer_error)],
+        [": ".into(), msg.clone().set_style(THEME.tracer_error)]
       )
       .collect(),
       TracerEvent::NewChild { ppid, pcomm, pid } => {
@@ -129,8 +130,8 @@ impl TracerEvent {
           ppid,
           pcomm,
           0,
-          Some("new child ".fg(Color::Magenta)),
-          Some(pid.to_string().fg(Color::Yellow)),
+          Some("new child ".set_style(THEME.tracer_event)),
+          Some(pid.to_string().set_style(THEME.new_child_pid)),
         );
         spans.flatten().collect()
       }
@@ -148,11 +149,11 @@ impl TracerEvent {
           ..
         } = exec.as_ref();
         let filename_or_err = match filename {
-          Ok(filename) => filename.to_string_lossy().into_owned().fg(Color::LightBlue),
-          Err(e) => format!("[failed to read filename: {e}]")
-            .light_red()
-            .bold()
-            .slow_blink(),
+          Ok(filename) => filename
+            .to_string_lossy()
+            .into_owned()
+            .set_style(THEME.filename),
+          Err(e) => format!("[failed to read filename: {e}]").set_style(THEME.inline_tracer_error),
         };
 
         let mut spans: Vec<Span> = if !cmdline_only {
@@ -162,12 +163,12 @@ impl TracerEvent {
             *result,
             Some(filename_or_err),
             Some(" ".into()),
-            Some("env".fg(Color::Magenta)),
+            Some("env".set_style(THEME.tracer_event)),
           )
           .flatten()
           .collect()
         } else {
-          vec!["env".fg(Color::Magenta)]
+          vec!["env".set_style(THEME.tracer_event)]
         };
         let space: Span = " ".into();
 
@@ -178,52 +179,49 @@ impl TracerEvent {
           if let Some(fdinfo) = fdinfo.stdin() {
             if fdinfo.path != fdinfo_orig.path {
               spans.push(space.clone());
-              spans.push("<".light_yellow().bold());
+              spans.push("<".set_style(THEME.modified_fd_in_cmdline));
               spans.push(
                 escape_str_for_bash!(&fdinfo.path)
                   .into_owned()
-                  .light_yellow()
-                  .bold(),
+                  .set_style(THEME.modified_fd_in_cmdline),
               );
             }
           } else {
             // stdin is closed
             spans.push(space.clone());
-            spans.push("0>&-".light_red().bold());
+            spans.push("0>&-".set_style(THEME.removed_fd_in_cmdline));
           }
           let fdinfo_orig = baseline.fdinfo.stdout().unwrap();
           if let Some(fdinfo) = fdinfo.stdout() {
             if fdinfo.path != fdinfo_orig.path {
               spans.push(space.clone());
-              spans.push(">".light_yellow().bold());
+              spans.push(">".set_style(THEME.modified_fd_in_cmdline));
               spans.push(
                 escape_str_for_bash!(&fdinfo.path)
                   .into_owned()
-                  .light_yellow()
-                  .bold(),
+                  .set_style(THEME.modified_fd_in_cmdline),
               )
             }
           } else {
             // stdout is closed
             spans.push(space.clone());
-            spans.push("1>&-".light_red().bold());
+            spans.push("1>&-".set_style(THEME.removed_fd_in_cmdline));
           }
           let fdinfo_orig = baseline.fdinfo.stderr().unwrap();
           if let Some(fdinfo) = fdinfo.stderr() {
             if fdinfo.path != fdinfo_orig.path {
               spans.push(space.clone());
-              spans.push("2>".light_yellow().bold());
+              spans.push("2>".set_style(THEME.modified_fd_in_cmdline));
               spans.push(
                 escape_str_for_bash!(&fdinfo.path)
                   .into_owned()
-                  .light_yellow()
-                  .bold(),
+                  .set_style(THEME.modified_fd_in_cmdline),
               );
             }
           } else {
             // stderr is closed
             spans.push(space.clone());
-            spans.push("2>&-".light_red().bold());
+            spans.push("2>&-".set_style(THEME.removed_fd_in_cmdline));
           }
         }
 
@@ -233,13 +231,12 @@ impl TracerEvent {
               continue;
             }
             spans.push(space.clone());
-            spans.push(fd.to_string().light_green().bold());
-            spans.push(">".light_green().bold());
+            spans.push(fd.to_string().set_style(THEME.added_fd_in_cmdline));
+            spans.push(">".set_style(THEME.added_fd_in_cmdline));
             spans.push(
               escape_str_for_bash!(&fdinfo.path)
                 .into_owned()
-                .light_green()
-                .bold(),
+                .set_style(THEME.added_fd_in_cmdline),
             )
           }
         }
@@ -249,31 +246,29 @@ impl TracerEvent {
           v.first().inspect(|&arg0| {
             if filename.is_ok() && filename.as_ref().unwrap().as_os_str() != OsStr::new(arg0) {
               spans.push(space.clone());
-              spans.push(
-                format!("-a {}", escape_str_for_bash!(arg0))
-                  .fg(Color::White)
-                  .italic(),
-              )
+              spans.push(format!("-a {}", escape_str_for_bash!(arg0)).set_style(THEME.arg0))
             }
           });
         });
         // Handle cwd
         if cwd != &baseline.cwd {
           spans.push(space.clone());
-          spans.push(format!("-C {}", escape_str_for_bash!(cwd)).fg(Color::LightCyan));
+          spans.push(format!("-C {}", escape_str_for_bash!(cwd)).set_style(THEME.cwd));
         }
         if env_in_cmdline {
           if let Ok(env_diff) = env_diff {
             // Handle env diff
             for k in env_diff.removed.iter() {
               spans.push(space.clone());
-              spans.push(format!("-u {}", escape_str_for_bash!(k)).fg(Color::LightRed));
+              spans
+                .push(format!("-u {}", escape_str_for_bash!(k)).set_style(THEME.deleted_env_var));
             }
             for (k, v) in env_diff.added.iter() {
               // Added env vars
               spans.push(space.clone());
               spans.push(
-                format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v)).fg(Color::Green),
+                format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v))
+                  .set_style(THEME.added_env_var),
               );
             }
             for (k, v) in env_diff.modified.iter() {
@@ -281,7 +276,7 @@ impl TracerEvent {
               spans.push(space.clone());
               spans.push(
                 format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v))
-                  .fg(Color::Yellow),
+                  .set_style(THEME.modified_env_var),
               );
             }
           }
@@ -290,16 +285,10 @@ impl TracerEvent {
         // Filename
         match filename {
           Ok(filename) => {
-            spans.push(format!("{}", escape_str_for_bash!(filename)).fg(Color::LightBlue));
+            spans.push(format!("{}", escape_str_for_bash!(filename)).set_style(THEME.filename));
           }
           Err(_) => {
-            spans.push(
-              "[failed to read filename]"
-                .fg(Color::LightRed)
-                .slow_blink()
-                .underlined()
-                .bold(),
-            );
+            spans.push("[failed to read filename]".set_style(THEME.inline_tracer_error));
           }
         }
         // Argv[1..]
@@ -307,18 +296,12 @@ impl TracerEvent {
           Ok(argv) => {
             for arg in argv.iter().skip(1) {
               spans.push(space.clone());
-              spans.push(format!("{}", escape_str_for_bash!(arg)).into());
+              spans.push(format!("{}", escape_str_for_bash!(arg)).set_style(THEME.argv));
             }
           }
           Err(_) => {
             spans.push(space.clone());
-            spans.push(
-              "[failed to read argv]"
-                .fg(Color::LightRed)
-                .slow_blink()
-                .underlined()
-                .bold(),
-            );
+            spans.push("[failed to read argv]".set_style(THEME.inline_tracer_error));
           }
         }
         Line::default().spans(spans)

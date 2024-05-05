@@ -45,6 +45,7 @@ pub mod help;
 mod partial_line;
 mod pseudo_term;
 mod sized_paragraph;
+pub mod theme;
 mod ui;
 
 pub struct Tui {
