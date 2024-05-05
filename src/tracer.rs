@@ -1,5 +1,5 @@
 use std::{
-  collections::HashMap,
+  collections::BTreeMap,
   ffi::CString,
   io::{self, stdin},
   os::fd::AsRawFd,
@@ -724,7 +724,7 @@ impl Tracer {
 
   // This function does not take self due to borrow checker
   fn collect_exec_event(
-    env: &HashMap<String, String>,
+    env: &BTreeMap<String, String>,
     state: &ProcessState,
     result: i64,
   ) -> Box<ExecEvent> {

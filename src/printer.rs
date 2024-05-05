@@ -1,6 +1,6 @@
 use std::{
   cell::RefCell,
-  collections::HashMap,
+  collections::BTreeMap,
   ffi::OsStr,
   io::{self, Write},
   path::Path,
@@ -357,7 +357,7 @@ impl Printer {
     &self,
     state: &ProcessState,
     result: i64,
-    env: &HashMap<String, String>,
+    env: &BTreeMap<String, String>,
     cwd: &Path,
   ) -> color_eyre::Result<()> {
     // Preconditions:

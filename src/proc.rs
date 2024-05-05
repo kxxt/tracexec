@@ -3,7 +3,7 @@
 use core::fmt;
 use std::{
   borrow::Cow,
-  collections::{BTreeMap, HashMap, HashSet},
+  collections::{BTreeMap, BTreeSet, HashSet},
   ffi::CString,
   fmt::{Display, Formatter},
   io::{self, BufRead, BufReader, Read},
@@ -290,9 +290,9 @@ pub fn parse_env_entry(item: &str) -> (&str, &str) {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnvDiff {
-  pub added: HashMap<String, String>,
-  pub removed: HashSet<String>,
-  pub modified: HashMap<String, String>,
+  pub added: BTreeMap<String, String>,
+  pub removed: BTreeSet<String>,
+  pub modified: BTreeMap<String, String>,
 }
 
 impl EnvDiff {
@@ -301,9 +301,9 @@ impl EnvDiff {
   }
 }
 
-pub fn diff_env(original: &HashMap<String, String>, envp: &[String]) -> EnvDiff {
-  let mut added = HashMap::new();
-  let mut modified = HashMap::new();
+pub fn diff_env(original: &BTreeMap<String, String>, envp: &[String]) -> EnvDiff {
+  let mut added = BTreeMap::new();
+  let mut modified = BTreeMap::new();
   // Use str to avoid cloning all env vars
   let mut removed: HashSet<&str> = original.keys().map(|v| v.as_str()).collect();
   for entry in envp.iter() {
@@ -329,7 +329,7 @@ pub fn diff_env(original: &HashMap<String, String>, envp: &[String]) -> EnvDiff 
 #[derive(Debug, Clone)]
 pub struct BaselineInfo {
   pub cwd: PathBuf,
-  pub env: HashMap<String, String>,
+  pub env: BTreeMap<String, String>,
   pub fdinfo: FileDescriptorInfoCollection,
 }
 
