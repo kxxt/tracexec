@@ -1,6 +1,6 @@
 # tracexec
 
-A small utility for tracing execve{,at}.
+A small utility for tracing execve{,at} and pre-exec behavior.
 
 tracexec helps you to figure out what and how programs get executed when you execute a program.
 
