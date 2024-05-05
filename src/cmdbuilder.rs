@@ -28,35 +28,8 @@
 use color_eyre::eyre::{bail, Context};
 use nix::libc;
 use std::collections::BTreeMap;
+use std::env;
 use std::ffi::{OsStr, OsString};
-
-/// Used to deal with Windows having case-insensitive environment variables.
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
-struct EnvEntry {
-  /// Whether or not this environment variable came from the base environment,
-  /// as opposed to having been explicitly set by the caller.
-  is_from_base_env: bool,
-
-  /// For case-insensitive platforms, the environment variable key in its preferred casing.
-  preferred_key: OsString,
-
-  /// The environment variable value.
-  value: OsString,
-}
-
-impl EnvEntry {
-  fn map_key(k: OsString) -> OsString {
-    if cfg!(windows) {
-      // Best-effort lowercase transformation of an os string
-      match k.to_str() {
-        Some(s) => s.to_lowercase().into(),
-        None => k,
-      }
-    } else {
-      k
-    }
-  }
-}
 
 fn get_shell() -> String {
   use nix::unistd::{access, AccessFlags};
@@ -90,41 +63,11 @@ fn get_shell() -> String {
   "/bin/sh".into()
 }
 
-fn get_base_env() -> BTreeMap<OsString, EnvEntry> {
-  let mut env: BTreeMap<OsString, EnvEntry> = std::env::vars_os()
-    .map(|(key, value)| {
-      (
-        EnvEntry::map_key(key.clone()),
-        EnvEntry {
-          is_from_base_env: true,
-          preferred_key: key,
-          value,
-        },
-      )
-    })
-    .collect();
-
-  #[cfg(unix)]
-  {
-    env.insert(
-      EnvEntry::map_key("SHELL".into()),
-      EnvEntry {
-        is_from_base_env: true,
-        preferred_key: "SHELL".into(),
-        value: get_shell().into(),
-      },
-    );
-  }
-
-  env
-}
-
 /// `CommandBuilder` is used to prepare a command to be spawned into a pty.
 /// The interface is intentionally similar to that of `std::process::Command`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CommandBuilder {
   args: Vec<OsString>,
-  envs: BTreeMap<OsString, EnvEntry>,
   cwd: Option<OsString>,
   pub(crate) umask: Option<libc::mode_t>,
   controlling_tty: bool,
@@ -136,7 +79,6 @@ impl CommandBuilder {
   pub fn new<S: AsRef<OsStr>>(program: S) -> Self {
     Self {
       args: vec![program.as_ref().to_owned()],
-      envs: get_base_env(),
       cwd: None,
       umask: None,
       controlling_tty: true,
@@ -147,7 +89,6 @@ impl CommandBuilder {
   pub fn from_argv(args: Vec<OsString>) -> Self {
     Self {
       args,
-      envs: get_base_env(),
       cwd: None,
       umask: None,
       controlling_tty: true,
@@ -173,7 +114,6 @@ impl CommandBuilder {
   pub fn new_default_prog() -> Self {
     Self {
       args: vec![],
-      envs: get_base_env(),
       cwd: None,
       umask: None,
       controlling_tty: true,
@@ -213,50 +153,6 @@ impl CommandBuilder {
     &mut self.args
   }
 
-  /// Override the value of an environmental variable
-  pub fn env<K, V>(&mut self, key: K, value: V)
-  where
-    K: AsRef<OsStr>,
-    V: AsRef<OsStr>,
-  {
-    let key: OsString = key.as_ref().into();
-    let value: OsString = value.as_ref().into();
-    self.envs.insert(
-      EnvEntry::map_key(key.clone()),
-      EnvEntry {
-        is_from_base_env: false,
-        preferred_key: key,
-        value,
-      },
-    );
-  }
-
-  pub fn env_remove<K>(&mut self, key: K)
-  where
-    K: AsRef<OsStr>,
-  {
-    let key = key.as_ref().into();
-    self.envs.remove(&EnvEntry::map_key(key));
-  }
-
-  pub fn env_clear(&mut self) {
-    self.envs.clear();
-  }
-
-  pub fn get_env<K>(&self, key: K) -> Option<&OsStr>
-  where
-    K: AsRef<OsStr>,
-  {
-    let key = key.as_ref().into();
-    self.envs.get(&EnvEntry::map_key(key)).map(
-      |EnvEntry {
-         is_from_base_env: _,
-         preferred_key: _,
-         value,
-       }| value.as_os_str(),
-    )
-  }
-
   pub fn cwd<D>(&mut self, dir: D)
   where
     D: AsRef<OsStr>,
@@ -271,41 +167,6 @@ impl CommandBuilder {
   pub fn get_cwd(&self) -> Option<&OsString> {
     self.cwd.as_ref()
   }
-
-  /// Iterate over the configured environment. Only includes environment
-  /// variables set by the caller via `env`, not variables set in the base
-  /// environment.
-  pub fn iter_extra_env_as_str(&self) -> impl Iterator<Item = (&str, &str)> {
-    self.envs.values().filter_map(
-      |EnvEntry {
-         is_from_base_env,
-         preferred_key,
-         value,
-       }| {
-        if *is_from_base_env {
-          None
-        } else {
-          let key = preferred_key.to_str()?;
-          let value = value.to_str()?;
-          Some((key, value))
-        }
-      },
-    )
-  }
-
-  pub fn iter_full_env_as_str(&self) -> impl Iterator<Item = (&str, &str)> {
-    self.envs.values().filter_map(
-      |EnvEntry {
-         preferred_key,
-         value,
-         ..
-       }| {
-        let key = preferred_key.to_str()?;
-        let value = value.to_str()?;
-        Some((key, value))
-      },
-    )
-  }
 }
 
 impl CommandBuilder {
@@ -313,8 +174,8 @@ impl CommandBuilder {
     self.umask = mask;
   }
 
-  fn resolve_path(&self) -> Option<&OsStr> {
-    self.get_env("PATH")
+  fn resolve_path(&self) -> Option<OsString> {
+    env::var_os("PATH")
   }
 
   fn search_path(&self, exe: &OsStr, cwd: &OsStr) -> color_eyre::Result<OsString> {
@@ -358,82 +219,20 @@ impl CommandBuilder {
   /// Convert the CommandBuilder to a `std::process::Command` instance.
   pub(crate) fn as_command(&self) -> color_eyre::Result<std::process::Command> {
     use std::os::unix::process::CommandExt;
-
-    let home = self.get_home_dir()?;
-    let dir: &OsStr = self
-      .cwd
-      .as_deref()
-      .filter(|dir| std::path::Path::new(dir).is_dir())
-      .unwrap_or(home.as_ref());
-    let shell = self.get_shell();
-
-    let mut cmd = if self.is_default_prog() {
-      let mut cmd = std::process::Command::new(&shell);
-
-      // Run the shell as a login shell by prefixing the shell's
-      // basename with `-` and setting that as argv0
-      let basename = shell.rsplit('/').next().unwrap_or(&shell);
-      cmd.arg0(&format!("-{}", basename));
-      cmd
+    let cwd = env::current_dir()?;
+    let dir = if let Some(dir) = self.cwd.as_deref() {
+      dir
     } else {
-      let resolved = self.search_path(&self.args[0], dir)?;
-      tracing::info!("resolved path to {:?}", resolved);
-      let mut cmd = std::process::Command::new(&resolved);
-      cmd.arg0(&self.args[0]);
-      cmd.args(&self.args[1..]);
-      cmd
+      cwd.as_os_str()
     };
+    let resolved = self.search_path(&self.args[0], dir)?;
+    tracing::info!("resolved path to {:?}", resolved);
+    let mut cmd = std::process::Command::new(&resolved);
+    cmd.arg0(&self.args[0]);
+    cmd.args(&self.args[1..]);
 
     cmd.current_dir(dir);
 
-    cmd.env_clear();
-    cmd.env("SHELL", shell);
-    cmd.envs(self.envs.values().map(
-      |EnvEntry {
-         is_from_base_env: _,
-         preferred_key,
-         value,
-       }| (preferred_key.as_os_str(), value.as_os_str()),
-    ));
-
     Ok(cmd)
-  }
-
-  /// Determine which shell to run.
-  /// We take the contents of the $SHELL env var first, then
-  /// fall back to looking it up from the password database.
-  pub fn get_shell(&self) -> String {
-    use nix::unistd::{access, AccessFlags};
-
-    if let Some(shell) = self.get_env("SHELL").and_then(OsStr::to_str) {
-      match access(shell, AccessFlags::X_OK) {
-        Ok(()) => return shell.into(),
-        Err(err) => log::warn!(
-          "$SHELL -> {shell:?} which is \
-                     not executable ({err:#}), falling back to password db lookup"
-        ),
-      }
-    }
-
-    get_shell()
-  }
-
-  fn get_home_dir(&self) -> color_eyre::Result<String> {
-    if let Some(home_dir) = self.get_env("HOME").and_then(OsStr::to_str) {
-      return Ok(home_dir.into());
-    }
-
-    let ent = unsafe { libc::getpwuid(libc::getuid()) };
-    if ent.is_null() {
-      Ok("/".into())
-    } else {
-      use std::ffi::CStr;
-      use std::str;
-      let home = unsafe { CStr::from_ptr((*ent).pw_dir) };
-      home
-        .to_str()
-        .map(str::to_owned)
-        .context("failed to resolve home dir")
-    }
   }
 }
