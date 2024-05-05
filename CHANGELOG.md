@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.1.0-beta.3
+
+tracexec v0.1.0-beta.3 released!
+
+This should be the last beta release before v0.1.0. All the features I want in v0.1.0 are already implemented.
+I am starting to add some tests and looking for bugs to fix.
+
+Changes since v0.1.0-beta.2:
+
+### Added
+
+- TUI: Display file descriptor flags in the FdInfo tab of the details popup.
+
+### Fixed
+
+- Don't crash if `tcsetpgrp` returns `ENOTTY`
+- It's now documented that `--color` has no effect on TUI.
+- Some typos.
+
+### Changed
+
+- TUI: Copy popup now has a green border.
+
 ## v0.1.0-beta.2
 
 tracexec v0.1.0-beta.2 released!
