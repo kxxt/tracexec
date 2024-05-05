@@ -40,12 +40,12 @@ use crate::event::{Event, TracerEvent};
 pub mod app;
 pub mod copy_popup;
 pub mod details_popup;
-pub mod event_list;
+mod event_list;
 pub mod help;
-pub mod partial_line;
-pub mod pseudo_term;
-pub mod sized_paragraph;
-pub mod ui;
+mod partial_line;
+mod pseudo_term;
+mod sized_paragraph;
+mod ui;
 
 pub struct Tui {
   pub terminal: ratatui::Terminal<Backend<std::io::Stderr>>,
