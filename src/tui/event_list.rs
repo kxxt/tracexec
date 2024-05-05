@@ -266,6 +266,7 @@ impl EventList {
         self
           .window
           .1
+          .min(self.events.len())
           .saturating_sub(self.window.0)
           .saturating_sub(1),
       )
