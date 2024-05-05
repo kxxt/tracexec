@@ -4,6 +4,7 @@ use ratatui::text::Line;
 
 pub trait PartialLine<'a> {
   fn substring(self, start: usize, len: u16) -> Line<'a>;
+  #[allow(unused)]
   fn truncate_start(self, start: usize) -> Line<'a>;
 }
 

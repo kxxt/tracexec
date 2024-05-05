@@ -339,14 +339,12 @@ fn openpty(size: PtySize) -> color_eyre::Result<(UnixMasterPty, UnixSlavePty)> {
   };
 
   let result = unsafe {
-    // BSDish systems may require mut pointers to some args
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::unnecessary_mut_passed))]
     libc::openpty(
       &mut master,
       &mut slave,
       ptr::null_mut(),
       ptr::null_mut(),
-      &mut size,
+      &size,
     )
   };
 

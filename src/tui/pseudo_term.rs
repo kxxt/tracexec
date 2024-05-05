@@ -42,7 +42,9 @@ pub struct PseudoTerminalPane {
   // term: PseudoTerminal<'a, Screen>,
   pub parser: Arc<RwLock<vt100::Parser>>,
   pty_master: UnixMasterPty,
+  #[allow(unused)]
   reader_task: tokio::task::JoinHandle<color_eyre::Result<()>>,
+  #[allow(unused)]
   writer_task: tokio::task::JoinHandle<color_eyre::Result<()>>,
   master_tx: tokio::sync::mpsc::Sender<Bytes>,
   master_cancellation_token: CancellationToken,

@@ -33,8 +33,6 @@ impl DetailsPopup {
 
 #[derive(Debug, Clone)]
 pub struct DetailsPopupState {
-  event: Arc<TracerEvent>,
-  baseline: Arc<BaselineInfo>,
   details: Vec<(&'static str, Line<'static>)>,
   active_index: usize,
   scroll: ScrollViewState,
@@ -308,8 +306,6 @@ impl DetailsPopupState {
       (None, None, vec!["Info"])
     };
     Self {
-      event,
-      baseline,
       details,
       fdinfo,
       active_index: 0,
