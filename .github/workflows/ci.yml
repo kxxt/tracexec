@@ -1,0 +1,119 @@
+# The MIT License (MIT)
+
+# Copyright (c) 2016-2022 Florian Dehau
+# Copyright (c) 2023-2024 The Ratatui Developers
+# Copyright (c) 2024      Levi Zim
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Continuous Integration
+
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+  merge_group:
+
+# ensure that the workflow is only triggered once per PR,  subsequent pushes to the PR will cancel
+# and restart the workflow. See https://docs.github.com/en/actions/using-jobs/using-concurrency
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Check typos
+        uses: crate-ci/typos@master
+      - name: Lint dependencies
+        uses: EmbarkStudios/cargo-deny-action@v1
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Run clippy
+        run: cargo clippy
+  check_and_test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        toolchain: ["stable"]
+        target:
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+          - riscv64gc-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust {{ matrix.toolchain }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          targets: ${{ matrix.target }}
+      - name: Install cross-compilation tools
+        uses: taiki-e/setup-cross-toolchain-action@v1
+        with:
+          target: ${{ matrix.target }}
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Run cargo build with default features
+        if: matrix.target != 'riscv64gc-unknown-linux-gnu'
+        run: cargo build --bins --tests --target ${{ matrix.target }}
+      - name: Run cargo build with no default features
+        if: matrix.target == 'riscv64gc-unknown-linux-gnu'
+        run: cargo build --bins --tests --target ${{ matrix.target }} --no-default-features
+      - name: Run cargo check with default features
+        if: matrix.target != 'riscv64gc-unknown-linux-gnu'
+        run: cargo check --target ${{ matrix.target }}
+        env:
+          RUST_BACKTRACE: full
+      - name: Run cargo check with no default features
+        if: matrix.target == 'riscv64gc-unknown-linux-gnu'
+        run: cargo check --target ${{ matrix.target }} --no-default-features
+        env:
+          RUST_BACKTRACE: full
+      - name: Run cargo test with default features
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cargo test --target ${{ matrix.target }}
+        env:
+          RUST_BACKTRACE: full
