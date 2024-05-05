@@ -2,11 +2,30 @@
 
 A small utility for tracing execve{,at} and pre-exec behavior.
 
-tracexec helps you to figure out what and how programs get executed when you execute a program.
+tracexec helps you to figure out what and how programs get executed when you execute a command.
+
+It's useful for debugging build systems, understanding what shell scripts actually do, figuring out what programs
+does a proprietary software run, etc.
 
 **Warning**: You are viewing the documentation for the upcoming 0.1.0 release. The current stable release is 0.0.5.
 
 ## Showcases
+
+### TUI mode with pseudo terminal
+
+In TUI mode with a pseudo terminal, you can view the details of exec events and interact with the processes
+within the pseudo terminal at ease.
+
+### Tracing setuid binaries
+
+With root privileges, you can also trace setuid binaries and see how they work.
+But do note that this is not compatible with seccomp-bpf optimization so it is much less performant.
+
+```
+sudo tracexec --user $(whoami) tui -t -- sudo ls
+```
+
+![Tracing sudo ls](https://github.com/kxxt/tracexec/blob/main/screenshots/tracing-sudo.png?raw=true)
 
 ### Default mode
 
