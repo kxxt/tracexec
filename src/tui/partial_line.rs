@@ -9,6 +9,7 @@ pub trait PartialLine<'a> {
 }
 
 impl<'a> PartialLine<'a> for Line<'a> {
+  // FIXME: Unicode is hard
   fn substring(mut self, start: usize, len: u16) -> Line<'a> {
     let len = len as usize;
     let end = start + len;
