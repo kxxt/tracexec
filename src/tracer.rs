@@ -47,6 +47,8 @@ use self::state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus};
 mod inspect;
 mod ptrace;
 pub mod state;
+#[cfg(test)]
+mod test;
 
 pub use inspect::InspectError;
 

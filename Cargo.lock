@@ -1723,6 +1723,7 @@ dependencies = [
  "nix",
  "predicates",
  "ratatui",
+ "rstest",
  "seccompiler",
  "shell-quote",
  "signal-hook",

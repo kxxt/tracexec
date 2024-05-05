@@ -7,7 +7,7 @@ tracexec helps you to figure out what and how programs get executed when you exe
 **Status**:
 
 - Minimum Viable Product. It works, but neither the output nor the CLI is stable.
-- Three is no test at all 👿.
+- Not well tested.
 - Anyway, it should be helpful for debugging and troubleshooting.
 
 ## Showcases
