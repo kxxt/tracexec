@@ -4,6 +4,8 @@ A small utility for tracing execve{,at} and pre-exec behavior.
 
 tracexec helps you to figure out what and how programs get executed when you execute a program.
 
+**Warning**: You are viewing the documentation for the upcoming 0.1.0 release. The current stable release is 0.0.5.
+
 ## Showcases
 
 ### Default mode
