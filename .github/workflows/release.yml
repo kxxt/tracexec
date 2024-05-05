@@ -37,9 +37,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
         with:
-          toolchain: stable
+          tool: cargo-about
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: ${{ matrix.os }}-${{ matrix.target }}-rust
@@ -54,9 +56,12 @@ jobs:
         uses: katyo/publish-crates@v2
         with:
           registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Generate third-party licenses
+        run: cargo about generate -o THIRD_PARTY_LICENSES.HTML about.hbs
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: tracexec
           token: ${{ secrets.GITHUB_TOKEN }}
           target: ${{ matrix.target }}
           no-default-features: ${{ matrix.no-default-features }}
+          include: THIRD_PARTY_LICENSES.HTML,LICENSE

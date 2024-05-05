@@ -1,0 +1,20 @@
+ignore-build-dependencies = true
+
+ignore-dev-dependencies = true
+
+accepted = [
+    "GPL-2.0",
+    "MPL-2.0",
+    "Apache-2.0",
+    "MIT",
+    "ISC",
+]
+
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "riscv64gc-unknown-linux-gnu",
+]
+
+[unicode-ident]
+accepted = ["Unicode-DFS-2016"]
