@@ -1706,7 +1706,7 @@ dependencies = [
 
 [[package]]
 name = "tracexec"
-version = "0.1.0-beta.3"
+version = "0.1.0-rc.0"
 dependencies = [
  "arboard",
  "assert_cmd",

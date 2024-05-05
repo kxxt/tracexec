@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.1.0-rc.0
+
+tracexec v0.1.0-rc.0 released!
+
+## Added
+
+- TUI: toggle showing/hiding the environment variables by pressing `E`.
+- CI: initialize Continuous Integration with GitHub Actions.
+- CI: setup cargo-deny and cargo-about.
+
+## Fixed
+
+- TUI: don't select past the last event.
+- TUI: don't display header before cmdline in details popup.
+- Don't set `SHELL` if it is not present in the environment.
+- Test: add more details for assertion failures.
+
+## Changed
+
+- Use `BTreeMap` to make environment variables sorted and deterministic.
+- TUI: show fd at last to make argv more visible.
+- TUI: pty pane's title is now "Terminal" instead of "Pseudo Terminal".
+- docs: update README for 0.1.0
+
+
 ## v0.1.0-beta.3
 
 tracexec v0.1.0-beta.3 released!
