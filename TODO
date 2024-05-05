@@ -6,6 +6,7 @@
 
 # TUI
 
+- Toggle hide/show env var in cmdline
 - Search and filter
 - Terminal scrollback support
 - Mouse support
