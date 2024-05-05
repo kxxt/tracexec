@@ -17,7 +17,6 @@ use nix::{
     self, dup2, pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP, S_ISGID, S_ISUID,
   },
   sys::{
-    ptrace::{self, traceme, AddressType},
     signal::Signal,
     stat::fstat,
     wait::{waitpid, WaitPidFlag, WaitStatus},
@@ -39,16 +38,20 @@ use crate::{
   proc::{
     diff_env, read_comm, read_cwd, read_fd, read_fds, read_interpreter_recursive, BaselineInfo,
   },
-  ptrace::{ptrace_getregs, ptrace_syscall},
   pty::{self, Child, UnixSlavePty},
-  state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus},
 };
+
+use self::ptrace::*;
+use self::state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus};
+
+pub mod ptrace;
+pub mod state;
 
 cfg_if! {
     if #[cfg(feature = "seccomp-bpf")] {
         use crate::cli::options::SeccompBpf;
         use crate::seccomp;
-        use crate::ptrace::ptrace_cont;
+        use crate::tracer::ptrace::ptrace_cont;
     }
 
 }

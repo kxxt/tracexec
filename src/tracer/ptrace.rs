@@ -3,6 +3,8 @@ use nix::{errno::Errno, sys::ptrace, sys::signal::Signal, unistd::Pid};
 
 use crate::arch::PtraceRegisters;
 
+pub use nix::sys::ptrace::*;
+
 pub fn ptrace_syscall(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
   match ptrace::syscall(pid, sig) {
     Err(Errno::ESRCH) => {

@@ -7,11 +7,9 @@ mod inspect;
 mod log;
 mod printer;
 mod proc;
-mod ptrace;
 mod pty;
 #[cfg(feature = "seccomp-bpf")]
 mod seccomp;
-mod state;
 mod tracer;
 mod tui;
 

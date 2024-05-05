@@ -12,7 +12,7 @@ use crate::{
   event::TracerEvent,
   inspect::InspectError,
   proc::{diff_env, BaselineInfo, FileDescriptorInfoCollection, Interpreter},
-  state::ProcessState,
+  tracer::state::ProcessState,
 };
 
 use itertools::chain;

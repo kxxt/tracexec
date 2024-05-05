@@ -12,5 +12,3 @@ fn log_mode_without_args_works() -> Result<(), Box<dyn std::error::Error>> {
     .stderr(predicate::str::contains("/proc/self/exe"));
   Ok(())
 }
-
-
