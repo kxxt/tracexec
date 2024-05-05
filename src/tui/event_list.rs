@@ -55,6 +55,7 @@ pub struct EventList {
   pub baseline: Arc<BaselineInfo>,
   pub follow: bool,
   pub modifier_args: ModifierArgs,
+  pub env_in_cmdline: bool,
 }
 
 impl EventList {
@@ -75,6 +76,7 @@ impl EventList {
       should_refresh_list_cache: true,
       list_cache: List::default(),
       modifier_args,
+      env_in_cmdline: true,
     }
   }
 
@@ -84,6 +86,11 @@ impl EventList {
 
   pub fn stop_follow(&mut self) {
     self.follow = false;
+  }
+
+  pub fn toggle_env_display(&mut self) {
+    self.env_in_cmdline = !self.env_in_cmdline;
+    self.should_refresh_lines_cache = true;
   }
 
   /// returns the index of the selected item if there is any
@@ -142,7 +149,14 @@ impl Widget for &mut EventList {
       // Initialize the line cache, which will be kept in sync by the navigation methods
       self.lines_cache = events_in_window
         .iter()
-        .map(|evt| evt.to_tui_line(&self.baseline, false, &self.modifier_args))
+        .map(|evt| {
+          evt.to_tui_line(
+            &self.baseline,
+            false,
+            &self.modifier_args,
+            self.env_in_cmdline,
+          )
+        })
         .collect();
     }
     self.nr_items_in_window = events_in_window.len();
@@ -151,9 +165,12 @@ impl Widget for &mut EventList {
       self.should_refresh_list_cache = true;
       for evt in events_in_window.iter().skip(self.lines_cache.len()) {
         tracing::debug!("Pushing new item to line cache");
-        self
-          .lines_cache
-          .push_back(evt.to_tui_line(&self.baseline, false, &self.modifier_args));
+        self.lines_cache.push_back(evt.to_tui_line(
+          &self.baseline,
+          false,
+          &self.modifier_args,
+          self.env_in_cmdline,
+        ));
       }
     }
     // tracing::debug!(
@@ -284,6 +301,7 @@ impl EventList {
           &self.baseline,
           false,
           &self.modifier_args,
+          self.env_in_cmdline,
         ),
       );
       self.should_refresh_list_cache = true;
@@ -304,6 +322,7 @@ impl EventList {
           &self.baseline,
           false,
           &self.modifier_args,
+          self.env_in_cmdline,
         ));
       self.should_refresh_list_cache = true;
       true
@@ -468,6 +487,7 @@ impl EventList {
           &self.baseline,
           false,
           &self.modifier_args,
+          self.env_in_cmdline,
         ),
       );
       self.should_refresh_list_cache = true;

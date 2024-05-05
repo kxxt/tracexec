@@ -30,6 +30,7 @@ pub enum Action {
   ScrollToStart,
   ScrollToEnd,
   ToggleFollow,
+  ToggleEnvDisplay,
   StopFollow,
   // Sizing
   ShrinkPane,

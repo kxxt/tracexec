@@ -53,18 +53,18 @@ impl DetailsPopupState {
       } else {
         " Details "
       },
-      event.to_tui_line(&baseline, true, &modifier_args),
+      event.to_tui_line(&baseline, true, &modifier_args, true),
     )];
     let event_cloned = event.clone();
     let (env, fdinfo, available_tabs) = if let TracerEvent::Exec(exec) = event_cloned.as_ref() {
       details.extend([
         (" Cmdline with stdio ", {
           modifier_args.stdio_in_cmdline = true;
-          event.to_tui_line(&baseline, false, &modifier_args)
+          event.to_tui_line(&baseline, false, &modifier_args, true)
         }),
         (" Cmdline with file descriptors ", {
           modifier_args.fd_in_cmdline = true;
-          event.to_tui_line(&baseline, false, &modifier_args)
+          event.to_tui_line(&baseline, false, &modifier_args, true)
         }),
         (" Pid ", Line::from(exec.pid.to_string())),
         (" Result ", {

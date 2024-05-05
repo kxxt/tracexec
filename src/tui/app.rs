@@ -345,6 +345,9 @@ impl App {
                   KeyCode::Char('f') => {
                     action_tx.send(Action::ToggleFollow)?;
                   }
+                  KeyCode::Char('e') => {
+                    action_tx.send(Action::ToggleEnvDisplay)?;
+                  }
                   KeyCode::F(1) => {
                     action_tx.send(Action::SetActivePopup(ActivePopup::Help))?;
                   }
@@ -450,6 +453,9 @@ impl App {
           Action::ToggleFollow => {
             self.event_list.toggle_follow();
           }
+          Action::ToggleEnvDisplay => {
+            self.event_list.toggle_env_display();
+          }
           Action::StopFollow => {
             self.event_list.stop_follow();
           }
@@ -482,6 +488,7 @@ impl App {
               &self.event_list.baseline,
               target,
               &self.event_list.modifier_args,
+              self.event_list.env_in_cmdline,
             );
             // TODO: don't crash the app if clipboard fails
             if let Some(clipboard) = self.clipboard.as_mut() {
@@ -662,6 +669,14 @@ impl App {
             "Unfollow"
           } else {
             "Follow"
+          }
+        ),
+        help_item!(
+          "E",
+          if self.event_list.env_in_cmdline {
+            "Hide Env"
+          } else {
+            "Show Env"
           }
         ),
         help_item!("V", "View"),

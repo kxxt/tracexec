@@ -6,7 +6,6 @@
 
 # TUI
 
-- Toggle hide/show env var in cmdline
 - Search and filter
 - Terminal scrollback support
 - Mouse support
@@ -15,7 +14,3 @@
 - Better formatting of other events
 - Tree mode
 - (Maybe) switch to manual rendering by using Notify and batch frequent rerenders.
-
-# Log Mode
-
-- Sync cmdline format with TUI mode

@@ -97,6 +97,7 @@ impl TracerEvent {
     baseline: &BaselineInfo,
     cmdline_only: bool,
     modifier: &ModifierArgs,
+    env_in_cmdline: bool,
   ) -> Line<'static> {
     match self {
       TracerEvent::Info(TracerMessage { ref msg, pid }) => chain!(
@@ -261,25 +262,28 @@ impl TracerEvent {
           spans.push(space.clone());
           spans.push(format!("-C {}", escape_str_for_bash!(cwd)).fg(Color::LightCyan));
         }
-        if let Ok(env_diff) = env_diff {
-          // Handle env diff
-          for k in env_diff.removed.iter() {
-            spans.push(space.clone());
-            spans.push(format!("-u {}", escape_str_for_bash!(k)).fg(Color::LightRed));
-          }
-          for (k, v) in env_diff.added.iter() {
-            // Added env vars
-            spans.push(space.clone());
-            spans.push(
-              format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v)).fg(Color::Green),
-            );
-          }
-          for (k, v) in env_diff.modified.iter() {
-            // Modified env vars
-            spans.push(space.clone());
-            spans.push(
-              format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v)).fg(Color::Yellow),
-            );
+        if env_in_cmdline {
+          if let Ok(env_diff) = env_diff {
+            // Handle env diff
+            for k in env_diff.removed.iter() {
+              spans.push(space.clone());
+              spans.push(format!("-u {}", escape_str_for_bash!(k)).fg(Color::LightRed));
+            }
+            for (k, v) in env_diff.added.iter() {
+              // Added env vars
+              spans.push(space.clone());
+              spans.push(
+                format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v)).fg(Color::Green),
+              );
+            }
+            for (k, v) in env_diff.modified.iter() {
+              // Modified env vars
+              spans.push(space.clone());
+              spans.push(
+                format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v))
+                  .fg(Color::Yellow),
+              );
+            }
           }
         }
         spans.push(space.clone());
@@ -335,10 +339,11 @@ impl TracerEvent {
     baseline: &BaselineInfo,
     target: CopyTarget,
     modifier_args: &ModifierArgs,
+    env_in_cmdline: bool,
   ) -> Cow<'a, str> {
     if let CopyTarget::Line = target {
       return self
-        .to_tui_line(baseline, false, modifier_args)
+        .to_tui_line(baseline, false, modifier_args, env_in_cmdline)
         .to_string()
         .into();
     }
@@ -349,13 +354,13 @@ impl TracerEvent {
     let mut modifier_args = ModifierArgs::default();
     match target {
       CopyTarget::Commandline(_) => self
-        .to_tui_line(baseline, true, &modifier_args)
+        .to_tui_line(baseline, true, &modifier_args, true)
         .to_string()
         .into(),
       CopyTarget::CommandlineWithStdio(_) => {
         modifier_args.stdio_in_cmdline = true;
         self
-          .to_tui_line(baseline, true, &modifier_args)
+          .to_tui_line(baseline, true, &modifier_args, true)
           .to_string()
           .into()
       }
@@ -363,7 +368,7 @@ impl TracerEvent {
         modifier_args.fd_in_cmdline = true;
         modifier_args.stdio_in_cmdline = true;
         self
-          .to_tui_line(baseline, true, &modifier_args)
+          .to_tui_line(baseline, true, &modifier_args, true)
           .to_string()
           .into()
       }
