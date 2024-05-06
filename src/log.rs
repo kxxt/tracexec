@@ -24,7 +24,7 @@ use lazy_static::lazy_static;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{self, layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
-pub use log::*;
+pub use tracing::*;
 
 use crate::tui::restore_tui;
 

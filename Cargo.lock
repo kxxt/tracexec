@@ -1726,7 +1726,6 @@ dependencies = [
  "itertools",
  "kxxt-owo-colors",
  "lazy_static",
- "log",
  "nix",
  "predicates",
  "ratatui",

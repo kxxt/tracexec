@@ -27,7 +27,6 @@ nix = { version = "0.28", features = [
     "user",
 ] }
 strum = { version = "0.26.1", features = ["derive"] }
-log = "0.4"
 cfg-if = "1.0.0"
 owo-colors = { version = "4.0.0", package = "kxxt-owo-colors", features = [
     "global-colorized-control",

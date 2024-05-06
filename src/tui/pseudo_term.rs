@@ -29,6 +29,7 @@ use ratatui::widgets::Widget;
 use std::io::{BufWriter, Write};
 use std::sync::Arc;
 use tokio::sync::mpsc::channel;
+use tracing::trace;
 use tui_term::widget::PseudoTerminal;
 
 use tokio_util::sync::CancellationToken;
@@ -100,7 +101,7 @@ impl PseudoTerminalPane {
             }
           }
         }
-        log::trace!("Closing pty master!");
+        trace!("Closing pty master!");
         Ok(())
       })
     };

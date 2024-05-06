@@ -34,6 +34,7 @@ use tokio::{
   task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
+use tracing::{error, trace};
 
 use crate::event::{Event, TracerEvent};
 
@@ -110,11 +111,11 @@ impl Tui {
                 break;
             }
             Some(tracer_event) = tracer_event => {
-              log::trace!("TUI event: tracer event!");
+              trace!("TUI event: tracer event!");
               _event_tx.send(Event::Tracer(tracer_event)).unwrap();
             }
             Some(event) = crossterm_event => {
-              log::trace!("TUI event: crossterm event {event:?}!");
+              trace!("TUI event: crossterm event {event:?}!");
                 match event {
                   Ok(evt) => {
                     match evt {
@@ -156,7 +157,7 @@ impl Tui {
         self.task.abort();
       }
       if counter > 100 {
-        log::error!("Failed to abort task in 100 milliseconds for unknown reason");
+        error!("Failed to abort task in 100 milliseconds for unknown reason");
         break;
       }
     }

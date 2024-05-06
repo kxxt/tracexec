@@ -9,6 +9,7 @@ use nix::{
   sys::ptrace::{self, AddressType},
   unistd::Pid,
 };
+use tracing::warn;
 
 pub type InspectError = Errno;
 
@@ -23,7 +24,7 @@ pub fn read_generic_string<TString>(
   loop {
     let word = match ptrace::read(pid, address) {
       Err(e) => {
-        log::warn!("Cannot read tracee {pid} memory {address:?}: {e}");
+        warn!("Cannot read tracee {pid} memory {address:?}: {e}");
         return Err(e);
       }
       Ok(word) => word,
@@ -63,7 +64,7 @@ pub fn read_null_ended_array<TItem>(
   loop {
     let ptr = match ptrace::read(pid, address) {
       Err(e) => {
-        log::warn!("Cannot read tracee {pid} memory {address:?}: {e}");
+        warn!("Cannot read tracee {pid} memory {address:?}: {e}");
         return Err(e);
       }
       Ok(ptr) => ptr,

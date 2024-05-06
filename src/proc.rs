@@ -19,6 +19,7 @@ use nix::{
   libc::AT_FDCWD,
   unistd::{getpid, Pid},
 };
+use tracing::{trace, warn};
 
 use crate::pty::UnixSlavePty;
 
@@ -261,9 +262,9 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
 }
 
 pub fn parse_env_entry(item: &str) -> (&str, &str) {
-  log::trace!("Parsing envp entry: {:?}", item);
+  trace!("Parsing envp entry: {:?}", item);
   let Some(mut sep_loc) = item.as_bytes().iter().position(|&x| x == b'=') else {
-    log::warn!(
+    warn!(
       "Invalid envp entry: {:?}, assuming value to empty string!",
       item
     );
@@ -277,7 +278,7 @@ pub fn parse_env_entry(item: &str) -> (&str, &str) {
       .skip(1)
       .position(|&x| x == b'=')
       .unwrap_or_else(|| {
-        log::warn!(
+        warn!(
           "Invalid envp entry starting with '=': {:?}, assuming value to empty string!",
           item
         );

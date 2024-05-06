@@ -1,5 +1,6 @@
 use cfg_if::cfg_if;
 use nix::{errno::Errno, sys::ptrace, sys::signal::Signal, unistd::Pid};
+use tracing::info;
 
 use crate::arch::PtraceRegisters;
 
@@ -8,7 +9,7 @@ pub use nix::sys::ptrace::*;
 pub fn ptrace_syscall(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
   match ptrace::syscall(pid, sig) {
     Err(Errno::ESRCH) => {
-      log::info!("ptrace syscall failed: {pid}, ESRCH, child probably gone!");
+      info!("ptrace syscall failed: {pid}, ESRCH, child probably gone!");
       Ok(())
     }
     other => other,
@@ -19,7 +20,7 @@ pub fn ptrace_syscall(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
 pub fn ptrace_cont(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
   match ptrace::cont(pid, sig) {
     Err(Errno::ESRCH) => {
-      log::info!("ptrace cont failed: {pid}, ESRCH, child probably gone!");
+      info!("ptrace cont failed: {pid}, ESRCH, child probably gone!");
       Ok(())
     }
     other => other,

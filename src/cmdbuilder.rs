@@ -30,6 +30,7 @@ use nix::libc;
 use std::collections::BTreeMap;
 use std::env;
 use std::ffi::{OsStr, OsString};
+use tracing::warn;
 
 fn get_shell() -> String {
   use nix::unistd::{access, AccessFlags};
@@ -42,7 +43,7 @@ fn get_shell() -> String {
     let shell = unsafe { CStr::from_ptr((*ent).pw_shell) };
     match shell.to_str().map(str::to_owned) {
       Err(err) => {
-        log::warn!(
+        warn!(
           "passwd database shell could not be \
                      represented as utf-8: {err:#}, \
                      falling back to /bin/sh"
@@ -50,7 +51,7 @@ fn get_shell() -> String {
       }
       Ok(shell) => {
         if let Err(err) = access(Path::new(&shell), AccessFlags::X_OK) {
-          log::warn!(
+          warn!(
             "passwd database shell={shell:?} which is \
                          not executable ({err:#}), falling back to /bin/sh"
           );

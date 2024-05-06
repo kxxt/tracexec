@@ -31,6 +31,7 @@ use ratatui::{
 };
 use strum::Display;
 use tokio::sync::mpsc;
+use tracing::{debug, trace};
 use tui_popup::Popup;
 
 use crate::{
@@ -136,7 +137,7 @@ impl App {
       // Handle events
       if let Some(e) = tui.next().await {
         if e != Event::Render {
-          log::trace!("Received event {e:?}");
+          trace!("Received event {e:?}");
         }
         match e {
           Event::ShouldQuit => {
@@ -149,7 +150,7 @@ impl App {
               self.popup = None;
               // action_tx.send(Action::Render)?;
             } else {
-              log::trace!("TUI: Active pane: {}", self.active_pane);
+              trace!("TUI: Active pane: {}", self.active_pane);
               if self.active_pane == ActivePane::Events {
                 // Handle popups
                 // TODO: do this in a separate function
@@ -397,7 +398,7 @@ impl App {
       // Handle actions
       while let Ok(action) = action_rx.try_recv() {
         if !matches!(action, Action::Render) {
-          log::debug!("action: {action:?}");
+          debug!("action: {action:?}");
         }
         match action {
           Action::Quit => {

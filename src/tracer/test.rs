@@ -83,7 +83,11 @@ async fn tracer_emits_exec_event(tracer: (Arc<Tracer>, UnboundedReceiver<TracerE
       assert_eq!(exec.comm, "tracer");
       // Interpreter: doesn't contain errors
       for interp in exec.interpreter.iter() {
-        assert!(!matches!(interp, Interpreter::Error(_)), "error: {:?}", interp);
+        assert!(
+          !matches!(interp, Interpreter::Error(_)),
+          "error: {:?}",
+          interp
+        );
       }
       return;
     }
