@@ -250,7 +250,7 @@ impl App {
                 }
 
                 match ke.code {
-                  KeyCode::Char('q') => {
+                  KeyCode::Char('q') if ke.modifiers == KeyModifiers::NONE => {
                     if self.popup.is_some() {
                       self.popup = None;
                     } else {
@@ -266,10 +266,11 @@ impl App {
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Up | KeyCode::Char('k') => {
-                    action_tx.send(Action::StopFollow)?;
                     if ke.modifiers == KeyModifiers::CONTROL {
+                      action_tx.send(Action::StopFollow)?;
                       action_tx.send(Action::PageUp)?;
                     } else if ke.modifiers == KeyModifiers::NONE {
+                      action_tx.send(Action::StopFollow)?;
                       action_tx.send(Action::PrevItem)?;
                     }
                     // action_tx.send(Action::Render)?;
@@ -290,11 +291,11 @@ impl App {
                     }
                     // action_tx.send(Action::Render)?;
                   }
-                  KeyCode::PageDown => {
+                  KeyCode::PageDown if ke.modifiers == KeyModifiers::NONE => {
                     action_tx.send(Action::PageDown)?;
                     // action_tx.send(Action::Render)?;
                   }
-                  KeyCode::PageUp => {
+                  KeyCode::PageUp if ke.modifiers == KeyModifiers::NONE => {
                     action_tx.send(Action::StopFollow)?;
                     action_tx.send(Action::PageUp)?;
                     // action_tx.send(Action::Render)?;
@@ -316,10 +317,8 @@ impl App {
                     }
                     // action_tx.send(Action::Render)?;
                   }
-                  KeyCode::Char('g') => {
-                    if ke.modifiers == KeyModifiers::NONE {
-                      action_tx.send(Action::GrowPane)?;
-                    }
+                  KeyCode::Char('g') if ke.modifiers == KeyModifiers::NONE => {
+                    action_tx.send(Action::GrowPane)?;
                     // action_tx.send(Action::Render)?;
                   }
                   KeyCode::Char('s') => {
@@ -333,26 +332,26 @@ impl App {
                     }
                     // action_tx.send(Action::Render)?;
                   }
-                  KeyCode::Char('c') => {
-                    if ke.modifiers == KeyModifiers::NONE && self.clipboard.is_some() {
-                      if let Some(selected) = self.event_list.selection() {
-                        action_tx.send(Action::ShowCopyDialog(selected))?;
-                      }
+                  KeyCode::Char('c')
+                    if ke.modifiers == KeyModifiers::NONE && self.clipboard.is_some() =>
+                  {
+                    if let Some(selected) = self.event_list.selection() {
+                      action_tx.send(Action::ShowCopyDialog(selected))?;
                     }
                   }
                   KeyCode::Char('l') if ke.modifiers == KeyModifiers::ALT => {
                     action_tx.send(Action::SwitchLayout)?;
                   }
-                  KeyCode::Char('f') => {
+                  KeyCode::Char('f') if ke.modifiers == KeyModifiers::NONE => {
                     action_tx.send(Action::ToggleFollow)?;
                   }
-                  KeyCode::Char('e') => {
+                  KeyCode::Char('e') if ke.modifiers == KeyModifiers::NONE => {
                     action_tx.send(Action::ToggleEnvDisplay)?;
                   }
-                  KeyCode::F(1) => {
+                  KeyCode::F(1) if ke.modifiers == KeyModifiers::NONE => {
                     action_tx.send(Action::SetActivePopup(ActivePopup::Help))?;
                   }
-                  KeyCode::Char('v') => {
+                  KeyCode::Char('v') if ke.modifiers == KeyModifiers::NONE => {
                     if let Some(selected) = self.event_list.selection() {
                       action_tx.send(Action::SetActivePopup(ActivePopup::ViewDetails(
                         DetailsPopupState::new(selected, self.event_list.baseline.clone()),
