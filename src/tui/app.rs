@@ -16,6 +16,8 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+use std::ops::ControlFlow;
+
 use arboard::Clipboard;
 use clap::ValueEnum;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -159,64 +161,13 @@ impl App {
                     ActivePopup::Help => {
                       self.popup = None;
                     }
-                    ActivePopup::ViewDetails(state) => match ke.code {
-                      KeyCode::Down | KeyCode::Char('j') => {
-                        if ke.modifiers == KeyModifiers::CONTROL {
-                          state.scroll_page_down();
-                        } else if ke.modifiers == KeyModifiers::NONE {
-                          state.scroll_down()
-                        }
-                      }
-                      KeyCode::Up | KeyCode::Char('k') => {
-                        if ke.modifiers == KeyModifiers::CONTROL {
-                          state.scroll_page_up();
-                        } else if ke.modifiers == KeyModifiers::NONE {
-                          state.scroll_up()
-                        }
-                      }
-                      KeyCode::PageDown => {
-                        state.scroll_page_down();
-                      }
-                      KeyCode::PageUp => {
-                        state.scroll_page_up();
-                      }
-                      KeyCode::Home => {
-                        state.scroll_to_top();
-                      }
-                      KeyCode::End => {
-                        state.scroll_to_bottom();
-                      }
-                      KeyCode::Right | KeyCode::Char('l') => {
-                        state.next_tab();
-                      }
-                      KeyCode::Left | KeyCode::Char('h') => {
-                        state.prev_tab();
-                      }
-                      KeyCode::Char('w') => {
-                        if state.active_tab() == "Info" {
-                          state.prev();
-                        }
-                      }
-                      KeyCode::Char('s') => {
-                        if state.active_tab() == "Info" {
-                          state.next();
-                        }
-                      }
-                      KeyCode::Char('q') => {
+                    ActivePopup::ViewDetails(state) => {
+                      if let ControlFlow::Break(()) =
+                        state.handle_key_event(ke, self.clipboard.as_mut())?
+                      {
                         self.popup = None;
                       }
-                      KeyCode::Char('c') => {
-                        if state.active_tab() == "Info" {
-                          if let Some(clipboard) = self.clipboard.as_mut() {
-                            clipboard.set_text(state.selected())?;
-                          }
-                        }
-                      }
-                      KeyCode::Tab => {
-                        state.circle_tab();
-                      }
-                      _ => {}
-                    },
+                    }
                     ActivePopup::CopyTargetSelection(state) => match ke.code {
                       KeyCode::Char('q') => {
                         self.popup = None;
