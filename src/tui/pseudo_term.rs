@@ -52,6 +52,8 @@ pub struct PseudoTerminalPane {
   size: PtySize,
 }
 
+const ESCAPE: u8 = 27;
+
 impl PseudoTerminalPane {
   pub fn new(size: PtySize, pty_master: UnixMasterPty) -> color_eyre::Result<Self> {
     let parser = vt100::Parser::new(size.rows, size.cols, 0);
@@ -135,19 +137,19 @@ impl PseudoTerminalPane {
       }
       KeyCode::Enter => vec![b'\n'],
       KeyCode::Backspace => vec![8],
-      KeyCode::Left => vec![27, 91, 68],
-      KeyCode::Right => vec![27, 91, 67],
-      KeyCode::Up => vec![27, 91, 65],
-      KeyCode::Down => vec![27, 91, 66],
-      KeyCode::Tab => vec![9],
-      KeyCode::Home => vec![27, 91, 72],
-      KeyCode::End => vec![27, 91, 70],
-      KeyCode::PageUp => vec![27, 91, 53, 126],
-      KeyCode::PageDown => vec![27, 91, 54, 126],
-      KeyCode::BackTab => vec![27, 91, 90],
-      KeyCode::Delete => vec![27, 91, 51, 126],
-      KeyCode::Insert => vec![27, 91, 50, 126],
-      KeyCode::Esc => vec![27],
+      KeyCode::Left => vec![ESCAPE, b'[', b'D'],
+      KeyCode::Right => vec![ESCAPE, b'[', b'C'],
+      KeyCode::Up => vec![ESCAPE, b'[', b'A'],
+      KeyCode::Down => vec![ESCAPE, b'[', b'B'],
+      KeyCode::Tab => vec![b'\t'],
+      KeyCode::Home => vec![ESCAPE, b'[', b'H'],
+      KeyCode::End => vec![ESCAPE, b'[', b'F'],
+      KeyCode::PageUp => vec![ESCAPE, b'[', b'5', b'~'],
+      KeyCode::PageDown => vec![ESCAPE, b'[', b'6', b'~'],
+      KeyCode::BackTab => vec![ESCAPE, b'[', b'Z'],
+      KeyCode::Delete => vec![ESCAPE, b'[', b'3', b'~'],
+      KeyCode::Insert => vec![ESCAPE, b'[', b'2', b'~'],
+      KeyCode::Esc => vec![ESCAPE],
       _ => return true,
     };
 
