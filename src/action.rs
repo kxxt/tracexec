@@ -41,6 +41,7 @@ pub enum Action {
   SwitchActivePane,
   // Popup
   SetActivePopup(ActivePopup),
+  CancelCurrentPopup,
   // Clipboard
   ShowCopyDialog(Arc<TracerEvent>),
   CopyToClipboard {

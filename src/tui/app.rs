@@ -168,34 +168,11 @@ impl App {
                         self.popup = None;
                       }
                     }
-                    ActivePopup::CopyTargetSelection(state) => match ke.code {
-                      KeyCode::Char('q') => {
-                        self.popup = None;
+                    ActivePopup::CopyTargetSelection(state) => {
+                      if let Some(action) = state.handle_key_event(ke)? {
+                        action_tx.send(action)?;
                       }
-                      KeyCode::Down | KeyCode::Char('j') => {
-                        state.next();
-                      }
-                      KeyCode::Up | KeyCode::Char('k') => {
-                        state.prev();
-                      }
-                      KeyCode::Enter => {
-                        action_tx.send(Action::CopyToClipboard {
-                          event: state.event.clone(),
-                          target: state.selected(),
-                        })?;
-                        self.popup = None;
-                      }
-                      KeyCode::Char(c) => {
-                        if let Some(target) = state.select_by_key(c) {
-                          action_tx.send(Action::CopyToClipboard {
-                            event: state.event.clone(),
-                            target,
-                          })?;
-                          self.popup = None;
-                        }
-                      }
-                      _ => {}
-                    },
+                    }
                   }
                   continue;
                 }
@@ -445,9 +422,14 @@ impl App {
             if let Some(clipboard) = self.clipboard.as_mut() {
               clipboard.set_text(text)?;
             }
+            // TODO: find a better way to do this
+            self.popup = None;
           }
           Action::SetActivePopup(popup) => {
             self.popup = Some(popup);
+          }
+          Action::CancelCurrentPopup => {
+            self.popup = None;
           }
         }
       }
