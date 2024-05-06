@@ -17,8 +17,10 @@ fn tracer() -> (Arc<Tracer>, UnboundedReceiver<TracerEvent>) {
   let tracer_mod = TracerMode::Cli;
   let tracing_args = TracingArgs::default();
   let modifier_args = ModifierArgs::default();
-  let mut tracer_event_args = TracerEventArgs::default();
-  tracer_event_args.show_all_events = true;
+  let tracer_event_args = TracerEventArgs {
+    show_all_events: true,
+    ..Default::default()
+  };
   let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
   let baseline = BaselineInfo::new().unwrap();
 
