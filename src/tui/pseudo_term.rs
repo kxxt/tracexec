@@ -29,7 +29,7 @@ use ratatui::widgets::Widget;
 use std::io::{BufWriter, Write};
 use std::sync::Arc;
 use tokio::sync::mpsc::channel;
-use tracing::trace;
+use tracing::{trace, warn};
 use tui_term::widget::PseudoTerminal;
 
 use tokio_util::sync::CancellationToken;
@@ -150,6 +150,23 @@ impl PseudoTerminalPane {
       KeyCode::Delete => vec![ESCAPE, b'[', b'3', b'~'],
       KeyCode::Insert => vec![ESCAPE, b'[', b'2', b'~'],
       KeyCode::Esc => vec![ESCAPE],
+      KeyCode::F(1) => vec![ESCAPE, b'O', b'P'],
+      KeyCode::F(2) => vec![ESCAPE, b'O', b'Q'],
+      KeyCode::F(3) => vec![ESCAPE, b'O', b'R'],
+      KeyCode::F(4) => vec![ESCAPE, b'O', b'S'],
+      KeyCode::F(5) => vec![ESCAPE, b'[', b'1', b'5', b'~'],
+      KeyCode::F(6) => vec![ESCAPE, b'[', b'1', b'7', b'~'],
+      KeyCode::F(7) => vec![ESCAPE, b'[', b'1', b'8', b'~'],
+      KeyCode::F(8) => vec![ESCAPE, b'[', b'1', b'9', b'~'],
+      KeyCode::F(9) => vec![ESCAPE, b'[', b'2', b'0', b'~'],
+      KeyCode::F(10) => vec![ESCAPE, b'[', b'2', b'1', b'~'],
+      KeyCode::F(11) => vec![ESCAPE, b'[', b'2', b'3', b'~'],
+      KeyCode::F(12) => vec![ESCAPE, b'[', b'2', b'4', b'~'],
+      KeyCode::F(n) => {
+        // TODO: Handle Other F keys
+        warn!("Unhandled F key: {}", n);
+        return true;
+      }
       _ => return true,
     };
 
