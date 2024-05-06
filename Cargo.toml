@@ -71,6 +71,9 @@ rstest = "0.19.0"
 default = ["seccomp-bpf"]
 seccomp-bpf = ["dep:seccompiler"]
 
+[profile.dev]
+opt-level = 1
+
 [profile.release]
 lto = true
 
