@@ -1,6 +1,6 @@
 use std::{cmp::min, collections::BTreeMap, sync::Arc};
 
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lazy_static::lazy_static;
 use ratatui::{
   buffer::Buffer,
@@ -110,31 +110,33 @@ impl CopyPopupState {
   }
 
   pub fn handle_key_event(&mut self, ke: KeyEvent) -> color_eyre::Result<Option<Action>> {
-    match ke.code {
-      KeyCode::Char('q') => {
-        return Ok(Some(Action::CancelCurrentPopup));
-      }
-      KeyCode::Down | KeyCode::Char('j') => {
-        self.next();
-      }
-      KeyCode::Up | KeyCode::Char('k') => {
-        self.prev();
-      }
-      KeyCode::Enter => {
-        return Ok(Some(Action::CopyToClipboard {
-          event: self.event.clone(),
-          target: self.selected(),
-        }));
-      }
-      KeyCode::Char(c) => {
-        if let Some(target) = self.select_by_key(c) {
+    if ke.modifiers == KeyModifiers::NONE {
+      match ke.code {
+        KeyCode::Char('q') => {
+          return Ok(Some(Action::CancelCurrentPopup));
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+          self.next();
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+          self.prev();
+        }
+        KeyCode::Enter => {
           return Ok(Some(Action::CopyToClipboard {
             event: self.event.clone(),
-            target,
+            target: self.selected(),
           }));
         }
+        KeyCode::Char(c) => {
+          if let Some(target) = self.select_by_key(c) {
+            return Ok(Some(Action::CopyToClipboard {
+              event: self.event.clone(),
+              target,
+            }));
+          }
+        }
+        _ => {}
       }
-      _ => {}
     }
     Ok(None)
   }

@@ -363,63 +363,65 @@ impl DetailsPopupState {
     ke: KeyEvent,
     clipboard: Option<&mut Clipboard>,
   ) -> color_eyre::Result<ControlFlow<()>> {
-    match ke.code {
-      KeyCode::Down | KeyCode::Char('j') => {
-        if ke.modifiers == KeyModifiers::CONTROL {
-          self.scroll_page_down();
-        } else if ke.modifiers == KeyModifiers::NONE {
-          self.scroll_down()
-        }
-      }
-      KeyCode::Up | KeyCode::Char('k') => {
-        if ke.modifiers == KeyModifiers::CONTROL {
-          self.scroll_page_up();
-        } else if ke.modifiers == KeyModifiers::NONE {
-          self.scroll_up()
-        }
-      }
-      KeyCode::PageDown => {
-        self.scroll_page_down();
-      }
-      KeyCode::PageUp => {
-        self.scroll_page_up();
-      }
-      KeyCode::Home => {
-        self.scroll_to_top();
-      }
-      KeyCode::End => {
-        self.scroll_to_bottom();
-      }
-      KeyCode::Right | KeyCode::Char('l') => {
-        self.next_tab();
-      }
-      KeyCode::Left | KeyCode::Char('h') => {
-        self.prev_tab();
-      }
-      KeyCode::Char('w') => {
-        if self.active_tab() == "Info" {
-          self.prev();
-        }
-      }
-      KeyCode::Char('s') => {
-        if self.active_tab() == "Info" {
-          self.next();
-        }
-      }
-      KeyCode::Char('q') => {
-        return Ok(ControlFlow::Break(()));
-      }
-      KeyCode::Char('c') => {
-        if self.active_tab() == "Info" {
-          if let Some(clipboard) = clipboard {
-            clipboard.set_text(self.selected())?;
+    if ke.modifiers == KeyModifiers::NONE {
+      match ke.code {
+        KeyCode::Down | KeyCode::Char('j') => {
+          if ke.modifiers == KeyModifiers::CONTROL {
+            self.scroll_page_down();
+          } else if ke.modifiers == KeyModifiers::NONE {
+            self.scroll_down()
           }
         }
+        KeyCode::Up | KeyCode::Char('k') => {
+          if ke.modifiers == KeyModifiers::CONTROL {
+            self.scroll_page_up();
+          } else if ke.modifiers == KeyModifiers::NONE {
+            self.scroll_up()
+          }
+        }
+        KeyCode::PageDown => {
+          self.scroll_page_down();
+        }
+        KeyCode::PageUp => {
+          self.scroll_page_up();
+        }
+        KeyCode::Home => {
+          self.scroll_to_top();
+        }
+        KeyCode::End => {
+          self.scroll_to_bottom();
+        }
+        KeyCode::Right | KeyCode::Char('l') => {
+          self.next_tab();
+        }
+        KeyCode::Left | KeyCode::Char('h') => {
+          self.prev_tab();
+        }
+        KeyCode::Char('w') => {
+          if self.active_tab() == "Info" {
+            self.prev();
+          }
+        }
+        KeyCode::Char('s') => {
+          if self.active_tab() == "Info" {
+            self.next();
+          }
+        }
+        KeyCode::Char('q') => {
+          return Ok(ControlFlow::Break(()));
+        }
+        KeyCode::Char('c') => {
+          if self.active_tab() == "Info" {
+            if let Some(clipboard) = clipboard {
+              clipboard.set_text(self.selected())?;
+            }
+          }
+        }
+        KeyCode::Tab => {
+          self.circle_tab();
+        }
+        _ => {}
       }
-      KeyCode::Tab => {
-        self.circle_tab();
-      }
-      _ => {}
     }
     Ok(ControlFlow::Continue(()))
   }
