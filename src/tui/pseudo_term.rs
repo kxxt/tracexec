@@ -132,6 +132,8 @@ impl PseudoTerminalPane {
           // the corresponding control character
           let ascii_to_send = ascii_val - 64;
           send = vec![ascii_to_send];
+        } else if key.modifiers == KeyModifiers::ALT {
+          send = vec![ESCAPE, ch as u8];
         }
         send
       }
