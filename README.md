@@ -29,11 +29,11 @@ sudo tracexec --user $(whoami) tui -t -- sudo ls
 
 ### Default mode
 
-By default, `tracexec` will print filename, argv and the diff of the environment variables.
+By default, `tracexec` will print filename, argv and the diff of the environment variables and file descriptors.
 
 example: `tracexec log -- bash` (In an interactive bash shell)
 
-[![asciicast](https://asciinema.org/a/yEXXh2DBZLXaiGVCSaoynOJEz.svg)](https://asciinema.org/a/yEXXh2DBZLXaiGVCSaoynOJEz)
+[![asciicast](https://asciinema.org/a/sNptWG6De3V5xwUvXJAxWlO3i.svg)](https://asciinema.org/a/sNptWG6De3V5xwUvXJAxWlO3i)
 
 ### Reconstruct the command line with `--show-cmdline`
 
