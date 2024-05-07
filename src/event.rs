@@ -46,8 +46,8 @@ pub enum TracerEvent {
     pid: Pid,
   },
   Exec(Box<ExecEvent>),
-  RootChildSpawn(Pid),
-  RootChildExit {
+  TraceeSpawn(Pid),
+  TraceeExit {
     signal: Option<Signal>,
     exit_code: i32,
   },
@@ -312,12 +312,12 @@ impl TracerEvent {
 
         Line::default().spans(spans)
       }
-      TracerEvent::RootChildExit { signal, exit_code } => format!(
+      TracerEvent::TraceeExit { signal, exit_code } => format!(
         "tracee exit: signal: {:?}, exit_code: {}",
         signal, exit_code
       )
       .into(),
-      TracerEvent::RootChildSpawn(pid) => format!("tracee spawned: {}", pid).into(),
+      TracerEvent::TraceeSpawn(pid) => format!("tracee spawned: {}", pid).into(),
     }
   }
 }

@@ -130,7 +130,7 @@ impl Tracer {
           // FIXME: In logging mode, we rely on root child exit event to exit the process
           //        with the same exit code as the root child. It is not printed in logging mode.
           //        Ideally we should use another channel to send the exit code to the main thread.
-          filter |= TracerEventKind::RootChildExit;
+          filter |= TracerEventKind::TraceeExit;
         }
         filter
       },
@@ -241,7 +241,7 @@ impl Tracer {
       },
     )?
     .process_id();
-    filterable_event!(RootChildSpawn(root_child)).send_if_match(&self.tx, self.filter)?;
+    filterable_event!(TraceeSpawn(root_child)).send_if_match(&self.tx, self.filter)?;
     // wait for child to be stopped by SIGSTOP
     loop {
       let status = waitpid(root_child, Some(WaitPidFlag::WSTOPPED))?;
@@ -356,7 +356,7 @@ impl Tracer {
             .unwrap()
             .status = ProcessStatus::Exited(code);
           if pid == root_child {
-            filterable_event!(RootChildExit {
+            filterable_event!(TraceeExit {
               signal: None,
               exit_code: code,
             })
@@ -442,7 +442,7 @@ impl Tracer {
         WaitStatus::Signaled(pid, sig, _) => {
           debug!("signaled: {pid}, {:?}", sig);
           if pid == root_child {
-            filterable_event!(RootChildExit {
+            filterable_event!(TraceeExit {
               signal: Some(sig),
               exit_code: 128 + (sig as i32),
             })

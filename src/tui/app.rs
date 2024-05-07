@@ -295,7 +295,7 @@ impl App {
             }
           }
           Event::Tracer(te) => {
-            if let TracerEvent::RootChildSpawn(pid) = te {
+            if let TracerEvent::TraceeSpawn(pid) = te {
               self.root_pid = Some(pid);
             }
             self.event_list.events.push(te.into());

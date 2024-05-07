@@ -115,7 +115,7 @@ async fn main() -> color_eyre::Result<()> {
       let tracer_thread = tracer.spawn(cmd, Some(output))?;
       tracer_thread.join().unwrap()?;
       loop {
-        if let Some(TracerEvent::RootChildExit { exit_code, .. }) = tracer_rx.recv().await {
+        if let Some(TracerEvent::TraceeExit { exit_code, .. }) = tracer_rx.recv().await {
           process::exit(exit_code);
         }
       }
