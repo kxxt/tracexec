@@ -16,7 +16,7 @@ use crate::{
 };
 
 use itertools::chain;
-use nix::{libc::ENOENT, unistd::Pid};
+use nix::{fcntl::OFlag, libc::ENOENT, unistd::Pid};
 use owo_colors::{OwoColorize, Style};
 
 macro_rules! escape_str_for_bash {
@@ -270,7 +270,12 @@ impl Printer {
         let fdinfo_orig = self.baseline.fdinfo.get(0).unwrap();
         if let Some(fdinfo) = fds.fdinfo.get(&0) {
           printed += 1;
-          if fdinfo.path != fdinfo_orig.path {
+          if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+            write!(out, "{}", "cloexec: stdin".bright_red().bold())?;
+            if printed < last {
+              list_printer.comma(out)?;
+            }
+          } else if fdinfo.path != fdinfo_orig.path {
             write!(out, "{}", "stdin".bright_yellow().bold())?;
             write!(out, "={}", fdinfo.path.display().bright_yellow())?;
             if printed < last {
@@ -288,7 +293,12 @@ impl Printer {
         let fdinfo_orig = self.baseline.fdinfo.get(1).unwrap();
         if let Some(fdinfo) = fds.fdinfo.get(&1) {
           printed += 1;
-          if fdinfo.path != fdinfo_orig.path {
+          if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+            write!(out, "{}", "cloexec: stdout".bright_red().bold())?;
+            if printed < last {
+              list_printer.comma(out)?;
+            }
+          } else if fdinfo.path != fdinfo_orig.path {
             write!(out, "{}", "stdout".bright_yellow().bold())?;
             write!(out, "={}", fdinfo.path.display().bright_yellow())?;
             if printed < last {
@@ -306,7 +316,12 @@ impl Printer {
         let fdinfo_orig = self.baseline.fdinfo.get(2).unwrap();
         if let Some(fdinfo) = fds.fdinfo.get(&2) {
           printed += 1;
-          if fdinfo.path != fdinfo_orig.path {
+          if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+            write!(out, "{}", "cloexec: stderr".bright_red().bold())?;
+            if printed < last {
+              list_printer.comma(out)?;
+            }
+          } else if fdinfo.path != fdinfo_orig.path {
             write!(out, "{}", "stderr".bright_yellow().bold())?;
             write!(out, "={}", fdinfo.path.display().bright_yellow())?;
             if printed < last {
@@ -325,9 +340,19 @@ impl Printer {
           if fd < 3 {
             continue;
           }
-          write!(out, "{}", fd.bright_green().bold())?;
-          write!(out, "={}", fdinfo.path.display().bright_green())?;
           printed += 1;
+          if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+            write!(
+              out,
+              "{} {}",
+              "cloexec:".bright_red().bold(),
+              fd.bright_green().bold()
+            )?;
+            write!(out, "={}", fdinfo.path.display().bright_red())?;
+          } else {
+            write!(out, "{}", fd.bright_green().bold())?;
+            write!(out, "={}", fdinfo.path.display().bright_green())?;
+          }
           if printed < last {
             list_printer.comma(out)?;
           }
@@ -558,7 +583,10 @@ impl Printer {
         if self.args.stdio_in_cmdline {
           let fdinfo_orig = self.baseline.fdinfo.stdin().unwrap();
           if let Some(fdinfo) = exec_data.fdinfo.stdin() {
-            if fdinfo.path != fdinfo_orig.path {
+            if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+              // stdin will be closed
+              write!(out, " {}", "0>&-".bright_red().bold().italic())?;
+            } else if fdinfo.path != fdinfo_orig.path {
               write!(
                 out,
                 " {}{}",
@@ -572,7 +600,10 @@ impl Printer {
           }
           let fdinfo_orig = self.baseline.fdinfo.stdout().unwrap();
           if let Some(fdinfo) = exec_data.fdinfo.stdout() {
-            if fdinfo.path != fdinfo_orig.path {
+            if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+              // stdout will be closed
+              write!(out, " {}", "1>&-".bright_red().bold().italic())?;
+            } else if fdinfo.path != fdinfo_orig.path {
               write!(
                 out,
                 " {}{}",
@@ -586,7 +617,10 @@ impl Printer {
           }
           let fdinfo_orig = self.baseline.fdinfo.stderr().unwrap();
           if let Some(fdinfo) = exec_data.fdinfo.stderr() {
-            if fdinfo.path != fdinfo_orig.path {
+            if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+              // stderr will be closed
+              write!(out, " {}", "2>&-".bright_red().bold().italic())?;
+            } else if fdinfo.path != fdinfo_orig.path {
               write!(
                 out,
                 " {}{}",
@@ -603,6 +637,10 @@ impl Printer {
         if self.args.fd_in_cmdline {
           for (&fd, fdinfo) in exec_data.fdinfo.fdinfo.iter() {
             if fd < 3 {
+              continue;
+            }
+            if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+              // Don't show fds that will be closed upon exec
               continue;
             }
             write!(

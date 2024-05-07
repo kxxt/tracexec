@@ -5,7 +5,7 @@ use crossterm::event::KeyEvent;
 use enumflags2::BitFlags;
 use filterable_enum::FilterableEnum;
 use itertools::{chain, Itertools};
-use nix::{sys::signal::Signal, unistd::Pid};
+use nix::{fcntl::OFlag, sys::signal::Signal, unistd::Pid};
 use ratatui::{
   layout::Size,
   style::Styled,
@@ -230,7 +230,11 @@ impl TracerEvent {
         if modifier.stdio_in_cmdline {
           let fdinfo_orig = baseline.fdinfo.stdin().unwrap();
           if let Some(fdinfo) = fdinfo.stdin() {
-            if fdinfo.path != fdinfo_orig.path {
+            if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+              // stdin will be closed
+              spans.push(space.clone());
+              spans.push("0>&-".set_style(THEME.cloexec_fd_in_cmdline));
+            } else if fdinfo.path != fdinfo_orig.path {
               spans.push(space.clone());
               spans.push("<".set_style(THEME.modified_fd_in_cmdline));
               spans.push(
@@ -246,7 +250,11 @@ impl TracerEvent {
           }
           let fdinfo_orig = baseline.fdinfo.stdout().unwrap();
           if let Some(fdinfo) = fdinfo.stdout() {
-            if fdinfo.path != fdinfo_orig.path {
+            if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+              // stdout will be closed
+              spans.push(space.clone());
+              spans.push("1>&-".set_style(THEME.cloexec_fd_in_cmdline));
+            } else if fdinfo.path != fdinfo_orig.path {
               spans.push(space.clone());
               spans.push(">".set_style(THEME.modified_fd_in_cmdline));
               spans.push(
@@ -262,7 +270,11 @@ impl TracerEvent {
           }
           let fdinfo_orig = baseline.fdinfo.stderr().unwrap();
           if let Some(fdinfo) = fdinfo.stderr() {
-            if fdinfo.path != fdinfo_orig.path {
+            if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+              // stderr will be closed
+              spans.push(space.clone());
+              spans.push("2>&-".set_style(THEME.cloexec_fd_in_cmdline));
+            } else if fdinfo.path != fdinfo_orig.path {
               spans.push(space.clone());
               spans.push("2>".set_style(THEME.modified_fd_in_cmdline));
               spans.push(
@@ -281,6 +293,10 @@ impl TracerEvent {
         if modifier.fd_in_cmdline {
           for (&fd, fdinfo) in fdinfo.fdinfo.iter() {
             if fd < 3 {
+              continue;
+            }
+            if fdinfo.flags.intersects(OFlag::O_CLOEXEC) {
+              // Skip fds that will be closed upon exec
               continue;
             }
             spans.push(space.clone());
