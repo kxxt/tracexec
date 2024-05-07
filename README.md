@@ -45,6 +45,18 @@ $ tracexec log --show-cmdline -- firefox
 
 [![asciicast](https://asciinema.org/a/AWTG4iHaFPMcEGCVtqAl44YFW.svg)](https://asciinema.org/a/AWTG4iHaFPMcEGCVtqAl44YFW)
 
+### Try to reproduce stdio in the reconstructed command line
+
+`--stdio-in-cmdline` and `--fd-in-cmdline` can be used to reproduce(hopefully) the stdio used by a process.
+
+But do note that the result might be inaccurate when pipes, sockets, etc are involved.
+
+```bash
+tracexec log --show-cmdline --stdio-in-cmdline -- bash
+```
+
+[![asciicast](https://asciinema.org/a/NkBTaoNHS7P7bolO0hNuRwGlQ.svg)](https://asciinema.org/a/NkBTaoNHS7P7bolO0hNuRwGlQ)
+
 ### Show the interpreter indicated by shebang with `--show-interpreter`
 
 And show the cwd with `--show-cwd`.
