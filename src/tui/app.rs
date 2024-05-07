@@ -294,18 +294,16 @@ impl App {
               }
             }
           }
-          Event::Tracer(te) => match te {
-            TracerEvent::RootChildSpawn(pid) => {
+          Event::Tracer(te) => {
+            if let TracerEvent::RootChildSpawn(pid) = te {
               self.root_pid = Some(pid);
             }
-            te => {
-              self.event_list.events.push(te.into());
-              if self.event_list.follow {
-                action_tx.send(Action::ScrollToBottom)?;
-              }
-              // action_tx.send(Action::Render)?;
+            self.event_list.events.push(te.into());
+            if self.event_list.follow {
+              action_tx.send(Action::ScrollToBottom)?;
             }
-          },
+            // action_tx.send(Action::Render)?;
+          }
           Event::Render => {
             action_tx.send(Action::Render)?;
           }
