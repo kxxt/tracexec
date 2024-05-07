@@ -8,7 +8,7 @@ license = "GPL-2.0"
 readme = "README.md"
 repository = "https://github.com/kxxt/tracexec"
 homepage = "https://github.com/kxxt/tracexec"
-keywords = ["trace", "ptrace", "strace", "utility"]
+keywords = ["trace", "ptrace", "exec", "execve", "strace", "utility"]
 categories = ["command-line-utilities", "development-tools::debugging"]
 default-run = "tracexec"
 
