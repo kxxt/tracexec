@@ -91,6 +91,73 @@ You can also install `tracexec-bin` from AUR.
 
 ## Usage
 
+General CLI help:
+
+```bash
+A small utility for tracing execve{,at} and pre-exec behavior
+
+Usage: tracexec [OPTIONS] <COMMAND>
+
+Commands:
+  log   Run tracexec in logging mode
+  tui   Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+      --color <COLOR>  Control whether colored output is enabled. This flag has no effect on TUI mode. [default: auto] [possible values: auto, always, never]
+  -C, --cwd <CWD>      Change current directory to this path before doing anything
+  -u, --user <USER>    Run as user. This option is only available when running tracexec as root
+  -h, --help           Print help
+  -V, --version        Print version
+```
+
+TUI Mode:
+
+```bash
+Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default
+
+Usage: tracexec tui [OPTIONS] -- <CMD>...
+
+Arguments:
+  <CMD>...  command to be executed
+
+Options:
+      --seccomp-bpf <SECCOMP_BPF>
+          seccomp-bpf filtering option [default: auto] [possible values: auto, on, off]
+      --successful-only
+          Only show successful calls
+      --fd-in-cmdline
+          [Experimental] Try to reproduce file descriptors in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
+      --stdio-in-cmdline
+          [Experimental] Try to reproduce stdio in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
+      --show-all-events
+          Set the default filter to show all events. This option can be used in combination with --filter-exclude to exclude some unwanted events.
+      --filter <FILTER>
+          Set the default filter for events. [default: warning,error,exec,root-child-exit]
+      --filter-include <FILTER_INCLUDE>
+          Aside from the default filter, also include the events specified here. [default: <empty>]
+      --filter-exclude <FILTER_EXCLUDE>
+          Exclude the events specified here from the default filter. [default: <empty>]
+  -t, --tty
+          Allocate a pseudo terminal and show it alongside the TUI
+  -f, --follow
+          Keep the event list scrolled to the bottom
+      --terminate-on-exit
+          Instead of waiting for the root child to exit, terminate when the TUI exits
+      --kill-on-exit
+          Instead of waiting for the root child to exit, kill when the TUI exits
+  -A, --active-pane <ACTIVE_PANE>
+          Set the default active pane to use when TUI launches [default: terminal] [possible values: terminal, events]
+  -L, --layout <LAYOUT>
+          Set the layout of the TUI when it launches [default: horizontal] [possible values: horizontal, vertical]
+  -F, --frame-rate <FRAME_RATE>
+          Set the frame rate of the TUI [default: 60.0]
+  -h, --help
+          Print help
+```
+
+Log Mode:
+
 ```bash
 Run tracexec in logging mode
 
@@ -100,37 +167,80 @@ Arguments:
   <CMD>...  command to be executed
 
 Options:
-      --successful-only            Only show successful calls
-      --show-cmdline               Print commandline that reproduces what was executed. Note that when filename and argv[0] differs, it probably won't give you the correct commandline for now. Implies --successful-only
-      --show-interpreter           Try to show script interpreter indicated by shebang
-      --more-colors                More colors
-      --less-colors                Less colors
-      --show-children              Print a message when a child is created
-      --seccomp-bpf <SECCOMP_BPF>  seccomp-bpf filtering option [default: auto] [possible values: auto, on, off]
-      --diff-env                   Diff environment variables with the original environment
-      --no-diff-env                Do not diff environment variables
-      --show-env                   Show environment variables
-      --no-show-env                Do not show environment variables
-      --show-comm                  Show comm
-      --no-show-comm               Do not show comm
-      --show-argv                  Show argv
-      --no-show-argv               Do not show argv
-      --show-filename              Show filename
-      --no-show-filename           Do not show filename
-      --show-cwd                   Show cwd
-      --no-show-cwd                Do not show cwd
-      --decode-errno               Decode errno values
-      --no-decode-errno            
-  -o, --output <OUTPUT>            Output, stderr by default. A single hyphen '-' represents stdout.
-  -h, --help                       Print help
+      --show-cmdline
+          Print commandline that (hopefully) reproduces what was executed. Note: file descriptors are not handled for now.
+      --show-interpreter
+          Try to show script interpreter indicated by shebang
+      --more-colors
+          More colors
+      --less-colors
+          Less colors
+      --diff-fd
+          Diff file descriptors with the original std{in/out/err}
+      --no-diff-fd
+          Do not diff file descriptors
+      --show-fd
+          Show file descriptors
+      --no-show-fd
+          Do not show file descriptors
+      --diff-env
+          Diff environment variables with the original environment
+      --no-diff-env
+          Do not diff environment variables
+      --show-env
+          Show environment variables
+      --no-show-env
+          Do not show environment variables
+      --show-comm
+          Show comm
+      --no-show-comm
+          Do not show comm
+      --show-argv
+          Show argv
+      --no-show-argv
+          Do not show argv
+      --show-filename
+          Show filename
+      --no-show-filename
+          Do not show filename
+      --show-cwd
+          Show cwd
+      --no-show-cwd
+          Do not show cwd
+      --decode-errno
+          Decode errno values
+      --no-decode-errno
+          
+      --seccomp-bpf <SECCOMP_BPF>
+          seccomp-bpf filtering option [default: auto] [possible values: auto, on, off]
+      --successful-only
+          Only show successful calls
+      --fd-in-cmdline
+          [Experimental] Try to reproduce file descriptors in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
+      --stdio-in-cmdline
+          [Experimental] Try to reproduce stdio in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
+      --show-all-events
+          Set the default filter to show all events. This option can be used in combination with --filter-exclude to exclude some unwanted events.
+      --filter <FILTER>
+          Set the default filter for events. [default: warning,error,exec,root-child-exit]
+      --filter-include <FILTER_INCLUDE>
+          Aside from the default filter, also include the events specified here. [default: <empty>]
+      --filter-exclude <FILTER_EXCLUDE>
+          Exclude the events specified here from the default filter. [default: <empty>]
+  -o, --output <OUTPUT>
+          Output, stderr by default. A single hyphen '-' represents stdout.
+  -h, --help
+          Print help
 ```
 
 The recommended way to use `tracexec` is to create an alias with your favorite options in your bashrc:
 
 ```bash
 alias tracex='tracexec log --show-cmdline --show-interpreter --show-children --show-filename --'
+alias txtui='tracexec tui -t --'
 # Now you can use
 tracex <command>
+txtui <command>
 ```
 
 ## Known issues
