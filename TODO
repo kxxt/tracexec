@@ -3,6 +3,8 @@
 - Set baseline env from cmdline, which is compared against when diffing env.
 - Load env file from cmdline
 - Load settings from profile
+- Export/Save the data.
+  - View the exported data.
 
 # TUI
 
@@ -20,3 +22,4 @@
 # Internal
 
 - Find a way to synchronize the style between TUI and log mode.
+- Reduce clones (Lots of clones are happing because of we can't have self-referencing struct. Low priority, the performance is good enough in practice)
