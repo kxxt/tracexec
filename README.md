@@ -135,7 +135,8 @@ tracex <command>
 
 - Non UTF-8 strings are converted to UTF-8 in a lossy way, which means that the output may be inaccurate.
 - The output is not stable yet, which means that the output may change in the future.
-- No tests yet.
+- Test coverage is not good enough.
+- The pseudo terminal can't pass through certain key combinations and terminal features.
 
 ## Origin
 
