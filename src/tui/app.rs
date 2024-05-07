@@ -615,7 +615,7 @@ impl App {
         help_item!("F1", "Help"),
       ))
     } else {
-      items.extend(help_item!("Ctrl+Shift+R", "FIXME"));
+      // Terminal
     };
 
     let line = Line::default().spans(items);
