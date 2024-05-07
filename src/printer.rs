@@ -94,8 +94,8 @@ impl PrinterArgs {
         (true, _, _, _) => FdPrintFormat::Diff,
         _ => {
           // The default is diff fd,
-          // but if fd_in_cmdline is enabled, we disable diff fd by default
-          if modifier_args.fd_in_cmdline {
+          // but if fd_in_cmdline or stdio_in_cmdline is enabled, we disable diff fd by default
+          if modifier_args.fd_in_cmdline || modifier_args.stdio_in_cmdline {
             FdPrintFormat::None
           } else {
             FdPrintFormat::Diff
