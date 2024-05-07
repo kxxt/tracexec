@@ -133,7 +133,7 @@ Options:
       --show-all-events
           Set the default filter to show all events. This option can be used in combination with --filter-exclude to exclude some unwanted events.
       --filter <FILTER>
-          Set the default filter for events. [default: warning,error,exec,root-child-exit]
+          Set the default filter for events. [default: warning,error,exec,tracee-exit]
       --filter-include <FILTER_INCLUDE>
           Aside from the default filter, also include the events specified here. [default: <empty>]
       --filter-exclude <FILTER_EXCLUDE>
@@ -222,7 +222,7 @@ Options:
       --show-all-events
           Set the default filter to show all events. This option can be used in combination with --filter-exclude to exclude some unwanted events.
       --filter <FILTER>
-          Set the default filter for events. [default: warning,error,exec,root-child-exit]
+          Set the default filter for events. [default: warning,error,exec,tracee-exit]
       --filter-include <FILTER_INCLUDE>
           Aside from the default filter, also include the events specified here. [default: <empty>]
       --filter-exclude <FILTER_EXCLUDE>

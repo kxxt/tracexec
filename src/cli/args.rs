@@ -49,7 +49,7 @@ pub struct TracerEventArgs {
     long,
     help = "Set the default filter for events.",
     value_parser = tracer_event_filter_parser,
-    default_value = "warning,error,exec,root-child-exit"
+    default_value = "warning,error,exec,tracee-exit"
   )]
   pub filter: BitFlags<TracerEventKind>,
   #[clap(
