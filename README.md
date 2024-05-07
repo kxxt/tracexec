@@ -27,9 +27,9 @@ sudo tracexec --user $(whoami) tui -t -- sudo ls
 
 ![Tracing sudo ls](https://github.com/kxxt/tracexec/blob/main/screenshots/tracing-sudo.png?raw=true)
 
-### Default mode
+### Log mode
 
-By default, `tracexec` will print filename, argv and the diff of the environment variables and file descriptors.
+In log mode, by default, `tracexec` will print filename, argv and the diff of the environment variables and file descriptors.
 
 example: `tracexec log -- bash` (In an interactive bash shell)
 
