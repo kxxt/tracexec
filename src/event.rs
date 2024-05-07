@@ -313,11 +313,11 @@ impl TracerEvent {
         Line::default().spans(spans)
       }
       TracerEvent::RootChildExit { signal, exit_code } => format!(
-        "RootChildExit: signal: {:?}, exit_code: {}",
+        "tracee exit: signal: {:?}, exit_code: {}",
         signal, exit_code
       )
       .into(),
-      TracerEvent::RootChildSpawn(pid) => format!("RootChildSpawn: {}", pid).into(),
+      TracerEvent::RootChildSpawn(pid) => format!("tracee spawned: {}", pid).into(),
     }
   }
 }
