@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.1.0-rc.1
+
+tracexec v0.1.0-rc.1 released!
+
+![tracexec v0.1.0-rc.1](https://github.com/kxxt/tracexec/blob/main/screenshots/tui-demo.gif?raw=true)
+
+Changes since v0.1.0-rc.0:
+
+### Added
+
+- Enable LTO for release builds.
+- TUI: Handle F1-F12 keys and Alt+key in pseudo terminal.
+- TUI: Now tracexec can be themed at compile-time by changing `src/tui/theme.rs`.
+
+### Changed
+
+- Set max tracing level to info for release builds.
+- Remove `log` dependency.
+- Use `opt-level=1` for debug builds.
+- Documentation update.
+- Log: disable diff-fd by default when stdio-in-cmdline is enabled.
+
+### Fixed
+
+- Fix some typos.
+- TUI: Don't handle key event when there are modifers but shouldn't.
+- docs: update install command for `cargo install` to avoid installing fixtures.
+- Don't show `O_CLOEXEC` fds in cmdline.
+
 ## v0.1.0-rc.0
 
 tracexec v0.1.0-rc.0 released!
