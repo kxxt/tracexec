@@ -64,7 +64,7 @@ $ tracexec log --show-interpreter --show-cwd -- makepkg -f
 Via cargo:
 
 ```bash
-cargo install tracexec
+cargo install tracexec --bin tracexec
 ```
 
 You can also install `tracexec` from AUR.
