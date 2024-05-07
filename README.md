@@ -16,6 +16,8 @@ does a proprietary software run, etc.
 In TUI mode with a pseudo terminal, you can view the details of exec events and interact with the processes
 within the pseudo terminal at ease.
 
+![TUI demo](https://github.com/kxxt/tracexec/blob/main/screenshots/tui-demo.gif?raw=true)
+
 ### Tracing setuid binaries
 
 With root privileges, you can also trace setuid binaries and see how they work.
