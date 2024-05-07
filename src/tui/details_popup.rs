@@ -10,7 +10,7 @@ use nix::{errno::Errno, fcntl::OFlag};
 use ratatui::{
   buffer::Buffer,
   layout::{Alignment::Center, Rect, Size},
-  style::{Color, Style, Styled, Stylize},
+  style::Styled,
   text::{Line, Span},
   widgets::{
     Block, Borders, Clear, Paragraph, StatefulWidget, StatefulWidgetRef, Tabs, Widget, WidgetRef,
@@ -21,7 +21,10 @@ use tui_scrollview::{ScrollView, ScrollViewState};
 
 use crate::{event::TracerEvent, proc::BaselineInfo};
 
-use super::help::{help_desc, help_key};
+use super::{
+  help::{help_desc, help_key},
+  theme::THEME,
+};
 
 pub struct DetailsPopup {
   enable_copy: bool,
@@ -69,10 +72,10 @@ impl DetailsPopupState {
         (" Pid ", Line::from(exec.pid.to_string())),
         (" Result ", {
           if exec.result == 0 {
-            "0 (Success)".green().into()
+            "0 (Success)".set_style(THEME.exec_result_success).into()
           } else {
             format!("{} ({})", exec.result, Errno::from_raw(-exec.result as i32))
-              .red()
+              .set_style(THEME.exec_result_failure)
               .into()
           }
         }),
@@ -95,7 +98,7 @@ impl DetailsPopupState {
           if let Some(stdin) = exec.fdinfo.stdin() {
             stdin.path.display().to_string().into()
           } else {
-            "Closed".light_red().into()
+            "Closed".set_style(THEME.fd_closed).into()
           },
         ),
         (
@@ -103,7 +106,7 @@ impl DetailsPopupState {
           if let Some(stdout) = exec.fdinfo.stdout() {
             stdout.path.display().to_string().into()
           } else {
-            "Closed".light_red().into()
+            "Closed".set_style(THEME.fd_closed).into()
           },
         ),
         (
@@ -111,7 +114,7 @@ impl DetailsPopupState {
           if let Some(stderr) = exec.fdinfo.stderr() {
             stderr.path.display().to_string().into()
           } else {
-            "Closed".light_red().into()
+            "Closed".set_style(THEME.fd_closed).into()
           },
         ),
       ]);
@@ -122,10 +125,10 @@ impl DetailsPopupState {
             .iter()
             .map(|(key, value)| {
               let spans = vec![
-                "+".fg(Color::LightGreen),
-                key.to_string().bold().light_green(),
-                "=".yellow().bold(),
-                value.to_string().light_green(),
+                "+".set_style(THEME.plus_sign),
+                key.to_string().set_style(THEME.added_env_key),
+                "=".set_style(THEME.equal_sign),
+                value.to_string().set_style(THEME.added_env_val),
               ];
               Line::default().spans(spans)
             })
@@ -137,10 +140,10 @@ impl DetailsPopupState {
               .map(|key| {
                 let value = baseline.env.get(key).unwrap();
                 let spans = vec![
-                  "-".fg(Color::LightRed),
-                  key.to_string().bold().light_red(),
-                  "=".yellow().bold(),
-                  value.to_string().light_red(),
+                  "-".set_style(THEME.minus_sign),
+                  key.to_string().set_style(THEME.removed_env_key),
+                  "=".set_style(THEME.equal_sign),
+                  value.to_string().set_style(THEME.removed_env_val),
                 ];
                 Line::default().spans(spans)
               })
@@ -153,16 +156,16 @@ impl DetailsPopupState {
               .flat_map(|(key, new)| {
                 let old = baseline.env.get(key).unwrap();
                 let spans_old = vec![
-                  "-".fg(Color::LightRed),
-                  key.to_string().light_red(),
-                  "=".yellow().bold(),
-                  old.to_string().light_red(),
+                  "-".set_style(THEME.minus_sign),
+                  key.to_string().set_style(THEME.removed_env_key),
+                  "=".set_style(THEME.equal_sign),
+                  old.to_string().set_style(THEME.removed_env_val),
                 ];
                 let spans_new = vec![
-                  "+".fg(Color::LightGreen),
-                  key.to_string().bold().light_green(),
-                  "=".yellow().bold(),
-                  new.to_string().light_green(),
+                  "+".set_style(THEME.plus_sign),
+                  key.to_string().set_style(THEME.added_env_key),
+                  "=".set_style(THEME.equal_sign),
+                  new.to_string().set_style(THEME.added_env_val),
                 ];
                 vec![
                   Line::default().spans(spans_old),
@@ -180,9 +183,9 @@ impl DetailsPopupState {
               .map(|(key, value)| {
                 let spans = vec![
                   " ".into(),
-                  key.to_string().bold().white(),
-                  "=".yellow(),
-                  value.to_string().white(),
+                  key.to_string().set_style(THEME.unchanged_env_key),
+                  "=".set_style(THEME.equal_sign),
+                  value.to_string().set_style(THEME.unchanged_env_val),
                 ];
                 Line::default().spans(spans)
               }),
@@ -197,22 +200,15 @@ impl DetailsPopupState {
       for (&fd, info) in exec.fdinfo.fdinfo.iter() {
         fdinfo.push(
           vec![
-            " File Descriptor "
-              .bold()
-              .fg(Color::Black)
-              .bg(Color::LightGreen)
-              .bold(),
-            format!(" {} ", fd)
-              .bold()
-              .fg(Color::White)
-              .bg(Color::LightMagenta),
+            " File Descriptor ".set_style(THEME.fd_label),
+            format!(" {} ", fd).set_style(THEME.fd_number_label),
           ]
           .into(),
         );
         // Path
         fdinfo.push(
           vec![
-            "Path".bold().white(),
+            "Path".set_style(THEME.sublabel),
             ": ".into(),
             info.path.display().to_string().into(),
           ]
@@ -221,9 +217,9 @@ impl DetailsPopupState {
         // Flags
         let flags = info.flags.iter().map(|f| {
           let style = match f {
-            OFlag::O_CLOEXEC => Style::new().fg(Color::LightGreen).bold(), // Close on exec
+            OFlag::O_CLOEXEC => THEME.open_flag_cloexec, // Close on exec
             OFlag::O_RDONLY | OFlag::O_WRONLY | OFlag::O_RDWR => {
-              Style::new().fg(Color::LightBlue).bold() // Access Mode
+              THEME.open_flag_access_mode // Access Mode
             }
             OFlag::O_CREAT
             | OFlag::O_DIRECTORY
@@ -231,7 +227,7 @@ impl DetailsPopupState {
             | OFlag::O_NOCTTY
             | OFlag::O_NOFOLLOW
             | OFlag::O_TMPFILE
-            | OFlag::O_TRUNC => Style::new().fg(Color::LightCyan).bold(), // File creation flags
+            | OFlag::O_TRUNC => THEME.open_flag_creation, // File creation flags
             #[allow(unreachable_patterns)]
             OFlag::O_APPEND
             | OFlag::O_ASYNC
@@ -243,9 +239,9 @@ impl DetailsPopupState {
             | OFlag::O_NDELAY // Same as O_NONBLOCK
             | OFlag::O_PATH
             | OFlag::O_SYNC => {
-              Style::new().fg(Color::LightYellow).bold() // 
+              THEME.open_flag_status // File status flags
             }
-            _ => Style::new().fg(Color::LightRed).bold(), // Other flags
+            _ => THEME.open_flag_other, // Other flags
           };
           let mut flag_display = String::new();
           bitflags::parser::to_writer(&f, &mut flag_display).unwrap();
@@ -253,26 +249,26 @@ impl DetailsPopupState {
           flag_display.set_style(style)
         });
         fdinfo.push(
-          chain!(["Flags".bold().white(), ": ".into()], flags)
+          chain!(["Flags".set_style(THEME.sublabel), ": ".into()], flags)
             .collect_vec()
             .into(),
         );
         // Mount Info
         fdinfo.push(
           vec![
-            "Mount Info".bold().white(),
+            "Mount Info".set_style(THEME.sublabel),
             ": ".into(),
             info.mnt_id.to_string().into(),
-            " (".bold().light_green(),
+            " (".set_style(THEME.visual_separator),
             info.mnt.clone().into(),
-            ")".bold().light_green(),
+            ")".set_style(THEME.visual_separator),
           ]
           .into(),
         );
         // Pos
         fdinfo.push(
           vec![
-            "Position".bold().white(),
+            "Position".set_style(THEME.sublabel),
             ": ".into(),
             info.pos.to_string().into(),
           ]
@@ -281,7 +277,7 @@ impl DetailsPopupState {
         // ino
         fdinfo.push(
           vec![
-            "Inode Number".bold().white(),
+            "Inode Number".set_style(THEME.sublabel),
             ": ".into(),
             info.ino.to_string().into(),
           ]
@@ -289,12 +285,12 @@ impl DetailsPopupState {
         );
         // extra
         if !info.extra.is_empty() {
-          fdinfo.push("Extra Information:".bold().white().into());
+          fdinfo.push("Extra Information:".set_style(THEME.sublabel).into());
           fdinfo.extend(
             info
               .extra
               .iter()
-              .map(|l| vec!["•".light_green(), l.clone().into()].into()),
+              .map(|l| vec!["•".set_style(THEME.visual_separator), l.clone().into()].into()),
           );
         }
       }
@@ -453,7 +449,7 @@ impl StatefulWidgetRef for DetailsPopup {
 
     // Tabs
     let tabs = Tabs::new(state.available_tabs.clone())
-      .highlight_style(Style::default().on_magenta().white())
+      .highlight_style(THEME.active_tab)
       .select(state.tab_index);
     // FIXME: Ratatui's tab does not support alignment
     let screen = buf.area;
@@ -501,12 +497,12 @@ impl StatefulWidgetRef for DetailsPopup {
 impl DetailsPopup {
   fn label<'a>(&self, content: &'a str, active: bool) -> Line<'a> {
     if !active {
-      content.bold().fg(Color::Black).bg(Color::LightGreen).into()
+      content.set_style(THEME.label).into()
     } else {
       let mut spans = vec![
-        content.bold().fg(Color::White).bg(Color::LightMagenta),
+        content.set_style(THEME.selected_label),
         " ".into(),
-        "<- ".bold().fg(Color::LightGreen),
+        "<- ".set_style(THEME.selection_indicator),
       ];
       if self.enable_copy {
         spans.extend([help_key("C"), help_desc("Copy")]);

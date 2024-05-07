@@ -27,7 +27,6 @@ use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
   buffer::Buffer,
   layout::{Constraint, Layout, Rect},
-  style::{Color, Style, Stylize},
   text::Line,
   widgets::{Block, Paragraph, StatefulWidgetRef, Widget, Wrap},
 };
@@ -54,6 +53,7 @@ use super::{
   event_list::EventList,
   help::{help, help_item},
   pseudo_term::PseudoTerminalPane,
+  theme::THEME,
   ui::render_title,
   Tui,
 };
@@ -516,11 +516,11 @@ impl Widget for &mut App {
     let block = Block::default()
       .title("Events")
       .borders(ratatui::widgets::Borders::ALL)
-      .border_style(Style::new().fg(if self.active_pane == ActivePane::Events {
-        Color::Cyan
+      .border_style(if self.active_pane == ActivePane::Events {
+        THEME.active_border
       } else {
-        Color::White
-      }))
+        THEME.inactive_border
+      })
       .title(self.event_list.statistics());
     let inner = block.inner(event_area);
     block.render(event_area, buf);
@@ -529,13 +529,11 @@ impl Widget for &mut App {
       let block = Block::default()
         .title("Terminal")
         .borders(ratatui::widgets::Borders::ALL)
-        .border_style(
-          Style::default().fg(if self.active_pane == ActivePane::Terminal {
-            Color::Cyan
-          } else {
-            Color::White
-          }),
-        );
+        .border_style(if self.active_pane == ActivePane::Terminal {
+          THEME.active_border
+        } else {
+          THEME.inactive_border
+        });
       term.render(block.inner(term_area), buf);
       block.render(term_area, buf);
     }
@@ -544,7 +542,7 @@ impl Widget for &mut App {
     if let Some(popup) = self.popup.as_mut() {
       match popup {
         ActivePopup::Help => {
-          let popup = Popup::new("Help", help(rest_area)).style(Style::new().black().on_gray());
+          let popup = Popup::new("Help", help(rest_area)).style(THEME.help_popup);
           popup.render(area, buf);
         }
         ActivePopup::CopyTargetSelection(state) => {

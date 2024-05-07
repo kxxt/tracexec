@@ -1,11 +1,10 @@
 use ratatui::{
   layout::Rect,
-  style::{Color, Stylize},
   text::{Line, Text},
   widgets::{Paragraph, Wrap},
 };
 
-use super::sized_paragraph::SizedParagraph;
+use super::{sized_paragraph::SizedParagraph, theme::THEME};
 
 use std::borrow::Cow;
 
@@ -16,7 +15,7 @@ where
   T: Into<Cow<'a, str>>,
   T: Styled<Item = Span<'a>>,
 {
-  f.fg(Color::Yellow).bg(Color::DarkGray).bold()
+  f.set_style(THEME.cli_flag)
 }
 
 pub fn help_key<'a, T>(k: T) -> Span<'a>
@@ -27,7 +26,7 @@ where
   let mut key_string = String::from("\u{00a0}");
   key_string.push_str(&k.into());
   key_string.push('\u{00a0}');
-  key_string.fg(Color::Black).bg(Color::Cyan).bold()
+  key_string.set_style(THEME.help_key)
 }
 pub fn help_desc<'a, T>(d: T) -> Span<'a>
 where
@@ -37,11 +36,7 @@ where
   let mut desc_string = String::from("\u{00a0}");
   desc_string.push_str(&d.into());
   desc_string.push('\u{00a0}');
-  desc_string
-    .fg(Color::LightGreen)
-    .bg(Color::DarkGray)
-    .italic()
-    .bold()
+  desc_string.set_style(THEME.help_desc)
 }
 
 macro_rules! help_item {
