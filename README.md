@@ -29,6 +29,12 @@ sudo tracexec --user $(whoami) tui -t -- sudo ls
 
 ![Tracing sudo ls](https://github.com/kxxt/tracexec/blob/main/screenshots/tracing-sudo.png?raw=true)
 
+Nested setuid binary tracing is also possible: A real world use case is to trace `extra-x86_64-build`(Arch Linux's build tool that requires sudo):
+
+![Tracing extra-x86_64-build](https://github.com/kxxt/tracexec/blob/main/screenshots/tracing-nested-setuid.gif?raw=true)
+
+In this real world example, we can easily see that `_FORTIFY_SOURCE` is redefined from `2` to `3`, which lead to a compiler error.
+
 ### Log mode
 
 In log mode, by default, `tracexec` will print filename, argv and the diff of the environment variables and file descriptors.
