@@ -25,7 +25,7 @@ Changes since v0.1.0-rc.0:
 ### Fixed
 
 - Fix some typos.
-- TUI: Don't handle key event when there are modifers but shouldn't.
+- TUI: Don't handle key event when there are modifiers but shouldn't.
 - docs: update install command for `cargo install` to avoid installing fixtures.
 - Don't show `O_CLOEXEC` fds in cmdline.
 
