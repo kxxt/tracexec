@@ -22,4 +22,4 @@
 # Internal
 
 - Find a way to synchronize the style between TUI and log mode.
-- Reduce clones (Lots of clones are happing because of we can't have self-referencing struct. Low priority, the performance is good enough in practice)
+- Reduce clones (Lots of clones are happening because of we can't have self-referencing struct. Low priority, the performance is good enough in practice)
