@@ -7,8 +7,6 @@ tracexec helps you to figure out what and how programs get executed when you exe
 It's useful for debugging build systems, understanding what shell scripts actually do, figuring out what programs
 does a proprietary software run, etc.
 
-**Warning**: You are viewing the documentation for the upcoming 0.1.0 release. The current stable release is 0.0.5.
-
 ## Showcases
 
 ### TUI mode with pseudo terminal
