@@ -1,5 +1,55 @@
 # Changelog
 
+## v0.1.0
+
+tracexec v0.1.0 is now finally released! 🎉🎉🎉
+
+![tracexec v0.1.0](https://github.com/kxxt/tracexec/blob/main/screenshots/tui-demo.gif?raw=true)
+
+This release includes TUI feature and many improvements and bug fixes.
+
+### Notable changes since v0.0.5
+
+#### Added
+
+- An awesome TUI built with awesome ratatui.
+- Tracing and diffing file descriptors to easily catch fd leaks and figure out inherited fds.
+  - [Experimental] Try to construct cmdline that reproduces the same fds/stdio. (`--stdio-in-cmdline/--fd-in-cmdline`)
+- Add `--user` option to run as a different user.  (This is mostly useful for tracing setuid/setgid binaries. Thanks to strace for the idea.)
+  - Automatically disable seccomp-bpf when using `--user` because seccomp-bpf enforces no-new-privs.
+- Add `-C` option to change the working directory of tracexec.
+- Add `--filter{,-include,-exclude}` and `--show-all-events` option to filter events.
+- Warn on bad envp/argv/filename and empty argv.
+- TUI: Now tracexec can be themed at compile-time by changing `src/tui/theme.rs`.
+
+#### Fixed
+
+- Fix hang when root child is stopped by other signals before ptrace is setup
+- Log mode: The formatting of interpreters now correctly respects color settings(e.g. NO_COLOR).
+- Fix the logic of argv[0] handling for both logging and TUI mode.
+- Log mode: Don't crash if `tcsetpgrp` returns `ENOTTY`.
+- Some typos.
+
+#### Changed
+
+- Use `BTreeMap` to make environment variables sorted and deterministic.
+- Internal logs are now logged to `$XDG_DATA_HOME/tracexec/tracexec.log`.
+- Tracer thread now is named `tracer`.
+- Some colors are changed in log mode.
+- `--verbose/--quiet` is removed from CLI. Use `--filter{,-include,-exclude}` and `--show-all-events` instead.
+- Log mode: `--show-cmdline` no longer implies `--successful-only`.
+
+#### Other
+
+- Add a few tests and CI.
+- Enable LTO for release builds.
+- Use `opt-level=1` for debug builds.
+
+### Changes since v0.1.0-rc.1
+
+- TUI: improve the message of tracee spawn/exit.
+- TUI: don't omit tracee spawn event.
+
 ## v0.1.0-rc.1
 
 tracexec v0.1.0-rc.1 released!
