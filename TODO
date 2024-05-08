@@ -1,20 +1,10 @@
 # General
 
-- Set baseline env from cmdline, which is compared against when diffing env.
 - Load env file from cmdline
-- Load settings from profile
-- Export/Save the data.
-  - View the exported data.
 
 # TUI
 
-- Search and filter
-- Terminal scrollback support
-- Mouse support
-- Customizable key bindings
 - Confirm message (maybe put this under title or help?) for copy target, quit, etc.
-- Better formatting of other events
-- Tree mode
 - (Maybe) switch to manual rendering by using Notify and batch frequent rerenders.
   - Maybe use an atomic bool to indicate whether to rerender or not. Cancel a scheduled rerender if the bool is false.
 - Make the terminal better
