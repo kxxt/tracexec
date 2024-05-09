@@ -35,7 +35,8 @@ use crate::{
   event::{filterable_event, ExecEvent, TracerEvent, TracerEventKind, TracerMessage},
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{
-    diff_env, read_comm, read_cwd, read_fd, read_fds, read_interpreter_recursive, BaselineInfo,
+    diff_env, read_comm, read_cwd, read_exe, read_fd, read_fds, read_interpreter_recursive,
+    BaselineInfo,
   },
   pty::{self, Child, UnixSlavePty},
 };
@@ -66,6 +67,7 @@ pub struct Tracer {
   mode: TracerMode,
   pub store: RwLock<ProcessStateStore>,
   printer: Printer,
+  modifier_args: ModifierArgs,
   filter: BitFlags<TracerEventKind>,
   baseline: Arc<BaselineInfo>,
   #[cfg(feature = "seccomp-bpf")]
@@ -138,6 +140,7 @@ impl Tracer {
         PrinterArgs::from_cli(&tracing_args, &modifier_args),
         baseline.clone(),
       ),
+      modifier_args,
       baseline,
       mode,
     })
@@ -525,6 +528,7 @@ impl Tracer {
         }
         Err(e) => Err(e),
       };
+      let filename = self.get_filename_for_display(pid, filename)?;
       self.warn_for_filename(&filename, pid)?;
       let argv = read_string_array(pid, syscall_arg!(regs, 2) as AddressType);
       self.warn_for_argv(&argv, pid)?;
@@ -547,6 +551,7 @@ impl Tracer {
     } else if syscallno == nix::libc::SYS_execve {
       trace!("pre execve {syscallno}",);
       let filename = read_pathbuf(pid, syscall_arg!(regs, 0) as AddressType);
+      let filename = self.get_filename_for_display(pid, filename)?;
       self.warn_for_filename(&filename, pid)?;
       let argv = read_string_array(pid, syscall_arg!(regs, 1) as AddressType);
       self.warn_for_argv(&argv, pid)?;
@@ -661,6 +666,25 @@ impl Tracer {
       return ptrace_cont(pid, Some(sig));
     }
     ptrace_syscall(pid, Some(sig))
+  }
+
+  /// Get filename for display. If the filename is /proc/self/exe, returns the actual exe path.
+  fn get_filename_for_display(
+    &self,
+    pid: Pid,
+    filename: Result<PathBuf, Errno>,
+  ) -> io::Result<Result<PathBuf, Errno>> {
+    if self.modifier_args.preserve_proc_self_exe {
+      return Ok(filename);
+    }
+    Ok(match filename {
+      Ok(f) => Ok(if f.to_str() == Some("/proc/self/exe") {
+        read_exe(pid)?
+      } else {
+        f
+      }),
+      Err(e) => Err(e),
+    })
   }
 
   fn warn_for_argv(

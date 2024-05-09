@@ -26,6 +26,12 @@ pub struct ModifierArgs {
     default_value_t = false
   )]
   pub stdio_in_cmdline: bool,
+  #[clap(
+    long,
+    help = "Don't resolve /proc/self/exe symlink",
+    default_value_t = false
+  )]
+  pub preserve_proc_self_exe: bool,
 }
 
 impl ModifierArgs {

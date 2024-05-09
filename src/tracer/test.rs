@@ -2,6 +2,8 @@ use std::{path::PathBuf, sync::Arc};
 
 use rstest::{fixture, rstest};
 use tokio::sync::mpsc::UnboundedReceiver;
+use tracing::info;
+use tracing_test::traced_test;
 
 use crate::{
   cli::args::{ModifierArgs, TracerEventArgs, TracingArgs},
@@ -13,10 +15,11 @@ use crate::{
 use super::TracerMode;
 
 #[fixture]
-fn tracer() -> (Arc<Tracer>, UnboundedReceiver<TracerEvent>) {
+fn tracer(
+  #[default(Default::default())] modifier_args: ModifierArgs,
+) -> (Arc<Tracer>, UnboundedReceiver<TracerEvent>) {
   let tracer_mod = TracerMode::Cli;
   let tracing_args = TracingArgs::default();
-  let modifier_args = ModifierArgs::default();
   let tracer_event_args = TracerEventArgs {
     show_all_events: true,
     ..Default::default()
@@ -41,12 +44,12 @@ fn tracer() -> (Arc<Tracer>, UnboundedReceiver<TracerEvent>) {
   )
 }
 
-#[rstest]
-#[tokio::test]
-async fn tracer_emits_exec_event(tracer: (Arc<Tracer>, UnboundedReceiver<TracerEvent>)) {
-  // TODO: don't assume FHS
-  let (tracer, mut rx) = tracer;
-  let tracer_thread = tracer.spawn(vec!["/bin/true".to_string()], None).unwrap();
+async fn run_exe_and_collect_events(
+  tracer: Arc<Tracer>,
+  mut rx: UnboundedReceiver<TracerEvent>,
+  argv: Vec<String>,
+) -> Vec<TracerEvent> {
+  let tracer_thread = tracer.spawn(argv, None).unwrap();
   tracer_thread.join().unwrap().unwrap();
   let events = async {
     let mut events = vec![];
@@ -56,6 +59,58 @@ async fn tracer_emits_exec_event(tracer: (Arc<Tracer>, UnboundedReceiver<TracerE
     events
   }
   .await;
+  events
+}
+
+#[traced_test]
+#[rstest]
+#[case(true)]
+#[case(false)]
+#[tokio::test]
+async fn tracer_decodes_proc_self_exe(
+  #[case] preserve_proc_self_exe: bool,
+  #[with(ModifierArgs {
+    preserve_proc_self_exe,
+    ..Default::default()
+  })]
+  tracer: (Arc<Tracer>, UnboundedReceiver<TracerEvent>),
+) {
+  // Note that /proc/self/exe is the test driver binary, not tracexec
+  info!(
+    "tracer_decodes_proc_self_exe test: preserve_proc_self_exe={}",
+    preserve_proc_self_exe
+  );
+  let (tracer, rx) = tracer;
+  let events = run_exe_and_collect_events(
+    tracer,
+    rx,
+    vec!["/proc/self/exe".to_string(), "--help".to_string()],
+  )
+  .await;
+  let path = std::fs::read_link("/proc/self/exe").unwrap();
+  for event in events {
+    if let TracerEvent::Exec(exec) = event {
+      let argv = exec.argv.as_deref().unwrap();
+      assert_eq!(argv, &["/proc/self/exe", "--help"]);
+      let filename = exec.filename.as_deref().unwrap();
+      if preserve_proc_self_exe {
+        assert_eq!(filename, &PathBuf::from("/proc/self/exe"));
+      } else {
+        assert_eq!(filename, &path);
+      }
+      return;
+    }
+  }
+  panic!("Corresponding exec event not found")
+}
+
+#[traced_test]
+#[rstest]
+#[tokio::test]
+async fn tracer_emits_exec_event(tracer: (Arc<Tracer>, UnboundedReceiver<TracerEvent>)) {
+  // TODO: don't assume FHS
+  let (tracer, rx) = tracer;
+  let events = run_exe_and_collect_events(tracer, rx, vec!["/bin/true".to_string()]).await;
   for event in events {
     if let TracerEvent::Exec(exec) = event {
       let argv = exec.argv.as_deref().unwrap();

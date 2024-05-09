@@ -47,6 +47,12 @@ pub fn read_cwd(pid: Pid) -> std::io::Result<PathBuf> {
   Ok(buf)
 }
 
+pub fn read_exe(pid: Pid) -> std::io::Result<PathBuf> {
+  let filename = format!("/proc/{pid}/exe");
+  let buf = std::fs::read_link(filename)?;
+  Ok(buf)
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct FileDescriptorInfoCollection {
   pub fdinfo: BTreeMap<c_int, FileDescriptorInfo>,
