@@ -60,13 +60,13 @@ tui-popup = "0.3.0"
 thiserror = "1.0.59"
 tui-scrollview = "0.3.5"
 bitflags = "2.5.0"
-tracing-test = "0.2.4"
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 
 [dev-dependencies]
 assert_cmd = "2.0.14"
 predicates = "3.1.0"
 rstest = "0.19.0"
+tracing-test = "0.2.4"
 
 [features]
 default = ["seccomp-bpf"]
