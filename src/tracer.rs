@@ -676,7 +676,7 @@ impl Tracer {
     pid: Pid,
     filename: Result<PathBuf, Errno>,
   ) -> io::Result<Result<PathBuf, Errno>> {
-    if self.modifier_args.preserve_proc_self_exe {
+    if !self.modifier_args.resolve_proc_self_exe {
       return Ok(filename);
     }
     Ok(match filename {

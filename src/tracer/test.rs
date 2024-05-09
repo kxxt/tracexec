@@ -68,17 +68,17 @@ async fn run_exe_and_collect_events(
 #[case(false)]
 #[tokio::test]
 async fn tracer_decodes_proc_self_exe(
-  #[case] preserve_proc_self_exe: bool,
+  #[case] resolve_proc_self_exe: bool,
   #[with(ModifierArgs {
-    preserve_proc_self_exe,
+    resolve_proc_self_exe,
     ..Default::default()
   })]
   tracer: (Arc<Tracer>, UnboundedReceiver<TracerEvent>),
 ) {
   // Note that /proc/self/exe is the test driver binary, not tracexec
   info!(
-    "tracer_decodes_proc_self_exe test: preserve_proc_self_exe={}",
-    preserve_proc_self_exe
+    "tracer_decodes_proc_self_exe test: resolve_proc_self_exe={}",
+    resolve_proc_self_exe
   );
   let (tracer, rx) = tracer;
   let events = run_exe_and_collect_events(
@@ -93,7 +93,7 @@ async fn tracer_decodes_proc_self_exe(
       let argv = exec.argv.as_deref().unwrap();
       assert_eq!(argv, &["/proc/self/exe", "--help"]);
       let filename = exec.filename.as_deref().unwrap();
-      if preserve_proc_self_exe {
+      if !resolve_proc_self_exe {
         assert_eq!(filename, &PathBuf::from("/proc/self/exe"));
       } else {
         assert_eq!(filename, &path);

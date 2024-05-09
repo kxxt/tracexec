@@ -26,17 +26,25 @@ pub struct ModifierArgs {
     default_value_t = false
   )]
   pub stdio_in_cmdline: bool,
+  #[clap(long, help = "Resolve /proc/self/exe symlink", default_value_t = false)]
+  pub resolve_proc_self_exe: bool,
   #[clap(
     long,
-    help = "Don't resolve /proc/self/exe symlink",
-    default_value_t = false
+    help = "Do not resolve /proc/self/exe symlink",
+    default_value_t = false,
+    conflicts_with = "resolve_proc_self_exe"
   )]
-  pub preserve_proc_self_exe: bool,
+  pub no_resolve_proc_self_exe: bool,
 }
 
 impl ModifierArgs {
   pub fn processed(mut self) -> Self {
     self.stdio_in_cmdline = self.fd_in_cmdline || self.stdio_in_cmdline;
+    self.resolve_proc_self_exe = match (self.resolve_proc_self_exe, self.no_resolve_proc_self_exe) {
+      (true, false) => true,
+      (false, true) => false,
+      _ => true, // default
+    };
     self
   }
 }
