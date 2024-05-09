@@ -104,7 +104,7 @@ async fn main() -> color_eyre::Result<()> {
       let baseline = BaselineInfo::new()?;
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
       let tracer = Arc::new(tracer::Tracer::new(
-        TracerMode::Cli,
+        TracerMode::Log,
         tracing_args,
         modifier_args,
         tracer_event_args,

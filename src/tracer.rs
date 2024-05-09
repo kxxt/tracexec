@@ -78,7 +78,7 @@ pub struct Tracer {
 
 pub enum TracerMode {
   Tui(Option<UnixSlavePty>),
-  Cli,
+  Log,
 }
 
 impl PartialEq for TracerMode {
@@ -86,7 +86,7 @@ impl PartialEq for TracerMode {
     // I think a plain match is more readable here
     #[allow(clippy::match_like_matches_macro)]
     match (self, other) {
-      (Self::Cli, Self::Cli) => true,
+      (Self::Log, Self::Log) => true,
       _ => false,
     }
   }
@@ -106,7 +106,7 @@ impl Tracer {
     Ok(Self {
       with_tty: match &mode {
         TracerMode::Tui(tty) => tty.is_some(),
-        TracerMode::Cli => true,
+        TracerMode::Log => true,
       },
       store: RwLock::new(ProcessStateStore::new()),
       #[cfg(feature = "seccomp-bpf")]
@@ -128,7 +128,7 @@ impl Tracer {
       filter: {
         let mut filter = tracer_event_args.filter()?;
         trace!("Event filter: {:?}", filter);
-        if mode == TracerMode::Cli {
+        if mode == TracerMode::Log {
           // FIXME: In logging mode, we rely on root child exit event to exit the process
           //        with the same exit code as the root child. It is not printed in logging mode.
           //        Ideally we should use another channel to send the exit code to the main thread.
@@ -172,7 +172,7 @@ impl Tracer {
     let seccomp_bpf = self.seccomp_bpf;
     let slave_pty = match &self.mode {
       TracerMode::Tui(tty) => tty.as_ref(),
-      TracerMode::Cli => None,
+      TracerMode::Log => None,
     };
     let with_tty = self.with_tty;
     let use_pseudo_term = slave_pty.is_some();
@@ -267,7 +267,7 @@ impl Tracer {
     // Set foreground process group of the terminal
     // TODO: make it a cmdline option
     #[cfg(not(test))]
-    if let TracerMode::Cli = &self.mode {
+    if let TracerMode::Log = &self.mode {
       match tcsetpgrp(stdin(), root_child) {
         Ok(_) => {}
         Err(Errno::ENOTTY) => {
