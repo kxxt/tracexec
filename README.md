@@ -85,7 +85,7 @@ Via cargo:
 cargo install tracexec --bin tracexec
 ```
 
-You can also install `tracexec` from AUR.
+Arch Linux users can also install from the official repositories via `pacman -S tracexec`.
 
 ### Binary
 
