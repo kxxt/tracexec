@@ -265,6 +265,8 @@ impl Tracer {
       self.store.write().unwrap().insert(root_child_state);
     }
     // Set foreground process group of the terminal
+    // TODO: make it a cmdline option
+    #[cfg(not(test))]
     if let TracerMode::Cli = &self.mode {
       match tcsetpgrp(stdin(), root_child) {
         Ok(_) => {}
