@@ -202,7 +202,7 @@ pub struct TracingArgs {
   pub no_show_cwd: bool,
   #[clap(long, help = "Decode errno values", conflicts_with = "no_decode_errno")]
   pub decode_errno: bool,
-  #[clap(long, conflicts_with = "decode_errno")]
+  #[clap(long, help = "Do not decode errno values", conflicts_with = "decode_errno")]
   pub no_decode_errno: bool,
   // END ugly
 }
