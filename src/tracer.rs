@@ -30,7 +30,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use crate::{
   arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
-  cli::args::{ModifierArgs, TracerEventArgs, LogModeArgs},
+  cli::args::{LogModeArgs, ModifierArgs, TracerEventArgs},
   cmdbuilder::CommandBuilder,
   event::{filterable_event, ExecEvent, TracerEvent, TracerEventKind, TracerMessage},
   printer::{Printer, PrinterArgs, PrinterOut},
@@ -64,6 +64,8 @@ cfg_if! {
 
 pub struct Tracer {
   with_tty: bool,
+  /// Sets the terminal foreground process group to the tracee
+  foreground: bool,
   mode: TracerMode,
   pub store: RwLock<ProcessStateStore>,
   printer: Printer,
@@ -143,6 +145,11 @@ impl Tracer {
       modifier_args,
       baseline,
       mode,
+      foreground: match (tracing_args.foreground, tracing_args.no_foreground) {
+        (true, false) => true,
+        (false, true) => false,
+        _ => true,
+      },
     })
   }
 
@@ -265,15 +272,16 @@ impl Tracer {
       self.store.write().unwrap().insert(root_child_state);
     }
     // Set foreground process group of the terminal
-    // TODO: make it a cmdline option
     #[cfg(not(test))]
     if let TracerMode::Log = &self.mode {
-      match tcsetpgrp(stdin(), root_child) {
-        Ok(_) => {}
-        Err(Errno::ENOTTY) => {
-          warn!("tcsetpgrp failed: ENOTTY");
+      if self.foreground {
+        match tcsetpgrp(stdin(), root_child) {
+          Ok(_) => {}
+          Err(Errno::ENOTTY) => {
+            warn!("tcsetpgrp failed: ENOTTY");
+          }
+          r => r?,
         }
-        r => r?,
       }
     }
     let mut ptrace_opts = {

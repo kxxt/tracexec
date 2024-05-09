@@ -134,6 +134,18 @@ pub struct LogModeArgs {
   // BEGIN ugly: https://github.com/clap-rs/clap/issues/815
   #[clap(
     long,
+    help = "Set the terminal foreground process group to tracee. This option is useful when tracexec is used interactively.",
+    conflicts_with = "no_foreground"
+  )]
+  pub foreground: bool,
+  #[clap(
+    long,
+    help = "Do not set the terminal foreground process group to tracee",
+    conflicts_with = "foreground"
+  )]
+  pub no_foreground: bool,
+  #[clap(
+    long,
     help = "Diff file descriptors with the original std{in/out/err}",
     conflicts_with = "no_diff_fd"
   )]
@@ -202,7 +214,11 @@ pub struct LogModeArgs {
   pub no_show_cwd: bool,
   #[clap(long, help = "Decode errno values", conflicts_with = "no_decode_errno")]
   pub decode_errno: bool,
-  #[clap(long, help = "Do not decode errno values", conflicts_with = "decode_errno")]
+  #[clap(
+    long,
+    help = "Do not decode errno values",
+    conflicts_with = "decode_errno"
+  )]
   pub no_decode_errno: bool,
   // END ugly
 }
