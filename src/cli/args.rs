@@ -118,7 +118,7 @@ impl TracerEventArgs {
 }
 
 #[derive(Args, Debug, Default)]
-pub struct TracingArgs {
+pub struct LogModeArgs {
   #[clap(
     long,
     help = "Print commandline that (hopefully) reproduces what was executed. Note: file descriptors are not handled for now.",

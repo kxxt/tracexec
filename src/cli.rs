@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 use crate::tui::app::AppLayout;
 
 use self::{
-  args::{ModifierArgs, TracerEventArgs, TracingArgs},
+  args::{ModifierArgs, TracerEventArgs, LogModeArgs},
   options::{ActivePane, Color},
 };
 
@@ -42,7 +42,7 @@ pub enum CliCommand {
     #[arg(last = true, required = true, help = "command to be executed")]
     cmd: Vec<String>,
     #[clap(flatten)]
-    tracing_args: TracingArgs,
+    tracing_args: LogModeArgs,
     #[clap(flatten)]
     modifier_args: ModifierArgs,
     #[clap(flatten)]

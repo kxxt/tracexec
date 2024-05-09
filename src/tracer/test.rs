@@ -6,7 +6,7 @@ use tracing::info;
 use tracing_test::traced_test;
 
 use crate::{
-  cli::args::{ModifierArgs, TracerEventArgs, TracingArgs},
+  cli::args::{ModifierArgs, TracerEventArgs, LogModeArgs},
   event::TracerEvent,
   proc::{BaselineInfo, Interpreter},
   tracer::Tracer,
@@ -19,7 +19,7 @@ fn tracer(
   #[default(Default::default())] modifier_args: ModifierArgs,
 ) -> (Arc<Tracer>, UnboundedReceiver<TracerEvent>) {
   let tracer_mod = TracerMode::Cli;
-  let tracing_args = TracingArgs::default();
+  let tracing_args = LogModeArgs::default();
   let tracer_event_args = TracerEventArgs {
     show_all_events: true,
     ..Default::default()

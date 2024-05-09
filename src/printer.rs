@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-  cli::args::{ModifierArgs, TracingArgs},
+  cli::args::{ModifierArgs, LogModeArgs},
   event::TracerEvent,
   proc::{diff_env, BaselineInfo, FileDescriptorInfoCollection, Interpreter},
   tracer::state::ProcessState,
@@ -68,7 +68,7 @@ pub struct PrinterArgs {
 }
 
 impl PrinterArgs {
-  pub fn from_cli(tracing_args: &TracingArgs, modifier_args: &ModifierArgs) -> Self {
+  pub fn from_cli(tracing_args: &LogModeArgs, modifier_args: &ModifierArgs) -> Self {
     PrinterArgs {
       trace_comm: !tracing_args.no_show_comm,
       trace_argv: !tracing_args.no_show_argv && !tracing_args.show_cmdline,

@@ -28,7 +28,7 @@ use nix::unistd::{Uid, User};
 use tokio::sync::mpsc;
 
 use crate::{
-  cli::{args::TracingArgs, options::Color, CliCommand},
+  cli::{args::LogModeArgs, options::Color, CliCommand},
   event::TracerEvent,
   log::initialize_panic_handler,
   printer::PrinterOut,
@@ -155,7 +155,7 @@ async fn main() -> color_eyre::Result<()> {
       } else {
         (BaselineInfo::new()?, TracerMode::Tui(None), None)
       };
-      let tracing_args = TracingArgs {
+      let tracing_args = LogModeArgs {
         show_cmdline: false, // We handle cmdline in TUI
         show_argv: true,
         show_interpreter: true,

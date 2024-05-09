@@ -38,7 +38,7 @@ use tui_popup::Popup;
 use crate::{
   action::{Action, ActivePopup},
   cli::{
-    args::{ModifierArgs, TracingArgs},
+    args::{ModifierArgs, LogModeArgs},
     options::ActivePane,
   },
   event::{Event, TracerEvent},
@@ -81,7 +81,7 @@ pub struct App {
 
 impl App {
   pub fn new(
-    tracing_args: &TracingArgs,
+    tracing_args: &LogModeArgs,
     modifier_args: &ModifierArgs,
     baseline: BaselineInfo,
     pty_master: Option<UnixMasterPty>,

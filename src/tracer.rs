@@ -30,7 +30,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use crate::{
   arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
-  cli::args::{ModifierArgs, TracerEventArgs, TracingArgs},
+  cli::args::{ModifierArgs, TracerEventArgs, LogModeArgs},
   cmdbuilder::CommandBuilder,
   event::{filterable_event, ExecEvent, TracerEvent, TracerEventKind, TracerMessage},
   printer::{Printer, PrinterArgs, PrinterOut},
@@ -95,7 +95,7 @@ impl PartialEq for TracerMode {
 impl Tracer {
   pub fn new(
     mode: TracerMode,
-    tracing_args: TracingArgs,
+    tracing_args: LogModeArgs,
     modifier_args: ModifierArgs,
     tracer_event_args: TracerEventArgs,
     baseline: BaselineInfo,
