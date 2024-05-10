@@ -236,7 +236,7 @@ impl Widget for &mut EventList {
             .add_modifier(Modifier::BOLD)
             .bg(Color::DarkGray),
         )
-        .highlight_symbol(">")
+        .highlight_symbol("➡️")
         .highlight_spacing(HighlightSpacing::Always);
       // FIXME: It's a little late to set the max width here. The max width is already used
       //        Though this should only affect the first render.
