@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-  cli::args::{ModifierArgs, LogModeArgs},
+  cli::args::{LogModeArgs, ModifierArgs},
   event::TracerEvent,
   proc::{diff_env, BaselineInfo, FileDescriptorInfoCollection, Interpreter},
   tracer::state::ProcessState,

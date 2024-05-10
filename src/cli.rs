@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 use crate::tui::app::AppLayout;
 
 use self::{
-  args::{ModifierArgs, TracerEventArgs, LogModeArgs},
+  args::{LogModeArgs, ModifierArgs, TracerEventArgs},
   options::{ActivePane, Color},
 };
 
