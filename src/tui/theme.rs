@@ -1,5 +1,5 @@
 use lazy_static::lazy_static;
-use ratatui::style::{Style, Stylize};
+use ratatui::style::{Modifier, Style, Stylize};
 
 pub struct Theme {
   // Color for UI Elements
@@ -35,6 +35,8 @@ pub struct Theme {
   pub modified_env_var: Style,
   pub added_env_var: Style,
   pub argv: Style,
+  // Search & Filter
+  pub search_match: Style,
   // Details Popup
   pub exec_result_success: Style,
   pub exec_result_failure: Style,
@@ -103,6 +105,8 @@ impl Default for Theme {
       modified_env_var: Style::default().yellow(),
       added_env_var: Style::default().green(),
       argv: Style::default(),
+      // -- Search & Filter --
+      search_match: Style::default().add_modifier(Modifier::REVERSED),
       // -- Details Popup --
       exec_result_success: Style::default().green(),
       exec_result_failure: Style::default().red(),

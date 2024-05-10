@@ -5,7 +5,7 @@ use ratatui::layout::Size;
 
 use crate::{
   event::TracerEvent,
-  tui::{copy_popup::CopyPopupState, details_popup::DetailsPopupState},
+  tui::{copy_popup::CopyPopupState, details_popup::DetailsPopupState, query::Query},
 };
 
 #[derive(Debug, Clone)]
@@ -48,6 +48,9 @@ pub enum Action {
     target: CopyTarget,
     event: Arc<TracerEvent>,
   },
+  // Query
+  BeginSearch,
+  ExecuteSearch(Query),
   // Terminal
   HandleTerminalKeyPress(KeyEvent),
 }

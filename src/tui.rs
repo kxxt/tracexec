@@ -45,6 +45,7 @@ mod event_list;
 pub mod help;
 mod partial_line;
 mod pseudo_term;
+pub mod query;
 mod sized_paragraph;
 pub mod theme;
 mod ui;
