@@ -37,7 +37,7 @@ pub struct EventList {
   state: ListState,
   events: Vec<Arc<TracerEvent>>,
   /// The string representation of the events, used for searching
-  events_string: Vec<String>,
+  event_strings: Vec<String>,
   /// Current window of the event list, [start, end)
   window: (usize, usize),
   /// Cache of the lines in the window
@@ -65,7 +65,7 @@ impl EventList {
     Self {
       state: ListState::default(),
       events: vec![],
-      events_string: vec![],
+      event_strings: vec![],
       window: (0, 0),
       nr_items_in_window: 0,
       horizontal_offset: 0,
@@ -102,6 +102,7 @@ impl EventList {
   pub fn toggle_env_display(&mut self) {
     self.env_in_cmdline = !self.env_in_cmdline;
     self.should_refresh_lines_cache = true;
+    self.rebuild_event_strings();
   }
 
   /// returns the index of the selected item if there is any
@@ -258,7 +259,7 @@ impl Widget for &mut EventList {
 impl EventList {
   pub fn push(&mut self, event: impl Into<Arc<TracerEvent>>) {
     let event = event.into();
-    self.events_string.push(
+    self.event_strings.push(
       event
         .to_tui_line(
           &self.baseline,
@@ -269,6 +270,23 @@ impl EventList {
         .to_string(),
     );
     self.events.push(event.clone());
+  }
+
+  pub fn rebuild_event_strings(&mut self) {
+    self.event_strings = self
+      .events
+      .iter()
+      .map(|evt| {
+        evt
+          .to_tui_line(
+            &self.baseline,
+            false,
+            &self.modifier_args,
+            self.env_in_cmdline,
+          )
+          .to_string()
+      })
+      .collect();
   }
 }
 
