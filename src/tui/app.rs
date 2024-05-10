@@ -38,7 +38,7 @@ use tui_popup::Popup;
 use crate::{
   action::{Action, ActivePopup},
   cli::{
-    args::{ModifierArgs, LogModeArgs},
+    args::{LogModeArgs, ModifierArgs},
     options::ActivePane,
   },
   event::{Event, TracerEvent},
@@ -298,7 +298,7 @@ impl App {
             if let TracerEvent::TraceeSpawn(pid) = te {
               self.root_pid = Some(pid);
             }
-            self.event_list.events.push(te.into());
+            self.event_list.push(te);
             if self.event_list.follow {
               action_tx.send(Action::ScrollToBottom)?;
             }

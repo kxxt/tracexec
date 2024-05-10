@@ -35,7 +35,9 @@ use super::partial_line::PartialLine;
 
 pub struct EventList {
   pub state: ListState,
-  pub events: Vec<Arc<TracerEvent>>,
+  events: Vec<Arc<TracerEvent>>,
+  /// The string representation of the events, used for searching
+  events_string: Vec<String>,
   /// Current window of the event list, [start, end)
   window: (usize, usize),
   /// Cache of the lines in the window
@@ -63,6 +65,7 @@ impl EventList {
     Self {
       state: ListState::default(),
       events: vec![],
+      events_string: vec![],
       window: (0, 0),
       nr_items_in_window: 0,
       horizontal_offset: 0,
@@ -240,6 +243,24 @@ impl Widget for &mut EventList {
           .position(self.window.0 + self.state.selected().unwrap_or(0)),
       );
     }
+  }
+}
+
+/// Event Management
+impl EventList {
+  pub fn push(&mut self, event: impl Into<Arc<TracerEvent>>) {
+    let event = event.into();
+    self.events_string.push(
+      event
+        .to_tui_line(
+          &self.baseline,
+          false,
+          &self.modifier_args,
+          self.env_in_cmdline,
+        )
+        .to_string(),
+    );
+    self.events.push(event.clone());
   }
 }
 
