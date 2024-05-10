@@ -148,7 +148,11 @@ impl Tracer {
       foreground: match (tracing_args.foreground, tracing_args.no_foreground) {
         (true, false) => true,
         (false, true) => false,
+        // Disable foreground mode in test by default
+        #[cfg(not(test))]
         _ => true,
+        #[cfg(test)]
+        _ => false,
       },
     })
   }
@@ -272,7 +276,6 @@ impl Tracer {
       self.store.write().unwrap().insert(root_child_state);
     }
     // Set foreground process group of the terminal
-    #[cfg(not(test))]
     if let TracerMode::Log = &self.mode {
       if self.foreground {
         match tcsetpgrp(stdin(), root_child) {
