@@ -1744,6 +1744,7 @@ dependencies = [
  "tracing-subscriber",
  "tracing-test",
  "tui-popup",
+ "tui-prompts",
  "tui-scrollview",
  "tui-term",
  "vt100",
@@ -1865,6 +1866,17 @@ checksum = "9bb4cb24a4c472f326f4da418a6dfaa4ef8978e2fbb61d548b8989f95034c7e8"
 dependencies = [
  "derive-getters",
  "derive_setters",
+ "ratatui",
+]
+
+[[package]]
+name = "tui-prompts"
+version = "0.3.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "581e0457c7a9f81db70431d3b6c82f8589bb556a722e414ca17d55367ce77c9d"
+dependencies = [
+ "crossterm",
+ "itertools",
  "ratatui",
 ]
 

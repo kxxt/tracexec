@@ -50,6 +50,7 @@ pub enum Action {
   },
   // Query
   BeginSearch,
+  EndSearch,
   ExecuteSearch(Query),
   // Terminal
   HandleTerminalKeyPress(KeyEvent),

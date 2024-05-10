@@ -29,11 +29,8 @@ use ratatui::{
     ScrollbarState, StatefulWidget, StatefulWidgetRef, Widget,
   },
 };
-use regex::Regex;
 
-use crate::{
-  cli::args::ModifierArgs, event::TracerEvent, proc::BaselineInfo, tui::query::QueryValue,
-};
+use crate::{cli::args::ModifierArgs, event::TracerEvent, proc::BaselineInfo};
 
 use super::{
   partial_line::PartialLine,
@@ -288,8 +285,14 @@ impl Widget for &mut EventList {
 /// Query Management
 impl EventList {
   pub fn set_query(&mut self, query: Option<Query>) {
-    self.query = query;
-    self.search();
+    if query.is_some() {
+      self.query = query;
+      self.search();
+    } else {
+      self.query = None;
+      self.query_result = None;
+      self.should_refresh_list_cache = true;
+    }
   }
 
   /// Search for the query in the event list
