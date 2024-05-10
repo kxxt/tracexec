@@ -18,6 +18,7 @@
 
 use std::{collections::VecDeque, sync::Arc};
 
+use indexmap::IndexMap;
 use ratatui::{
   layout::Alignment::Right,
   prelude::{Buffer, Rect},
@@ -28,10 +29,17 @@ use ratatui::{
     ScrollbarState, StatefulWidget, StatefulWidgetRef, Widget,
   },
 };
+use regex::Regex;
 
-use crate::{cli::args::ModifierArgs, event::TracerEvent, proc::BaselineInfo};
+use crate::{
+  cli::args::ModifierArgs, event::TracerEvent, proc::BaselineInfo, tui::query::QueryValue,
+};
 
-use super::partial_line::PartialLine;
+use super::{
+  partial_line::PartialLine,
+  query::{Query, QueryResult},
+  theme::THEME,
+};
 
 pub struct EventList {
   state: ListState,
@@ -41,7 +49,7 @@ pub struct EventList {
   /// Current window of the event list, [start, end)
   window: (usize, usize),
   /// Cache of the lines in the window
-  lines_cache: VecDeque<Line<'static>>,
+  lines_cache: VecDeque<(usize, Line<'static>)>,
   should_refresh_lines_cache: bool,
   /// Cache of the list items in the view
   list_cache: List<'static>,
@@ -58,6 +66,8 @@ pub struct EventList {
   follow: bool,
   pub modifier_args: ModifierArgs,
   env_in_cmdline: bool,
+  query: Option<Query>,
+  query_result: Option<QueryResult>,
 }
 
 impl EventList {
@@ -80,6 +90,8 @@ impl EventList {
       list_cache: List::default(),
       modifier_args,
       env_in_cmdline: true,
+      query: None,
+      query_result: None,
     }
   }
 
@@ -161,12 +173,16 @@ impl Widget for &mut EventList {
       // Initialize the line cache, which will be kept in sync by the navigation methods
       self.lines_cache = events_in_window
         .iter()
-        .map(|evt| {
-          evt.to_tui_line(
-            &self.baseline,
-            false,
-            &self.modifier_args,
-            self.env_in_cmdline,
+        .enumerate()
+        .map(|(i, evt)| {
+          (
+            i + self.window.0,
+            evt.to_tui_line(
+              &self.baseline,
+              false,
+              &self.modifier_args,
+              self.env_in_cmdline,
+            ),
           )
         })
         .collect();
@@ -175,13 +191,20 @@ impl Widget for &mut EventList {
     if self.nr_items_in_window > self.lines_cache.len() {
       // Push the new items to the cache
       self.should_refresh_list_cache = true;
-      for evt in events_in_window.iter().skip(self.lines_cache.len()) {
+      for (i, evt) in events_in_window
+        .iter()
+        .enumerate()
+        .skip(self.lines_cache.len())
+      {
         tracing::debug!("Pushing new item to line cache");
-        self.lines_cache.push_back(evt.to_tui_line(
-          &self.baseline,
-          false,
-          &self.modifier_args,
-          self.env_in_cmdline,
+        self.lines_cache.push_back((
+          i,
+          evt.to_tui_line(
+            &self.baseline,
+            false,
+            &self.modifier_args,
+            self.env_in_cmdline,
+          ),
         ));
       }
     }
@@ -191,13 +214,20 @@ impl Widget for &mut EventList {
     // );
     if self.should_refresh_list_cache {
       self.should_refresh_list_cache = false;
-      let items = self.lines_cache.iter().map(|full_line| {
+      tracing::debug!("Refreshing list cache");
+      let items = self.lines_cache.iter().map(|(i, full_line)| {
         max_len = max_len.max(full_line.width());
-        ListItem::from(
-          full_line
-            .clone()
-            .substring(self.horizontal_offset, area.width),
-        )
+        let highlighted = self
+          .query_result
+          .as_ref()
+          .map_or(false, |query_result| query_result.indices.contains_key(i));
+        let mut base = full_line
+          .clone()
+          .substring(self.horizontal_offset, area.width);
+        if highlighted {
+          base = base.style(THEME.search_match);
+        }
+        ListItem::from(base)
       });
       // Create a List from all list items and highlight the currently selected one
       let list = List::new(items)
@@ -255,6 +285,80 @@ impl Widget for &mut EventList {
   }
 }
 
+/// Query Management
+impl EventList {
+  pub fn set_query(&mut self, query: Option<Query>) {
+    self.query = query;
+    self.search();
+  }
+
+  /// Search for the query in the event list
+  /// And update query result
+  pub fn search(&mut self) {
+    let Some(query) = self.query.as_ref() else {
+      return;
+    };
+    let mut indices = IndexMap::new();
+    // Events won't change during the search because this is Rust and we already have a reference to it.
+    // Rust really makes the code more easier to reason about.
+    let searched_len = self.events.len();
+    for (i, evt) in self.event_strings.iter().enumerate() {
+      if query.matches(evt) {
+        indices.insert(i, 0);
+      }
+    }
+    self.query_result = Some(QueryResult {
+      indices,
+      searched_len,
+      selection: None,
+    });
+    self.should_refresh_list_cache = true;
+  }
+
+  /// Incremental search for newly added events
+  pub fn incremental_search(&mut self) {
+    let Some(query) = self.query.as_ref() else {
+      return;
+    };
+    let Some(existing_result) = self.query_result.as_mut() else {
+      self.search();
+      return;
+    };
+    let mut modified = false;
+    for (i, evt) in self
+      .event_strings
+      .iter()
+      .enumerate()
+      .skip(existing_result.searched_len)
+    {
+      if query.matches(evt) {
+        existing_result.indices.insert(i, 0);
+        modified = true;
+      }
+    }
+    existing_result.searched_len = self.event_strings.len();
+    if modified {
+      self.should_refresh_list_cache = true;
+    }
+  }
+
+  pub fn next_result(&mut self) {
+    if let Some(query_result) = self.query_result.as_mut() {
+      query_result.next_result();
+      let selection = query_result.selection();
+      self.scroll_to(selection);
+    }
+  }
+
+  pub fn prev_result(&mut self) {
+    if let Some(query_result) = self.query_result.as_mut() {
+      query_result.prev_result();
+      let selection = query_result.selection();
+      self.scroll_to(selection);
+    }
+  }
+}
+
 /// Event Management
 impl EventList {
   pub fn push(&mut self, event: impl Into<Arc<TracerEvent>>) {
@@ -270,6 +374,7 @@ impl EventList {
         .to_string(),
     );
     self.events.push(event.clone());
+    self.incremental_search();
   }
 
   pub fn rebuild_event_strings(&mut self) {
@@ -292,6 +397,32 @@ impl EventList {
 
 /// Scrolling implementation for the EventList
 impl EventList {
+  /// Scroll to the given index and select it,
+  /// Usually the item will be at the top of the window,
+  /// but if there are not enough items or the item is already in current window,
+  /// no scrolling will be done,
+  /// And if the item is in the last window, we won't scroll past it.
+  fn scroll_to(&mut self, index: Option<usize>) {
+    let Some(index) = index else {
+      return;
+    };
+    if index < self.window.0 {
+      // Scroll up
+      self.window.0 = index;
+      self.window.1 = self.window.0 + self.max_window_len;
+      self.should_refresh_lines_cache = true;
+      self.state.select(Some(0));
+    } else if index >= self.window.1 {
+      // Scroll down
+      self.window.0 = index.min(self.events.len().saturating_sub(self.max_window_len));
+      self.window.1 = self.window.0 + self.max_window_len;
+      self.should_refresh_lines_cache = true;
+      self.state.select(Some(0));
+    } else {
+      self.state.select(Some(index - self.window.0));
+    }
+  }
+
   /// Returns the index(absolute) of the last item in the window
   fn last_item_in_window_absolute(&self) -> Option<usize> {
     if self.events.is_empty() {
@@ -344,14 +475,16 @@ impl EventList {
       self.window.0 += 1;
       self.window.1 += 1;
       self.lines_cache.pop_front();
-      self.lines_cache.push_back(
-        self.events[self.last_item_in_window_absolute().unwrap()].to_tui_line(
+      let last_index = self.last_item_in_window_absolute().unwrap();
+      self.lines_cache.push_back((
+        last_index,
+        self.events[last_index].to_tui_line(
           &self.baseline,
           false,
           &self.modifier_args,
           self.env_in_cmdline,
         ),
-      );
+      ));
       self.should_refresh_list_cache = true;
       true
     } else {
@@ -364,14 +497,16 @@ impl EventList {
       self.window.0 -= 1;
       self.window.1 -= 1;
       self.lines_cache.pop_back();
-      self
-        .lines_cache
-        .push_front(self.events[self.window.0].to_tui_line(
+      let front_index = self.window.0;
+      self.lines_cache.push_front((
+        front_index,
+        self.events[front_index].to_tui_line(
           &self.baseline,
           false,
           &self.modifier_args,
           self.env_in_cmdline,
-        ));
+        ),
+      ));
       self.should_refresh_list_cache = true;
       true
     } else {
@@ -530,14 +665,16 @@ impl EventList {
     {
       // Special optimization for follow mode where scroll to bottom is called continuously
       self.lines_cache.pop_front();
-      self.lines_cache.push_back(
-        self.events[self.last_item_in_window_absolute().unwrap()].to_tui_line(
+      let last_index = self.last_item_in_window_absolute().unwrap();
+      self.lines_cache.push_back((
+        last_index,
+        self.events[last_index].to_tui_line(
           &self.baseline,
           false,
           &self.modifier_args,
           self.env_in_cmdline,
         ),
-      );
+      ));
       self.should_refresh_list_cache = true;
     } else {
       self.should_refresh_lines_cache = old_window != self.window;

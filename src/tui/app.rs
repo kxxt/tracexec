@@ -45,6 +45,7 @@ use crate::{
   printer::PrinterArgs,
   proc::BaselineInfo,
   pty::{PtySize, UnixMasterPty},
+  tui::query::{Query, QueryKind, QueryValue},
 };
 
 use super::{
@@ -270,8 +271,16 @@ impl App {
                   KeyCode::Char('l') if ke.modifiers == KeyModifiers::ALT => {
                     action_tx.send(Action::SwitchLayout)?;
                   }
-                  KeyCode::Char('f') if ke.modifiers == KeyModifiers::NONE => {
-                    action_tx.send(Action::ToggleFollow)?;
+                  KeyCode::Char('f') => {
+                    if ke.modifiers == KeyModifiers::NONE {
+                      action_tx.send(Action::ToggleFollow)?;
+                    } else if ke.modifiers == KeyModifiers::CONTROL {
+                      action_tx.send(Action::ExecuteSearch(Query::new(
+                        QueryKind::Search,
+                        QueryValue::Text("ls".to_owned()),
+                        false,
+                      )))?;
+                    }
                   }
                   KeyCode::Char('e') if ke.modifiers == KeyModifiers::NONE => {
                     action_tx.send(Action::ToggleEnvDisplay)?;
@@ -428,6 +437,12 @@ impl App {
           }
           Action::CancelCurrentPopup => {
             self.popup = None;
+          }
+          Action::BeginSearch => {
+            todo!();
+          }
+          Action::ExecuteSearch(query) => {
+            self.event_list.set_query(Some(query));
           }
         }
       }
