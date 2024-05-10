@@ -299,7 +299,7 @@ impl App {
               self.root_pid = Some(pid);
             }
             self.event_list.push(te);
-            if self.event_list.follow {
+            if self.event_list.is_following() {
               action_tx.send(Action::ScrollToBottom)?;
             }
             // action_tx.send(Action::Render)?;
@@ -414,7 +414,7 @@ impl App {
               &self.event_list.baseline,
               target,
               &self.event_list.modifier_args,
-              self.event_list.env_in_cmdline,
+              self.event_list.is_env_in_cmdline(),
             );
             // TODO: don't crash the app if clipboard fails
             if let Some(clipboard) = self.clipboard.as_mut() {
@@ -594,7 +594,7 @@ impl App {
         help_item!("Alt+L", "Layout"),
         help_item!(
           "F",
-          if self.event_list.follow {
+          if self.event_list.is_following() {
             "Unfollow"
           } else {
             "Follow"
@@ -602,7 +602,7 @@ impl App {
         ),
         help_item!(
           "E",
-          if self.event_list.env_in_cmdline {
+          if self.event_list.is_env_in_cmdline() {
             "Hide Env"
           } else {
             "Show Env"

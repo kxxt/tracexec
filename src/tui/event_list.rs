@@ -34,7 +34,7 @@ use crate::{cli::args::ModifierArgs, event::TracerEvent, proc::BaselineInfo};
 use super::partial_line::PartialLine;
 
 pub struct EventList {
-  pub state: ListState,
+  state: ListState,
   events: Vec<Arc<TracerEvent>>,
   /// The string representation of the events, used for searching
   events_string: Vec<String>,
@@ -47,17 +47,17 @@ pub struct EventList {
   list_cache: List<'static>,
   should_refresh_list_cache: bool,
   /// How many items are there in the window
-  pub nr_items_in_window: usize,
+  nr_items_in_window: usize,
   horizontal_offset: usize,
   /// width that could be used for the list items(not including the selection indicator)
-  pub inner_width: u16,
+  inner_width: u16,
   /// max width of the lines in the current window
-  pub max_width: usize,
+  max_width: usize,
   pub max_window_len: usize,
   pub baseline: Arc<BaselineInfo>,
-  pub follow: bool,
+  follow: bool,
   pub modifier_args: ModifierArgs,
-  pub env_in_cmdline: bool,
+  env_in_cmdline: bool,
 }
 
 impl EventList {
@@ -81,6 +81,14 @@ impl EventList {
       modifier_args,
       env_in_cmdline: true,
     }
+  }
+
+  pub fn is_env_in_cmdline(&self) -> bool {
+    self.env_in_cmdline
+  }
+
+  pub fn is_following(&self) -> bool {
+    self.follow
   }
 
   pub fn toggle_follow(&mut self) {
