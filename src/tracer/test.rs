@@ -51,15 +51,15 @@ async fn run_exe_and_collect_events(
 ) -> Vec<TracerEvent> {
   let tracer_thread = tracer.spawn(argv, None).unwrap();
   tracer_thread.join().unwrap().unwrap();
-  let events = async {
+
+  async {
     let mut events = vec![];
     while let Some(event) = rx.recv().await {
       events.push(event);
     }
     events
   }
-  .await;
-  events
+  .await
 }
 
 #[traced_test]

@@ -45,7 +45,7 @@ use crate::{
   printer::PrinterArgs,
   proc::BaselineInfo,
   pty::{PtySize, UnixMasterPty},
-  tui::query::{Query, QueryKind, QueryValue},
+  tui::query::QueryKind,
 };
 
 use super::{
@@ -54,6 +54,7 @@ use super::{
   event_list::EventList,
   help::{help, help_item},
   pseudo_term::PseudoTerminalPane,
+  query::QueryBuilder,
   theme::THEME,
   ui::render_title,
   Tui,
@@ -78,6 +79,7 @@ pub struct App {
   pub layout: AppLayout,
   pub should_handle_internal_resize: bool,
   pub popup: Option<ActivePopup>,
+  query_builder: Option<QueryBuilder>,
 }
 
 impl App {
@@ -118,6 +120,7 @@ impl App {
       layout,
       should_handle_internal_resize: true,
       popup: None,
+      query_builder: None,
     })
   }
 
@@ -151,6 +154,11 @@ impl App {
               action_tx.send(Action::SwitchActivePane)?;
               // Cancel all popups
               self.popup = None;
+              // Cancel non-finished query
+              if self.query_builder.as_ref().map_or(false, |b| b.editing()) {
+                self.query_builder = None;
+                self.event_list.set_query(None);
+              }
               // action_tx.send(Action::Render)?;
             } else {
               trace!("TUI: Active pane: {}", self.active_pane);
@@ -176,6 +184,16 @@ impl App {
                     }
                   }
                   continue;
+                }
+
+                if let Some(query_builder) = self.query_builder.as_mut() {
+                  if query_builder.editing() {
+                    query_builder
+                      .handle_key_events(ke)
+                      .map(|x| action_tx.send(x))
+                      .transpose()?;
+                    continue;
+                  }
                 }
 
                 match ke.code {
@@ -275,11 +293,7 @@ impl App {
                     if ke.modifiers == KeyModifiers::NONE {
                       action_tx.send(Action::ToggleFollow)?;
                     } else if ke.modifiers == KeyModifiers::CONTROL {
-                      action_tx.send(Action::ExecuteSearch(Query::new(
-                        QueryKind::Search,
-                        QueryValue::Text("ls".to_owned()),
-                        false,
-                      )))?;
+                      action_tx.send(Action::BeginSearch)?;
                     }
                   }
                   KeyCode::Char('e') if ke.modifiers == KeyModifiers::NONE => {
@@ -439,7 +453,15 @@ impl App {
             self.popup = None;
           }
           Action::BeginSearch => {
-            todo!();
+            if let Some(query_builder) = self.query_builder.as_mut() {
+              query_builder.edit();
+            } else {
+              self.query_builder = Some(QueryBuilder::new(QueryKind::Search));
+            }
+          }
+          Action::EndSearch => {
+            self.query_builder = None;
+            self.event_list.set_query(None);
           }
           Action::ExecuteSearch(query) => {
             self.event_list.set_query(Some(query));
@@ -473,11 +495,12 @@ impl Widget for &mut App {
   fn render(self, area: Rect, buf: &mut Buffer) {
     // Create a space for header, todo list and the footer.
     let vertical = Layout::vertical([
-      Constraint::Length(2),
+      Constraint::Length(1),
+      Constraint::Length(1),
       Constraint::Min(0),
       Constraint::Length(2),
     ]);
-    let [header_area, rest_area, footer_area] = vertical.areas(area);
+    let [header_area, search_bar_area, rest_area, footer_area] = vertical.areas(area);
     let horizontal_constraints = [
       Constraint::Percentage(self.split_percentage),
       Constraint::Percentage(100 - self.split_percentage),
@@ -493,6 +516,10 @@ impl Widget for &mut App {
       buf,
       format!(" tracexec {}", env!("CARGO_PKG_VERSION")),
     );
+    if let Some(query_builder) = self.query_builder.as_mut() {
+      query_builder.render(search_bar_area, buf);
+    }
+
     self.render_help(footer_area, buf);
 
     if event_area.width < 4 || (self.term.is_some() && term_area.width < 4) {
@@ -624,6 +651,7 @@ impl App {
           }
         ),
         help_item!("V", "View"),
+        help_item!("Ctrl+F", "Search"),
         help_item!("Q", "Quit"),
         help_item!("F1", "Help"),
       ))

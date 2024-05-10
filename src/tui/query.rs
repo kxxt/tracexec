@@ -1,7 +1,10 @@
-use std::collections::BTreeSet;
-
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use indexmap::IndexMap;
+use ratatui::widgets::{StatefulWidget, Widget};
 use regex::Regex;
+use tui_prompts::{State, TextPrompt, TextState};
+
+use crate::action::Action;
 
 #[derive(Debug, Clone)]
 pub struct Query {
@@ -101,5 +104,72 @@ impl QueryResult {
       let selected = self.selection().map(|index| index + 1).unwrap_or(0);
       format!("{} of {}", selected, total)
     }
+  }
+}
+
+pub struct QueryBuilder {
+  kind: QueryKind,
+  case_sensitive: bool,
+  state: TextState<'static>,
+  editing: bool,
+}
+
+impl QueryBuilder {
+  pub fn new(kind: QueryKind) -> Self {
+    Self {
+      kind,
+      case_sensitive: false,
+      state: TextState::new(),
+      editing: true,
+    }
+  }
+
+  pub fn editing(&self) -> bool {
+    self.editing
+  }
+
+  pub fn edit(&mut self) {
+    self.editing = true;
+  }
+
+  pub fn handle_key_events(&mut self, key: KeyEvent) -> Option<Action> {
+    match (key.code, key.modifiers) {
+      (KeyCode::Enter, _) => {
+        let text = self.state.value();
+        if text.is_empty() {
+          return Some(Action::EndSearch);
+        }
+        let query = Query::new(
+          self.kind,
+          QueryValue::Text(text.to_owned()),
+          self.case_sensitive,
+        );
+        self.editing = false;
+        return Some(Action::ExecuteSearch(query));
+      }
+      (KeyCode::Esc, KeyModifiers::NONE) => {
+        return Some(Action::EndSearch);
+      }
+      _ => {
+        self.state.handle_key_event(key);
+      }
+    }
+    None
+  }
+}
+
+impl Widget for &mut QueryBuilder {
+  fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+  where
+    Self: Sized,
+  {
+    TextPrompt::new(
+      match self.kind {
+        QueryKind::Search => "🔍",
+        QueryKind::Filter => "☔",
+      }
+      .into(),
+    )
+    .render(area, buf, &mut self.state);
   }
 }
