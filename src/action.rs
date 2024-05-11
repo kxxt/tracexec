@@ -5,7 +5,10 @@ use ratatui::layout::Size;
 
 use crate::{
   event::TracerEvent,
-  tui::{copy_popup::CopyPopupState, details_popup::DetailsPopupState, query::Query},
+  tui::{
+    copy_popup::CopyPopupState, details_popup::DetailsPopupState, error_popup::ErrorPopupState,
+    query::Query,
+  },
 };
 
 #[derive(Debug, Clone)]
@@ -83,4 +86,5 @@ pub enum ActivePopup {
   Help,
   ViewDetails(DetailsPopupState),
   CopyTargetSelection(CopyPopupState),
+  ErrorPopup(ErrorPopupState),
 }

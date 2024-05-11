@@ -41,6 +41,7 @@ use crate::event::{Event, TracerEvent};
 pub mod app;
 pub mod copy_popup;
 pub mod details_popup;
+pub mod error_popup;
 mod event_list;
 pub mod help;
 mod partial_line;
