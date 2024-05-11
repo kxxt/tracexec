@@ -190,6 +190,7 @@ impl App {
                   continue;
                 }
 
+                // Handle query builder
                 if let Some(query_builder) = self.query_builder.as_mut() {
                   if query_builder.editing() {
                     if let Ok(result) = query_builder.handle_key_events(ke) {
@@ -199,6 +200,20 @@ impl App {
                       // TODO: Display error popup
                     }
                     continue;
+                  } else {
+                    match (ke.code, ke.modifiers) {
+                      (KeyCode::Char('n'), KeyModifiers::NONE) => {
+                        trace!("Query: Next match");
+                        action_tx.send(Action::NextMatch)?;
+                        continue;
+                      }
+                      (KeyCode::Char('p'), KeyModifiers::NONE) => {
+                        trace!("Query: Prev match");
+                        action_tx.send(Action::PrevMatch)?;
+                        continue;
+                      }
+                      _ => {}
+                    }
                   }
                 }
 
@@ -501,6 +516,12 @@ impl App {
           Action::ExecuteSearch(query) => {
             self.event_list.set_query(Some(query));
           }
+          Action::NextMatch => {
+            self.event_list.next_match();
+          }
+          Action::PrevMatch => {
+            self.event_list.prev_match();
+          }
         }
       }
     }
@@ -645,7 +666,12 @@ impl App {
   }
 
   fn render_help(&self, area: Rect, buf: &mut Buffer) {
-    let mut items = Vec::from_iter(help_item!("Ctrl+S", "Switch\u{00a0}Pane"));
+    let mut items = Vec::from_iter(
+      Some(help_item!("Ctrl+S", "Switch\u{00a0}Pane"))
+        .filter(|_| self.term.is_some())
+        .into_iter()
+        .flatten(),
+    );
 
     if let Some(popup) = &self.popup {
       items.extend(help_item!("Q", "Close Popup"));
@@ -689,9 +715,15 @@ impl App {
         ),
         help_item!("V", "View"),
         help_item!("Ctrl+F", "Search"),
-        help_item!("Q", "Quit"),
-        help_item!("F1", "Help"),
-      ))
+      ));
+      if let Some(query_builder) = self.query_builder.as_ref() {
+        items.extend(query_builder.help());
+      }
+      items.extend(
+        [help_item!("Q", "Quit"), help_item!("F1", "Help")]
+          .into_iter()
+          .flatten(),
+      );
     } else {
       // Terminal
     };

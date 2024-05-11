@@ -52,6 +52,8 @@ pub enum Action {
   BeginSearch,
   EndSearch,
   ExecuteSearch(Query),
+  NextMatch,
+  PrevMatch,
   // Terminal
   HandleTerminalKeyPress(KeyEvent),
 }

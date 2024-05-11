@@ -188,29 +188,40 @@ impl QueryBuilder {
 }
 
 impl QueryBuilder {
-  pub fn help(&self) -> impl IntoIterator<Item = Span> {
-    [
-      help_item!("Esc", "Cancel\u{00a0}Search"),
-      help_item!("Enter", "Execute\u{00a0}Search"),
-      help_item!(
-        "Ctrl+I",
-        if self.case_sensitive {
-          "Case\u{00a0}Sensitive"
-        } else {
-          "Case\u{00a0}Insensitive"
-        }
-      ),
-      help_item!(
-        "Ctrl+R",
-        if self.is_regex {
-          "Regex\u{00a0}Mode"
-        } else {
-          "Text\u{00a0}Mode"
-        }
-      ),
-    ]
-    .into_iter()
-    .flatten()
+  pub fn help(&self) -> Vec<Span> {
+    if self.editing {
+      [
+        help_item!("Esc", "Cancel\u{00a0}Search"),
+        help_item!("Enter", "Execute\u{00a0}Search"),
+        help_item!(
+          "Ctrl+I",
+          if self.case_sensitive {
+            "Case\u{00a0}Sensitive"
+          } else {
+            "Case\u{00a0}Insensitive"
+          }
+        ),
+        help_item!(
+          "Ctrl+R",
+          if self.is_regex {
+            "Regex\u{00a0}Mode"
+          } else {
+            "Text\u{00a0}Mode"
+          }
+        ),
+      ]
+      .into_iter()
+      .flatten()
+      .collect()
+    } else {
+      [
+        help_item!("N", "Next\u{00a0}Match"),
+        help_item!("P", "Previous\u{00a0}Match"),
+      ]
+      .into_iter()
+      .flatten()
+      .collect()
+    }
   }
 }
 

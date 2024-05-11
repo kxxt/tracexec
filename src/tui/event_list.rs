@@ -350,7 +350,7 @@ impl EventList {
     }
   }
 
-  pub fn next_result(&mut self) {
+  pub fn next_match(&mut self) {
     if let Some(query_result) = self.query_result.as_mut() {
       query_result.next_result();
       let selection = query_result.selection();
@@ -358,7 +358,7 @@ impl EventList {
     }
   }
 
-  pub fn prev_result(&mut self) {
+  pub fn prev_match(&mut self) {
     if let Some(query_result) = self.query_result.as_mut() {
       query_result.prev_result();
       let selection = query_result.selection();
@@ -425,7 +425,7 @@ impl EventList {
       self.window.0 = index.min(self.events.len().saturating_sub(self.max_window_len));
       self.window.1 = self.window.0 + self.max_window_len;
       self.should_refresh_lines_cache = true;
-      self.state.select(Some(0));
+      self.state.select(Some(index - self.window.0));
     } else {
       self.state.select(Some(index - self.window.0));
     }
