@@ -30,7 +30,7 @@ use std::io::{BufWriter, Write};
 use std::sync::Arc;
 use tokio::sync::mpsc::channel;
 use tracing::{trace, warn};
-use tui_term::widget::PseudoTerminal;
+use tui_term::widget::{Cursor, PseudoTerminal};
 
 use tokio_util::sync::CancellationToken;
 
@@ -50,6 +50,7 @@ pub struct PseudoTerminalPane {
   master_tx: tokio::sync::mpsc::Sender<Bytes>,
   master_cancellation_token: CancellationToken,
   size: PtySize,
+  focus: bool,
 }
 
 const ESCAPE: u8 = 27;
@@ -117,6 +118,7 @@ impl PseudoTerminalPane {
       writer_task,
       master_tx: tx,
       master_cancellation_token,
+      focus: false,
     })
   }
 
@@ -187,6 +189,10 @@ impl PseudoTerminalPane {
     Ok(())
   }
 
+  pub fn focus(&mut self, focus: bool) {
+    self.focus = focus;
+  }
+
   /// Closes pty master
   pub fn exit(&self) {
     self.master_cancellation_token.cancel()
@@ -199,7 +205,11 @@ impl Widget for &PseudoTerminalPane {
     Self: Sized,
   {
     let parser = self.parser.read().unwrap();
-    let pseudo_term = PseudoTerminal::new(parser.screen());
+    let mut cursor = Cursor::default();
+    if !self.focus {
+      cursor.hide();
+    }
+    let pseudo_term = PseudoTerminal::new(parser.screen()).cursor(cursor);
     pseudo_term.render(area, buf);
   }
 }

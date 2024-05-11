@@ -102,7 +102,7 @@ impl App {
       printer_args: PrinterArgs::from_cli(tracing_args, modifier_args),
       split_percentage: if pty_master.is_some() { 50 } else { 100 },
       term: if let Some(pty_master) = pty_master {
-        Some(PseudoTerminalPane::new(
+        let mut term = PseudoTerminalPane::new(
           PtySize {
             rows: 24,
             cols: 80,
@@ -110,7 +110,11 @@ impl App {
             pixel_height: 0,
           },
           pty_master,
-        )?)
+        )?;
+        if active_pane == ActivePane::Terminal {
+          term.focus(true);
+        }
+        Some(term)
       } else {
         None
       },
@@ -427,8 +431,23 @@ impl App {
           }
           Action::SwitchActivePane => {
             self.active_pane = match self.active_pane {
-              ActivePane::Events => ActivePane::Terminal,
-              ActivePane::Terminal => ActivePane::Events,
+              ActivePane::Events => {
+                if let Some(term) = self.term.as_mut() {
+                  term.focus(true);
+                  ActivePane::Terminal
+                } else {
+                  if let Some(t) = self.term.as_mut() {
+                    t.focus(false)
+                  }
+                  ActivePane::Events
+                }
+              }
+              ActivePane::Terminal => {
+                if let Some(t) = self.term.as_mut() {
+                  t.focus(false)
+                }
+                ActivePane::Events
+              }
             }
           }
           Action::ShowCopyDialog(e) => {
