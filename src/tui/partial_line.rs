@@ -4,8 +4,6 @@ use ratatui::text::Line;
 
 pub trait PartialLine<'a> {
   fn substring(self, start: usize, len: u16) -> Line<'a>;
-  #[allow(unused)]
-  fn truncate_start(self, start: usize) -> Line<'a>;
 }
 
 impl<'a> PartialLine<'a> for Line<'a> {
@@ -55,29 +53,4 @@ impl<'a> PartialLine<'a> for Line<'a> {
     self
   }
 
-  fn truncate_start(mut self, start: usize) -> Line<'a> {
-    let mut cur = 0;
-    let mut discard_until = 0;
-    for (i, span) in self.spans.iter_mut().enumerate() {
-      let span_len = span.content.len();
-      if cur + span_len < start {
-        cur += span_len;
-        discard_until = i + 1;
-        continue;
-      }
-      let start = if cur < start { start - cur } else { 0 };
-      match span.content {
-        Cow::Borrowed(s) => {
-          span.content = Cow::Borrowed(&s[start..]);
-        }
-        Cow::Owned(ref mut s) => {
-          s.drain(..start);
-        }
-      }
-      cur += span_len;
-    }
-    self.spans.drain(..discard_until);
-
-    self
-  }
 }
