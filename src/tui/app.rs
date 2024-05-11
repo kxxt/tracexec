@@ -28,7 +28,7 @@ use ratatui::{
   buffer::Buffer,
   layout::{Constraint, Layout, Rect},
   text::Line,
-  widgets::{Block, Paragraph, StatefulWidgetRef, Widget, Wrap},
+  widgets::{Block, Paragraph, StatefulWidget, StatefulWidgetRef, Widget, Wrap},
 };
 use strum::Display;
 use tokio::sync::mpsc;
@@ -45,12 +45,13 @@ use crate::{
   printer::PrinterArgs,
   proc::BaselineInfo,
   pty::{PtySize, UnixMasterPty},
-  tui::query::QueryKind,
+  tui::{error_popup::ErrorPopupState, query::QueryKind},
 };
 
 use super::{
   copy_popup::{CopyPopup, CopyPopupState},
   details_popup::{DetailsPopup, DetailsPopupState},
+  error_popup::ErrorPopup,
   event_list::EventList,
   help::{help, help_item},
   pseudo_term::PseudoTerminalPane,
@@ -186,6 +187,11 @@ impl App {
                         action_tx.send(action)?;
                       }
                     }
+                    ActivePopup::ErrorPopup(state) => {
+                      if let Some(action) = state.handle_key_event(ke) {
+                        action_tx.send(action)?;
+                      }
+                    }
                   }
                   continue;
                 }
@@ -193,11 +199,17 @@ impl App {
                 // Handle query builder
                 if let Some(query_builder) = self.query_builder.as_mut() {
                   if query_builder.editing() {
-                    if let Ok(result) = query_builder.handle_key_events(ke) {
-                      result.map(|action| action_tx.send(action)).transpose()?;
-                    } else {
-                      // Regex error
-                      // TODO: Display error popup
+                    match query_builder.handle_key_events(ke) {
+                      Ok(result) => {
+                        result.map(|action| action_tx.send(action)).transpose()?;
+                      }
+                      Err(e) => {
+                        // Regex error
+                        self.popup = Some(ActivePopup::ErrorPopup(ErrorPopupState {
+                          title: "Regex Error".to_owned(),
+                          message: e,
+                        }));
+                      }
                     }
                     continue;
                   } else {
@@ -643,6 +655,9 @@ impl Widget for &mut App {
         }
         ActivePopup::CopyTargetSelection(state) => {
           CopyPopup.render_ref(area, buf, state);
+        }
+        ActivePopup::ErrorPopup(state) => {
+          ErrorPopup.render(area, buf, state);
         }
         _ => {}
       }

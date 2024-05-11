@@ -1,5 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use indexmap::IndexMap;
+use itertools::Itertools;
 use ratatui::{
   style::Styled,
   text::{Line, Span},
@@ -156,7 +157,7 @@ impl QueryBuilder {
     self.state.cursor()
   }
 
-  pub fn handle_key_events(&mut self, key: KeyEvent) -> Result<Option<Action>, String> {
+  pub fn handle_key_events(&mut self, key: KeyEvent) -> Result<Option<Action>, Vec<Line<'static>>> {
     match (key.code, key.modifiers) {
       (KeyCode::Enter, _) => {
         let text = self.state.value();
@@ -170,7 +171,12 @@ impl QueryBuilder {
               RegexBuilder::new(text)
                 .case_insensitive(!self.case_sensitive)
                 .build()
-                .map_err(|e| e.to_string())?,
+                .map_err(|e| {
+                  e.to_string()
+                    .lines()
+                    .map(|line| Line::raw(line.to_owned()))
+                    .collect_vec()
+                })?,
             )
           } else {
             QueryValue::Text(text.to_owned())
