@@ -1,6 +1,6 @@
 use std::{collections::HashMap, ffi::CString, path::PathBuf, sync::Arc};
 
-use nix::unistd::Pid;
+use nix::{sys::signal::Signal, unistd::Pid};
 
 use crate::{
   proc::{read_argv, read_comm, FileDescriptorInfoCollection, Interpreter},
@@ -25,12 +25,18 @@ pub struct ProcessState {
   pub exec_data: Option<ExecData>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ProcessExit {
+  Code(i32),
+  Signal(Signal),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProcessStatus {
   SigstopReceived,
   PtraceForkEventReceived,
   Running,
-  Exited(i32),
+  Exited(ProcessExit),
 }
 
 #[derive(Debug)]

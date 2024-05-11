@@ -39,6 +39,7 @@ use crate::{
     BaselineInfo,
   },
   pty::{self, Child, UnixSlavePty},
+  tracer::state::ProcessExit,
 };
 
 use self::inspect::{read_pathbuf, read_string, read_string_array};
@@ -370,7 +371,7 @@ impl Tracer {
             .unwrap()
             .get_current_mut(pid)
             .unwrap()
-            .status = ProcessStatus::Exited(code);
+            .status = ProcessStatus::Exited(ProcessExit::Code(code));
           if pid == root_child {
             filterable_event!(TraceeExit {
               signal: None,
@@ -457,6 +458,13 @@ impl Tracer {
         }
         WaitStatus::Signaled(pid, sig, _) => {
           debug!("signaled: {pid}, {:?}", sig);
+          self
+            .store
+            .write()
+            .unwrap()
+            .get_current_mut(pid)
+            .unwrap()
+            .status = ProcessStatus::Exited(ProcessExit::Signal(sig));
           if pid == root_child {
             filterable_event!(TraceeExit {
               signal: Some(sig),
