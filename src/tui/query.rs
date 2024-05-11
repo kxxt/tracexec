@@ -1,10 +1,15 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use indexmap::IndexMap;
-use ratatui::widgets::{StatefulWidget, Widget};
-use regex::Regex;
+use ratatui::{
+  text::Span,
+  widgets::{StatefulWidget, Widget},
+};
+use regex::{Regex, RegexBuilder};
 use tui_prompts::{State, TextPrompt, TextState};
 
 use crate::action::Action;
+
+use super::help::help_item;
 
 #[derive(Debug, Clone)]
 pub struct Query {
@@ -110,6 +115,7 @@ impl QueryResult {
 pub struct QueryBuilder {
   kind: QueryKind,
   case_sensitive: bool,
+  is_regex: bool,
   state: TextState<'static>,
   editing: bool,
 }
@@ -121,6 +127,7 @@ impl QueryBuilder {
       case_sensitive: false,
       state: TextState::new(),
       editing: true,
+      is_regex: false,
     }
   }
 
@@ -132,29 +139,71 @@ impl QueryBuilder {
     self.editing = true;
   }
 
-  pub fn handle_key_events(&mut self, key: KeyEvent) -> Option<Action> {
+  pub fn handle_key_events(&mut self, key: KeyEvent) -> Result<Option<Action>, String> {
     match (key.code, key.modifiers) {
       (KeyCode::Enter, _) => {
         let text = self.state.value();
         if text.is_empty() {
-          return Some(Action::EndSearch);
+          return Ok(Some(Action::EndSearch));
         }
         let query = Query::new(
           self.kind,
-          QueryValue::Text(text.to_owned()),
+          if self.is_regex {
+            QueryValue::Regex(
+              RegexBuilder::new(text)
+                .case_insensitive(!self.case_sensitive)
+                .build()
+                .map_err(|e| e.to_string())?,
+            )
+          } else {
+            QueryValue::Text(text.to_owned())
+          },
           self.case_sensitive,
         );
         self.editing = false;
-        return Some(Action::ExecuteSearch(query));
+        return Ok(Some(Action::ExecuteSearch(query)));
       }
       (KeyCode::Esc, KeyModifiers::NONE) => {
-        return Some(Action::EndSearch);
+        return Ok(Some(Action::EndSearch));
+      }
+      (KeyCode::Char('i'), KeyModifiers::CONTROL) => {
+        self.case_sensitive = !self.case_sensitive;
+      }
+      (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
+        self.is_regex = !self.is_regex;
       }
       _ => {
         self.state.handle_key_event(key);
       }
     }
-    None
+    Ok(None)
+  }
+}
+
+impl QueryBuilder {
+  pub fn help(&self) -> impl IntoIterator<Item = Span> {
+    [
+      help_item!("Esc", "Cancel\u{00a0}Search"),
+      help_item!("Enter", "Execute\u{00a0}Search"),
+      help_item!(
+        "Ctrl+I",
+        if self.case_sensitive {
+          "Case\u{00a0}Sensitive"
+        } else {
+          "Case\u{00a0}Insensitive"
+        }
+      ),
+      help_item!(
+        "Ctrl+R",
+        if self.is_regex {
+          "Regex\u{00a0}Mode"
+        } else {
+          "Text\u{00a0}Mode"
+        }
+      ),
+    ]
+    .into_iter()
+    .flatten()
   }
 }
 
