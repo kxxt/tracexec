@@ -296,7 +296,8 @@ impl EventList {
   }
 
   /// Search for the query in the event list
-  /// And update query result
+  /// And update query result,
+  /// Then set the selection to the first result(if any) and scroll to it
   pub fn search(&mut self) {
     let Some(query) = self.query.as_ref() else {
       return;
@@ -310,12 +311,16 @@ impl EventList {
         indices.insert(i, 0);
       }
     }
-    self.query_result = Some(QueryResult {
+    let mut result = QueryResult {
       indices,
       searched_len,
       selection: None,
-    });
+    };
+    result.next_result();
+    let selection = result.selection();
+    self.query_result = Some(result);
     self.should_refresh_list_cache = true;
+    self.scroll_to(selection);
   }
 
   /// Incremental search for newly added events
