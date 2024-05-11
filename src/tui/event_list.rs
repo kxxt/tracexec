@@ -156,7 +156,7 @@ impl Widget for &mut EventList {
   where
     Self: Sized,
   {
-    self.inner_width = area.width - 1; // 1 for the selection indicator
+    self.inner_width = area.width - 2; // for the selection indicator
     let mut max_len = area.width as usize - 1;
     // Iterate through all elements in the `items` and stylize them.
     let events_in_window = EventList::window(&self.events, self.window);
