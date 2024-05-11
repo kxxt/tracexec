@@ -188,10 +188,12 @@ impl App {
 
                 if let Some(query_builder) = self.query_builder.as_mut() {
                   if query_builder.editing() {
-                    query_builder
-                      .handle_key_events(ke)
-                      .map(|x| action_tx.send(x))
-                      .transpose()?;
+                    if let Ok(result) = query_builder.handle_key_events(ke) {
+                      result.map(|action| action_tx.send(action)).transpose()?;
+                    } else {
+                      // Regex error
+                      // TODO: Display error popup
+                    }
                     continue;
                   }
                 }
@@ -627,6 +629,8 @@ impl App {
         }
         _ => {}
       }
+    } else if let Some(query_builder) = self.query_builder.as_ref().filter(|q| q.editing()) {
+      items.extend(query_builder.help());
     } else if self.active_pane == ActivePane::Events {
       if self.clipboard.is_some() {
         items.extend(help_item!("C", "Copy"));
