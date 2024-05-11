@@ -89,6 +89,31 @@ macro_rules! tracer_event_spans {
     };
 }
 
+
+macro_rules! tracer_exec_event_spans {
+  ($pid: expr, $comm: expr, $result:expr, $($t:tt)*) => {
+      chain!([
+          Some($pid.to_string().set_style(if $result == 0 {
+            THEME.pid_success
+          } else if $result == (-nix::libc::ENOENT).into() {
+            THEME.pid_enoent
+          } else {
+            THEME.pid_failure
+          })),
+          Some(if $result == 0 {
+            THEME.status_process_running
+          } else if $result == (-nix::libc::ENOENT).into() {
+            THEME.status_exec_errno
+          } else {
+            THEME.status_exec_error
+          }.into()),
+          Some(format!("<{}>", $comm).set_style(THEME.comm)),
+          Some(": ".into()),
+      ], [$($t)*])
+  };
+}
+
+
 impl TracerEvent {
   /// Convert the event to a TUI line
   ///
@@ -149,7 +174,7 @@ impl TracerEvent {
           ..
         } = exec.as_ref();
         let mut spans: Vec<Span> = if !cmdline_only {
-          tracer_event_spans!(
+          tracer_exec_event_spans!(
             pid,
             comm,
             *result,
