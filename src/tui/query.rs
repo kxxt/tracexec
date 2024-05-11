@@ -1,7 +1,8 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use indexmap::IndexMap;
 use ratatui::{
-  text::Span,
+  style::Styled,
+  text::{Line, Span},
   widgets::{StatefulWidget, Widget},
 };
 use regex::{Regex, RegexBuilder};
@@ -9,7 +10,7 @@ use tui_prompts::{State, TextPrompt, TextState};
 
 use crate::action::Action;
 
-use super::help::help_item;
+use super::{help::help_item, theme::THEME};
 
 #[derive(Debug, Clone)]
 pub struct Query {
@@ -101,13 +102,22 @@ impl QueryResult {
       .map(|index| *self.indices.get_index(index).unwrap().0)
   }
 
-  pub fn statistics(&self) -> String {
+  pub fn statistics(&self) -> Line {
     if self.indices.is_empty() {
-      "No matches".to_string()
+      "No match".set_style(THEME.query_no_match).into()
     } else {
-      let total = self.indices.len();
-      let selected = self.selection().map(|index| index + 1).unwrap_or(0);
-      format!("{} of {}", selected, total)
+      let total = self
+        .indices
+        .len()
+        .to_string()
+        .set_style(THEME.query_match_total_cnt);
+      let selected = self
+        .selection
+        .map(|index| index + 1)
+        .unwrap_or(0)
+        .to_string()
+        .set_style(THEME.query_match_current_no);
+      Line::default().spans(vec![selected, "/".into(), total])
     }
   }
 }

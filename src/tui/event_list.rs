@@ -279,6 +279,21 @@ impl Widget for &mut EventList {
           .position(self.window.0 + self.state.selected().unwrap_or(0)),
       );
     }
+
+    if let Some(query_result) = self.query_result.as_ref() {
+      let statistics = query_result.statistics();
+      let statistics_len = statistics.width();
+      if statistics_len > buf.area().width as usize {
+        return;
+      }
+      let statistics_area = Rect {
+        x: buf.area().right().saturating_sub(statistics_len as u16),
+        y: 1,
+        width: statistics_len as u16,
+        height: 1,
+      };
+      statistics.render(statistics_area, buf);
+    }
   }
 }
 

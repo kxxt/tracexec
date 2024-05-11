@@ -37,6 +37,9 @@ pub struct Theme {
   pub argv: Style,
   // Search & Filter
   pub search_match: Style,
+  pub query_no_match: Style,
+  pub query_match_current_no: Style,
+  pub query_match_total_cnt: Style,
   // Details Popup
   pub exec_result_success: Style,
   pub exec_result_failure: Style,
@@ -107,6 +110,9 @@ impl Default for Theme {
       argv: Style::default(),
       // -- Search & Filter --
       search_match: Style::default().add_modifier(Modifier::REVERSED),
+      query_no_match: Style::default().light_red(),
+      query_match_current_no: Style::default().light_cyan(),
+      query_match_total_cnt: Style::default().white(),
       // -- Details Popup --
       exec_result_success: Style::default().green(),
       exec_result_failure: Style::default().red(),
