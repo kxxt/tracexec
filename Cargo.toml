@@ -64,6 +64,7 @@ bitflags = "2.5.0"
 regex = "1.10.4"
 indexmap = "2.2.6"
 tui-prompts = "0.3.11"
+# tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 
 [dev-dependencies]

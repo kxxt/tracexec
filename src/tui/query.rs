@@ -137,6 +137,13 @@ impl QueryBuilder {
 
   pub fn edit(&mut self) {
     self.editing = true;
+    self.state.focus();
+  }
+
+  /// Get the current cursor position,
+  /// this should be called after render is called
+  pub fn cursor(&self) -> (u16, u16) {
+    self.state.cursor()
   }
 
   pub fn handle_key_events(&mut self, key: KeyEvent) -> Result<Option<Action>, String> {

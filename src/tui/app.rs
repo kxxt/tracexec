@@ -359,7 +359,17 @@ impl App {
             return Ok(());
           }
           Action::Render => {
-            tui.draw(|f| self.render(f.size(), f.buffer_mut()))?;
+            tui.draw(|f| {
+              self.render(f.size(), f.buffer_mut());
+              self
+                .query_builder
+                .as_ref()
+                .filter(|q| q.editing())
+                .inspect(|q| {
+                  let (x, y) = q.cursor();
+                  f.set_cursor(x, y);
+                });
+            })?;
           }
           Action::NextItem => {
             self.event_list.next();
@@ -475,9 +485,13 @@ impl App {
           }
           Action::BeginSearch => {
             if let Some(query_builder) = self.query_builder.as_mut() {
+              // action_tx.send(query_builder.edit())?;
               query_builder.edit();
             } else {
-              self.query_builder = Some(QueryBuilder::new(QueryKind::Search));
+              let mut query_builder = QueryBuilder::new(QueryKind::Search);
+              // action_tx.send(query_builder.edit())?;
+              query_builder.edit();
+              self.query_builder = Some(query_builder);
             }
           }
           Action::EndSearch => {
