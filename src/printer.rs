@@ -244,7 +244,7 @@ impl Printer {
       let Some(out) = out else {
         return Ok(());
       };
-      write!(out, "{}", state.pid.bright_yellow())?;
+      write!(out, "{}", state.pid.bright_green())?;
       if self.args.trace_comm {
         write!(out, "<{}>", state.comm.cyan())?;
       }
