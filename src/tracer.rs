@@ -105,7 +105,7 @@ impl Tracer {
     modifier_args: ModifierArgs,
     tracer_event_args: TracerEventArgs,
     baseline: BaselineInfo,
-    tx: UnboundedSender<TracerEvent>,
+    event_tx: UnboundedSender<TracerEvent>,
     user: Option<User>,
   ) -> color_eyre::Result<Self> {
     let baseline = Arc::new(baseline);
@@ -129,7 +129,7 @@ impl Tracer {
       } else {
         modifier_args.seccomp_bpf
       },
-      event_tx: tx,
+      event_tx,
       user,
       filter: {
         let mut filter = tracer_event_args.filter()?;
