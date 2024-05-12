@@ -41,7 +41,7 @@ use crate::{
     args::{LogModeArgs, ModifierArgs},
     options::ActivePane,
   },
-  event::{Event, TracerEvent},
+  event::{Event, TracerEventDetails},
   printer::PrinterArgs,
   proc::BaselineInfo,
   pty::{PtySize, UnixMasterPty},
@@ -351,10 +351,11 @@ impl App {
             }
           }
           Event::Tracer(te) => {
-            if let TracerEvent::TraceeSpawn(pid) = te {
-              self.root_pid = Some(pid);
+            if let TracerEventDetails::TraceeSpawn(pid) = &te.details {
+              self.root_pid = Some(*pid);
             }
-            self.event_list.push(te);
+            debug_assert_eq!(te.id, self.event_list.len() as u64);
+            self.event_list.push(te.details);
             if self.event_list.is_following() {
               action_tx.send(Action::ScrollToBottom)?;
             }

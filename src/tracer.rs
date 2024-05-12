@@ -32,7 +32,10 @@ use crate::{
   arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
   cli::args::{LogModeArgs, ModifierArgs, TracerEventArgs},
   cmdbuilder::CommandBuilder,
-  event::{filterable_event, ExecEvent, TracerEvent, TracerEventKind, TracerMessage},
+  event::{
+    filterable_event, ExecEvent, TracerEvent, TracerEventDetails, TracerEventDetailsKind,
+    TracerMessage,
+  },
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{
     diff_env, read_comm, read_cwd, read_exe, read_fd, read_fds, read_interpreter_recursive,
@@ -71,7 +74,7 @@ pub struct Tracer {
   pub store: RwLock<ProcessStateStore>,
   printer: Printer,
   modifier_args: ModifierArgs,
-  filter: BitFlags<TracerEventKind>,
+  filter: BitFlags<TracerEventDetailsKind>,
   baseline: Arc<BaselineInfo>,
   #[cfg(feature = "seccomp-bpf")]
   seccomp_bpf: SeccompBpf,
@@ -135,7 +138,7 @@ impl Tracer {
           // FIXME: In logging mode, we rely on root child exit event to exit the process
           //        with the same exit code as the root child. It is not printed in logging mode.
           //        Ideally we should use another channel to send the exit code to the main thread.
-          filter |= TracerEventKind::TraceeExit;
+          filter |= TracerEventDetailsKind::TraceeExit;
         }
         filter
       },
@@ -389,14 +392,17 @@ impl Tracer {
             | nix::libc::PTRACE_EVENT_CLONE => {
               let new_child = Pid::from_raw(ptrace::getevent(pid)? as pid_t);
               trace!("ptrace fork event, evt {evt}, pid: {pid}, child: {new_child}");
-              if self.filter.intersects(TracerEventKind::NewChild) {
+              if self.filter.intersects(TracerEventDetailsKind::NewChild) {
                 let store = self.store.read().unwrap();
                 let parent = store.get_current(pid).unwrap();
-                self.tx.send(TracerEvent::NewChild {
-                  ppid: parent.pid,
-                  pcomm: parent.comm.clone(),
-                  pid: new_child,
-                })?;
+                self.tx.send(
+                  TracerEventDetails::NewChild {
+                    ppid: parent.pid,
+                    pcomm: parent.comm.clone(),
+                    pid: new_child,
+                  }
+                  .into(),
+                )?;
                 self.printer.print_new_child(parent, new_child)?;
               }
               {
@@ -623,13 +629,16 @@ impl Tracer {
           self.seccomp_aware_cont(pid)?;
           return Ok(());
         }
-        if self.filter.intersects(TracerEventKind::Exec) {
+        if self.filter.intersects(TracerEventDetailsKind::Exec) {
           // TODO: optimize, we don't need to collect exec event for log mode
-          self.tx.send(TracerEvent::Exec(Tracer::collect_exec_event(
-            &self.baseline.env,
-            p,
-            exec_result,
-          )))?;
+          self.tx.send(
+            TracerEventDetails::Exec(Tracer::collect_exec_event(
+              &self.baseline.env,
+              p,
+              exec_result,
+            ))
+            .into(),
+          )?;
           self
             .printer
             .print_exec_trace(p, exec_result, &self.baseline.env, &self.baseline.cwd)?;
@@ -646,12 +655,15 @@ impl Tracer {
           self.seccomp_aware_cont(pid)?;
           return Ok(());
         }
-        if self.filter.intersects(TracerEventKind::Exec) {
-          self.tx.send(TracerEvent::Exec(Tracer::collect_exec_event(
-            &self.baseline.env,
-            p,
-            exec_result,
-          )))?;
+        if self.filter.intersects(TracerEventDetailsKind::Exec) {
+          self.tx.send(
+            TracerEventDetails::Exec(Tracer::collect_exec_event(
+              &self.baseline.env,
+              p,
+              exec_result,
+            ))
+            .into(),
+          )?;
           self
             .printer
             .print_exec_trace(p, exec_result, &self.baseline.env, &self.baseline.cwd)?;
@@ -713,21 +725,27 @@ impl Tracer {
     argv: &Result<Vec<String>, InspectError>,
     pid: Pid,
   ) -> color_eyre::Result<()> {
-    if self.filter.intersects(TracerEventKind::Warning) {
+    if self.filter.intersects(TracerEventDetailsKind::Warning) {
       match argv.as_deref() {
         Ok(argv) => {
           if argv.is_empty() {
-            self.tx.send(TracerEvent::Warning(TracerMessage {
-              pid: Some(pid),
-              msg: "Empty argv, the printed cmdline is not accurate!".to_string(),
-            }))?;
+            self.tx.send(
+              TracerEventDetails::Warning(TracerMessage {
+                pid: Some(pid),
+                msg: "Empty argv, the printed cmdline is not accurate!".to_string(),
+              })
+              .into(),
+            )?;
           }
         }
         Err(e) => {
-          self.tx.send(TracerEvent::Warning(TracerMessage {
-            pid: Some(pid),
-            msg: format!("Failed to read argv: {:?}", e),
-          }))?;
+          self.tx.send(
+            TracerEventDetails::Warning(TracerMessage {
+              pid: Some(pid),
+              msg: format!("Failed to read argv: {:?}", e),
+            })
+            .into(),
+          )?;
         }
       }
     }
@@ -739,12 +757,15 @@ impl Tracer {
     envp: &Result<Vec<String>, InspectError>,
     pid: Pid,
   ) -> color_eyre::Result<()> {
-    if self.filter.intersects(TracerEventKind::Warning) {
+    if self.filter.intersects(TracerEventDetailsKind::Warning) {
       if let Err(e) = envp.as_deref() {
-        self.tx.send(TracerEvent::Warning(TracerMessage {
-          pid: Some(pid),
-          msg: format!("Failed to read envp: {:?}", e),
-        }))?;
+        self.tx.send(
+          TracerEventDetails::Warning(TracerMessage {
+            pid: Some(pid),
+            msg: format!("Failed to read envp: {:?}", e),
+          })
+          .into(),
+        )?;
       }
     }
     Ok(())
@@ -755,12 +776,15 @@ impl Tracer {
     filename: &Result<PathBuf, InspectError>,
     pid: Pid,
   ) -> color_eyre::Result<()> {
-    if self.filter.intersects(TracerEventKind::Warning) {
+    if self.filter.intersects(TracerEventDetailsKind::Warning) {
       if let Err(e) = filename.as_deref() {
-        self.tx.send(TracerEvent::Warning(TracerMessage {
-          pid: Some(pid),
-          msg: format!("Failed to read filename: {:?}", e),
-        }))?;
+        self.tx.send(
+          TracerEventDetails::Warning(TracerMessage {
+            pid: Some(pid),
+            msg: format!("Failed to read filename: {:?}", e),
+          })
+          .into(),
+        )?;
       }
     }
     Ok(())

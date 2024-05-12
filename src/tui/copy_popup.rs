@@ -12,7 +12,7 @@ use ratatui::{
 
 use crate::{
   action::{Action, CopyTarget, SupportedShell::Bash},
-  event::TracerEvent,
+  event::TracerEventDetails,
 };
 
 use super::help::help_item;
@@ -22,7 +22,7 @@ pub struct CopyPopup;
 
 #[derive(Debug, Clone)]
 pub struct CopyPopupState {
-  pub event: Arc<TracerEvent>,
+  pub event: Arc<TracerEventDetails>,
   pub state: ListState,
   pub available_targets: Vec<char>,
 }
@@ -47,10 +47,10 @@ lazy_static! {
 }
 
 impl CopyPopupState {
-  pub fn new(event: Arc<TracerEvent>) -> Self {
+  pub fn new(event: Arc<TracerEventDetails>) -> Self {
     let mut state = ListState::default();
     state.select(Some(0));
-    let available_targets = if let TracerEvent::Exec(_) = &event.as_ref() {
+    let available_targets = if let TracerEventDetails::Exec(_) = &event.as_ref() {
       KEY_MAP.keys().copied().collect()
     } else {
       vec!['l']

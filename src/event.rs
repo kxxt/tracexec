@@ -1,10 +1,18 @@
-use std::{borrow::Cow, ffi::OsStr, io::Write, path::PathBuf, sync::Arc, usize};
+use std::{
+  borrow::Cow,
+  ffi::OsStr,
+  io::Write,
+  path::PathBuf,
+  sync::{atomic::AtomicU64, Arc},
+  usize,
+};
 
 use clap::ValueEnum;
 use crossterm::event::KeyEvent;
 use enumflags2::BitFlags;
 use filterable_enum::FilterableEnum;
 use itertools::{chain, Itertools};
+use lazy_static::lazy_static;
 use nix::{fcntl::OFlag, sys::signal::Signal, unistd::Pid};
 use ratatui::{
   layout::Size,
@@ -19,7 +27,7 @@ use crate::{
   cli::args::ModifierArgs,
   printer::{escape_str_for_bash, ListPrinter},
   proc::{BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter},
-  tracer::InspectError,
+  tracer::{state::ProcessExit, InspectError},
   tui::theme::THEME,
 };
 
@@ -34,9 +42,30 @@ pub enum Event {
   Error,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct TracerEvent {
+  pub details: TracerEventDetails,
+  pub id: u64,
+}
+
+lazy_static! {
+  /// A global counter for events, though it should only be used by the tracer thread.
+  static ref ID: AtomicU64 = 0.into();
+}
+
+impl From<TracerEventDetails> for TracerEvent {
+  fn from(details: TracerEventDetails) -> Self {
+    Self {
+      details,
+      // TODO: Maybe we can use a weaker ordering here
+      id: ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+    }
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, FilterableEnum)]
 #[filterable_enum(kind_extra_derive=ValueEnum, kind_extra_derive=Display, kind_extra_attrs="strum(serialize_all = \"kebab-case\")")]
-pub enum TracerEvent {
+pub enum TracerEventDetails {
   Info(TracerMessage),
   Warning(TracerMessage),
   Error(TracerMessage),
@@ -89,7 +118,6 @@ macro_rules! tracer_event_spans {
     };
 }
 
-
 macro_rules! tracer_exec_event_spans {
   ($pid: expr, $comm: expr, $result:expr, $($t:tt)*) => {
       chain!([
@@ -113,8 +141,7 @@ macro_rules! tracer_exec_event_spans {
   };
 }
 
-
-impl TracerEvent {
+impl TracerEventDetails {
   /// Convert the event to a TUI line
   ///
   /// This method is resource intensive and the caller should cache the result
@@ -126,7 +153,7 @@ impl TracerEvent {
     env_in_cmdline: bool,
   ) -> Line<'static> {
     match self {
-      TracerEvent::Info(TracerMessage { ref msg, pid }) => chain!(
+      TracerEventDetails::Info(TracerMessage { ref msg, pid }) => chain!(
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
@@ -134,7 +161,7 @@ impl TracerEvent {
         [": ".into(), msg.clone().set_style(THEME.tracer_info)]
       )
       .collect(),
-      TracerEvent::Warning(TracerMessage { ref msg, pid }) => chain!(
+      TracerEventDetails::Warning(TracerMessage { ref msg, pid }) => chain!(
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
@@ -142,7 +169,7 @@ impl TracerEvent {
         [": ".into(), msg.clone().set_style(THEME.tracer_warning)]
       )
       .collect(),
-      TracerEvent::Error(TracerMessage { ref msg, pid }) => chain!(
+      TracerEventDetails::Error(TracerMessage { ref msg, pid }) => chain!(
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
@@ -150,7 +177,7 @@ impl TracerEvent {
         [": ".into(), msg.clone().set_style(THEME.tracer_error)]
       )
       .collect(),
-      TracerEvent::NewChild { ppid, pcomm, pid } => {
+      TracerEventDetails::NewChild { ppid, pcomm, pid } => {
         let spans = tracer_event_spans!(
           ppid,
           pcomm,
@@ -160,7 +187,7 @@ impl TracerEvent {
         );
         spans.flatten().collect()
       }
-      TracerEvent::Exec(exec) => {
+      TracerEventDetails::Exec(exec) => {
         let ExecEvent {
           pid,
           cwd,
@@ -337,17 +364,17 @@ impl TracerEvent {
 
         Line::default().spans(spans)
       }
-      TracerEvent::TraceeExit { signal, exit_code } => format!(
+      TracerEventDetails::TraceeExit { signal, exit_code } => format!(
         "tracee exit: signal: {:?}, exit_code: {}",
         signal, exit_code
       )
       .into(),
-      TracerEvent::TraceeSpawn(pid) => format!("tracee spawned: {}", pid).into(),
+      TracerEventDetails::TraceeSpawn(pid) => format!("tracee spawned: {}", pid).into(),
     }
   }
 }
 
-impl TracerEvent {
+impl TracerEventDetails {
   pub fn text_for_copy<'a>(
     &'a self,
     baseline: &BaselineInfo,
@@ -362,7 +389,7 @@ impl TracerEvent {
         .into();
     }
     // Other targets are only available for Exec events
-    let TracerEvent::Exec(event) = self else {
+    let TracerEventDetails::Exec(event) = self else {
       panic!("Copy target {:?} is only available for Exec events", target);
     };
     let mut modifier_args = ModifierArgs::default();
@@ -466,14 +493,14 @@ impl TracerEvent {
   }
 }
 
-impl FilterableTracerEvent {
+impl FilterableTracerEventDetails {
   pub fn send_if_match(
     self,
     tx: &mpsc::UnboundedSender<TracerEvent>,
-    filter: BitFlags<TracerEventKind>,
+    filter: BitFlags<TracerEventDetailsKind>,
   ) -> color_eyre::Result<()> {
     if let Some(evt) = self.filter_and_take(filter) {
-      tx.send(evt)?;
+      tx.send(evt.into())?;
     }
     Ok(())
   }
@@ -481,8 +508,9 @@ impl FilterableTracerEvent {
 
 macro_rules! filterable_event {
     ($($t:tt)*) => {
-      crate::event::FilterableTracerEvent::from(crate::event::TracerEvent::$($t)*)
+      crate::event::FilterableTracerEventDetails::from(crate::event::TracerEventDetails::$($t)*)
     };
 }
 
 pub(crate) use filterable_event;
+

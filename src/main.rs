@@ -29,7 +29,7 @@ use tokio::sync::mpsc;
 
 use crate::{
   cli::{args::LogModeArgs, options::Color, CliCommand},
-  event::TracerEvent,
+  event::{TracerEvent, TracerEventDetails},
   log::initialize_panic_handler,
   printer::PrinterOut,
   proc::BaselineInfo,
@@ -115,7 +115,11 @@ async fn main() -> color_eyre::Result<()> {
       let tracer_thread = tracer.spawn(cmd, Some(output))?;
       tracer_thread.join().unwrap()?;
       loop {
-        if let Some(TracerEvent::TraceeExit { exit_code, .. }) = tracer_rx.recv().await {
+        if let Some(TracerEvent {
+          details: TracerEventDetails::TraceeExit { exit_code, .. },
+          ..
+        }) = tracer_rx.recv().await
+        {
           process::exit(exit_code);
         }
       }
