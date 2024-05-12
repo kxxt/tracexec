@@ -4,7 +4,7 @@ use crossterm::event::KeyEvent;
 use ratatui::layout::Size;
 
 use crate::{
-  event::TracerEvent,
+  event::TracerEventDetails,
   tui::{
     copy_popup::CopyPopupState, details_popup::DetailsPopupState, error_popup::ErrorPopupState,
     query::Query,
@@ -46,10 +46,10 @@ pub enum Action {
   SetActivePopup(ActivePopup),
   CancelCurrentPopup,
   // Clipboard
-  ShowCopyDialog(Arc<TracerEvent>),
+  ShowCopyDialog(Arc<TracerEventDetails>),
   CopyToClipboard {
     target: CopyTarget,
-    event: Arc<TracerEvent>,
+    event: Arc<TracerEventDetails>,
   },
   // Query
   BeginSearch,

@@ -2,7 +2,7 @@ use clap::{Args, ValueEnum};
 use color_eyre::eyre::bail;
 use enumflags2::BitFlags;
 
-use crate::event::TracerEventKind;
+use crate::event::TracerEventDetailsKind;
 
 #[cfg(feature = "seccomp-bpf")]
 use super::options::SeccompBpf;
@@ -65,7 +65,7 @@ pub struct TracerEventArgs {
     value_parser = tracer_event_filter_parser,
     default_value = "warning,error,exec,tracee-exit"
   )]
-  pub filter: BitFlags<TracerEventKind>,
+  pub filter: BitFlags<TracerEventDetailsKind>,
   #[clap(
     long,
     help = "Aside from the default filter, also include the events specified here.",
@@ -73,23 +73,23 @@ pub struct TracerEventArgs {
     value_parser = tracer_event_filter_parser,
     default_value_t = BitFlags::empty()
   )]
-  pub filter_include: BitFlags<TracerEventKind>,
+  pub filter_include: BitFlags<TracerEventDetailsKind>,
   #[clap(
     long,
     help = "Exclude the events specified here from the default filter.",
     value_parser = tracer_event_filter_parser,
     default_value_t = BitFlags::empty()
   )]
-  pub filter_exclude: BitFlags<TracerEventKind>,
+  pub filter_exclude: BitFlags<TracerEventDetailsKind>,
 }
 
-fn tracer_event_filter_parser(filter: &str) -> Result<BitFlags<TracerEventKind>, String> {
+fn tracer_event_filter_parser(filter: &str) -> Result<BitFlags<TracerEventDetailsKind>, String> {
   let mut result = BitFlags::empty();
   if filter == "<empty>" {
     return Ok(result);
   }
   for f in filter.split(',') {
-    let kind = TracerEventKind::from_str(f, false)?;
+    let kind = TracerEventDetailsKind::from_str(f, false)?;
     if result.contains(kind) {
       return Err(format!(
         "Event kind '{}' is already included in the filter",
@@ -102,7 +102,7 @@ fn tracer_event_filter_parser(filter: &str) -> Result<BitFlags<TracerEventKind>,
 }
 
 impl TracerEventArgs {
-  pub fn filter(&self) -> color_eyre::Result<BitFlags<TracerEventKind>> {
+  pub fn filter(&self) -> color_eyre::Result<BitFlags<TracerEventDetailsKind>> {
     let default_filter = if self.show_all_events {
       BitFlags::all()
     } else {

@@ -19,7 +19,7 @@ use ratatui::{
 };
 use tui_scrollview::{ScrollView, ScrollViewState};
 
-use crate::{event::TracerEvent, proc::BaselineInfo};
+use crate::{event::TracerEventDetails, proc::BaselineInfo};
 
 use super::{
   help::{help_desc, help_key},
@@ -48,10 +48,10 @@ pub struct DetailsPopupState {
 }
 
 impl DetailsPopupState {
-  pub fn new(event: Arc<TracerEvent>, baseline: Arc<BaselineInfo>) -> Self {
+  pub fn new(event: Arc<TracerEventDetails>, baseline: Arc<BaselineInfo>) -> Self {
     let mut modifier_args = Default::default();
     let mut details = vec![(
-      if matches!(event.as_ref(), TracerEvent::Exec(_)) {
+      if matches!(event.as_ref(), TracerEventDetails::Exec(_)) {
         " Cmdline "
       } else {
         " Details "
@@ -59,7 +59,7 @@ impl DetailsPopupState {
       event.to_tui_line(&baseline, true, &modifier_args, true),
     )];
     let event_cloned = event.clone();
-    let (env, fdinfo, available_tabs) = if let TracerEvent::Exec(exec) = event_cloned.as_ref() {
+    let (env, fdinfo, available_tabs) = if let TracerEventDetails::Exec(exec) = event_cloned.as_ref() {
       details.extend([
         (" Cmdline with stdio ", {
           modifier_args.stdio_in_cmdline = true;
@@ -86,12 +86,12 @@ impl DetailsPopupState {
         (" Comm ", exec.comm.to_string().into()),
         (
           " Filename ",
-          Span::from(TracerEvent::filename_to_cow(&exec.filename).into_owned()).into(),
+          Span::from(TracerEventDetails::filename_to_cow(&exec.filename).into_owned()).into(),
         ),
-        (" Argv ", TracerEvent::argv_to_string(&exec.argv).into()),
+        (" Argv ", TracerEventDetails::argv_to_string(&exec.argv).into()),
         (
           " Interpreters ",
-          TracerEvent::interpreters_to_string(&exec.interpreter).into(),
+          TracerEventDetails::interpreters_to_string(&exec.interpreter).into(),
         ),
         (
           " Stdin ",

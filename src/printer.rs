@@ -9,7 +9,7 @@ use std::{
 
 use crate::{
   cli::args::{LogModeArgs, ModifierArgs},
-  event::TracerEvent,
+  event::TracerEventDetails,
   proc::{diff_env, BaselineInfo, FileDescriptorInfoCollection, Interpreter},
   tracer::state::ProcessState,
   tracer::InspectError,
@@ -733,7 +733,7 @@ impl Printer {
             write!(
               out,
               " {}",
-              escape_str_for_bash!(TracerEvent::filename_to_cow(&exec_data.filename).as_ref())
+              escape_str_for_bash!(TracerEventDetails::filename_to_cow(&exec_data.filename).as_ref())
             )?;
             for arg in argv.iter().skip(1) {
               write!(out, " {}", escape_str_for_bash!(arg))?;

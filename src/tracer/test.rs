@@ -7,7 +7,7 @@ use tracing_test::traced_test;
 
 use crate::{
   cli::args::{LogModeArgs, ModifierArgs, TracerEventArgs},
-  event::TracerEvent,
+  event::{TracerEvent, TracerEventDetails},
   proc::{BaselineInfo, Interpreter},
   tracer::Tracer,
 };
@@ -89,7 +89,7 @@ async fn tracer_decodes_proc_self_exe(
   .await;
   let path = std::fs::read_link("/proc/self/exe").unwrap();
   for event in events {
-    if let TracerEvent::Exec(exec) = event {
+    if let TracerEventDetails::Exec(exec) = event.details {
       let argv = exec.argv.as_deref().unwrap();
       assert_eq!(argv, &["/proc/self/exe", "--help"]);
       let filename = exec.filename.as_deref().unwrap();
@@ -112,7 +112,7 @@ async fn tracer_emits_exec_event(tracer: (Arc<Tracer>, UnboundedReceiver<TracerE
   let (tracer, rx) = tracer;
   let events = run_exe_and_collect_events(tracer, rx, vec!["/bin/true".to_string()]).await;
   for event in events {
-    if let TracerEvent::Exec(exec) = event {
+    if let TracerEventDetails::Exec(exec) = event.details {
       let argv = exec.argv.as_deref().unwrap();
       assert_eq!(argv, &["/bin/true"]);
       let filename = exec.filename.as_deref().unwrap();

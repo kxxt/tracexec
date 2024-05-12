@@ -30,7 +30,7 @@ use ratatui::{
   },
 };
 
-use crate::{cli::args::ModifierArgs, event::TracerEvent, proc::BaselineInfo};
+use crate::{cli::args::ModifierArgs, event::TracerEventDetails, proc::BaselineInfo};
 
 use super::{
   partial_line::PartialLine,
@@ -40,7 +40,7 @@ use super::{
 
 pub struct EventList {
   state: ListState,
-  events: Vec<Arc<TracerEvent>>,
+  events: Vec<Arc<TracerEventDetails>>,
   /// The string representation of the events, used for searching
   event_strings: Vec<String>,
   /// Current window of the event list, [start, end)
@@ -120,7 +120,7 @@ impl EventList {
   }
 
   /// returns the selected item if there is any
-  pub fn selection(&self) -> Option<Arc<TracerEvent>> {
+  pub fn selection(&self) -> Option<Arc<TracerEventDetails>> {
     self.selection_index().map(|i| self.events[i].clone())
   }
 
@@ -135,7 +135,10 @@ impl EventList {
   }
 
   // TODO: this is ugly due to borrow checking.
-  pub fn window(items: &[Arc<TracerEvent>], window: (usize, usize)) -> &[Arc<TracerEvent>] {
+  pub fn window(
+    items: &[Arc<TracerEventDetails>],
+    window: (usize, usize),
+  ) -> &[Arc<TracerEventDetails>] {
     &items[window.0..window.1.min(items.len())]
   }
 
@@ -148,6 +151,10 @@ impl EventList {
         self.events.len()
       ))
       .alignment(Right)
+  }
+
+  pub fn len(&self) -> usize {
+    self.events.len()
   }
 }
 
@@ -384,7 +391,7 @@ impl EventList {
 
 /// Event Management
 impl EventList {
-  pub fn push(&mut self, event: impl Into<Arc<TracerEvent>>) {
+  pub fn push(&mut self, event: impl Into<Arc<TracerEventDetails>>) {
     let event = event.into();
     self.event_strings.push(
       event
