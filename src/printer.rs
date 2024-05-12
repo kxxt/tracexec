@@ -248,7 +248,7 @@ impl Printer {
       if self.args.trace_comm {
         write!(out, "<{}>", state.comm.cyan())?;
       }
-      writeln!(out, ": {}: {}", "new child".purple(), child.bright_yellow())?;
+      writeln!(out, ": {}: {}", "new child".purple(), child.bright_green())?;
       out.flush()?;
       Ok(())
     })
