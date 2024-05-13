@@ -105,6 +105,7 @@ pub fn help<'a>(area: Rect) -> SizedParagraph<'a> {
     "E".bold().black(),
     "ach exec event in the event list consists of four parts, the pid, the status of the process,\
     the comm of the process (before exec), and the commandline to reproduce the exec event. \
+    The pid is colored according to the result of the execve{,at} syscall.
     The status can be one of the following: "
       .into(),
     help_key(<&str>::from(EventStatus::ExecENOENT)),
