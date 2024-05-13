@@ -325,29 +325,24 @@ impl Tracer {
               trace!("sigstop event, child: {pid}");
               {
                 let mut store = self.store.write().unwrap();
+                let mut pid_reuse = false;
+                let mut handled = false;
                 if let Some(state) = store.get_current_mut(pid) {
                   if state.status == ProcessStatus::PtraceForkEventReceived {
                     trace!("sigstop event received after ptrace fork event, pid: {pid}");
                     state.status = ProcessStatus::Running;
                     self.seccomp_aware_cont(pid)?;
-                  } else if pid != root_child {
-                    error!("Unexpected SIGSTOP: {state:?}")
+                    handled = true;
+                  } else if state.status == ProcessStatus::Initialized {
+                    // Manually inserted process state. (root child)
+                    handled = true;
                   } else {
-                    error!("Unexpected SIGSTOP: {state:?}")
-                    // let siginfo = ptrace::getsiginfo(pid)?;
-                    // trace!(
-                    //     "FIXME: this is weird, pid: {pid}, siginfo: {siginfo:?}"
-                    // );
-                    // let sender = siginfo._pad[1];
-                    // let tmp = format!("/proc/{sender}/status");
-                    // ptrace::detach(pid, Some(Signal::SIGSTOP))?;
-                    // trace_dbg!(process::Command::new("/bin/cat")
-                    //     .arg(tmp)
-                    //     .output()?);
-                    // self.seccomp_aware_cont(pid)?;
+                    // Pid reuse
+                    pid_reuse = true;
                   }
-                } else {
-                  trace!("sigstop event received before ptrace fork event, pid: {pid}");
+                }
+                if !handled || pid_reuse {
+                  trace!("sigstop event received before ptrace fork event, pid: {pid}, pid_reuse: {pid_reuse}");
                   let mut state = ProcessState::new(pid, 0)?;
                   state.status = ProcessStatus::SigstopReceived;
                   store.insert(state);
@@ -429,6 +424,8 @@ impl Tracer {
               }
               {
                 let mut store = self.store.write().unwrap();
+                let mut pid_reuse = false;
+                let mut handled = false;
                 if let Some(state) = store.get_current_mut(new_child) {
                   if state.status == ProcessStatus::SigstopReceived {
                     trace!(
@@ -437,16 +434,18 @@ impl Tracer {
                     state.status = ProcessStatus::Running;
                     state.ppid = Some(pid);
                     self.seccomp_aware_cont(new_child)?;
-                  } else if new_child != root_child {
-                    filterable_event!(Error(TracerMessage {
-                    pid: Some(new_child),
-                    msg: "Unexpected fork event! Please report this bug if you can provide a reproducible case.".to_string(),
-                  })).send_if_match(&self.event_tx, self.filter)?;
-                    error!("Unexpected fork event: {state:?}")
+                    handled = true;
+                  } else if state.status == ProcessStatus::Initialized {
+                    // Manually inserted process state. (root child)
+                    handled = true;
+                  } else {
+                    // Pid reuse
+                    pid_reuse = true;
                   }
-                } else {
+                }
+                if !handled || pid_reuse {
                   trace!(
-                    "ptrace fork event received before sigstop, pid: {pid}, child: {new_child}"
+                    "ptrace fork event received before sigstop, pid: {pid}, child: {new_child}, pid_reuse: {pid_reuse}"
                   );
                   let mut state = ProcessState::new(new_child, 0)?;
                   state.status = ProcessStatus::PtraceForkEventReceived;

@@ -34,6 +34,7 @@ pub enum ProcessExit {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProcessStatus {
+  Initialized,
   SigstopReceived,
   PtraceForkEventReceived,
   Running,
@@ -98,7 +99,7 @@ impl ProcessState {
     Ok(Self {
       pid,
       ppid: None,
-      status: ProcessStatus::Running,
+      status: ProcessStatus::Initialized,
       comm: read_comm(pid)?,
       argv: read_argv(pid)?,
       start_time,
