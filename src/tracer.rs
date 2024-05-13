@@ -380,13 +380,14 @@ impl Tracer {
             .get_current_mut(pid)
             .unwrap()
             .status = ProcessStatus::Exited(ProcessExit::Code(code));
+          let mut should_exit = false;
           if pid == root_child {
             filterable_event!(TraceeExit {
               signal: None,
               exit_code: code,
             })
             .send_if_match(&self.event_tx, self.filter)?;
-            return Ok(());
+            should_exit = true;
           }
           let associated_events = self
             .store
@@ -402,6 +403,9 @@ impl Tracer {
               pid,
               ids: associated_events,
             })?;
+          }
+          if should_exit {
+            return Ok(());
           }
         }
         WaitStatus::PtraceEvent(pid, sig, evt) => {
