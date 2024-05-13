@@ -428,8 +428,8 @@ impl EventList {
       }
       self.events[i].status = match update.update {
         ProcessStateUpdate::Exit(ProcessExit::Code(0)) => Some(EventStatus::ProcessExitedNormally),
-        ProcessStateUpdate::Exit(ProcessExit::Code(_)) => {
-          Some(EventStatus::ProcessExitedAbnormally)
+        ProcessStateUpdate::Exit(ProcessExit::Code(c)) => {
+          Some(EventStatus::ProcessExitedAbnormally(c))
         }
         ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::SIGTERM)) => {
           Some(EventStatus::ProcessTerminated)
@@ -449,7 +449,7 @@ impl EventList {
         ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::SIGILL)) => {
           Some(EventStatus::ProcessIllegalInstruction)
         }
-        ProcessStateUpdate::Exit(ProcessExit::Signal(_)) => Some(EventStatus::ProcessSignaled),
+        ProcessStateUpdate::Exit(ProcessExit::Signal(s)) => Some(EventStatus::ProcessSignaled(s)),
       };
       self.event_strings[i] = self.events[i].to_tui_line(self).to_string();
       trace!(

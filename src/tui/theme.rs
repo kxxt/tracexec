@@ -70,6 +70,17 @@ pub struct Theme {
   // Tabs
   pub active_tab: Style,
   // Process/Exec Status
+  pub status_process_running: Style,
+  pub status_exec_error: Style,
+  pub status_process_exited_normally: Style,
+  pub status_process_exited_abnormally: Style,
+  pub status_process_killed: Style,
+  pub status_process_terminated: Style,
+  pub status_process_interrupted: Style,
+  pub status_process_segfault: Style,
+  pub status_process_aborted: Style,
+  pub status_process_sigill: Style,
+  pub status_process_signaled: Style,
   pub status_indicator_process_running: &'static str,
   pub status_indicator_exec_enoent: &'static str,
   pub status_indicator_exec_error: &'static str,
@@ -170,6 +181,17 @@ impl Default for Theme {
       status_indicator_process_aborted: "😱",
       status_indicator_process_sigill: "👿",
       status_indicator_process_signaled: "💀",
+      status_process_running: Style::new().light_green().bold(),
+      status_exec_error: Style::new().light_red().bold(),
+      status_process_exited_normally: Style::new().green().bold(),
+      status_process_exited_abnormally: Style::new().light_yellow().bold(),
+      status_process_killed: Style::new().light_red().bold().italic(),
+      status_process_terminated: Style::new().light_red().bold().italic(),
+      status_process_interrupted: Style::new().light_red().bold().italic(),
+      status_process_segfault: Style::new().light_red().bold().italic(),
+      status_process_aborted: Style::new().light_red().bold().italic(),
+      status_process_sigill: Style::new().light_red().bold().italic(),
+      status_process_signaled: Style::new().light_red().bold().italic(),
     }
   }
 }

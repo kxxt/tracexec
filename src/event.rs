@@ -13,7 +13,7 @@ use enumflags2::BitFlags;
 use filterable_enum::FilterableEnum;
 use itertools::{chain, Itertools};
 use lazy_static::lazy_static;
-use nix::{fcntl::OFlag, sys::signal::Signal, unistd::Pid};
+use nix::{fcntl::OFlag, libc::c_int, sys::signal::Signal, unistd::Pid};
 use ratatui::{
   layout::Size,
   style::Styled,
@@ -533,7 +533,7 @@ pub enum EventStatus {
   // process status
   ProcessRunning,
   ProcessExitedNormally,
-  ProcessExitedAbnormally,
+  ProcessExitedAbnormally(c_int),
   // signaled
   ProcessKilled,
   ProcessTerminated,
@@ -541,7 +541,7 @@ pub enum EventStatus {
   ProcessSegfault,
   ProcessAborted,
   ProcessIllegalInstruction,
-  ProcessSignaled,
+  ProcessSignaled(Signal),
 }
 
 impl From<EventStatus> for &'static str {
@@ -551,14 +551,14 @@ impl From<EventStatus> for &'static str {
       EventStatus::ExecFailure => THEME.status_indicator_exec_error,
       EventStatus::ProcessRunning => THEME.status_indicator_process_running,
       EventStatus::ProcessExitedNormally => THEME.status_indicator_process_exited_normally,
-      EventStatus::ProcessExitedAbnormally => THEME.status_indicator_process_exited_abnormally,
+      EventStatus::ProcessExitedAbnormally(_) => THEME.status_indicator_process_exited_abnormally,
       EventStatus::ProcessKilled => THEME.status_indicator_process_killed,
       EventStatus::ProcessTerminated => THEME.status_indicator_process_terminated,
       EventStatus::ProcessInterrupted => THEME.status_indicator_process_interrupted,
       EventStatus::ProcessSegfault => THEME.status_indicator_process_segfault,
       EventStatus::ProcessAborted => THEME.status_indicator_process_aborted,
       EventStatus::ProcessIllegalInstruction => THEME.status_indicator_process_sigill,
-      EventStatus::ProcessSignaled => THEME.status_indicator_process_signaled,
+      EventStatus::ProcessSignaled(_) => THEME.status_indicator_process_signaled,
     }
   }
 }
