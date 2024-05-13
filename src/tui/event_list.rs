@@ -412,9 +412,7 @@ impl EventList {
       },
       details: event,
     };
-    self
-      .event_strings
-      .push(event.to_tui_line(self).to_string());
+    self.event_strings.push(event.to_tui_line(self).to_string());
     self.events.push(event);
     self.incremental_search();
   }
@@ -422,6 +420,12 @@ impl EventList {
   pub fn update(&mut self, update: ProcessStateUpdateEvent) {
     for i in update.ids {
       let i = i as usize;
+      if let TracerEventDetails::Exec(exec) = self.events[i].details.as_ref() {
+        if exec.result != 0 {
+          // Don't update the status for failed exec events
+          continue;
+        }
+      }
       self.events[i].status = match update.update {
         ProcessStateUpdate::Exit(ProcessExit::Code(0)) => Some(EventStatus::ProcessExitedNormally),
         ProcessStateUpdate::Exit(ProcessExit::Code(_)) => {
