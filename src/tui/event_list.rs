@@ -19,6 +19,7 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use indexmap::IndexMap;
+use nix::sys::signal::Signal;
 use ratatui::{
   layout::Alignment::Right,
   prelude::{Buffer, Rect},
@@ -29,8 +30,14 @@ use ratatui::{
     ScrollbarState, StatefulWidget, StatefulWidgetRef, Widget,
   },
 };
+use tracing::trace;
 
-use crate::{cli::args::ModifierArgs, event::TracerEventDetails, proc::BaselineInfo};
+use crate::{
+  cli::args::ModifierArgs,
+  event::{EventStatus, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEventDetails},
+  proc::BaselineInfo,
+  tracer::state::ProcessExit,
+};
 
 use super::{
   partial_line::PartialLine,
@@ -38,14 +45,31 @@ use super::{
   theme::THEME,
 };
 
+pub struct Event {
+  details: Arc<TracerEventDetails>,
+  status: Option<EventStatus>,
+}
+
+impl Event {
+  fn to_tui_line(&self, list: &EventList) -> Line<'static> {
+    self.details.to_tui_line(
+      &list.baseline,
+      false,
+      &list.modifier_args,
+      list.env_in_cmdline,
+      self.status,
+    )
+  }
+}
+
 pub struct EventList {
   state: ListState,
-  events: Vec<Arc<TracerEventDetails>>,
+  events: Vec<Event>,
   /// The string representation of the events, used for searching
   event_strings: Vec<String>,
   /// Current window of the event list, [start, end)
   window: (usize, usize),
-  /// Cache of the lines in the window
+  /// Cache of the (index, line)s in the window
   lines_cache: VecDeque<(usize, Line<'static>)>,
   should_refresh_lines_cache: bool,
   /// Cache of the list items in the view
@@ -121,7 +145,9 @@ impl EventList {
 
   /// returns the selected item if there is any
   pub fn selection(&self) -> Option<Arc<TracerEventDetails>> {
-    self.selection_index().map(|i| self.events[i].clone())
+    self
+      .selection_index()
+      .map(|i| self.events[i].details.clone())
   }
 
   /// Reset the window and force clear the line cache
@@ -135,10 +161,7 @@ impl EventList {
   }
 
   // TODO: this is ugly due to borrow checking.
-  pub fn window(
-    items: &[Arc<TracerEventDetails>],
-    window: (usize, usize),
-  ) -> &[Arc<TracerEventDetails>] {
+  pub fn window(items: &[Event], window: (usize, usize)) -> &[Event] {
     &items[window.0..window.1.min(items.len())]
   }
 
@@ -178,17 +201,7 @@ impl Widget for &mut EventList {
       self.lines_cache = events_in_window
         .iter()
         .enumerate()
-        .map(|(i, evt)| {
-          (
-            i + self.window.0,
-            evt.to_tui_line(
-              &self.baseline,
-              false,
-              &self.modifier_args,
-              self.env_in_cmdline,
-            ),
-          )
-        })
+        .map(|(i, evt)| (i + self.window.0, evt.to_tui_line(self)))
         .collect();
     }
     self.nr_items_in_window = events_in_window.len();
@@ -201,15 +214,7 @@ impl Widget for &mut EventList {
         .skip(self.lines_cache.len())
       {
         tracing::debug!("Pushing new item to line cache");
-        self.lines_cache.push_back((
-          i,
-          evt.to_tui_line(
-            &self.baseline,
-            false,
-            &self.modifier_args,
-            self.env_in_cmdline,
-          ),
-        ));
+        self.lines_cache.push_back((i, evt.to_tui_line(self)));
       }
     }
     // tracing::debug!(
@@ -393,34 +398,68 @@ impl EventList {
 impl EventList {
   pub fn push(&mut self, event: impl Into<Arc<TracerEventDetails>>) {
     let event = event.into();
-    self.event_strings.push(
-      event
-        .to_tui_line(
-          &self.baseline,
-          false,
-          &self.modifier_args,
-          self.env_in_cmdline,
-        )
-        .to_string(),
-    );
-    self.events.push(event.clone());
+    let event = Event {
+      status: match event.as_ref() {
+        TracerEventDetails::NewChild { .. } => Some(EventStatus::ProcessRunning),
+        TracerEventDetails::Exec(exec) => {
+          match exec.result {
+            0 => Some(EventStatus::ProcessRunning),
+            -2 => Some(EventStatus::ExecENOENT), // ENOENT
+            _ => Some(EventStatus::ExecFailure),
+          }
+        }
+        _ => None,
+      },
+      details: event,
+    };
+    self
+      .event_strings
+      .push(event.to_tui_line(self).to_string());
+    self.events.push(event);
     self.incremental_search();
+  }
+
+  pub fn update(&mut self, update: ProcessStateUpdateEvent) {
+    for i in update.ids {
+      let i = i as usize;
+      self.events[i].status = match update.update {
+        ProcessStateUpdate::Exit(ProcessExit::Code(0)) => Some(EventStatus::ProcessExitedNormally),
+        ProcessStateUpdate::Exit(ProcessExit::Code(_)) => {
+          Some(EventStatus::ProcessExitedAbnormally)
+        }
+        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::SIGTERM)) => {
+          Some(EventStatus::ProcessTerminated)
+        }
+        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::SIGKILL)) => {
+          Some(EventStatus::ProcessKilled)
+        }
+        ProcessStateUpdate::Exit(ProcessExit::Signal(_)) => Some(EventStatus::ProcessSignaled),
+      };
+      self.event_strings[i] = self.events[i].to_tui_line(self).to_string();
+      trace!(
+        "window: {:?}, i: {}, cache: {}",
+        self.window,
+        i,
+        self.lines_cache.len()
+      );
+      if self.window.0 <= i && i < self.window.1 {
+        let j = i - self.window.0;
+        if j < self.lines_cache.len() {
+          self.lines_cache[j] = (i, self.events[i].to_tui_line(self));
+        } else {
+          // The line might not be in cache if the current window is not full and this event is a
+          // new one, which will be added to the cache later.
+        }
+        self.should_refresh_list_cache = true;
+      }
+    }
   }
 
   pub fn rebuild_event_strings(&mut self) {
     self.event_strings = self
       .events
       .iter()
-      .map(|evt| {
-        evt
-          .to_tui_line(
-            &self.baseline,
-            false,
-            &self.modifier_args,
-            self.env_in_cmdline,
-          )
-          .to_string()
-      })
+      .map(|evt| evt.to_tui_line(self).to_string())
       .collect();
   }
 }
@@ -506,15 +545,9 @@ impl EventList {
       self.window.1 += 1;
       self.lines_cache.pop_front();
       let last_index = self.last_item_in_window_absolute().unwrap();
-      self.lines_cache.push_back((
-        last_index,
-        self.events[last_index].to_tui_line(
-          &self.baseline,
-          false,
-          &self.modifier_args,
-          self.env_in_cmdline,
-        ),
-      ));
+      self
+        .lines_cache
+        .push_back((last_index, self.events[last_index].to_tui_line(self)));
       self.should_refresh_list_cache = true;
       true
     } else {
@@ -528,15 +561,9 @@ impl EventList {
       self.window.1 -= 1;
       self.lines_cache.pop_back();
       let front_index = self.window.0;
-      self.lines_cache.push_front((
-        front_index,
-        self.events[front_index].to_tui_line(
-          &self.baseline,
-          false,
-          &self.modifier_args,
-          self.env_in_cmdline,
-        ),
-      ));
+      self
+        .lines_cache
+        .push_front((front_index, self.events[front_index].to_tui_line(self)));
       self.should_refresh_list_cache = true;
       true
     } else {
@@ -696,15 +723,9 @@ impl EventList {
       // Special optimization for follow mode where scroll to bottom is called continuously
       self.lines_cache.pop_front();
       let last_index = self.last_item_in_window_absolute().unwrap();
-      self.lines_cache.push_back((
-        last_index,
-        self.events[last_index].to_tui_line(
-          &self.baseline,
-          false,
-          &self.modifier_args,
-          self.env_in_cmdline,
-        ),
-      ));
+      self
+        .lines_cache
+        .push_back((last_index, self.events[last_index].to_tui_line(self)));
       self.should_refresh_list_cache = true;
     } else {
       self.should_refresh_lines_cache = old_window != self.window;

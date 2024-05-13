@@ -100,6 +100,8 @@ impl PartialEq for TracerMode {
 }
 
 impl Tracer {
+  // TODO: create a TracerBuilder maybe
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     mode: TracerMode,
     tracing_args: LogModeArgs,

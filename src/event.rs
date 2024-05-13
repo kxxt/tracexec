@@ -104,7 +104,7 @@ pub struct ExecEvent {
 }
 
 macro_rules! tracer_event_spans {
-    ($pid: expr, $comm: expr, $result:expr, $($t:tt)*) => {
+    ($pid: expr, $comm: expr, $result:expr, $status:expr, $($t:tt)*) => {
         chain!([
             Some($pid.to_string().set_style(if $result == 0 {
               THEME.pid_success
@@ -113,6 +113,7 @@ macro_rules! tracer_event_spans {
             } else {
               THEME.pid_failure
             })),
+            $status.map(|s| <&'static str>::from(s).into()),
             Some(format!("<{}>", $comm).set_style(THEME.comm)),
             Some(": ".into()),
         ], [$($t)*])
@@ -120,7 +121,7 @@ macro_rules! tracer_event_spans {
 }
 
 macro_rules! tracer_exec_event_spans {
-  ($pid: expr, $comm: expr, $result:expr, $($t:tt)*) => {
+  ($pid: expr, $comm: expr, $result:expr, $status:expr, $($t:tt)*) => {
       chain!([
           Some($pid.to_string().set_style(if $result == 0 {
             THEME.pid_success
@@ -129,13 +130,7 @@ macro_rules! tracer_exec_event_spans {
           } else {
             THEME.pid_failure
           })),
-          Some(if $result == 0 {
-            THEME.status_process_running
-          } else if $result == (-nix::libc::ENOENT).into() {
-            THEME.status_exec_errno
-          } else {
-            THEME.status_exec_error
-          }.into()),
+          $status.map(|s| <&'static str>::from(s).into()),
           Some(format!("<{}>", $comm).set_style(THEME.comm)),
           Some(": ".into()),
       ], [$($t)*])
@@ -152,6 +147,7 @@ impl TracerEventDetails {
     cmdline_only: bool,
     modifier: &ModifierArgs,
     env_in_cmdline: bool,
+    event_status: Option<EventStatus>,
   ) -> Line<'static> {
     match self {
       TracerEventDetails::Info(TracerMessage { ref msg, pid }) => chain!(
@@ -183,6 +179,7 @@ impl TracerEventDetails {
           ppid,
           pcomm,
           0,
+          event_status,
           Some("new child ".set_style(THEME.tracer_event)),
           Some(pid.to_string().set_style(THEME.new_child_pid)),
         );
@@ -206,6 +203,7 @@ impl TracerEventDetails {
             pid,
             comm,
             *result,
+            event_status,
             Some("env".set_style(THEME.tracer_event)),
           )
           .flatten()
@@ -385,7 +383,7 @@ impl TracerEventDetails {
   ) -> Cow<'a, str> {
     if let CopyTarget::Line = target {
       return self
-        .to_tui_line(baseline, false, modifier_args, env_in_cmdline)
+        .to_tui_line(baseline, false, modifier_args, env_in_cmdline, None)
         .to_string()
         .into();
     }
@@ -396,13 +394,13 @@ impl TracerEventDetails {
     let mut modifier_args = ModifierArgs::default();
     match target {
       CopyTarget::Commandline(_) => self
-        .to_tui_line(baseline, true, &modifier_args, true)
+        .to_tui_line(baseline, true, &modifier_args, true, None)
         .to_string()
         .into(),
       CopyTarget::CommandlineWithStdio(_) => {
         modifier_args.stdio_in_cmdline = true;
         self
-          .to_tui_line(baseline, true, &modifier_args, true)
+          .to_tui_line(baseline, true, &modifier_args, true, None)
           .to_string()
           .into()
       }
@@ -410,7 +408,7 @@ impl TracerEventDetails {
         modifier_args.fd_in_cmdline = true;
         modifier_args.stdio_in_cmdline = true;
         self
-          .to_tui_line(baseline, true, &modifier_args, true)
+          .to_tui_line(baseline, true, &modifier_args, true, None)
           .to_string()
           .into()
       }
@@ -525,4 +523,34 @@ pub struct ProcessStateUpdateEvent {
   pub update: ProcessStateUpdate,
   pub pid: Pid,
   pub ids: Vec<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum EventStatus {
+  // exec status
+  ExecENOENT,
+  ExecFailure,
+  // process status
+  ProcessRunning,
+  ProcessExitedNormally,
+  ProcessExitedAbnormally,
+  // signaled
+  ProcessKilled,
+  ProcessTerminated,
+  ProcessSignaled,
+}
+
+impl From<EventStatus> for &'static str {
+  fn from(value: EventStatus) -> Self {
+    match value {
+      EventStatus::ExecENOENT => THEME.status_exec_enoent,
+      EventStatus::ExecFailure => THEME.status_exec_error,
+      EventStatus::ProcessRunning => THEME.status_process_running,
+      EventStatus::ProcessExitedNormally => THEME.status_process_exited_0,
+      EventStatus::ProcessExitedAbnormally => THEME.status_process_exited,
+      EventStatus::ProcessKilled => THEME.status_process_killed,
+      EventStatus::ProcessTerminated => THEME.status_process_terminated,
+      EventStatus::ProcessSignaled => THEME.status_process_signaled,
+    }
+  }
 }
