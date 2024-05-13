@@ -412,7 +412,6 @@ impl Tracer {
             | nix::libc::PTRACE_EVENT_CLONE => {
               let new_child = Pid::from_raw(ptrace::getevent(pid)? as pid_t);
               trace!("ptrace fork event, evt {evt}, pid: {pid}, child: {new_child}");
-              let mut event_id = None;
               if self.filter.intersects(TracerEventDetailsKind::NewChild) {
                 let store = self.store.read().unwrap();
                 let parent = store.get_current(pid).unwrap();
@@ -421,7 +420,6 @@ impl Tracer {
                   pcomm: parent.comm.clone(),
                   pid: new_child,
                 });
-                event_id = Some(event.id);
                 self.event_tx.send(event)?;
                 self.printer.print_new_child(parent, new_child)?;
               }
@@ -451,10 +449,6 @@ impl Tracer {
                   state.ppid = Some(pid);
                   store.insert(state);
                 }
-                store
-                  .get_current_mut(pid)
-                  .unwrap()
-                  .assoicate_event(event_id);
                 // Resume parent
                 self.seccomp_aware_cont(pid)?;
               }
