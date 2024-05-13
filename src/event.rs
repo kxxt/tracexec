@@ -547,18 +547,18 @@ pub enum EventStatus {
 impl From<EventStatus> for &'static str {
   fn from(value: EventStatus) -> Self {
     match value {
-      EventStatus::ExecENOENT => THEME.status_exec_enoent,
-      EventStatus::ExecFailure => THEME.status_exec_error,
-      EventStatus::ProcessRunning => THEME.status_process_running,
-      EventStatus::ProcessExitedNormally => THEME.status_process_exited_0,
-      EventStatus::ProcessExitedAbnormally => THEME.status_process_exited,
-      EventStatus::ProcessKilled => THEME.status_process_killed,
-      EventStatus::ProcessTerminated => THEME.status_process_terminated,
-      EventStatus::ProcessInterrupted => THEME.status_process_interrupted,
-      EventStatus::ProcessSegfault => THEME.status_process_segfault,
-      EventStatus::ProcessAborted => THEME.status_process_aborted,
-      EventStatus::ProcessIllegalInstruction => THEME.status_process_sigill,
-      EventStatus::ProcessSignaled => THEME.status_process_signaled,
+      EventStatus::ExecENOENT => THEME.status_indicator_exec_enoent,
+      EventStatus::ExecFailure => THEME.status_indicator_exec_error,
+      EventStatus::ProcessRunning => THEME.status_indicator_process_running,
+      EventStatus::ProcessExitedNormally => THEME.status_indicator_process_exited_normally,
+      EventStatus::ProcessExitedAbnormally => THEME.status_indicator_process_exited_abnormally,
+      EventStatus::ProcessKilled => THEME.status_indicator_process_killed,
+      EventStatus::ProcessTerminated => THEME.status_indicator_process_terminated,
+      EventStatus::ProcessInterrupted => THEME.status_indicator_process_interrupted,
+      EventStatus::ProcessSegfault => THEME.status_indicator_process_segfault,
+      EventStatus::ProcessAborted => THEME.status_indicator_process_aborted,
+      EventStatus::ProcessIllegalInstruction => THEME.status_indicator_process_sigill,
+      EventStatus::ProcessSignaled => THEME.status_indicator_process_signaled,
     }
   }
 }

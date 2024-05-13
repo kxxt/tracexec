@@ -70,18 +70,18 @@ pub struct Theme {
   // Tabs
   pub active_tab: Style,
   // Process/Exec Status
-  pub status_process_running: &'static str,
-  pub status_exec_enoent: &'static str,
-  pub status_exec_error: &'static str,
-  pub status_process_exited_0: &'static str,
-  pub status_process_exited: &'static str,
-  pub status_process_killed: &'static str,
-  pub status_process_terminated: &'static str,
-  pub status_process_interrupted: &'static str,
-  pub status_process_segfault: &'static str,
-  pub status_process_aborted: &'static str,
-  pub status_process_sigill: &'static str,
-  pub status_process_signaled: &'static str,
+  pub status_indicator_process_running: &'static str,
+  pub status_indicator_exec_enoent: &'static str,
+  pub status_indicator_exec_error: &'static str,
+  pub status_indicator_process_exited_normally: &'static str,
+  pub status_indicator_process_exited_abnormally: &'static str,
+  pub status_indicator_process_killed: &'static str,
+  pub status_indicator_process_terminated: &'static str,
+  pub status_indicator_process_interrupted: &'static str,
+  pub status_indicator_process_segfault: &'static str,
+  pub status_indicator_process_aborted: &'static str,
+  pub status_indicator_process_sigill: &'static str,
+  pub status_indicator_process_signaled: &'static str,
 }
 
 impl Default for Theme {
@@ -158,18 +158,18 @@ impl Default for Theme {
       // -- Tabs --
       active_tab: Style::default().white().on_magenta(),
       // -- Process/Exec Status --
-      status_process_running: "🟢",
-      status_exec_enoent: "⚠️",
-      status_exec_error: "❌",
-      status_process_exited_0: "😇",
-      status_process_exited: "😡",
-      status_process_killed: "😵",
-      status_process_terminated: "🤬",
-      status_process_interrupted: "🥺",
-      status_process_segfault: "💥",
-      status_process_aborted: "😱",
-      status_process_sigill: "👿",
-      status_process_signaled: "💀",
+      status_indicator_process_running: "🟢",
+      status_indicator_exec_enoent: "⚠️",
+      status_indicator_exec_error: "❌",
+      status_indicator_process_exited_normally: "😇",
+      status_indicator_process_exited_abnormally: "😡",
+      status_indicator_process_killed: "😵",
+      status_indicator_process_terminated: "🤬",
+      status_indicator_process_interrupted: "🥺",
+      status_indicator_process_segfault: "💥",
+      status_indicator_process_aborted: "😱",
+      status_indicator_process_sigill: "👿",
+      status_indicator_process_signaled: "💀",
     }
   }
 }
