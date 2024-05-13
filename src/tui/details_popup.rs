@@ -22,6 +22,7 @@ use tui_scrollview::{ScrollView, ScrollViewState};
 use crate::{event::TracerEventDetails, proc::BaselineInfo};
 
 use super::{
+  event_list::Event,
   help::{help_desc, help_key},
   theme::THEME,
 };
@@ -48,27 +49,32 @@ pub struct DetailsPopupState {
 }
 
 impl DetailsPopupState {
-  pub fn new(event: Arc<TracerEventDetails>, baseline: Arc<BaselineInfo>) -> Self {
+  pub fn new(event: &Event, baseline: Arc<BaselineInfo>) -> Self {
     let mut modifier_args = Default::default();
     let mut details = vec![(
-      if matches!(event.as_ref(), TracerEventDetails::Exec(_)) {
+      if matches!(event.details.as_ref(), TracerEventDetails::Exec(_)) {
         " Cmdline "
       } else {
         " Details "
       },
-      event.to_tui_line(&baseline, true, &modifier_args, true, None),
+      event
+        .details
+        .to_tui_line(&baseline, true, &modifier_args, true, None),
     )];
-    let event_cloned = event.clone();
     let (env, fdinfo, available_tabs) =
-      if let TracerEventDetails::Exec(exec) = event_cloned.as_ref() {
+      if let TracerEventDetails::Exec(exec) = event.details.as_ref() {
         details.extend([
           (" Cmdline with stdio ", {
             modifier_args.stdio_in_cmdline = true;
-            event.to_tui_line(&baseline, true, &modifier_args, true, None)
+            event
+              .details
+              .to_tui_line(&baseline, true, &modifier_args, true, None)
           }),
           (" Cmdline with file descriptors ", {
             modifier_args.fd_in_cmdline = true;
-            event.to_tui_line(&baseline, true, &modifier_args, true, None)
+            event
+              .details
+              .to_tui_line(&baseline, true, &modifier_args, true, None)
           }),
           (" Pid ", Line::from(exec.pid.to_string())),
           (" Result ", {

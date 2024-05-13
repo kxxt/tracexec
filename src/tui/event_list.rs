@@ -46,8 +46,8 @@ use super::{
 };
 
 pub struct Event {
-  details: Arc<TracerEventDetails>,
-  status: Option<EventStatus>,
+  pub details: Arc<TracerEventDetails>,
+  pub status: Option<EventStatus>,
 }
 
 impl Event {
@@ -144,10 +144,10 @@ impl EventList {
   }
 
   /// returns the selected item if there is any
-  pub fn selection(&self) -> Option<Arc<TracerEventDetails>> {
+  pub fn selection(&self) -> Option<&Event> {
     self
       .selection_index()
-      .map(|i| self.events[i].details.clone())
+      .map(|i| &self.events[i])
   }
 
   /// Reset the window and force clear the line cache

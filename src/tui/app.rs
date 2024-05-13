@@ -316,7 +316,7 @@ impl App {
                     if ke.modifiers == KeyModifiers::NONE && self.clipboard.is_some() =>
                   {
                     if let Some(selected) = self.event_list.selection() {
-                      action_tx.send(Action::ShowCopyDialog(selected))?;
+                      action_tx.send(Action::ShowCopyDialog(selected.details.clone()))?;
                     }
                   }
                   KeyCode::Char('l') if ke.modifiers == KeyModifiers::ALT => {
