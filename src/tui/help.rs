@@ -1,8 +1,11 @@
 use ratatui::{
   layout::Rect,
+  style::Stylize,
   text::{Line, Text},
   widgets::{Paragraph, Wrap},
 };
+
+use crate::event::EventStatus;
 
 use super::{sized_paragraph::SizedParagraph, theme::THEME};
 
@@ -53,7 +56,8 @@ pub(crate) use help_item;
 
 pub fn help<'a>(area: Rect) -> SizedParagraph<'a> {
   let line1 = Line::default().spans(vec![
-      "Welcome to tracexec! The TUI consists of at most two panes: the event list and optionally the pseudo terminal if ".into(),
+      "W".bold().black(),
+      "elcome to tracexec! The TUI consists of at most two panes: the event list and optionally the pseudo terminal if ".into(),
       cli_flag("--tty/-t"),
       " is enabled. The event list displays the events emitted by the tracer. \
        The active pane's border is highlighted in cyan. \
@@ -66,7 +70,8 @@ pub fn help<'a>(area: Rect) -> SizedParagraph<'a> {
       " when event list is active. The keybinding list at the bottom of the screen shows the available keys for currently active pane or popup.".into(),
     ]);
   let line2 = Line::default().spans(vec![
-    "You can navigate the event list using the arrow keys or ".into(),
+    "Y".bold().black(),
+    "ou can navigate the event list using the arrow keys or ".into(),
     help_key("H/J/K/L"),
     ". To scroll faster, use ".into(),
     help_key("Ctrl+↑/↓/←/→/H/J/K/L"),
@@ -91,17 +96,64 @@ pub fn help<'a>(area: Rect) -> SizedParagraph<'a> {
     " while the event list is active.".into(),
   ]);
   let line3 = Line::default().spans(vec![
-    "When the pseudo terminal is active, you can interact with the terminal using the keyboard.",
+    "W".bold(),
+    "hen the pseudo terminal is active, you can interact with the terminal using the keyboard."
+      .into(),
   ]);
-  let line4 = Line::default()
+  let line4 =
+    Line::default().spans(vec![
+    "E".bold().black(),
+    "ach exec event in the event list consists of four parts, the pid, the status of the process,\
+    the comm of the process (before exec), and the commandline to reproduce the exec event. \
+    The status can be one of the following: "
+      .into(),
+    help_key(<&str>::from(EventStatus::ExecENOENT)),
+    help_desc("Exec failed (ENOENT)"),
+    ", ".into(),
+    help_key(<&str>::from(EventStatus::ExecFailure)),
+    help_desc("Exec failed"),
+    ", ".into(),
+    help_key(<&str>::from(EventStatus::ProcessRunning)),
+    help_desc("Running"),
+    ", ".into(),
+    help_key(<&str>::from(EventStatus::ProcessExitedNormally)),
+    help_desc("Exited normally"),
+    ", ".into(),
+    help_key(<&str>::from(EventStatus::ProcessExitedAbnormally(1))),
+    help_desc("Exited abnormally"),
+    ", ".into(),
+    help_key(<&str>::from(EventStatus::ProcessTerminated)),
+    help_desc("Terminated"),
+    ", ".into(),
+    help_key(<&str>::from(EventStatus::ProcessKilled)),
+    help_desc("Killed"),
+    ", ".into(),
+    help_key(<&str>::from(EventStatus::ProcessSegfault)),
+    help_desc("Segfault"),
+    ", ".into(),
+    help_key(<&str>::from(EventStatus::ProcessInterrupted)),
+    help_desc("Interrupted"),
+    ", ".into(),
+    help_key(<&str>::from(EventStatus::ProcessIllegalInstruction)),
+    help_desc("Illegal instruction"),
+    ", ".into(),
+    help_key(<&str>::from(EventStatus::ProcessAborted)),
+    help_desc("Aborted"),
+    ", ".into(),
+    help_key(<&str>::from(EventStatus::ProcessSignaled(nix::sys::signal::Signal::SIGURG))),
+    help_desc("Signaled"),
+  ]);
+
+  let line5 = Line::default()
     .spans(vec![
-      "Press ".into(),
+      "P".bold().black(),
+      "ress ".into(),
       help_key("Any Key"),
       " to close this help popup.".into(),
     ])
     .centered();
   let paragraph =
-    Paragraph::new(Text::from_iter([line1, line2, line3, line4])).wrap(Wrap { trim: false });
+    Paragraph::new(Text::from_iter([line1, line2, line3, line4, line5])).wrap(Wrap { trim: false });
   let perhaps_a_suitable_width = area.width.saturating_sub(6) as usize;
   SizedParagraph::new(paragraph, perhaps_a_suitable_width)
 }
