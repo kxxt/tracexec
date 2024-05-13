@@ -81,7 +81,7 @@ impl DetailsPopupState {
             .to_tui_line(&baseline, true, &modifier_args, true, None)
         }),
         (" Pid ", Line::from(exec.pid.to_string())),
-        (" Result ", {
+        (" Syscall Result ", {
           if exec.result == 0 {
             "0 (Success)".set_style(THEME.exec_result_success).into()
           } else {
@@ -127,7 +127,7 @@ impl DetailsPopupState {
           " Cwd ",
           Span::from(exec.cwd.to_string_lossy().to_string()).into(),
         ),
-        (" Comm ", exec.comm.to_string().into()),
+        (" Comm (Before exec) ", exec.comm.to_string().into()),
         (
           " Filename ",
           Span::from(TracerEventDetails::filename_to_cow(&exec.filename).into_owned()).into(),
