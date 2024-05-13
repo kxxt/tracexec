@@ -77,6 +77,7 @@ pub struct Theme {
   pub status_process_exited: &'static str,
   pub status_process_killed: &'static str,
   pub status_process_terminated: &'static str,
+  pub status_process_interrupted: &'static str,
   pub status_process_signaled: &'static str,
 }
 
@@ -161,6 +162,7 @@ impl Default for Theme {
       status_process_exited: "😡",
       status_process_killed: "😵",
       status_process_terminated: "🤬",
+      status_process_interrupted: "🥺",
       status_process_signaled: "💀",
     }
   }

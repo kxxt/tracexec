@@ -437,6 +437,9 @@ impl EventList {
         ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::SIGKILL)) => {
           Some(EventStatus::ProcessKilled)
         }
+        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::SIGINT)) => {
+          Some(EventStatus::ProcessInterrupted)
+        }
         ProcessStateUpdate::Exit(ProcessExit::Signal(_)) => Some(EventStatus::ProcessSignaled),
       };
       self.event_strings[i] = self.events[i].to_tui_line(self).to_string();

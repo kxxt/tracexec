@@ -537,6 +537,7 @@ pub enum EventStatus {
   // signaled
   ProcessKilled,
   ProcessTerminated,
+  ProcessInterrupted,
   ProcessSignaled,
 }
 
@@ -550,6 +551,7 @@ impl From<EventStatus> for &'static str {
       EventStatus::ProcessExitedAbnormally => THEME.status_process_exited,
       EventStatus::ProcessKilled => THEME.status_process_killed,
       EventStatus::ProcessTerminated => THEME.status_process_terminated,
+      EventStatus::ProcessInterrupted => THEME.status_process_interrupted,
       EventStatus::ProcessSignaled => THEME.status_process_signaled,
     }
   }
