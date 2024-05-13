@@ -1,6 +1,7 @@
 use std::{
   borrow::Cow,
   ffi::OsStr,
+  fmt::Display,
   io::Write,
   path::PathBuf,
   sync::{atomic::AtomicU64, Arc},
@@ -560,5 +561,30 @@ impl From<EventStatus> for &'static str {
       EventStatus::ProcessIllegalInstruction => THEME.status_indicator_process_sigill,
       EventStatus::ProcessSignaled(_) => THEME.status_indicator_process_signaled,
     }
+  }
+}
+
+impl Display for EventStatus {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    let icon: &str = <&'static str>::from(*self);
+    write!(f, "{} ", icon)?;
+    use EventStatus::*;
+    match self {
+      ExecENOENT | ExecFailure => write!(
+        f,
+        "Exec failed. Further process state is not available for this event."
+      )?,
+      ProcessRunning => write!(f, "Running")?,
+      ProcessTerminated => write!(f, "Terminated")?,
+      ProcessAborted => write!(f, "Aborted")?,
+      ProcessSegfault => write!(f, "Segmentation fault")?,
+      ProcessIllegalInstruction => write!(f, "Illegal instruction")?,
+      ProcessKilled => write!(f, "Killed")?,
+      ProcessInterrupted => write!(f, "Interrupted")?,
+      ProcessExitedNormally => write!(f, "Exited(0)")?,
+      ProcessExitedAbnormally(code) => write!(f, "Exited({})", code)?,
+      ProcessSignaled(signal) => write!(f, "Signaled({})", signal)?,
+    }
+    Ok(())
   }
 }

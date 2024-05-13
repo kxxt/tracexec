@@ -91,36 +91,35 @@ impl DetailsPopupState {
           }
         }),
         (" Process Status ", {
+          let formatted = event.status.unwrap().to_string();
           match event.status.unwrap() {
             EventStatus::ExecENOENT | EventStatus::ExecFailure => {
-              "Exec failed. Further process state is not available for this event."
-                .set_style(THEME.status_exec_error)
-                .into()
+              formatted.set_style(THEME.status_exec_error).into()
             }
-            EventStatus::ProcessRunning => "Running".set_style(THEME.status_process_running).into(),
-            EventStatus::ProcessTerminated => "Terminated"
-              .set_style(THEME.status_process_terminated)
-              .into(),
-            EventStatus::ProcessAborted => "Aborted".set_style(THEME.status_process_aborted).into(),
-            EventStatus::ProcessKilled => "Killed".set_style(THEME.status_process_killed).into(),
-            EventStatus::ProcessInterrupted => "Interrupted"
-              .set_style(THEME.status_process_interrupted)
-              .into(),
-            EventStatus::ProcessSegfault => "Segmentation Fault"
-              .set_style(THEME.status_process_segfault)
-              .into(),
-            EventStatus::ProcessIllegalInstruction => "Illegal Instruction"
-              .set_style(THEME.status_process_sigill)
-              .into(),
-            EventStatus::ProcessExitedNormally => "Exited(0)"
+            EventStatus::ProcessRunning => formatted.set_style(THEME.status_process_running).into(),
+            EventStatus::ProcessTerminated => {
+              formatted.set_style(THEME.status_process_terminated).into()
+            }
+            EventStatus::ProcessAborted => formatted.set_style(THEME.status_process_aborted).into(),
+            EventStatus::ProcessKilled => formatted.set_style(THEME.status_process_killed).into(),
+            EventStatus::ProcessInterrupted => {
+              formatted.set_style(THEME.status_process_interrupted).into()
+            }
+            EventStatus::ProcessSegfault => {
+              formatted.set_style(THEME.status_process_segfault).into()
+            }
+            EventStatus::ProcessIllegalInstruction => {
+              formatted.set_style(THEME.status_process_sigill).into()
+            }
+            EventStatus::ProcessExitedNormally => formatted
               .set_style(THEME.status_process_exited_normally)
               .into(),
-            EventStatus::ProcessExitedAbnormally(code) => format!("Exited({code})")
+            EventStatus::ProcessExitedAbnormally(_) => formatted
               .set_style(THEME.status_process_exited_abnormally)
               .into(),
-            EventStatus::ProcessSignaled(sig) => format!("Signaled({})", sig)
-              .set_style(THEME.status_process_signaled)
-              .into(),
+            EventStatus::ProcessSignaled(_) => {
+              formatted.set_style(THEME.status_process_signaled).into()
+            }
           }
         }),
         (
