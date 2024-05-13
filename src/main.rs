@@ -55,7 +55,7 @@ async fn main() -> color_eyre::Result<()> {
   }
   initialize_panic_handler();
   log::initialize_logging()?;
-  log::trace!("Commandline args: {:?}", cli);
+  log::debug!("Commandline args: {:?}", cli);
   if let Some(cwd) = cli.cwd {
     std::env::set_current_dir(cwd)?;
   }

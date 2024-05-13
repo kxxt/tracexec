@@ -227,7 +227,7 @@ impl CommandBuilder {
       cwd.as_os_str()
     };
     let resolved = self.search_path(&self.args[0], dir)?;
-    tracing::info!("resolved path to {:?}", resolved);
+    tracing::trace!("resolved path to {:?}", resolved);
     let mut cmd = std::process::Command::new(&resolved);
     cmd.arg0(&self.args[0]);
     cmd.args(&self.args[1..]);
