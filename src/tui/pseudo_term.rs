@@ -137,7 +137,7 @@ impl PseudoTerminalPane {
             '5' | ']' => send = vec![29],
             '6' | '^' => send = vec![30],
             '7' | '-' | '_' => send = vec![31],
-            char if 'A' <= char && char <= '_' => {
+            char if ('A'..='_').contains(&char) => {
               // Since A == 65,
               // we can safely subtract 64 to get
               // the corresponding control character
