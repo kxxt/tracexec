@@ -36,6 +36,7 @@ pub enum Event {
   ShouldQuit,
   Key(KeyEvent),
   Tracer(TracerEvent),
+  ProcessStateUpdate(ProcessStateUpdateEvent),
   Render,
   Resize(Size),
   Init,
@@ -514,3 +515,14 @@ macro_rules! filterable_event {
 
 pub(crate) use filterable_event;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ProcessStateUpdate {
+  Exit(ProcessExit),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProcessStateUpdateEvent {
+  pub update: ProcessStateUpdate,
+  pub pid: Pid,
+  pub ids: Vec<u64>,
+}

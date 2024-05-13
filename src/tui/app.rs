@@ -361,6 +361,10 @@ impl App {
             }
             // action_tx.send(Action::Render)?;
           }
+          Event::ProcessStateUpdate(update) => {
+            debug!("Received process state update: {update:?}");
+            // action_tx.send(Action::Render)?;
+          }
           Event::Render => {
             action_tx.send(Action::Render)?;
           }
