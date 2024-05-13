@@ -56,167 +56,171 @@ impl DetailsPopupState {
       } else {
         " Details "
       },
-      event.to_tui_line(&baseline, true, &modifier_args, true),
+      event.to_tui_line(&baseline, true, &modifier_args, true, None),
     )];
     let event_cloned = event.clone();
-    let (env, fdinfo, available_tabs) = if let TracerEventDetails::Exec(exec) = event_cloned.as_ref() {
-      details.extend([
-        (" Cmdline with stdio ", {
-          modifier_args.stdio_in_cmdline = true;
-          event.to_tui_line(&baseline, true, &modifier_args, true)
-        }),
-        (" Cmdline with file descriptors ", {
-          modifier_args.fd_in_cmdline = true;
-          event.to_tui_line(&baseline, true, &modifier_args, true)
-        }),
-        (" Pid ", Line::from(exec.pid.to_string())),
-        (" Result ", {
-          if exec.result == 0 {
-            "0 (Success)".set_style(THEME.exec_result_success).into()
-          } else {
-            format!("{} ({})", exec.result, Errno::from_raw(-exec.result as i32))
-              .set_style(THEME.exec_result_failure)
-              .into()
-          }
-        }),
-        (
-          " Cwd ",
-          Span::from(exec.cwd.to_string_lossy().to_string()).into(),
-        ),
-        (" Comm ", exec.comm.to_string().into()),
-        (
-          " Filename ",
-          Span::from(TracerEventDetails::filename_to_cow(&exec.filename).into_owned()).into(),
-        ),
-        (" Argv ", TracerEventDetails::argv_to_string(&exec.argv).into()),
-        (
-          " Interpreters ",
-          TracerEventDetails::interpreters_to_string(&exec.interpreter).into(),
-        ),
-        (
-          " Stdin ",
-          if let Some(stdin) = exec.fdinfo.stdin() {
-            stdin.path.display().to_string().into()
-          } else {
-            "Closed".set_style(THEME.fd_closed).into()
-          },
-        ),
-        (
-          " Stdout ",
-          if let Some(stdout) = exec.fdinfo.stdout() {
-            stdout.path.display().to_string().into()
-          } else {
-            "Closed".set_style(THEME.fd_closed).into()
-          },
-        ),
-        (
-          " Stderr ",
-          if let Some(stderr) = exec.fdinfo.stderr() {
-            stderr.path.display().to_string().into()
-          } else {
-            "Closed".set_style(THEME.fd_closed).into()
-          },
-        ),
-      ]);
-      let env = match exec.env_diff.as_ref() {
-        Ok(env_diff) => {
-          let mut env = env_diff
-            .added
-            .iter()
-            .map(|(key, value)| {
-              let spans = vec![
-                "+".set_style(THEME.plus_sign),
-                key.to_string().set_style(THEME.added_env_key),
-                "=".set_style(THEME.equal_sign),
-                value.to_string().set_style(THEME.added_env_val),
-              ];
-              Line::default().spans(spans)
-            })
-            .collect_vec();
-          env.extend(
-            env_diff
-              .removed
+    let (env, fdinfo, available_tabs) =
+      if let TracerEventDetails::Exec(exec) = event_cloned.as_ref() {
+        details.extend([
+          (" Cmdline with stdio ", {
+            modifier_args.stdio_in_cmdline = true;
+            event.to_tui_line(&baseline, true, &modifier_args, true, None)
+          }),
+          (" Cmdline with file descriptors ", {
+            modifier_args.fd_in_cmdline = true;
+            event.to_tui_line(&baseline, true, &modifier_args, true, None)
+          }),
+          (" Pid ", Line::from(exec.pid.to_string())),
+          (" Result ", {
+            if exec.result == 0 {
+              "0 (Success)".set_style(THEME.exec_result_success).into()
+            } else {
+              format!("{} ({})", exec.result, Errno::from_raw(-exec.result as i32))
+                .set_style(THEME.exec_result_failure)
+                .into()
+            }
+          }),
+          (
+            " Cwd ",
+            Span::from(exec.cwd.to_string_lossy().to_string()).into(),
+          ),
+          (" Comm ", exec.comm.to_string().into()),
+          (
+            " Filename ",
+            Span::from(TracerEventDetails::filename_to_cow(&exec.filename).into_owned()).into(),
+          ),
+          (
+            " Argv ",
+            TracerEventDetails::argv_to_string(&exec.argv).into(),
+          ),
+          (
+            " Interpreters ",
+            TracerEventDetails::interpreters_to_string(&exec.interpreter).into(),
+          ),
+          (
+            " Stdin ",
+            if let Some(stdin) = exec.fdinfo.stdin() {
+              stdin.path.display().to_string().into()
+            } else {
+              "Closed".set_style(THEME.fd_closed).into()
+            },
+          ),
+          (
+            " Stdout ",
+            if let Some(stdout) = exec.fdinfo.stdout() {
+              stdout.path.display().to_string().into()
+            } else {
+              "Closed".set_style(THEME.fd_closed).into()
+            },
+          ),
+          (
+            " Stderr ",
+            if let Some(stderr) = exec.fdinfo.stderr() {
+              stderr.path.display().to_string().into()
+            } else {
+              "Closed".set_style(THEME.fd_closed).into()
+            },
+          ),
+        ]);
+        let env = match exec.env_diff.as_ref() {
+          Ok(env_diff) => {
+            let mut env = env_diff
+              .added
               .iter()
-              .map(|key| {
-                let value = baseline.env.get(key).unwrap();
+              .map(|(key, value)| {
                 let spans = vec![
-                  "-".set_style(THEME.minus_sign),
-                  key.to_string().set_style(THEME.removed_env_key),
-                  "=".set_style(THEME.equal_sign),
-                  value.to_string().set_style(THEME.removed_env_val),
-                ];
-                Line::default().spans(spans)
-              })
-              .collect_vec(),
-          );
-          env.extend(
-            env_diff
-              .modified
-              .iter()
-              .flat_map(|(key, new)| {
-                let old = baseline.env.get(key).unwrap();
-                let spans_old = vec![
-                  "-".set_style(THEME.minus_sign),
-                  key.to_string().set_style(THEME.removed_env_key),
-                  "=".set_style(THEME.equal_sign),
-                  old.to_string().set_style(THEME.removed_env_val),
-                ];
-                let spans_new = vec![
                   "+".set_style(THEME.plus_sign),
                   key.to_string().set_style(THEME.added_env_key),
                   "=".set_style(THEME.equal_sign),
-                  new.to_string().set_style(THEME.added_env_val),
-                ];
-                vec![
-                  Line::default().spans(spans_old),
-                  Line::default().spans(spans_new),
-                ]
-              })
-              .collect_vec(),
-          );
-          env.extend(
-            // Unchanged env
-            baseline
-              .env
-              .iter()
-              .filter(|(key, _)| !env_diff.is_modified_or_removed(key))
-              .map(|(key, value)| {
-                let spans = vec![
-                  " ".into(),
-                  key.to_string().set_style(THEME.unchanged_env_key),
-                  "=".set_style(THEME.equal_sign),
-                  value.to_string().set_style(THEME.unchanged_env_val),
+                  value.to_string().set_style(THEME.added_env_val),
                 ];
                 Line::default().spans(spans)
-              }),
+              })
+              .collect_vec();
+            env.extend(
+              env_diff
+                .removed
+                .iter()
+                .map(|key| {
+                  let value = baseline.env.get(key).unwrap();
+                  let spans = vec![
+                    "-".set_style(THEME.minus_sign),
+                    key.to_string().set_style(THEME.removed_env_key),
+                    "=".set_style(THEME.equal_sign),
+                    value.to_string().set_style(THEME.removed_env_val),
+                  ];
+                  Line::default().spans(spans)
+                })
+                .collect_vec(),
+            );
+            env.extend(
+              env_diff
+                .modified
+                .iter()
+                .flat_map(|(key, new)| {
+                  let old = baseline.env.get(key).unwrap();
+                  let spans_old = vec![
+                    "-".set_style(THEME.minus_sign),
+                    key.to_string().set_style(THEME.removed_env_key),
+                    "=".set_style(THEME.equal_sign),
+                    old.to_string().set_style(THEME.removed_env_val),
+                  ];
+                  let spans_new = vec![
+                    "+".set_style(THEME.plus_sign),
+                    key.to_string().set_style(THEME.added_env_key),
+                    "=".set_style(THEME.equal_sign),
+                    new.to_string().set_style(THEME.added_env_val),
+                  ];
+                  vec![
+                    Line::default().spans(spans_old),
+                    Line::default().spans(spans_new),
+                  ]
+                })
+                .collect_vec(),
+            );
+            env.extend(
+              // Unchanged env
+              baseline
+                .env
+                .iter()
+                .filter(|(key, _)| !env_diff.is_modified_or_removed(key))
+                .map(|(key, value)| {
+                  let spans = vec![
+                    " ".into(),
+                    key.to_string().set_style(THEME.unchanged_env_key),
+                    "=".set_style(THEME.equal_sign),
+                    value.to_string().set_style(THEME.unchanged_env_val),
+                  ];
+                  Line::default().spans(spans)
+                }),
+            );
+            env
+          }
+          Err(e) => {
+            vec![Line::from(format!("Failed to read envp: {}", e))]
+          }
+        };
+        let mut fdinfo = vec![];
+        for (&fd, info) in exec.fdinfo.fdinfo.iter() {
+          fdinfo.push(
+            vec![
+              " File Descriptor ".set_style(THEME.fd_label),
+              format!(" {} ", fd).set_style(THEME.fd_number_label),
+            ]
+            .into(),
           );
-          env
-        }
-        Err(e) => {
-          vec![Line::from(format!("Failed to read envp: {}", e))]
-        }
-      };
-      let mut fdinfo = vec![];
-      for (&fd, info) in exec.fdinfo.fdinfo.iter() {
-        fdinfo.push(
-          vec![
-            " File Descriptor ".set_style(THEME.fd_label),
-            format!(" {} ", fd).set_style(THEME.fd_number_label),
-          ]
-          .into(),
-        );
-        // Path
-        fdinfo.push(
-          vec![
-            "Path".set_style(THEME.sublabel),
-            ": ".into(),
-            info.path.display().to_string().into(),
-          ]
-          .into(),
-        );
-        // Flags
-        let flags = info.flags.iter().map(|f| {
-          let style = match f {
+          // Path
+          fdinfo.push(
+            vec![
+              "Path".set_style(THEME.sublabel),
+              ": ".into(),
+              info.path.display().to_string().into(),
+            ]
+            .into(),
+          );
+          // Flags
+          let flags = info.flags.iter().map(|f| {
+            let style = match f {
             OFlag::O_CLOEXEC => THEME.open_flag_cloexec, // Close on exec
             OFlag::O_RDONLY | OFlag::O_WRONLY | OFlag::O_RDWR => {
               THEME.open_flag_access_mode // Access Mode
@@ -243,66 +247,66 @@ impl DetailsPopupState {
             }
             _ => THEME.open_flag_other, // Other flags
           };
-          let mut flag_display = String::new();
-          bitflags::parser::to_writer(&f, &mut flag_display).unwrap();
-          flag_display.push(' ');
-          flag_display.set_style(style)
-        });
-        fdinfo.push(
-          chain!(["Flags".set_style(THEME.sublabel), ": ".into()], flags)
-            .collect_vec()
-            .into(),
-        );
-        // Mount Info
-        fdinfo.push(
-          vec![
-            "Mount Info".set_style(THEME.sublabel),
-            ": ".into(),
-            info.mnt_id.to_string().into(),
-            " (".set_style(THEME.visual_separator),
-            info.mnt.clone().into(),
-            ")".set_style(THEME.visual_separator),
-          ]
-          .into(),
-        );
-        // Pos
-        fdinfo.push(
-          vec![
-            "Position".set_style(THEME.sublabel),
-            ": ".into(),
-            info.pos.to_string().into(),
-          ]
-          .into(),
-        );
-        // ino
-        fdinfo.push(
-          vec![
-            "Inode Number".set_style(THEME.sublabel),
-            ": ".into(),
-            info.ino.to_string().into(),
-          ]
-          .into(),
-        );
-        // extra
-        if !info.extra.is_empty() {
-          fdinfo.push("Extra Information:".set_style(THEME.sublabel).into());
-          fdinfo.extend(
-            info
-              .extra
-              .iter()
-              .map(|l| vec!["•".set_style(THEME.visual_separator), l.clone().into()].into()),
+            let mut flag_display = String::new();
+            bitflags::parser::to_writer(&f, &mut flag_display).unwrap();
+            flag_display.push(' ');
+            flag_display.set_style(style)
+          });
+          fdinfo.push(
+            chain!(["Flags".set_style(THEME.sublabel), ": ".into()], flags)
+              .collect_vec()
+              .into(),
           );
+          // Mount Info
+          fdinfo.push(
+            vec![
+              "Mount Info".set_style(THEME.sublabel),
+              ": ".into(),
+              info.mnt_id.to_string().into(),
+              " (".set_style(THEME.visual_separator),
+              info.mnt.clone().into(),
+              ")".set_style(THEME.visual_separator),
+            ]
+            .into(),
+          );
+          // Pos
+          fdinfo.push(
+            vec![
+              "Position".set_style(THEME.sublabel),
+              ": ".into(),
+              info.pos.to_string().into(),
+            ]
+            .into(),
+          );
+          // ino
+          fdinfo.push(
+            vec![
+              "Inode Number".set_style(THEME.sublabel),
+              ": ".into(),
+              info.ino.to_string().into(),
+            ]
+            .into(),
+          );
+          // extra
+          if !info.extra.is_empty() {
+            fdinfo.push("Extra Information:".set_style(THEME.sublabel).into());
+            fdinfo.extend(
+              info
+                .extra
+                .iter()
+                .map(|l| vec!["•".set_style(THEME.visual_separator), l.clone().into()].into()),
+            );
+          }
         }
-      }
 
-      (
-        Some(env),
-        Some(fdinfo),
-        vec!["Info", "Environment", "FdInfo"],
-      )
-    } else {
-      (None, None, vec!["Info"])
-    };
+        (
+          Some(env),
+          Some(fdinfo),
+          vec!["Info", "Environment", "FdInfo"],
+        )
+      } else {
+        (None, None, vec!["Info"])
+      };
     Self {
       details,
       fdinfo,
