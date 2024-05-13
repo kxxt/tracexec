@@ -7,7 +7,7 @@ use tracing_test::traced_test;
 
 use crate::{
   cli::args::{LogModeArgs, ModifierArgs, TracerEventArgs},
-  event::{TracerEvent, TracerEventDetails},
+  event::{ProcessStateUpdateEvent, TracerEvent, TracerEventDetails},
   proc::{BaselineInfo, Interpreter},
   tracer::Tracer,
 };
@@ -17,14 +17,19 @@ use super::TracerMode;
 #[fixture]
 fn tracer(
   #[default(Default::default())] modifier_args: ModifierArgs,
-) -> (Arc<Tracer>, UnboundedReceiver<TracerEvent>) {
+) -> (
+  Arc<Tracer>,
+  UnboundedReceiver<TracerEvent>,
+  UnboundedReceiver<ProcessStateUpdateEvent>,
+) {
   let tracer_mod = TracerMode::Log;
   let tracing_args = LogModeArgs::default();
   let tracer_event_args = TracerEventArgs {
     show_all_events: true,
     ..Default::default()
   };
-  let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+  let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+  let (process_tx, process_rx) = tokio::sync::mpsc::unbounded_channel();
   let baseline = BaselineInfo::new().unwrap();
 
   (
@@ -35,12 +40,14 @@ fn tracer(
         modifier_args,
         tracer_event_args,
         baseline,
-        tx,
+        event_tx,
+        process_tx,
         None,
       )
       .unwrap(),
     ),
-    rx,
+    event_rx,
+    process_rx,
   )
 }
 
@@ -73,14 +80,18 @@ async fn tracer_decodes_proc_self_exe(
     resolve_proc_self_exe,
     ..Default::default()
   })]
-  tracer: (Arc<Tracer>, UnboundedReceiver<TracerEvent>),
+  tracer: (
+    Arc<Tracer>,
+    UnboundedReceiver<TracerEvent>,
+    UnboundedReceiver<ProcessStateUpdateEvent>,
+  ),
 ) {
   // Note that /proc/self/exe is the test driver binary, not tracexec
   info!(
     "tracer_decodes_proc_self_exe test: resolve_proc_self_exe={}",
     resolve_proc_self_exe
   );
-  let (tracer, rx) = tracer;
+  let (tracer, rx, _) = tracer;
   let events = run_exe_and_collect_events(
     tracer,
     rx,
@@ -107,9 +118,15 @@ async fn tracer_decodes_proc_self_exe(
 #[traced_test]
 #[rstest]
 #[tokio::test]
-async fn tracer_emits_exec_event(tracer: (Arc<Tracer>, UnboundedReceiver<TracerEvent>)) {
+async fn tracer_emits_exec_event(
+  tracer: (
+    Arc<Tracer>,
+    UnboundedReceiver<TracerEvent>,
+    UnboundedReceiver<ProcessStateUpdateEvent>,
+  ),
+) {
   // TODO: don't assume FHS
-  let (tracer, rx) = tracer;
+  let (tracer, rx, _) = tracer;
   let events = run_exe_and_collect_events(tracer, rx, vec!["/bin/true".to_string()]).await;
   for event in events {
     if let TracerEventDetails::Exec(exec) = event.details {

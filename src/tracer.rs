@@ -33,8 +33,8 @@ use crate::{
   cli::args::{LogModeArgs, ModifierArgs, TracerEventArgs},
   cmdbuilder::CommandBuilder,
   event::{
-    filterable_event, ExecEvent, TracerEvent, TracerEventDetails, TracerEventDetailsKind,
-    TracerMessage,
+    filterable_event, ExecEvent, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEvent,
+    TracerEventDetails, TracerEventDetailsKind, TracerMessage,
   },
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{
@@ -79,6 +79,7 @@ pub struct Tracer {
   #[cfg(feature = "seccomp-bpf")]
   seccomp_bpf: SeccompBpf,
   event_tx: UnboundedSender<TracerEvent>,
+  process_tx: UnboundedSender<ProcessStateUpdateEvent>,
   user: Option<User>,
 }
 
@@ -106,6 +107,7 @@ impl Tracer {
     tracer_event_args: TracerEventArgs,
     baseline: BaselineInfo,
     event_tx: UnboundedSender<TracerEvent>,
+    process_tx: UnboundedSender<ProcessStateUpdateEvent>,
     user: Option<User>,
   ) -> color_eyre::Result<Self> {
     let baseline = Arc::new(baseline);
@@ -130,6 +132,7 @@ impl Tracer {
         modifier_args.seccomp_bpf
       },
       event_tx,
+      process_tx,
       user,
       filter: {
         let mut filter = tracer_event_args.filter()?;
@@ -383,6 +386,21 @@ impl Tracer {
             .send_if_match(&self.event_tx, self.filter)?;
             return Ok(());
           }
+          let associated_events = self
+            .store
+            .read()
+            .unwrap()
+            .get_current(pid)
+            .unwrap()
+            .associated_events
+            .clone();
+          if !associated_events.is_empty() {
+            self.process_tx.send(ProcessStateUpdateEvent {
+              update: ProcessStateUpdate::Exit(ProcessExit::Code(code)),
+              pid,
+              ids: associated_events,
+            })?;
+          }
         }
         WaitStatus::PtraceEvent(pid, sig, evt) => {
           trace!("ptrace event: {:?} {:?}", sig, evt);
@@ -392,17 +410,17 @@ impl Tracer {
             | nix::libc::PTRACE_EVENT_CLONE => {
               let new_child = Pid::from_raw(ptrace::getevent(pid)? as pid_t);
               trace!("ptrace fork event, evt {evt}, pid: {pid}, child: {new_child}");
+              let mut event_id = None;
               if self.filter.intersects(TracerEventDetailsKind::NewChild) {
                 let store = self.store.read().unwrap();
                 let parent = store.get_current(pid).unwrap();
-                self.event_tx.send(
-                  TracerEventDetails::NewChild {
-                    ppid: parent.pid,
-                    pcomm: parent.comm.clone(),
-                    pid: new_child,
-                  }
-                  .into(),
-                )?;
+                let event = TracerEvent::from(TracerEventDetails::NewChild {
+                  ppid: parent.pid,
+                  pcomm: parent.comm.clone(),
+                  pid: new_child,
+                });
+                event_id = Some(event.id);
+                self.event_tx.send(event)?;
                 self.printer.print_new_child(parent, new_child)?;
               }
               {
@@ -431,6 +449,10 @@ impl Tracer {
                   state.ppid = Some(pid);
                   store.insert(state);
                 }
+                store
+                  .get_current_mut(pid)
+                  .unwrap()
+                  .assoicate_event(event_id);
                 // Resume parent
                 self.seccomp_aware_cont(pid)?;
               }
@@ -478,6 +500,21 @@ impl Tracer {
             })
             .send_if_match(&self.event_tx, self.filter)?;
             return Ok(());
+          }
+          let associated_events = self
+            .store
+            .read()
+            .unwrap()
+            .get_current(pid)
+            .unwrap()
+            .associated_events
+            .clone();
+          if !associated_events.is_empty() {
+            self.process_tx.send(ProcessStateUpdateEvent {
+              update: ProcessStateUpdate::Exit(ProcessExit::Signal(sig)),
+              pid,
+              ids: associated_events,
+            })?;
           }
         }
         WaitStatus::PtraceSyscall(pid) => {
@@ -621,6 +658,7 @@ impl Tracer {
     let result = syscall_res_from_regs!(regs);
     // If exec is successful, the register value might be clobbered.
     let exec_result = if p.is_exec_successful { 0 } else { result };
+    let mut event_id = None;
     match p.syscall {
       nix::libc::SYS_execve => {
         trace!("post execve in exec");
@@ -631,14 +669,13 @@ impl Tracer {
         }
         if self.filter.intersects(TracerEventDetailsKind::Exec) {
           // TODO: optimize, we don't need to collect exec event for log mode
-          self.event_tx.send(
-            TracerEventDetails::Exec(Tracer::collect_exec_event(
-              &self.baseline.env,
-              p,
-              exec_result,
-            ))
-            .into(),
-          )?;
+          let event = TracerEvent::from(TracerEventDetails::Exec(Tracer::collect_exec_event(
+            &self.baseline.env,
+            p,
+            exec_result,
+          )));
+          event_id = Some(event.id);
+          self.event_tx.send(event)?;
           self
             .printer
             .print_exec_trace(p, exec_result, &self.baseline.env, &self.baseline.cwd)?;
@@ -656,14 +693,13 @@ impl Tracer {
           return Ok(());
         }
         if self.filter.intersects(TracerEventDetailsKind::Exec) {
-          self.event_tx.send(
-            TracerEventDetails::Exec(Tracer::collect_exec_event(
-              &self.baseline.env,
-              p,
-              exec_result,
-            ))
-            .into(),
-          )?;
+          let event = TracerEvent::from(TracerEventDetails::Exec(Tracer::collect_exec_event(
+            &self.baseline.env,
+            p,
+            exec_result,
+          )));
+          event_id = Some(event.id);
+          self.event_tx.send(event)?;
           self
             .printer
             .print_exec_trace(p, exec_result, &self.baseline.env, &self.baseline.cwd)?;
@@ -675,6 +711,7 @@ impl Tracer {
       }
       _ => (),
     }
+    p.associate_event(event_id);
     self.seccomp_aware_cont(pid)?;
     Ok(())
   }

@@ -23,6 +23,7 @@ pub struct ProcessState {
   pub is_exec_successful: bool,
   pub syscall: i64,
   pub exec_data: Option<ExecData>,
+  pub associated_events: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -105,6 +106,11 @@ impl ProcessState {
       is_exec_successful: false,
       syscall: -1,
       exec_data: None,
+      associated_events: Vec::new(),
     })
+  }
+
+  pub fn associate_event(&mut self, id: impl IntoIterator<Item = u64>) {
+    self.associated_events.extend(id);
   }
 }

@@ -36,7 +36,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{error, trace};
 
-use crate::event::{Event, TracerEvent};
+use crate::event::{Event, ProcessStateUpdateEvent, TracerEvent};
 
 pub mod app;
 pub mod copy_popup;
@@ -94,7 +94,11 @@ impl Tui {
     self
   }
 
-  pub fn start(&mut self, mut tracer_rx: UnboundedReceiver<TracerEvent>) {
+  pub fn start(
+    &mut self,
+    mut tracer_rx: UnboundedReceiver<TracerEvent>,
+    mut process_rx: UnboundedReceiver<ProcessStateUpdateEvent>,
+  ) {
     let render_delay = std::time::Duration::from_secs_f64(1.0 / self.frame_rate);
     self.cancel();
     self.cancellation_token = CancellationToken::new();
@@ -115,6 +119,10 @@ impl Tui {
             Some(tracer_event) = tracer_event => {
               trace!("TUI event: tracer event!");
               _event_tx.send(Event::Tracer(tracer_event)).unwrap();
+            }
+            Some(process_event) = process_rx.recv() => {
+              trace!("TUI event: process event!");
+              _event_tx.send(Event::ProcessStateUpdate(process_event)).unwrap();
             }
             Some(event) = crossterm_event => {
               trace!("TUI event: crossterm event {event:?}!");
@@ -166,9 +174,13 @@ impl Tui {
     Ok(())
   }
 
-  pub fn enter(&mut self, tracer_rx: UnboundedReceiver<TracerEvent>) -> Result<()> {
+  pub fn enter(
+    &mut self,
+    tracer_rx: UnboundedReceiver<TracerEvent>,
+    process_rx: UnboundedReceiver<ProcessStateUpdateEvent>,
+  ) -> Result<()> {
     init_tui()?;
-    self.start(tracer_rx);
+    self.start(tracer_rx, process_rx);
     Ok(())
   }
 
