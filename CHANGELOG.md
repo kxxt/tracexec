@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.2.0-rc.0
+
+tracexec v0.2.0-rc.0 released!
+
+![tracexec v0.1.0](https://github.com/kxxt/tracexec/blob/main/screenshots/status.png?raw=true)
+
+Changes since v0.1.0:
+
+### Added
+
+- TUI: The events can now be searched from a search bar(`Ctrl+F`).
+  - Both case-sensitive and case-insensitive(default) are supported.
+  - Both plain text(default) and regex search are supported.
+- TUI: Show status icons for events.
+
+
+### Changed
+
+- Tracer: Automatically resolve `/proc/self/exe` symlink filename. (Use `--no-resolve-proc-self-exe` to disable)
+- Log Mode: Control whether to set terminal foreground process group with `--foreground/--no-foreground`.
+- TUI: don't show terminal cursor when terminal is not focused.
+- Tweak log levels.
+
+### Fixed
+
+- Tracer: handle pid reuse correctly.
+- TUI: Correctly handle unicode in the event list.
+- TUI: Don't crash when inputting some control codes into the pseudo terminal(e.g. `Ctrl+4`).
+- Log Mode: print new child with green pid.
+- Don't set terminal foreground process group in tests.
+- Add missing help text for `--no-decode-errno`.
+- Fix CI for publishing to crates.io (excluding /sceeenshots from the package because it's too large)
+
 ## v0.1.0
 
 tracexec v0.1.0 is now finally released! 🎉🎉🎉
