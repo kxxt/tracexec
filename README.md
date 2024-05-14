@@ -91,8 +91,6 @@ Arch Linux users can also install from the official repositories via `pacman -S 
 
 You can download the binary from the [release page](https://github.com/kxxt/tracexec/releases)
 
-You can also install `tracexec-bin` from AUR.
-
 ## Usage
 
 General CLI help:
