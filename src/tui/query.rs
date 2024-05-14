@@ -189,10 +189,10 @@ impl QueryBuilder {
       (KeyCode::Esc, KeyModifiers::NONE) => {
         return Ok(Some(Action::EndSearch));
       }
-      (KeyCode::Char('i'), KeyModifiers::CONTROL) => {
+      (KeyCode::Char('i'), KeyModifiers::ALT) => {
         self.case_sensitive = !self.case_sensitive;
       }
-      (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
+      (KeyCode::Char('r'), KeyModifiers::ALT) => {
         self.is_regex = !self.is_regex;
       }
       _ => {
@@ -210,7 +210,7 @@ impl QueryBuilder {
         help_item!("Esc", "Cancel\u{00a0}Search"),
         help_item!("Enter", "Execute\u{00a0}Search"),
         help_item!(
-          "Ctrl+I",
+          "Alt+I",
           if self.case_sensitive {
             "Case\u{00a0}Sensitive"
           } else {
@@ -218,7 +218,7 @@ impl QueryBuilder {
           }
         ),
         help_item!(
-          "Ctrl+R",
+          "Alt+R",
           if self.is_regex {
             "Regex\u{00a0}Mode"
           } else {
