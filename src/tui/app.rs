@@ -450,6 +450,9 @@ impl App {
           }
           Action::ToggleFollow => {
             self.event_list.toggle_follow();
+            if self.event_list.is_following() {
+              action_tx.send(Action::ScrollToBottom)?;
+            }
           }
           Action::ToggleEnvDisplay => {
             self.event_list.toggle_env_display();
