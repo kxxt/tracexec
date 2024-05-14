@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.1
+
+tracexec v0.2.1 released!
+
+Changes since v0.2.0:
+
+- TUI: Fix a bug that when switching to follow mode, the event list is not scrolled to the bottom immediately.
+
 ## v0.2.0
 
 tracexec v0.2.0 released!
