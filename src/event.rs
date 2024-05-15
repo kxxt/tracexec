@@ -104,40 +104,6 @@ pub struct ExecEvent {
   pub result: i64,
 }
 
-macro_rules! tracer_event_spans {
-    ($pid: expr, $comm: expr, $result:expr, $status:expr, $($t:tt)*) => {
-        chain!([
-            Some($pid.to_string().set_style(if $result == 0 {
-              THEME.pid_success
-            } else if $result == (-nix::libc::ENOENT).into() {
-              THEME.pid_enoent
-            } else {
-              THEME.pid_failure
-            })),
-            $status.map(|s| <&'static str>::from(s).into()),
-            Some(format!("<{}>", $comm).set_style(THEME.comm)),
-            Some(": ".into()),
-        ], [$($t)*])
-    };
-}
-
-macro_rules! tracer_exec_event_spans {
-  ($pid: expr, $comm: expr, $result:expr, $status:expr, $($t:tt)*) => {
-      chain!([
-          Some($pid.to_string().set_style(if $result == 0 {
-            THEME.pid_success
-          } else if $result == (-nix::libc::ENOENT).into() {
-            THEME.pid_enoent
-          } else {
-            THEME.pid_failure
-          })),
-          $status.map(|s| <&'static str>::from(s).into()),
-          Some(format!("<{}>", $comm).set_style(THEME.comm)),
-          Some(": ".into()),
-      ], [$($t)*])
-  };
-}
-
 impl TracerEventDetails {
   /// Convert the event to a TUI line
   ///
@@ -175,17 +141,17 @@ impl TracerEventDetails {
         [": ".into(), msg.clone().set_style(THEME.tracer_error)]
       )
       .collect(),
-      TracerEventDetails::NewChild { ppid, pcomm, pid } => {
-        let spans = tracer_event_spans!(
-          ppid,
-          pcomm,
-          0,
-          event_status,
-          Some("new child ".set_style(THEME.tracer_event)),
-          Some(pid.to_string().set_style(THEME.new_child_pid)),
-        );
-        spans.flatten().collect()
-      }
+      TracerEventDetails::NewChild { ppid, pcomm, pid } => [
+        Some(ppid.to_string().set_style(THEME.pid_success)),
+        event_status.map(|s| <&'static str>::from(s).into()),
+        Some(format!("<{}>", pcomm).set_style(THEME.comm)),
+        Some(": ".into()),
+        Some("new child ".set_style(THEME.tracer_event)),
+        Some(pid.to_string().set_style(THEME.new_child_pid)),
+      ]
+      .into_iter()
+      .flatten()
+      .collect(),
       TracerEventDetails::Exec(exec) => {
         let ExecEvent {
           pid,
@@ -200,13 +166,20 @@ impl TracerEventDetails {
           ..
         } = exec.as_ref();
         let mut spans: Vec<Span> = if !cmdline_only {
-          tracer_exec_event_spans!(
-            pid,
-            comm,
-            *result,
-            event_status,
+          [
+            Some(pid.to_string().set_style(if *result == 0 {
+              THEME.pid_success
+            } else if *result == (-nix::libc::ENOENT).into() {
+              THEME.pid_enoent
+            } else {
+              THEME.pid_failure
+            })),
+            event_status.map(|s| <&'static str>::from(s).into()),
+            Some(format!("<{}>", comm).set_style(THEME.comm)),
+            Some(": ".into()),
             Some("env".set_style(THEME.tracer_event)),
-          )
+          ]
+          .into_iter()
           .flatten()
           .collect()
         } else {
