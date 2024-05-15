@@ -54,6 +54,7 @@ pub struct DetailsPopupState {
 impl DetailsPopupState {
   pub fn new(event: &Event, baseline: Arc<BaselineInfo>) -> Self {
     let mut modifier_args = Default::default();
+    let rt_modifier = Default::default();
     let mut details = vec![(
       if matches!(event.details.as_ref(), TracerEventDetails::Exec(_)) {
         " Cmdline "
@@ -62,7 +63,7 @@ impl DetailsPopupState {
       },
       event
         .details
-        .to_tui_line(&baseline, true, &modifier_args, true, None),
+        .to_tui_line(&baseline, true, &modifier_args, rt_modifier, None),
     )];
     let (env, fdinfo, available_tabs) = if let TracerEventDetails::Exec(exec) =
       event.details.as_ref()
@@ -72,13 +73,13 @@ impl DetailsPopupState {
           modifier_args.stdio_in_cmdline = true;
           event
             .details
-            .to_tui_line(&baseline, true, &modifier_args, true, None)
+            .to_tui_line(&baseline, true, &modifier_args, rt_modifier, None)
         }),
         (" Cmdline with file descriptors ", {
           modifier_args.fd_in_cmdline = true;
           event
             .details
-            .to_tui_line(&baseline, true, &modifier_args, true, None)
+            .to_tui_line(&baseline, true, &modifier_args, rt_modifier, None)
         }),
         (" Pid ", Line::from(exec.pid.to_string())),
         (" Syscall Result ", {

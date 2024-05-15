@@ -123,6 +123,21 @@ pub struct ExecEvent {
   pub result: i64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RuntimeModifier {
+  pub show_env: bool,
+  pub show_cwd: bool,
+}
+
+impl Default for RuntimeModifier {
+  fn default() -> Self {
+    Self {
+      show_env: true,
+      show_cwd: true,
+    }
+  }
+}
+
 impl TracerEventDetails {
   pub fn into_tracer_msg(self) -> TracerMessage {
     TracerMessage::Event(self.into())
@@ -136,7 +151,7 @@ impl TracerEventDetails {
     baseline: &BaselineInfo,
     cmdline_only: bool,
     modifier: &ModifierArgs,
-    env_in_cmdline: bool,
+    rt_modifier: RuntimeModifier,
     event_status: Option<EventStatus>,
   ) -> Line<'static> {
     match self {
@@ -224,7 +239,7 @@ impl TracerEventDetails {
           spans.push(space.clone());
           spans.push(format!("-C {}", escape_str_for_bash!(cwd)).set_style(THEME.cwd));
         }
-        if env_in_cmdline {
+        if rt_modifier.show_env {
           if let Ok(env_diff) = env_diff {
             // Handle env diff
             for k in env_diff.removed.iter() {
@@ -385,11 +400,11 @@ impl TracerEventDetails {
     baseline: &BaselineInfo,
     target: CopyTarget,
     modifier_args: &ModifierArgs,
-    env_in_cmdline: bool,
+    rt_modifier: RuntimeModifier,
   ) -> Cow<'a, str> {
     if let CopyTarget::Line = target {
       return self
-        .to_tui_line(baseline, false, modifier_args, env_in_cmdline, None)
+        .to_tui_line(baseline, false, modifier_args, rt_modifier, None)
         .to_string()
         .into();
     }
@@ -400,13 +415,13 @@ impl TracerEventDetails {
     let mut modifier_args = ModifierArgs::default();
     match target {
       CopyTarget::Commandline(_) => self
-        .to_tui_line(baseline, true, &modifier_args, true, None)
+        .to_tui_line(baseline, true, &modifier_args, Default::default(), None)
         .to_string()
         .into(),
       CopyTarget::CommandlineWithStdio(_) => {
         modifier_args.stdio_in_cmdline = true;
         self
-          .to_tui_line(baseline, true, &modifier_args, true, None)
+          .to_tui_line(baseline, true, &modifier_args, Default::default(), None)
           .to_string()
           .into()
       }
@@ -414,7 +429,7 @@ impl TracerEventDetails {
         modifier_args.fd_in_cmdline = true;
         modifier_args.stdio_in_cmdline = true;
         self
-          .to_tui_line(baseline, true, &modifier_args, true, None)
+          .to_tui_line(baseline, true, &modifier_args, Default::default(), None)
           .to_string()
           .into()
       }

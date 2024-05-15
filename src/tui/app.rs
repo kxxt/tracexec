@@ -507,7 +507,7 @@ impl App {
               &self.event_list.baseline,
               target,
               &self.event_list.modifier_args,
-              self.event_list.is_env_in_cmdline(),
+              self.event_list.runtime_modifier(),
             );
             // TODO: don't crash the app if clipboard fails
             if let Some(clipboard) = self.clipboard.as_mut() {

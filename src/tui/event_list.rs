@@ -34,7 +34,7 @@ use tracing::trace;
 
 use crate::{
   cli::args::ModifierArgs,
-  event::{EventStatus, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEventDetails},
+  event::{EventStatus, ProcessStateUpdate, ProcessStateUpdateEvent, RuntimeModifier, TracerEventDetails},
   proc::BaselineInfo,
   tracer::state::ProcessExit,
 };
@@ -56,7 +56,7 @@ impl Event {
       &list.baseline,
       false,
       &list.modifier_args,
-      list.env_in_cmdline,
+      list.runtime_modifier(),
       self.status,
     )
   }
@@ -86,7 +86,7 @@ pub struct EventList {
   pub baseline: Arc<BaselineInfo>,
   follow: bool,
   pub modifier_args: ModifierArgs,
-  env_in_cmdline: bool,
+  rt_modifier: RuntimeModifier,
   query: Option<Query>,
   query_result: Option<QueryResult>,
 }
@@ -110,14 +110,22 @@ impl EventList {
       should_refresh_list_cache: true,
       list_cache: List::default(),
       modifier_args,
-      env_in_cmdline: true,
+      rt_modifier: Default::default(),
       query: None,
       query_result: None,
     }
   }
 
+  pub fn runtime_modifier(&self) -> RuntimeModifier {
+    self.rt_modifier
+  }
+
   pub fn is_env_in_cmdline(&self) -> bool {
-    self.env_in_cmdline
+    self.rt_modifier.show_env
+  }
+
+  pub fn is_cwd_in_cmdline(&self) -> bool {
+    self.rt_modifier.show_cwd
   }
 
   pub fn is_following(&self) -> bool {
@@ -133,7 +141,7 @@ impl EventList {
   }
 
   pub fn toggle_env_display(&mut self) {
-    self.env_in_cmdline = !self.env_in_cmdline;
+    self.rt_modifier.show_env = !self.rt_modifier.show_env;
     self.should_refresh_lines_cache = true;
     self.rebuild_event_strings();
   }
