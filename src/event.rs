@@ -235,7 +235,7 @@ impl TracerEventDetails {
           });
         });
         // Handle cwd
-        if cwd != &baseline.cwd {
+        if cwd != &baseline.cwd && rt_modifier.show_cwd {
           spans.push(space.clone());
           spans.push(format!("-C {}", escape_str_for_bash!(cwd)).set_style(THEME.cwd));
         }

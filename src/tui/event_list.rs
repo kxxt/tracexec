@@ -146,6 +146,12 @@ impl EventList {
     self.rebuild_event_strings();
   }
 
+  pub fn toggle_cwd_display(&mut self) {
+    self.rt_modifier.show_cwd = !self.rt_modifier.show_cwd;
+    self.should_refresh_lines_cache = true;
+    self.rebuild_event_strings();
+  }
+
   /// returns the index of the selected item if there is any
   pub fn selection_index(&self) -> Option<usize> {
     self.state.selected().map(|i| self.window.0 + i)

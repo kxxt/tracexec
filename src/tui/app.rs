@@ -332,6 +332,9 @@ impl App {
                   KeyCode::Char('e') if ke.modifiers == KeyModifiers::NONE => {
                     action_tx.send(Action::ToggleEnvDisplay)?;
                   }
+                  KeyCode::Char('w') if ke.modifiers == KeyModifiers::NONE => {
+                    action_tx.send(Action::ToggleCwdDisplay)?;
+                  }
                   KeyCode::F(1) if ke.modifiers == KeyModifiers::NONE => {
                     action_tx.send(Action::SetActivePopup(ActivePopup::Help))?;
                   }
@@ -459,6 +462,9 @@ impl App {
           }
           Action::ToggleEnvDisplay => {
             self.event_list.toggle_env_display();
+          }
+          Action::ToggleCwdDisplay => {
+            self.event_list.toggle_cwd_display();
           }
           Action::StopFollow => {
             self.event_list.stop_follow();
@@ -738,6 +744,14 @@ impl App {
             "Hide Env"
           } else {
             "Show Env"
+          }
+        ),
+        help_item!(
+          "W",
+          if self.event_list.is_cwd_in_cmdline() {
+            "Hide CWD"
+          } else {
+            "Show CWD"
           }
         ),
         help_item!("V", "View"),
