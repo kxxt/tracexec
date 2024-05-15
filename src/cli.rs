@@ -1,6 +1,6 @@
-use std::{num::ParseFloatError, path::PathBuf};
+use std::{io::stdout, num::ParseFloatError, path::PathBuf};
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 
 use crate::tui::app::AppLayout;
 
@@ -106,6 +106,11 @@ pub enum CliCommand {
     )]
     frame_rate: f64,
   },
+  #[clap(about = "Generate shell completions for tracexec")]
+  GenerateCompletions {
+    #[arg(required = true, help = "The shell to generate completions for")]
+    shell: clap_complete::Shell,
+  },
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -132,5 +137,12 @@ fn frame_rate_parser(s: &str) -> Result<f64, ParseFrameRateError> {
     Err(ParseFrameRateError::FrameRateTooLow)
   } else {
     Ok(v)
+  }
+}
+
+impl Cli {
+  pub fn generate_completions(shell: clap_complete::Shell) {
+    let mut cmd = Cli::command();
+    clap_complete::generate(shell, &mut cmd, env!("CARGO_CRATE_NAME"), &mut stdout())
   }
 }

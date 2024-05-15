@@ -1,5 +1,6 @@
 mod action;
 mod arch;
+mod cache;
 mod cli;
 mod cmdbuilder;
 mod event;
@@ -11,7 +12,6 @@ mod pty;
 mod seccomp;
 mod tracer;
 mod tui;
-mod cache;
 
 use std::{
   io::{stderr, stdout, BufWriter},
@@ -201,6 +201,9 @@ async fn main() -> color_eyre::Result<()> {
       app.exit(terminate_on_exit, kill_on_exit)?;
       tui::restore_tui()?;
       tracer_thread.join().unwrap()?;
+    }
+    CliCommand::GenerateCompletions { shell } => {
+      Cli::generate_completions(shell);
     }
   }
   Ok(())

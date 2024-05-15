@@ -68,6 +68,7 @@ unicode-segmentation = "1.11.0"
 unicode-width = "0.1.12"
 serial_test = { version = "3.1.1", features = ["file_locks"]}
 arcstr = "1.2.0"
+clap_complete = "4.5.2"
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 
