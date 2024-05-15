@@ -8,7 +8,7 @@ use tracing_test::traced_test;
 
 use crate::{
   cli::args::{LogModeArgs, ModifierArgs, TracerEventArgs},
-  event::{ProcessStateUpdateEvent, TracerEvent, TracerEventDetails},
+  event::{TracerEvent, TracerEventDetails, TracerMessage},
   proc::{BaselineInfo, Interpreter},
   tracer::Tracer,
 };
@@ -18,19 +18,14 @@ use super::TracerMode;
 #[fixture]
 fn tracer(
   #[default(Default::default())] modifier_args: ModifierArgs,
-) -> (
-  Arc<Tracer>,
-  UnboundedReceiver<TracerEvent>,
-  UnboundedReceiver<ProcessStateUpdateEvent>,
-) {
+) -> (Arc<Tracer>, UnboundedReceiver<TracerMessage>) {
   let tracer_mod = TracerMode::Log;
   let tracing_args = LogModeArgs::default();
   let tracer_event_args = TracerEventArgs {
     show_all_events: true,
     ..Default::default()
   };
-  let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
-  let (process_tx, process_rx) = tokio::sync::mpsc::unbounded_channel();
+  let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
   let baseline = BaselineInfo::new().unwrap();
 
   (
@@ -41,31 +36,29 @@ fn tracer(
         modifier_args,
         tracer_event_args,
         baseline,
-        event_tx,
-        process_tx,
+        msg_tx,
         None,
       )
       .unwrap(),
     ),
-    event_rx,
-    process_rx,
+    msg_rx,
   )
 }
 
-async fn run_exe_and_collect_events(
+async fn run_exe_and_collect_msgs(
   tracer: Arc<Tracer>,
-  mut rx: UnboundedReceiver<TracerEvent>,
+  mut rx: UnboundedReceiver<TracerMessage>,
   argv: Vec<String>,
-) -> Vec<TracerEvent> {
+) -> Vec<TracerMessage> {
   let tracer_thread = tracer.spawn(argv, None).unwrap();
   tracer_thread.join().unwrap().unwrap();
 
   async {
-    let mut events = vec![];
+    let mut msgs = vec![];
     while let Some(event) = rx.recv().await {
-      events.push(event);
+      msgs.push(event);
     }
-    events
+    msgs
   }
   .await
 }
@@ -82,19 +75,15 @@ async fn tracer_decodes_proc_self_exe(
     resolve_proc_self_exe,
     ..Default::default()
   })]
-  tracer: (
-    Arc<Tracer>,
-    UnboundedReceiver<TracerEvent>,
-    UnboundedReceiver<ProcessStateUpdateEvent>,
-  ),
+  tracer: (Arc<Tracer>, UnboundedReceiver<TracerMessage>),
 ) {
   // Note that /proc/self/exe is the test driver binary, not tracexec
   info!(
     "tracer_decodes_proc_self_exe test: resolve_proc_self_exe={}",
     resolve_proc_self_exe
   );
-  let (tracer, rx, _) = tracer;
-  let events = run_exe_and_collect_events(
+  let (tracer, rx) = tracer;
+  let events = run_exe_and_collect_msgs(
     tracer,
     rx,
     vec!["/proc/self/exe".to_string(), "--help".to_string()],
@@ -102,7 +91,11 @@ async fn tracer_decodes_proc_self_exe(
   .await;
   let path = std::fs::read_link("/proc/self/exe").unwrap();
   for event in events {
-    if let TracerEventDetails::Exec(exec) = event.details {
+    if let TracerMessage::Event(TracerEvent {
+      details: TracerEventDetails::Exec(exec),
+      ..
+    }) = event
+    {
       let argv = exec.argv.as_deref().unwrap();
       assert_eq!(argv, &["/proc/self/exe", "--help"]);
       let filename = exec.filename.as_deref().unwrap();
@@ -121,18 +114,16 @@ async fn tracer_decodes_proc_self_exe(
 #[rstest]
 #[file_serial]
 #[tokio::test]
-async fn tracer_emits_exec_event(
-  tracer: (
-    Arc<Tracer>,
-    UnboundedReceiver<TracerEvent>,
-    UnboundedReceiver<ProcessStateUpdateEvent>,
-  ),
-) {
+async fn tracer_emits_exec_event(tracer: (Arc<Tracer>, UnboundedReceiver<TracerMessage>)) {
   // TODO: don't assume FHS
-  let (tracer, rx, _) = tracer;
-  let events = run_exe_and_collect_events(tracer, rx, vec!["/bin/true".to_string()]).await;
+  let (tracer, rx) = tracer;
+  let events = run_exe_and_collect_msgs(tracer, rx, vec!["/bin/true".to_string()]).await;
   for event in events {
-    if let TracerEventDetails::Exec(exec) = event.details {
+    if let TracerMessage::Event(TracerEvent {
+      details: TracerEventDetails::Exec(exec),
+      ..
+    }) = event
+    {
       let argv = exec.argv.as_deref().unwrap();
       assert_eq!(argv, &["/bin/true"]);
       let filename = exec.filename.as_deref().unwrap();

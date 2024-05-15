@@ -36,12 +36,29 @@ use crate::{
 pub enum Event {
   ShouldQuit,
   Key(KeyEvent),
-  Tracer(TracerEvent),
-  ProcessStateUpdate(ProcessStateUpdateEvent),
+  Tracer(TracerMessage),
   Render,
   Resize(Size),
   Init,
   Error,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TracerMessage {
+  Event(TracerEvent),
+  StateUpdate(ProcessStateUpdateEvent),
+}
+
+impl From<TracerEvent> for TracerMessage {
+  fn from(event: TracerEvent) -> Self {
+    TracerMessage::Event(event)
+  }
+}
+
+impl From<ProcessStateUpdateEvent> for TracerMessage {
+  fn from(update: ProcessStateUpdateEvent) -> Self {
+    TracerMessage::StateUpdate(update)
+  }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -105,6 +122,10 @@ pub struct ExecEvent {
 }
 
 impl TracerEventDetails {
+  pub fn into_tracer_msg(self) -> TracerMessage {
+    TracerMessage::Event(self.into())
+  }
+
   /// Convert the event to a TUI line
   ///
   /// This method is resource intensive and the caller should cache the result
@@ -469,11 +490,11 @@ impl TracerEventDetails {
 impl FilterableTracerEventDetails {
   pub fn send_if_match(
     self,
-    tx: &mpsc::UnboundedSender<TracerEvent>,
+    tx: &mpsc::UnboundedSender<TracerMessage>,
     filter: BitFlags<TracerEventDetailsKind>,
   ) -> color_eyre::Result<()> {
     if let Some(evt) = self.filter_and_take(filter) {
-      tx.send(evt.into())?;
+      tx.send(TracerMessage::from(TracerEvent::from(evt)))?;
     }
     Ok(())
   }

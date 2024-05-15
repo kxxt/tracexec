@@ -29,7 +29,7 @@ use tokio::sync::mpsc;
 
 use crate::{
   cli::{args::LogModeArgs, options::Color, CliCommand},
-  event::{TracerEvent, TracerEventDetails},
+  event::{TracerEvent, TracerEventDetails, TracerMessage},
   log::initialize_panic_handler,
   printer::PrinterOut,
   proc::BaselineInfo,
@@ -103,7 +103,6 @@ async fn main() -> color_eyre::Result<()> {
       };
       let baseline = BaselineInfo::new()?;
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
-      let (process_tx, _process_rx) = mpsc::unbounded_channel();
       let tracer = Arc::new(tracer::Tracer::new(
         TracerMode::Log,
         tracing_args,
@@ -111,16 +110,15 @@ async fn main() -> color_eyre::Result<()> {
         tracer_event_args,
         baseline,
         tracer_tx,
-        process_tx,
         user,
       )?);
       let tracer_thread = tracer.spawn(cmd, Some(output))?;
       tracer_thread.join().unwrap()?;
       loop {
-        if let Some(TracerEvent {
+        if let Some(TracerMessage::Event(TracerEvent {
           details: TracerEventDetails::TraceeExit { exit_code, .. },
           ..
-        }) = tracer_rx.recv().await
+        })) = tracer_rx.recv().await
         {
           process::exit(exit_code);
         }
@@ -180,7 +178,6 @@ async fn main() -> color_eyre::Result<()> {
         follow,
       )?;
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
-      let (process_tx, process_rx) = mpsc::unbounded_channel();
       let tracer = Arc::new(tracer::Tracer::new(
         tracer_mode,
         tracing_args,
@@ -188,13 +185,12 @@ async fn main() -> color_eyre::Result<()> {
         tracer_event_args,
         baseline,
         tracer_tx,
-        process_tx,
         user,
       )?);
       let tracer_thread: std::thread::JoinHandle<Result<(), color_eyre::eyre::Error>> =
         tracer.spawn(cmd, None)?;
       let mut tui = tui::Tui::new()?.frame_rate(frame_rate);
-      tui.enter(tracer_rx, process_rx)?;
+      tui.enter(tracer_rx)?;
       app.run(&mut tui).await?;
       // Now when TUI exits, the tracer thread is still running.
       // options:

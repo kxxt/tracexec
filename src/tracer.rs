@@ -34,7 +34,7 @@ use crate::{
   cmdbuilder::CommandBuilder,
   event::{
     filterable_event, ExecEvent, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEvent,
-    TracerEventDetails, TracerEventDetailsKind, TracerEventMessage,
+    TracerEventDetails, TracerEventDetailsKind, TracerEventMessage, TracerMessage,
   },
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{
@@ -78,8 +78,7 @@ pub struct Tracer {
   baseline: Arc<BaselineInfo>,
   #[cfg(feature = "seccomp-bpf")]
   seccomp_bpf: SeccompBpf,
-  event_tx: UnboundedSender<TracerEvent>,
-  process_tx: UnboundedSender<ProcessStateUpdateEvent>,
+  msg_tx: UnboundedSender<TracerMessage>,
   user: Option<User>,
 }
 
@@ -108,8 +107,7 @@ impl Tracer {
     modifier_args: ModifierArgs,
     tracer_event_args: TracerEventArgs,
     baseline: BaselineInfo,
-    event_tx: UnboundedSender<TracerEvent>,
-    process_tx: UnboundedSender<ProcessStateUpdateEvent>,
+    event_tx: UnboundedSender<TracerMessage>,
     user: Option<User>,
   ) -> color_eyre::Result<Self> {
     let baseline = Arc::new(baseline);
@@ -133,8 +131,7 @@ impl Tracer {
       } else {
         modifier_args.seccomp_bpf
       },
-      event_tx,
-      process_tx,
+      msg_tx: event_tx,
       user,
       filter: {
         let mut filter = tracer_event_args.filter()?;
@@ -264,7 +261,7 @@ impl Tracer {
       },
     )?
     .process_id();
-    filterable_event!(TraceeSpawn(root_child)).send_if_match(&self.event_tx, self.filter)?;
+    filterable_event!(TraceeSpawn(root_child)).send_if_match(&self.msg_tx, self.filter)?;
     // wait for child to be stopped by SIGSTOP
     loop {
       let status = waitpid(root_child, Some(WaitPidFlag::WSTOPPED))?;
@@ -381,7 +378,7 @@ impl Tracer {
               signal: None,
               exit_code: code,
             })
-            .send_if_match(&self.event_tx, self.filter)?;
+            .send_if_match(&self.msg_tx, self.filter)?;
             should_exit = true;
           }
           let associated_events = self
@@ -393,11 +390,14 @@ impl Tracer {
             .associated_events
             .clone();
           if !associated_events.is_empty() {
-            self.process_tx.send(ProcessStateUpdateEvent {
-              update: ProcessStateUpdate::Exit(ProcessExit::Code(code)),
-              pid,
-              ids: associated_events,
-            })?;
+            self.msg_tx.send(
+              ProcessStateUpdateEvent {
+                update: ProcessStateUpdate::Exit(ProcessExit::Code(code)),
+                pid,
+                ids: associated_events,
+              }
+              .into(),
+            )?;
           }
           if should_exit {
             return Ok(());
@@ -419,7 +419,7 @@ impl Tracer {
                   pcomm: parent.comm.clone(),
                   pid: new_child,
                 });
-                self.event_tx.send(event)?;
+                self.msg_tx.send(event.into())?;
                 self.printer.print_new_child(parent, new_child)?;
               }
               {
@@ -497,7 +497,7 @@ impl Tracer {
               signal: Some(sig),
               exit_code: 128 + (sig as i32),
             })
-            .send_if_match(&self.event_tx, self.filter)?;
+            .send_if_match(&self.msg_tx, self.filter)?;
             return Ok(());
           }
           let associated_events = self
@@ -509,11 +509,14 @@ impl Tracer {
             .associated_events
             .clone();
           if !associated_events.is_empty() {
-            self.process_tx.send(ProcessStateUpdateEvent {
-              update: ProcessStateUpdate::Exit(ProcessExit::Signal(sig)),
-              pid,
-              ids: associated_events,
-            })?;
+            self.msg_tx.send(
+              ProcessStateUpdateEvent {
+                update: ProcessStateUpdate::Exit(ProcessExit::Signal(sig)),
+                pid,
+                ids: associated_events,
+              }
+              .into(),
+            )?;
           }
         }
         WaitStatus::PtraceSyscall(pid) => {
@@ -547,7 +550,7 @@ impl Tracer {
           msg: "Failed to read registers: ESRCH (child probably gone!)".to_string(),
           pid: Some(pid),
         }))
-        .send_if_match(&self.event_tx, self.filter)?;
+        .send_if_match(&self.msg_tx, self.filter)?;
         info!("ptrace getregs failed: {pid}, ESRCH, child probably gone!");
         return Ok(());
       }
@@ -674,7 +677,7 @@ impl Tracer {
             exec_result,
           )));
           event_id = Some(event.id);
-          self.event_tx.send(event)?;
+          self.msg_tx.send(event.into())?;
           self
             .printer
             .print_exec_trace(p, exec_result, &self.baseline.env, &self.baseline.cwd)?;
@@ -698,7 +701,7 @@ impl Tracer {
             exec_result,
           )));
           event_id = Some(event.id);
-          self.event_tx.send(event)?;
+          self.msg_tx.send(event.into())?;
           self
             .printer
             .print_exec_trace(p, exec_result, &self.baseline.env, &self.baseline.cwd)?;
@@ -765,22 +768,22 @@ impl Tracer {
       match argv.as_deref() {
         Ok(argv) => {
           if argv.is_empty() {
-            self.event_tx.send(
+            self.msg_tx.send(
               TracerEventDetails::Warning(TracerEventMessage {
                 pid: Some(pid),
                 msg: "Empty argv, the printed cmdline is not accurate!".to_string(),
               })
-              .into(),
+              .into_tracer_msg(),
             )?;
           }
         }
         Err(e) => {
-          self.event_tx.send(
+          self.msg_tx.send(
             TracerEventDetails::Warning(TracerEventMessage {
               pid: Some(pid),
               msg: format!("Failed to read argv: {:?}", e),
             })
-            .into(),
+            .into_tracer_msg(),
           )?;
         }
       }
@@ -795,12 +798,12 @@ impl Tracer {
   ) -> color_eyre::Result<()> {
     if self.filter.intersects(TracerEventDetailsKind::Warning) {
       if let Err(e) = envp.as_deref() {
-        self.event_tx.send(
+        self.msg_tx.send(
           TracerEventDetails::Warning(TracerEventMessage {
             pid: Some(pid),
             msg: format!("Failed to read envp: {:?}", e),
           })
-          .into(),
+          .into_tracer_msg(),
         )?;
       }
     }
@@ -814,12 +817,12 @@ impl Tracer {
   ) -> color_eyre::Result<()> {
     if self.filter.intersects(TracerEventDetailsKind::Warning) {
       if let Err(e) = filename.as_deref() {
-        self.event_tx.send(
+        self.msg_tx.send(
           TracerEventDetails::Warning(TracerEventMessage {
             pid: Some(pid),
             msg: format!("Failed to read filename: {:?}", e),
           })
-          .into(),
+          .into_tracer_msg(),
         )?;
       }
     }

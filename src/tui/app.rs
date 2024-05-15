@@ -41,7 +41,7 @@ use crate::{
     args::{LogModeArgs, ModifierArgs},
     options::ActivePane,
   },
-  event::{Event, TracerEventDetails},
+  event::{Event, TracerEventDetails, TracerMessage},
   printer::PrinterArgs,
   proc::BaselineInfo,
   pty::{PtySize, UnixMasterPty},
@@ -350,20 +350,23 @@ impl App {
               }
             }
           }
-          Event::Tracer(te) => {
-            if let TracerEventDetails::TraceeSpawn(pid) = &te.details {
-              self.root_pid = Some(*pid);
+          Event::Tracer(msg) => {
+            match msg {
+              TracerMessage::Event(e) => {
+                if let TracerEventDetails::TraceeSpawn(pid) = &e.details {
+                  self.root_pid = Some(*pid);
+                }
+                debug_assert_eq!(e.id, self.event_list.len() as u64);
+                self.event_list.push(e.details);
+                if self.event_list.is_following() {
+                  action_tx.send(Action::ScrollToBottom)?;
+                }
+              }
+              TracerMessage::StateUpdate(update) => {
+                trace!("Received process state update: {update:?}");
+                self.event_list.update(update);
+              }
             }
-            debug_assert_eq!(te.id, self.event_list.len() as u64);
-            self.event_list.push(te.details);
-            if self.event_list.is_following() {
-              action_tx.send(Action::ScrollToBottom)?;
-            }
-            // action_tx.send(Action::Render)?;
-          }
-          Event::ProcessStateUpdate(update) => {
-            trace!("Received process state update: {update:?}");
-            self.event_list.update(update);
             // action_tx.send(Action::Render)?;
           }
           Event::Render => {
