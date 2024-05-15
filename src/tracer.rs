@@ -34,7 +34,7 @@ use crate::{
   cmdbuilder::CommandBuilder,
   event::{
     filterable_event, ExecEvent, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEvent,
-    TracerEventDetails, TracerEventDetailsKind, TracerMessage,
+    TracerEventDetails, TracerEventDetailsKind, TracerEventMessage,
   },
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{
@@ -543,7 +543,7 @@ impl Tracer {
     let regs = match ptrace_getregs(pid) {
       Ok(regs) => regs,
       Err(Errno::ESRCH) => {
-        filterable_event!(Info(TracerMessage {
+        filterable_event!(Info(TracerEventMessage {
           msg: "Failed to read registers: ESRCH (child probably gone!)".to_string(),
           pid: Some(pid),
         }))
@@ -766,7 +766,7 @@ impl Tracer {
         Ok(argv) => {
           if argv.is_empty() {
             self.event_tx.send(
-              TracerEventDetails::Warning(TracerMessage {
+              TracerEventDetails::Warning(TracerEventMessage {
                 pid: Some(pid),
                 msg: "Empty argv, the printed cmdline is not accurate!".to_string(),
               })
@@ -776,7 +776,7 @@ impl Tracer {
         }
         Err(e) => {
           self.event_tx.send(
-            TracerEventDetails::Warning(TracerMessage {
+            TracerEventDetails::Warning(TracerEventMessage {
               pid: Some(pid),
               msg: format!("Failed to read argv: {:?}", e),
             })
@@ -796,7 +796,7 @@ impl Tracer {
     if self.filter.intersects(TracerEventDetailsKind::Warning) {
       if let Err(e) = envp.as_deref() {
         self.event_tx.send(
-          TracerEventDetails::Warning(TracerMessage {
+          TracerEventDetails::Warning(TracerEventMessage {
             pid: Some(pid),
             msg: format!("Failed to read envp: {:?}", e),
           })
@@ -815,7 +815,7 @@ impl Tracer {
     if self.filter.intersects(TracerEventDetailsKind::Warning) {
       if let Err(e) = filename.as_deref() {
         self.event_tx.send(
-          TracerEventDetails::Warning(TracerMessage {
+          TracerEventDetails::Warning(TracerEventMessage {
             pid: Some(pid),
             msg: format!("Failed to read filename: {:?}", e),
           })

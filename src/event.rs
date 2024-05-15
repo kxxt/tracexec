@@ -68,9 +68,9 @@ impl From<TracerEventDetails> for TracerEvent {
 #[derive(Debug, Clone, PartialEq, FilterableEnum)]
 #[filterable_enum(kind_extra_derive=ValueEnum, kind_extra_derive=Display, kind_extra_attrs="strum(serialize_all = \"kebab-case\")")]
 pub enum TracerEventDetails {
-  Info(TracerMessage),
-  Warning(TracerMessage),
-  Error(TracerMessage),
+  Info(TracerEventMessage),
+  Warning(TracerEventMessage),
+  Error(TracerEventMessage),
   NewChild {
     ppid: Pid,
     pcomm: String,
@@ -85,7 +85,7 @@ pub enum TracerEventDetails {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TracerMessage {
+pub struct TracerEventMessage {
   pub pid: Option<Pid>,
   pub msg: String,
 }
@@ -151,7 +151,7 @@ impl TracerEventDetails {
     event_status: Option<EventStatus>,
   ) -> Line<'static> {
     match self {
-      TracerEventDetails::Info(TracerMessage { ref msg, pid }) => chain!(
+      TracerEventDetails::Info(TracerEventMessage { ref msg, pid }) => chain!(
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
@@ -159,7 +159,7 @@ impl TracerEventDetails {
         [": ".into(), msg.clone().set_style(THEME.tracer_info)]
       )
       .collect(),
-      TracerEventDetails::Warning(TracerMessage { ref msg, pid }) => chain!(
+      TracerEventDetails::Warning(TracerEventMessage { ref msg, pid }) => chain!(
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
@@ -167,7 +167,7 @@ impl TracerEventDetails {
         [": ".into(), msg.clone().set_style(THEME.tracer_warning)]
       )
       .collect(),
-      TracerEventDetails::Error(TracerMessage { ref msg, pid }) => chain!(
+      TracerEventDetails::Error(TracerEventMessage { ref msg, pid }) => chain!(
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
