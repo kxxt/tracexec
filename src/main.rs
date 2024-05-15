@@ -11,6 +11,7 @@ mod pty;
 mod seccomp;
 mod tracer;
 mod tui;
+mod cache;
 
 use std::{
   io::{stderr, stdout, BufWriter},

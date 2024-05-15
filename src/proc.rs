@@ -9,9 +9,12 @@ use std::{
   io::{self, BufRead, BufReader, Read},
   os::raw::c_int,
   path::{Path, PathBuf},
+  sync::{Arc, RwLock},
 };
 
+use arcstr::ArcStr;
 use filedescriptor::AsRawFileDescriptor;
+use lazy_static::lazy_static;
 use owo_colors::OwoColorize;
 
 use nix::{
@@ -21,7 +24,7 @@ use nix::{
 };
 use tracing::warn;
 
-use crate::pty::UnixSlavePty;
+use crate::{cache::StringCache, pty::UnixSlavePty};
 
 pub fn read_argv(pid: Pid) -> color_eyre::Result<Vec<CString>> {
   let filename = format!("/proc/{pid}/cmdline");
@@ -297,9 +300,9 @@ pub fn parse_env_entry(item: &str) -> (&str, &str) {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnvDiff {
-  pub added: BTreeMap<String, String>,
-  pub removed: BTreeSet<String>,
-  pub modified: BTreeMap<String, String>,
+  pub added: BTreeMap<ArcStr, ArcStr>,
+  pub removed: BTreeSet<ArcStr>,
+  pub modified: BTreeMap<ArcStr, ArcStr>,
 }
 
 impl EnvDiff {
@@ -308,22 +311,28 @@ impl EnvDiff {
   }
 }
 
-pub fn diff_env(original: &BTreeMap<String, String>, envp: &[String]) -> EnvDiff {
+pub fn diff_env(original: &BTreeMap<ArcStr, ArcStr>, envp: &[String]) -> EnvDiff {
   let mut added = BTreeMap::new();
-  let mut modified = BTreeMap::new();
+  let mut modified = BTreeMap::<ArcStr, ArcStr>::new();
   // Use str to avoid cloning all env vars
-  let mut removed: HashSet<&str> = original.keys().map(|v| v.as_str()).collect();
+  let mut removed: HashSet<ArcStr> = original.keys().cloned().collect();
   for entry in envp.iter() {
     let (key, value) = parse_env_entry(entry);
     // Too bad that we still don't have if- and while-let-chains
     // https://github.com/rust-lang/rust/issues/53667
     if let Some(orig_v) = original.get(key).map(|x| x.as_str()) {
       if orig_v != value {
-        modified.insert(key.to_owned(), value.to_owned());
+        let mut cache = CACHE.write().unwrap();
+        let key = cache.get_or_insert(key);
+        let value = cache.get_or_insert(value);
+        modified.insert(key, value);
       }
       removed.remove(key);
     } else {
-      added.insert(key.to_owned(), value.to_owned());
+      let mut cache = CACHE.write().unwrap();
+      let key = cache.get_or_insert(key);
+      let value = cache.get_or_insert(value);
+      added.insert(key, value);
     }
   }
   EnvDiff {
@@ -336,22 +345,36 @@ pub fn diff_env(original: &BTreeMap<String, String>, envp: &[String]) -> EnvDiff
 #[derive(Debug, Clone)]
 pub struct BaselineInfo {
   pub cwd: PathBuf,
-  pub env: BTreeMap<String, String>,
+  pub env: BTreeMap<ArcStr, ArcStr>,
   pub fdinfo: FileDescriptorInfoCollection,
 }
 
 impl BaselineInfo {
   pub fn new() -> color_eyre::Result<Self> {
     let cwd = std::env::current_dir()?;
-    let env = std::env::vars().collect();
+    let env = std::env::vars()
+      .map(|(k, v)| {
+        let mut cache = CACHE.write().unwrap();
+        (cache.get_or_insert_owned(k), cache.get_or_insert_owned(v))
+      })
+      .collect();
     let fdinfo = FileDescriptorInfoCollection::new_baseline()?;
     Ok(Self { cwd, env, fdinfo })
   }
 
   pub fn with_pts(pts: &UnixSlavePty) -> color_eyre::Result<Self> {
     let cwd = std::env::current_dir()?;
-    let env = std::env::vars().collect();
+    let env = std::env::vars()
+      .map(|(k, v)| {
+        let mut cache = CACHE.write().unwrap();
+        (cache.get_or_insert_owned(k), cache.get_or_insert_owned(v))
+      })
+      .collect();
     let fdinfo = FileDescriptorInfoCollection::with_pts(pts)?;
     Ok(Self { cwd, env, fdinfo })
   }
+}
+
+lazy_static! {
+  static ref CACHE: Arc<RwLock<StringCache>> = Arc::new(RwLock::new(StringCache::new()));
 }

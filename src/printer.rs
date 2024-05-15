@@ -15,6 +15,7 @@ use crate::{
   tracer::InspectError,
 };
 
+use arcstr::ArcStr;
 use itertools::chain;
 use nix::{fcntl::OFlag, libc::ENOENT, unistd::Pid};
 use owo_colors::{OwoColorize, Style};
@@ -382,7 +383,7 @@ impl Printer {
     &self,
     state: &ProcessState,
     result: i64,
-    env: &BTreeMap<String, String>,
+    env: &BTreeMap<ArcStr, ArcStr>,
     cwd: &Path,
   ) -> color_eyre::Result<()> {
     // Preconditions:
@@ -694,10 +695,10 @@ impl Printer {
                     out,
                     " {}{}",
                     "-u ".bright_red(),
-                    escape_str_for_bash!(&k).bright_red()
+                    escape_str_for_bash!(k.as_str()).bright_red()
                   )?;
                 } else {
-                  write!(out, " -u={}", escape_str_for_bash!(&k))?;
+                  write!(out, " -u={}", escape_str_for_bash!(k.as_str()))?;
                 }
               }
               if self.args.color >= ColorLevel::Normal {
@@ -705,18 +706,18 @@ impl Printer {
                   write!(
                     out,
                     " {}{}{}",
-                    escape_str_for_bash!(&k).green(),
+                    escape_str_for_bash!(k.as_str()).green(),
                     "=".green().bold(),
-                    escape_str_for_bash!(&v).green()
+                    escape_str_for_bash!(v.as_str()).green()
                   )?;
                 }
                 for (k, v) in diff.modified.into_iter() {
                   write!(
                     out,
                     " {}{}{}",
-                    escape_str_for_bash!(&k),
+                    escape_str_for_bash!(k.as_str()),
                     "=".bright_yellow().bold(),
-                    escape_str_for_bash!(&v).bright_blue()
+                    escape_str_for_bash!(v.as_str()).bright_blue()
                   )?;
                 }
               } else {
@@ -724,8 +725,8 @@ impl Printer {
                   write!(
                     out,
                     " {}={}",
-                    escape_str_for_bash!(&k),
-                    escape_str_for_bash!(&v)
+                    escape_str_for_bash!(k.as_str()),
+                    escape_str_for_bash!(v.as_str())
                   )?;
                 }
               }

@@ -227,23 +227,32 @@ impl TracerEventDetails {
             // Handle env diff
             for k in env_diff.removed.iter() {
               spans.push(space.clone());
-              spans
-                .push(format!("-u {}", escape_str_for_bash!(k)).set_style(THEME.deleted_env_var));
+              spans.push(
+                format!("-u {}", escape_str_for_bash!(k.as_str())).set_style(THEME.deleted_env_var),
+              );
             }
             for (k, v) in env_diff.added.iter() {
               // Added env vars
               spans.push(space.clone());
               spans.push(
-                format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v))
-                  .set_style(THEME.added_env_var),
+                format!(
+                  "{}={}",
+                  escape_str_for_bash!(k.as_str()),
+                  escape_str_for_bash!(v.as_str())
+                )
+                .set_style(THEME.added_env_var),
               );
             }
             for (k, v) in env_diff.modified.iter() {
               // Modified env vars
               spans.push(space.clone());
               spans.push(
-                format!("{}={}", escape_str_for_bash!(k), escape_str_for_bash!(v))
-                  .set_style(THEME.modified_env_var),
+                format!(
+                  "{}={}",
+                  escape_str_for_bash!(k.as_str()),
+                  escape_str_for_bash!(v.as_str())
+                )
+                .set_style(THEME.modified_env_var),
               );
             }
           }

@@ -1,5 +1,5 @@
 use std::{
-  collections::BTreeMap,
+  collections::{BTreeMap},
   ffi::CString,
   io::{self, stdin},
   os::fd::AsRawFd,
@@ -9,6 +9,7 @@ use std::{
   thread::{self, JoinHandle},
 };
 
+use arcstr::ArcStr;
 use cfg_if::cfg_if;
 use enumflags2::BitFlags;
 use nix::{
@@ -831,7 +832,7 @@ impl Tracer {
 
   // This function does not take self due to borrow checker
   fn collect_exec_event(
-    env: &BTreeMap<String, String>,
+    env: &BTreeMap<ArcStr, ArcStr>,
     state: &ProcessState,
     result: i64,
   ) -> Box<ExecEvent> {
