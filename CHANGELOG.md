@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.2.2
+
+tracexec v0.2.2 released!
+
+Changes since v0.2.1:
+
+### Fixed
+
+- Fix a race condition in the communication between the tracer and the TUI.
+- TUI: Change the modifier key that toggles case sensitivity and regex/plain text in the search bar from `Ctrl` to `Alt`
+because in most terminals, `Ctrl`+`I` is equivalent to `Tab` thus the toggle is not working as expected.
+- Clarify that the license is `GPL-2.0-or-later` in Cargo.toml(was `GPL-2.0`).
+
+### Performance
+
+- Keep a global cache of env keys/values to reduce memory usage.
+
+### Other
+
+- Mark tests that need to be run single-threaded with `serial_test` crate so that we don't need to set `RUST_TEST_THREADS=1` when running tests.
+
 ## v0.2.1
 
 tracexec v0.2.1 released!
