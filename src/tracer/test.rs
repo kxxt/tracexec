@@ -1,6 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use rstest::{fixture, rstest};
+use serial_test::file_serial;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tracing::info;
 use tracing_test::traced_test;
@@ -73,6 +74,7 @@ async fn run_exe_and_collect_events(
 #[rstest]
 #[case(true)]
 #[case(false)]
+#[file_serial]
 #[tokio::test]
 async fn tracer_decodes_proc_self_exe(
   #[case] resolve_proc_self_exe: bool,
@@ -117,6 +119,7 @@ async fn tracer_decodes_proc_self_exe(
 
 #[traced_test]
 #[rstest]
+#[file_serial]
 #[tokio::test]
 async fn tracer_emits_exec_event(
   tracer: (

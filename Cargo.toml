@@ -66,6 +66,7 @@ indexmap = "2.2.6"
 tui-prompts = "0.3.12"
 unicode-segmentation = "1.11.0"
 unicode-width = "0.1.12"
+serial_test = { version = "3.1.1", features = ["file_locks"]}
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 

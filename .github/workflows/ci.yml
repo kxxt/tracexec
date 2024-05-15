@@ -112,10 +112,8 @@ jobs:
         run: cargo check --target ${{ matrix.target }} --no-default-features
         env:
           RUST_BACKTRACE: full
-          RUST_TEST_THREADS: 1
       - name: Run cargo test with default features
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: cargo test --target ${{ matrix.target }}
         env:
           RUST_BACKTRACE: full
-          RUST_TEST_THREADS: 1
