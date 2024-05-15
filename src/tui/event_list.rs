@@ -145,9 +145,7 @@ impl EventList {
 
   /// returns the selected item if there is any
   pub fn selection(&self) -> Option<&Event> {
-    self
-      .selection_index()
-      .map(|i| &self.events[i])
+    self.selection_index().map(|i| &self.events[i])
   }
 
   /// Reset the window and force clear the line cache

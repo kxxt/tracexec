@@ -733,7 +733,9 @@ impl Printer {
             write!(
               out,
               " {}",
-              escape_str_for_bash!(TracerEventDetails::filename_to_cow(&exec_data.filename).as_ref())
+              escape_str_for_bash!(
+                TracerEventDetails::filename_to_cow(&exec_data.filename).as_ref()
+              )
             )?;
             for arg in argv.iter().skip(1) {
               write!(out, " {}", escape_str_for_bash!(arg))?;
