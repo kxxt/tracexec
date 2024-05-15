@@ -1,5 +1,6 @@
-use std::{collections::HashMap, ffi::CString, path::PathBuf, sync::Arc};
+use std::{collections::{BTreeMap, HashMap}, ffi::CString, path::PathBuf, sync::Arc};
 
+use arcstr::ArcStr;
 use nix::{sys::signal::Signal, unistd::Pid};
 
 use crate::{
@@ -45,7 +46,7 @@ pub enum ProcessStatus {
 pub struct ExecData {
   pub filename: Result<PathBuf, InspectError>,
   pub argv: Arc<Result<Vec<String>, InspectError>>,
-  pub envp: Arc<Result<Vec<String>, InspectError>>,
+  pub envp: Arc<Result<BTreeMap<ArcStr, ArcStr>, InspectError>>,
   pub cwd: PathBuf,
   pub interpreters: Vec<Interpreter>,
   pub fdinfo: Arc<FileDescriptorInfoCollection>,
@@ -55,7 +56,7 @@ impl ExecData {
   pub fn new(
     filename: Result<PathBuf, InspectError>,
     argv: Result<Vec<String>, InspectError>,
-    envp: Result<Vec<String>, InspectError>,
+    envp: Result<BTreeMap<ArcStr, ArcStr>, InspectError>,
     cwd: PathBuf,
     interpreters: Vec<Interpreter>,
     fdinfo: FileDescriptorInfoCollection,

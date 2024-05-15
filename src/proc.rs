@@ -270,7 +270,7 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
   Interpreter::Shebang(shebang.into_owned())
 }
 
-pub fn parse_env_entry(item: &str) -> (&str, &str) {
+fn parse_env_entry(item: &str) -> (&str, &str) {
   // trace!("Parsing envp entry: {:?}", item);
   let Some(mut sep_loc) = item.as_bytes().iter().position(|&x| x == b'=') else {
     warn!(
@@ -298,6 +298,17 @@ pub fn parse_env_entry(item: &str) -> (&str, &str) {
   (head, &tail[1..])
 }
 
+pub fn parse_envp(envp: Vec<String>) -> BTreeMap<ArcStr, ArcStr> {
+  envp
+    .into_iter()
+    .map(|entry| {
+      let (key, value) = parse_env_entry(&entry);
+      let mut cache = CACHE.write().unwrap();
+      (cache.get_or_insert(key), cache.get_or_insert(value))
+    })
+    .collect()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnvDiff {
   pub added: BTreeMap<ArcStr, ArcStr>,
@@ -311,13 +322,12 @@ impl EnvDiff {
   }
 }
 
-pub fn diff_env(original: &BTreeMap<ArcStr, ArcStr>, envp: &[String]) -> EnvDiff {
+pub fn diff_env(original: &BTreeMap<ArcStr, ArcStr>, envp: &BTreeMap<ArcStr, ArcStr>) -> EnvDiff {
   let mut added = BTreeMap::new();
   let mut modified = BTreeMap::<ArcStr, ArcStr>::new();
   // Use str to avoid cloning all env vars
   let mut removed: HashSet<ArcStr> = original.keys().cloned().collect();
-  for entry in envp.iter() {
-    let (key, value) = parse_env_entry(entry);
+  for (key, value) in envp.iter() {
     // Too bad that we still don't have if- and while-let-chains
     // https://github.com/rust-lang/rust/issues/53667
     if let Some(orig_v) = original.get(key).map(|x| x.as_str()) {

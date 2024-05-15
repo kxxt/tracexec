@@ -1,5 +1,5 @@
 use std::{
-  collections::{BTreeMap},
+  collections::BTreeMap,
   ffi::CString,
   io::{self, stdin},
   os::fd::AsRawFd,
@@ -39,8 +39,8 @@ use crate::{
   },
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{
-    diff_env, read_comm, read_cwd, read_exe, read_fd, read_fds, read_interpreter_recursive,
-    BaselineInfo,
+    diff_env, parse_envp, read_comm, read_cwd, read_exe, read_fd, read_fds,
+    read_interpreter_recursive, BaselineInfo,
   },
   pty::{self, Child, UnixSlavePty},
   tracer::state::ProcessExit,
@@ -599,7 +599,7 @@ impl Tracer {
       self.warn_for_filename(&filename, pid)?;
       let argv = read_string_array(pid, syscall_arg!(regs, 2) as AddressType);
       self.warn_for_argv(&argv, pid)?;
-      let envp = read_string_array(pid, syscall_arg!(regs, 3) as AddressType);
+      let envp = read_string_array(pid, syscall_arg!(regs, 3) as AddressType).map(parse_envp);
       self.warn_for_envp(&envp, pid)?;
 
       let interpreters = if self.printer.args.trace_interpreter && filename.is_ok() {
@@ -622,7 +622,7 @@ impl Tracer {
       self.warn_for_filename(&filename, pid)?;
       let argv = read_string_array(pid, syscall_arg!(regs, 1) as AddressType);
       self.warn_for_argv(&argv, pid)?;
-      let envp = read_string_array(pid, syscall_arg!(regs, 2) as AddressType);
+      let envp = read_string_array(pid, syscall_arg!(regs, 2) as AddressType).map(parse_envp);
       self.warn_for_envp(&envp, pid)?;
       let interpreters = if self.printer.args.trace_interpreter && filename.is_ok() {
         read_interpreter_recursive(filename.as_deref().unwrap())
@@ -794,11 +794,11 @@ impl Tracer {
 
   fn warn_for_envp(
     &self,
-    envp: &Result<Vec<String>, InspectError>,
+    envp: &Result<BTreeMap<ArcStr, ArcStr>, InspectError>,
     pid: Pid,
   ) -> color_eyre::Result<()> {
     if self.filter.intersects(TracerEventDetailsKind::Warning) {
-      if let Err(e) = envp.as_deref() {
+      if let Err(e) = envp.as_ref() {
         self.msg_tx.send(
           TracerEventDetails::Warning(TracerEventMessage {
             pid: Some(pid),
@@ -847,7 +847,8 @@ impl Tracer {
       interpreter: exec_data.interpreters.clone(),
       env_diff: exec_data
         .envp
-        .as_deref()
+        .as_ref()
+        .as_ref()
         .map(|envp| diff_env(env, envp))
         .map_err(|e| *e),
       result,

@@ -218,6 +218,24 @@ impl ListPrinter {
     }
     self.end(out)
   }
+
+  pub fn print_env(&self, out: &mut dyn Write, env: &BTreeMap<ArcStr, ArcStr>) -> io::Result<()> {
+    self.begin(out)?;
+    let mut first_item_written = false;
+    let mut write_separator = |out: &mut dyn Write| -> io::Result<()> {
+      if first_item_written {
+        self.comma(out)?;
+      } else {
+        first_item_written = true;
+      }
+      Ok(())
+    };
+    for (k, v) in env.iter() {
+      write_separator(out)?;
+      write!(out, "{:?}={:?}", k, v)?;
+    }
+    self.end(out)
+  }
 }
 
 pub struct Printer {
@@ -548,7 +566,7 @@ impl Printer {
             }
             EnvPrintFormat::Raw => {
               write!(out, " {} ", "with".purple())?;
-              list_printer.print_string_list(out, envp)?;
+              list_printer.print_env(out, envp)?;
             }
             EnvPrintFormat::None => (),
           }

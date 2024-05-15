@@ -1,5 +1,6 @@
 use std::{
   borrow::Cow,
+  collections::BTreeMap,
   ffi::OsStr,
   fmt::Display,
   io::Write,
@@ -8,6 +9,7 @@ use std::{
   usize,
 };
 
+use arcstr::ArcStr;
 use clap::ValueEnum;
 use crossterm::event::KeyEvent;
 use enumflags2::BitFlags;
@@ -114,7 +116,7 @@ pub struct ExecEvent {
   pub comm: String,
   pub filename: Result<PathBuf, InspectError>,
   pub argv: Arc<Result<Vec<String>, InspectError>>,
-  pub envp: Arc<Result<Vec<String>, InspectError>>,
+  pub envp: Arc<Result<BTreeMap<ArcStr, ArcStr>, InspectError>>,
   pub interpreter: Vec<Interpreter>,
   pub env_diff: Result<EnvDiff, InspectError>,
   pub fdinfo: Arc<FileDescriptorInfoCollection>,
@@ -417,7 +419,11 @@ impl TracerEventDetails {
           .into()
       }
       CopyTarget::Env => match event.envp.as_ref() {
-        Ok(envp) => envp.iter().join("\n").into(),
+        Ok(envp) => envp
+          .iter()
+          .map(|(k, v)| format!("{}={}", k, v))
+          .join("\n")
+          .into(),
         Err(e) => format!("[failed to read envp: {e}]").into(),
       },
       CopyTarget::EnvDiff => {
