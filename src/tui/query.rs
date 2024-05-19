@@ -6,12 +6,14 @@ use ratatui::{
   text::{Line, Span},
   widgets::{StatefulWidget, Widget},
 };
-use regex::{Regex, RegexBuilder};
+use regex_cursor::{
+  engines::pikevm::{self}, regex_automata::util::syntax, IntoCursor
+};
 use tui_prompts::{State, TextPrompt, TextState};
 
 use crate::action::Action;
 
-use super::{help::help_item, theme::THEME};
+use super::{event_line::EventLine, help::help_item, theme::THEME};
 
 #[derive(Debug, Clone)]
 pub struct Query {
@@ -22,7 +24,7 @@ pub struct Query {
 
 #[derive(Debug, Clone)]
 pub enum QueryValue {
-  Regex(Regex),
+  Regex(pikevm::PikeVM),
   Text(String),
 }
 
@@ -51,14 +53,19 @@ impl Query {
     }
   }
 
-  pub fn matches(&self, text: &str) -> bool {
+  pub fn matches(&self, text: &EventLine) -> bool {
     let result = match &self.value {
-      QueryValue::Regex(re) => re.is_match(text),
+      QueryValue::Regex(re) => pikevm::is_match(
+        re,
+        &mut pikevm::Cache::new(re),
+        &mut regex_cursor::Input::new(text.into_cursor()),
+      ),
       QueryValue::Text(query) => {
+        // FIXME: Use cursor.
         if self.case_sensitive {
-          text.contains(query)
+          text.to_string().contains(query)
         } else {
-          text.to_lowercase().contains(&query.to_lowercase())
+          text.to_string().to_lowercase().contains(&query.to_lowercase())
         }
       }
     };
@@ -168,9 +175,9 @@ impl QueryBuilder {
           self.kind,
           if self.is_regex {
             QueryValue::Regex(
-              RegexBuilder::new(text)
-                .case_insensitive(!self.case_sensitive)
-                .build()
+              pikevm::Builder::new()
+                .syntax(syntax::Config::new().case_insensitive(!self.case_sensitive))
+                .build(text)
                 .map_err(|e| {
                   e.to_string()
                     .lines()

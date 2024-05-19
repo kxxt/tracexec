@@ -40,9 +40,7 @@ use crate::{
 };
 
 use super::{
-  partial_line::PartialLine,
-  query::{Query, QueryResult},
-  theme::THEME,
+  event_line::EventLine, partial_line::PartialLine, query::{Query, QueryResult}, theme::THEME
 };
 
 pub struct Event {
@@ -66,7 +64,7 @@ pub struct EventList {
   state: ListState,
   events: Vec<Event>,
   /// The string representation of the events, used for searching
-  event_strings: Vec<String>,
+  event_lines: Vec<EventLine>,
   /// Current window of the event list, [start, end)
   window: (usize, usize),
   /// Cache of the (index, line)s in the window
@@ -96,7 +94,7 @@ impl EventList {
     Self {
       state: ListState::default(),
       events: vec![],
-      event_strings: vec![],
+      event_lines: vec![],
       window: (0, 0),
       nr_items_in_window: 0,
       horizontal_offset: 0,
@@ -345,7 +343,7 @@ impl EventList {
     // Events won't change during the search because this is Rust and we already have a reference to it.
     // Rust really makes the code more easier to reason about.
     let searched_len = self.events.len();
-    for (i, evt) in self.event_strings.iter().enumerate() {
+    for (i, evt) in self.event_lines.iter().enumerate() {
       if query.matches(evt) {
         indices.insert(i, 0);
       }
@@ -373,7 +371,7 @@ impl EventList {
     };
     let mut modified = false;
     for (i, evt) in self
-      .event_strings
+      .event_lines
       .iter()
       .enumerate()
       .skip(existing_result.searched_len)
@@ -383,7 +381,7 @@ impl EventList {
         modified = true;
       }
     }
-    existing_result.searched_len = self.event_strings.len();
+    existing_result.searched_len = self.event_lines.len();
     if modified {
       self.should_refresh_list_cache = true;
     }
@@ -424,7 +422,7 @@ impl EventList {
       },
       details: event,
     };
-    self.event_strings.push(event.to_tui_line(self).to_string());
+    self.event_lines.push(event.to_tui_line(self).into());
     self.events.push(event);
     self.incremental_search();
   }
@@ -463,7 +461,7 @@ impl EventList {
         }
         ProcessStateUpdate::Exit(ProcessExit::Signal(s)) => Some(EventStatus::ProcessSignaled(s)),
       };
-      self.event_strings[i] = self.events[i].to_tui_line(self).to_string();
+      self.event_lines[i] = self.events[i].to_tui_line(self).into();
       trace!(
         "window: {:?}, i: {}, cache: {}",
         self.window,
@@ -484,10 +482,10 @@ impl EventList {
   }
 
   pub fn rebuild_event_strings(&mut self) {
-    self.event_strings = self
+    self.event_lines = self
       .events
       .iter()
-      .map(|evt| evt.to_tui_line(self).to_string())
+      .map(|evt| evt.to_tui_line(self).into())
       .collect();
   }
 }

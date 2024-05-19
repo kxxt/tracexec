@@ -49,6 +49,7 @@ mod pseudo_term;
 pub mod query;
 mod sized_paragraph;
 pub mod theme;
+pub mod event_line;
 mod ui;
 
 pub struct Tui {
