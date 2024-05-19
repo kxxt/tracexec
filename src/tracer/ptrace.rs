@@ -35,6 +35,10 @@ pub fn ptrace_getregs(pid: Pid) -> Result<PtraceRegisters, Errno> {
       if #[cfg(target_arch = "x86_64")] {
           ptrace::getregs(pid)
       } else {
+          // https://github.com/torvalds/linux/blob/v6.9/include/uapi/linux/elf.h#L378
+          // libc crate doesn't provide this constant when using musl libc.
+          const NT_PRSTATUS: std::ffi::c_int	= 1;
+
           use nix::sys::ptrace::AddressType;
 
           let mut regs = std::mem::MaybeUninit::<PtraceRegisters>::uninit();
@@ -46,7 +50,7 @@ pub fn ptrace_getregs(pid: Pid) -> Result<PtraceRegisters, Errno> {
               nix::libc::ptrace(
                   nix::libc::PTRACE_GETREGSET,
                   pid.as_raw(),
-                  nix::libc::NT_PRSTATUS,
+                  NT_PRSTATUS,
                   &iovec as *const _ as *const nix::libc::c_void,
               )
           };
