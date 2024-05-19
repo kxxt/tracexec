@@ -16,7 +16,7 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::{collections::VecDeque, sync::Arc};
+use std::sync::Arc;
 
 use indexmap::IndexMap;
 use nix::sys::signal::Signal;
@@ -30,17 +30,21 @@ use ratatui::{
     ScrollbarState, StatefulWidget, StatefulWidgetRef, Widget,
   },
 };
-use tracing::trace;
 
 use crate::{
   cli::args::ModifierArgs,
-  event::{EventStatus, ProcessStateUpdate, ProcessStateUpdateEvent, RuntimeModifier, TracerEventDetails},
+  event::{
+    EventStatus, ProcessStateUpdate, ProcessStateUpdateEvent, RuntimeModifier, TracerEventDetails,
+  },
   proc::BaselineInfo,
   tracer::state::ProcessExit,
 };
 
 use super::{
-  event_line::EventLine, partial_line::PartialLine, query::{Query, QueryResult}, theme::THEME
+  event_line::EventLine,
+  partial_line::PartialLine,
+  query::{Query, QueryResult},
+  theme::THEME,
 };
 
 pub struct Event {
@@ -67,9 +71,6 @@ pub struct EventList {
   event_lines: Vec<EventLine>,
   /// Current window of the event list, [start, end)
   window: (usize, usize),
-  /// Cache of the (index, line)s in the window
-  lines_cache: VecDeque<(usize, Line<'static>)>,
-  should_refresh_lines_cache: bool,
   /// Cache of the list items in the view
   list_cache: List<'static>,
   should_refresh_list_cache: bool,
@@ -103,8 +104,6 @@ impl EventList {
       max_window_len: 0,
       baseline: Arc::new(baseline),
       follow,
-      lines_cache: VecDeque::new(),
-      should_refresh_lines_cache: true,
       should_refresh_list_cache: true,
       list_cache: List::default(),
       modifier_args,
@@ -140,14 +139,12 @@ impl EventList {
 
   pub fn toggle_env_display(&mut self) {
     self.rt_modifier.show_env = !self.rt_modifier.show_env;
-    self.should_refresh_lines_cache = true;
-    self.rebuild_event_strings();
+    self.rebuild_lines();
   }
 
   pub fn toggle_cwd_display(&mut self) {
     self.rt_modifier.show_cwd = !self.rt_modifier.show_cwd;
-    self.should_refresh_lines_cache = true;
-    self.rebuild_event_strings();
+    self.rebuild_lines();
   }
 
   /// returns the index of the selected item if there is any
@@ -160,10 +157,10 @@ impl EventList {
     self.selection_index().map(|i| &self.events[i])
   }
 
-  /// Reset the window and force clear the line cache
+  /// Reset the window and force clear the list cache
   pub fn set_window(&mut self, window: (usize, usize)) {
     self.window = window;
-    self.should_refresh_lines_cache = true;
+    self.should_refresh_list_cache = true;
   }
 
   pub fn get_window(&self) -> (usize, usize) {
@@ -171,7 +168,7 @@ impl EventList {
   }
 
   // TODO: this is ugly due to borrow checking.
-  pub fn window(items: &[Event], window: (usize, usize)) -> &[Event] {
+  pub fn window(items: &[EventLine], window: (usize, usize)) -> &[EventLine] {
     &items[window.0..window.1.min(items.len())]
   }
 
@@ -199,34 +196,8 @@ impl Widget for &mut EventList {
     self.inner_width = area.width - 2; // for the selection indicator
     let mut max_len = area.width as usize - 1;
     // Iterate through all elements in the `items` and stylize them.
-    let events_in_window = EventList::window(&self.events, self.window);
-    // tracing::debug!(
-    //   "Should refresh line cache: {}",
-    //   self.should_refresh_lines_cache
-    // );
-    if self.should_refresh_lines_cache {
-      self.should_refresh_lines_cache = false;
-      self.should_refresh_list_cache = true;
-      // Initialize the line cache, which will be kept in sync by the navigation methods
-      self.lines_cache = events_in_window
-        .iter()
-        .enumerate()
-        .map(|(i, evt)| (i + self.window.0, evt.to_tui_line(self)))
-        .collect();
-    }
+    let events_in_window = EventList::window(&self.event_lines, self.window);
     self.nr_items_in_window = events_in_window.len();
-    if self.nr_items_in_window > self.lines_cache.len() {
-      // Push the new items to the cache
-      self.should_refresh_list_cache = true;
-      for (i, evt) in events_in_window
-        .iter()
-        .enumerate()
-        .skip(self.lines_cache.len())
-      {
-        tracing::debug!("Pushing new item to line cache");
-        self.lines_cache.push_back((i, evt.to_tui_line(self)));
-      }
-    }
     // tracing::debug!(
     //   "Should refresh list cache: {}",
     //   self.should_refresh_list_cache
@@ -234,20 +205,27 @@ impl Widget for &mut EventList {
     if self.should_refresh_list_cache {
       self.should_refresh_list_cache = false;
       tracing::debug!("Refreshing list cache");
-      let items = self.lines_cache.iter().map(|(i, full_line)| {
-        max_len = max_len.max(full_line.width());
-        let highlighted = self
-          .query_result
-          .as_ref()
-          .map_or(false, |query_result| query_result.indices.contains_key(i));
-        let mut base = full_line
-          .clone()
-          .substring(self.horizontal_offset, area.width);
-        if highlighted {
-          base = base.style(THEME.search_match);
-        }
-        ListItem::from(base)
-      });
+      let items = self
+        .event_lines
+        .iter()
+        .enumerate()
+        .skip(self.window.0)
+        .take(self.window.1 - self.window.0)
+        .map(|(i, full_line)| {
+          max_len = max_len.max(full_line.line.width());
+          let highlighted = self
+            .query_result
+            .as_ref()
+            .map_or(false, |query_result| query_result.indices.contains_key(&i));
+          let mut base = full_line
+            .line
+            .clone()
+            .substring(self.horizontal_offset, area.width);
+          if highlighted {
+            base = base.style(THEME.search_match);
+          }
+          ListItem::from(base)
+        });
       // Create a List from all list items and highlight the currently selected one
       let list = List::new(items)
         .highlight_style(
@@ -462,31 +440,20 @@ impl EventList {
         ProcessStateUpdate::Exit(ProcessExit::Signal(s)) => Some(EventStatus::ProcessSignaled(s)),
       };
       self.event_lines[i] = self.events[i].to_tui_line(self).into();
-      trace!(
-        "window: {:?}, i: {}, cache: {}",
-        self.window,
-        i,
-        self.lines_cache.len()
-      );
       if self.window.0 <= i && i < self.window.1 {
-        let j = i - self.window.0;
-        if j < self.lines_cache.len() {
-          self.lines_cache[j] = (i, self.events[i].to_tui_line(self));
-        } else {
-          // The line might not be in cache if the current window is not full and this event is a
-          // new one, which will be added to the cache later.
-        }
         self.should_refresh_list_cache = true;
       }
     }
   }
 
-  pub fn rebuild_event_strings(&mut self) {
+  pub fn rebuild_lines(&mut self) {
+    // TODO: only update spans that are affected by the change
     self.event_lines = self
       .events
       .iter()
       .map(|evt| evt.to_tui_line(self).into())
       .collect();
+    self.should_refresh_list_cache = true;
   }
 }
 
@@ -505,13 +472,13 @@ impl EventList {
       // Scroll up
       self.window.0 = index;
       self.window.1 = self.window.0 + self.max_window_len;
-      self.should_refresh_lines_cache = true;
+      self.should_refresh_list_cache = true;
       self.state.select(Some(0));
     } else if index >= self.window.1 {
       // Scroll down
       self.window.0 = index.min(self.events.len().saturating_sub(self.max_window_len));
       self.window.1 = self.window.0 + self.max_window_len;
-      self.should_refresh_lines_cache = true;
+      self.should_refresh_list_cache = true;
       self.state.select(Some(index - self.window.0));
     } else {
       self.state.select(Some(index - self.window.0));
@@ -519,6 +486,7 @@ impl EventList {
   }
 
   /// Returns the index(absolute) of the last item in the window
+  #[allow(dead_code)]
   fn last_item_in_window_absolute(&self) -> Option<usize> {
     if self.events.is_empty() {
       return None;
@@ -569,11 +537,6 @@ impl EventList {
     if self.window.1 < self.events.len() {
       self.window.0 += 1;
       self.window.1 += 1;
-      self.lines_cache.pop_front();
-      let last_index = self.last_item_in_window_absolute().unwrap();
-      self
-        .lines_cache
-        .push_back((last_index, self.events[last_index].to_tui_line(self)));
       self.should_refresh_list_cache = true;
       true
     } else {
@@ -585,11 +548,6 @@ impl EventList {
     if self.window.0 > 0 {
       self.window.0 -= 1;
       self.window.1 -= 1;
-      self.lines_cache.pop_back();
-      let front_index = self.window.0;
-      self
-        .lines_cache
-        .push_front((front_index, self.events[front_index].to_tui_line(self)));
       self.should_refresh_list_cache = true;
       true
     } else {
@@ -643,20 +601,16 @@ impl EventList {
     if self.window.1 + self.max_window_len <= self.events.len() {
       self.window.0 += self.max_window_len;
       self.window.1 += self.max_window_len;
-      self.should_refresh_lines_cache = true;
+      self.should_refresh_list_cache = true;
     } else {
       // If we can't slide down the window by the number of items in the window
       // just set the window to the last items
       let old_window = self.window;
       self.window.0 = self.events.len().saturating_sub(self.max_window_len);
       self.window.1 = self.window.0 + self.max_window_len;
-      self.should_refresh_lines_cache = old_window != self.window;
+      self.should_refresh_list_cache = old_window != self.window;
     }
     self.state.select(self.last_item_in_window_relative());
-    tracing::trace!(
-      "pgdn: should_refresh_lines_cache = {}",
-      self.should_refresh_lines_cache
-    );
   }
 
   pub fn page_up(&mut self) {
@@ -664,20 +618,16 @@ impl EventList {
     if self.window.0 >= self.max_window_len {
       self.window.0 -= self.max_window_len;
       self.window.1 -= self.max_window_len;
-      self.should_refresh_lines_cache = true;
+      self.should_refresh_list_cache = true;
     } else {
       // If we can't slide up the window by the number of items in the window
       // just set the window to the first items
       let old_window = self.window;
       self.window.0 = 0;
       self.window.1 = self.window.0 + self.max_window_len;
-      self.should_refresh_lines_cache = old_window != self.window;
+      self.should_refresh_list_cache = old_window != self.window;
     }
     self.select_first();
-    tracing::trace!(
-      "pgup: should_refresh_lines_cache = {}",
-      self.should_refresh_lines_cache
-    );
   }
 
   pub fn page_left(&mut self) {
@@ -727,12 +677,8 @@ impl EventList {
     let old_window = self.window;
     self.window.0 = 0;
     self.window.1 = self.max_window_len;
-    self.should_refresh_lines_cache = old_window != self.window;
+    self.should_refresh_list_cache = old_window != self.window;
     self.select_first();
-    tracing::trace!(
-      "top: should_refresh_lines_cache = {}",
-      self.should_refresh_lines_cache
-    );
   }
 
   pub fn scroll_to_bottom(&mut self) {
@@ -743,23 +689,7 @@ impl EventList {
     self.window.0 = self.events.len().saturating_sub(self.max_window_len);
     self.window.1 = self.window.0 + self.max_window_len;
     self.select_last();
-    if self.window.0.saturating_sub(old_window.0) == 1
-      && self.window.1.saturating_sub(old_window.1) == 1
-    {
-      // Special optimization for follow mode where scroll to bottom is called continuously
-      self.lines_cache.pop_front();
-      let last_index = self.last_item_in_window_absolute().unwrap();
-      self
-        .lines_cache
-        .push_back((last_index, self.events[last_index].to_tui_line(self)));
-      self.should_refresh_list_cache = true;
-    } else {
-      self.should_refresh_lines_cache = old_window != self.window;
-      tracing::trace!(
-        "bottom: should_refresh_lines_cache = {}",
-        self.should_refresh_lines_cache
-      );
-    }
+    self.should_refresh_list_cache = old_window != self.window;
   }
 
   pub fn scroll_to_start(&mut self) {
