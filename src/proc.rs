@@ -26,6 +26,7 @@ use tracing::warn;
 
 use crate::{cache::StringCache, pty::UnixSlavePty};
 
+#[allow(unused)]
 pub fn read_argv(pid: Pid) -> color_eyre::Result<Vec<CString>> {
   let filename = format!("/proc/{pid}/cmdline");
   let buf = std::fs::read(filename)?;

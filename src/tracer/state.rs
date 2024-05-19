@@ -1,10 +1,10 @@
-use std::{collections::{BTreeMap, HashMap}, ffi::CString, path::PathBuf, sync::Arc};
+use std::{collections::{BTreeMap, HashMap}, path::PathBuf, sync::Arc};
 
 use arcstr::ArcStr;
 use nix::{sys::signal::Signal, unistd::Pid};
 
 use crate::{
-  proc::{read_argv, read_comm, FileDescriptorInfoCollection, Interpreter},
+  proc::{read_comm, FileDescriptorInfoCollection, Interpreter},
   tracer::InspectError,
 };
 
@@ -18,7 +18,6 @@ pub struct ProcessState {
   pub ppid: Option<Pid>,
   pub status: ProcessStatus,
   pub start_time: u64,
-  pub argv: Vec<CString>,
   pub comm: String,
   pub presyscall: bool,
   pub is_exec_successful: bool,
@@ -102,7 +101,6 @@ impl ProcessState {
       ppid: None,
       status: ProcessStatus::Initialized,
       comm: read_comm(pid)?,
-      argv: read_argv(pid)?,
       start_time,
       presyscall: true,
       is_exec_successful: false,
