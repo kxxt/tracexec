@@ -610,7 +610,9 @@ impl Printer {
                 out,
                 " {}{}",
                 "<".bright_yellow().bold(),
-                escape_str_for_bash!(fdinfo.path.as_str()).bright_yellow().bold()
+                escape_str_for_bash!(fdinfo.path.as_str())
+                  .bright_yellow()
+                  .bold()
               )?;
             }
           } else {
@@ -627,7 +629,9 @@ impl Printer {
                 out,
                 " {}{}",
                 ">".bright_yellow().bold(),
-                escape_str_for_bash!(fdinfo.path.as_str()).bright_yellow().bold()
+                escape_str_for_bash!(fdinfo.path.as_str())
+                  .bright_yellow()
+                  .bold()
               )?;
             }
           } else {
@@ -644,7 +648,9 @@ impl Printer {
                 out,
                 " {}{}",
                 "2>".bright_yellow().bold(),
-                escape_str_for_bash!(fdinfo.path.as_str()).bright_yellow().bold()
+                escape_str_for_bash!(fdinfo.path.as_str())
+                  .bright_yellow()
+                  .bold()
               )?;
             }
           } else {
@@ -667,7 +673,9 @@ impl Printer {
               " {}{}{}",
               fd.bright_green().bold(),
               ">".bright_green().bold(),
-              escape_str_for_bash!(fdinfo.path.as_str()).bright_green().bold()
+              escape_str_for_bash!(fdinfo.path.as_str())
+                .bright_green()
+                .bold()
             )?;
           }
         }

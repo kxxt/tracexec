@@ -42,6 +42,7 @@ pub mod app;
 pub mod copy_popup;
 pub mod details_popup;
 pub mod error_popup;
+pub mod event_line;
 mod event_list;
 pub mod help;
 mod partial_line;
@@ -49,7 +50,6 @@ mod pseudo_term;
 pub mod query;
 mod sized_paragraph;
 pub mod theme;
-pub mod event_line;
 mod ui;
 
 pub struct Tui {
@@ -95,10 +95,7 @@ impl Tui {
     self
   }
 
-  pub fn start(
-    &mut self,
-    mut tracer_rx: UnboundedReceiver<TracerMessage>,
-  ) {
+  pub fn start(&mut self, mut tracer_rx: UnboundedReceiver<TracerMessage>) {
     let render_delay = std::time::Duration::from_secs_f64(1.0 / self.frame_rate);
     self.cancel();
     self.cancellation_token = CancellationToken::new();
@@ -171,10 +168,7 @@ impl Tui {
     Ok(())
   }
 
-  pub fn enter(
-    &mut self,
-    tracer_rx: UnboundedReceiver<TracerMessage>,
-  ) -> Result<()> {
+  pub fn enter(&mut self, tracer_rx: UnboundedReceiver<TracerMessage>) -> Result<()> {
     init_tui()?;
     self.start(tracer_rx);
     Ok(())

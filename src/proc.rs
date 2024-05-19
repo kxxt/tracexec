@@ -157,7 +157,7 @@ pub fn read_fdinfo(pid: Pid, fd: i32) -> color_eyre::Result<FileDescriptorInfo> 
         let mut cache = CACHE.write().unwrap();
         let line = cache.get_or_insert_owned(line);
         info.extra.push(line)
-      },
+      }
     }
   }
   info.mnt = get_mountinfo_by_mnt_id(pid, info.mnt_id)?;

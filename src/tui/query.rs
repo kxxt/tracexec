@@ -6,9 +6,7 @@ use ratatui::{
   text::{Line, Span},
   widgets::{StatefulWidget, Widget},
 };
-use regex_cursor::{
-  engines::pikevm::{self}, regex_automata::util::syntax, IntoCursor
-};
+use regex_cursor::{engines::pikevm, regex_automata::util::syntax, IntoCursor};
 use tui_prompts::{State, TextPrompt, TextState};
 
 use crate::action::Action;
@@ -65,7 +63,10 @@ impl Query {
         if self.case_sensitive {
           text.to_string().contains(query)
         } else {
-          text.to_string().to_lowercase().contains(&query.to_lowercase())
+          text
+            .to_string()
+            .to_lowercase()
+            .contains(&query.to_lowercase())
         }
       }
     };
