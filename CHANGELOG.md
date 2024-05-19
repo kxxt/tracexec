@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.3.0-alpha.1
+
+tracexec v0.3.0-alpha.1 released!
+
+Changes since v0.2.2:
+
+### Added
+
+- Shell completions are now available for bash, elvish, fish, powershell and zsh!
+  - Run `tracexec generate-completions <SHELL>` to get the completion file to install for your favorite shell.
+- TUI: Toggle showing/hiding CWDS by pressing `W`.
+- Musl builds are now available for x86_64 and aarch64.
+
+### Fixed
+
+- Fix build issues on musl.
+
 ## v0.2.2
 
 tracexec v0.2.2 released!
