@@ -109,7 +109,7 @@ pub struct FileDescriptorInfo {
   pub flags: OFlag,
   pub mnt_id: c_int,
   pub ino: c_int,
-  pub mnt: String,
+  pub mnt: ArcStr,
   pub extra: Vec<String>,
 }
 
@@ -171,7 +171,7 @@ pub fn read_fds(pid: Pid) -> color_eyre::Result<FileDescriptorInfoCollection> {
   Ok(collection)
 }
 
-pub fn get_mountinfo_by_mnt_id(pid: Pid, mnt_id: c_int) -> color_eyre::Result<String> {
+pub fn get_mountinfo_by_mnt_id(pid: Pid, mnt_id: c_int) -> color_eyre::Result<ArcStr> {
   let filename = format!("/proc/{pid}/mountinfo");
   let file = std::fs::File::open(filename)?;
   let reader = BufReader::new(file);
@@ -179,10 +179,12 @@ pub fn get_mountinfo_by_mnt_id(pid: Pid, mnt_id: c_int) -> color_eyre::Result<St
     let line = line?;
     let parts = line.split_once(|x| x == ' ');
     if parts.map(|(mount_id, _)| mount_id.parse()) == Some(Ok(mnt_id)) {
-      return Ok(line);
+      let mut cache = CACHE.write().unwrap();
+      return Ok(cache.get_or_insert_owned(line));
     }
   }
-  Ok("Not found. This is probably a pipe or something else.".to_string())
+  let mut cache = CACHE.write().unwrap();
+  Ok(cache.get_or_insert("Not found. This is probably a pipe or something else."))
 }
 
 #[derive(Debug, Clone, PartialEq)]
