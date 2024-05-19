@@ -111,7 +111,7 @@ pub struct FileDescriptorInfo {
   pub mnt_id: c_int,
   pub ino: c_int,
   pub mnt: ArcStr,
-  pub extra: Vec<String>,
+  pub extra: Vec<ArcStr>,
 }
 
 impl Default for FileDescriptorInfo {
@@ -153,7 +153,11 @@ pub fn read_fdinfo(pid: Pid, fd: i32) -> color_eyre::Result<FileDescriptorInfo> 
       "flags:" => info.flags = OFlag::from_bits_truncate(c_int::from_str_radix(value, 8)?),
       "mnt_id:" => info.mnt_id = value.parse()?,
       "ino:" => info.ino = value.parse()?,
-      _ => info.extra.push(line),
+      _ => {
+        let mut cache = CACHE.write().unwrap();
+        let line = cache.get_or_insert_owned(line);
+        info.extra.push(line)
+      },
     }
   }
   info.mnt = get_mountinfo_by_mnt_id(pid, info.mnt_id)?;
