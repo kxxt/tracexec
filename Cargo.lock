@@ -1342,6 +1342,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex-cursor"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae4327b5fde3ae6fda0152128d3d59b95a5aad7be91c405869300091720f7169"
+dependencies = [
+ "log",
+ "memchr",
+ "regex-automata 0.4.6",
+ "regex-syntax 0.8.3",
+]
+
+[[package]]
 name = "regex-syntax"
 version = "0.6.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1801,7 +1813,7 @@ dependencies = [
  "nix",
  "predicates",
  "ratatui",
- "regex",
+ "regex-cursor",
  "rstest",
  "seccompiler",
  "serial_test",
