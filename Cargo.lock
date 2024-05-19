@@ -861,6 +861,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1271,7 +1280,7 @@ dependencies = [
  "compact_str",
  "crossterm",
  "indoc",
- "itertools",
+ "itertools 0.12.1",
  "lru",
  "paste",
  "stability",
@@ -1786,7 +1795,7 @@ dependencies = [
  "filterable-enum",
  "futures",
  "indexmap",
- "itertools",
+ "itertools 0.13.0",
  "kxxt-owo-colors",
  "lazy_static",
  "nix",
@@ -1941,7 +1950,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "122bb001608c2f058fb3fc729614220a392eef4f2268c520a33b5ea8b422ce54"
 dependencies = [
  "crossterm",
- "itertools",
+ "itertools 0.12.1",
  "ratatui",
 ]
 
