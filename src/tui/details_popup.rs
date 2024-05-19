@@ -143,7 +143,7 @@ impl DetailsPopupState {
         (
           " Stdin ",
           if let Some(stdin) = exec.fdinfo.stdin() {
-            stdin.path.display().to_string().into()
+            stdin.path.to_string().into()
           } else {
             "Closed".set_style(THEME.fd_closed).into()
           },
@@ -151,7 +151,7 @@ impl DetailsPopupState {
         (
           " Stdout ",
           if let Some(stdout) = exec.fdinfo.stdout() {
-            stdout.path.display().to_string().into()
+            stdout.path.to_string().into()
           } else {
             "Closed".set_style(THEME.fd_closed).into()
           },
@@ -159,7 +159,7 @@ impl DetailsPopupState {
         (
           " Stderr ",
           if let Some(stderr) = exec.fdinfo.stderr() {
-            stderr.path.display().to_string().into()
+            stderr.path.to_string().into()
           } else {
             "Closed".set_style(THEME.fd_closed).into()
           },
@@ -257,7 +257,7 @@ impl DetailsPopupState {
           vec![
             "Path".set_style(THEME.sublabel),
             ": ".into(),
-            info.path.display().to_string().into(),
+            info.path.to_string().into(),
           ]
           .into(),
         );

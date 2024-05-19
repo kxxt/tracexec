@@ -296,7 +296,7 @@ impl Printer {
             }
           } else if fdinfo.path != fdinfo_orig.path {
             write!(out, "{}", "stdin".bright_yellow().bold())?;
-            write!(out, "={}", fdinfo.path.display().bright_yellow())?;
+            write!(out, "={}", fdinfo.path.bright_yellow())?;
             if printed < last {
               list_printer.comma(out)?;
             }
@@ -319,7 +319,7 @@ impl Printer {
             }
           } else if fdinfo.path != fdinfo_orig.path {
             write!(out, "{}", "stdout".bright_yellow().bold())?;
-            write!(out, "={}", fdinfo.path.display().bright_yellow())?;
+            write!(out, "={}", fdinfo.path.bright_yellow())?;
             if printed < last {
               list_printer.comma(out)?;
             }
@@ -342,7 +342,7 @@ impl Printer {
             }
           } else if fdinfo.path != fdinfo_orig.path {
             write!(out, "{}", "stderr".bright_yellow().bold())?;
-            write!(out, "={}", fdinfo.path.display().bright_yellow())?;
+            write!(out, "={}", fdinfo.path.bright_yellow())?;
             if printed < last {
               list_printer.comma(out)?;
             }
@@ -367,10 +367,10 @@ impl Printer {
               "cloexec:".bright_red().bold(),
               fd.bright_green().bold()
             )?;
-            write!(out, "={}", fdinfo.path.display().bright_red())?;
+            write!(out, "={}", fdinfo.path.bright_red())?;
           } else {
             write!(out, "{}", fd.bright_green().bold())?;
-            write!(out, "={}", fdinfo.path.display().bright_green())?;
+            write!(out, "={}", fdinfo.path.bright_green())?;
           }
           if printed < last {
             list_printer.comma(out)?;
@@ -385,7 +385,7 @@ impl Printer {
         let last = fds.fdinfo.len() - 1;
         for (idx, (fd, fdinfo)) in fds.fdinfo.iter().enumerate() {
           write!(out, "{}", fd.bright_cyan().bold())?;
-          write!(out, "={}", fdinfo.path.display())?;
+          write!(out, "={}", fdinfo.path)?;
           if idx != last {
             list_printer.comma(out)?;
           }
@@ -610,7 +610,7 @@ impl Printer {
                 out,
                 " {}{}",
                 "<".bright_yellow().bold(),
-                escape_str_for_bash!(&fdinfo.path).bright_yellow().bold()
+                escape_str_for_bash!(fdinfo.path.as_str()).bright_yellow().bold()
               )?;
             }
           } else {
@@ -627,7 +627,7 @@ impl Printer {
                 out,
                 " {}{}",
                 ">".bright_yellow().bold(),
-                escape_str_for_bash!(&fdinfo.path).bright_yellow().bold()
+                escape_str_for_bash!(fdinfo.path.as_str()).bright_yellow().bold()
               )?;
             }
           } else {
@@ -644,7 +644,7 @@ impl Printer {
                 out,
                 " {}{}",
                 "2>".bright_yellow().bold(),
-                escape_str_for_bash!(&fdinfo.path).bright_yellow().bold()
+                escape_str_for_bash!(fdinfo.path.as_str()).bright_yellow().bold()
               )?;
             }
           } else {
@@ -667,7 +667,7 @@ impl Printer {
               " {}{}{}",
               fd.bright_green().bold(),
               ">".bright_green().bold(),
-              escape_str_for_bash!(&fdinfo.path).bright_green().bold()
+              escape_str_for_bash!(fdinfo.path.as_str()).bright_green().bold()
             )?;
           }
         }

@@ -104,7 +104,7 @@ impl FileDescriptorInfoCollection {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FileDescriptorInfo {
   pub fd: c_int,
-  pub path: PathBuf,
+  pub path: ArcStr,
   pub pos: usize,
   pub flags: OFlag,
   pub mnt_id: c_int,
@@ -155,8 +155,9 @@ pub fn read_fdinfo(pid: Pid, fd: i32) -> color_eyre::Result<FileDescriptorInfo> 
       _ => info.extra.push(line),
     }
   }
-  info.path = read_fd(pid, fd)?;
   info.mnt = get_mountinfo_by_mnt_id(pid, info.mnt_id)?;
+  let mut cache = CACHE.write().unwrap();
+  info.path = cache.get_or_insert(&read_fd(pid, fd)?.to_string_lossy());
   Ok(info)
 }
 
@@ -171,7 +172,7 @@ pub fn read_fds(pid: Pid) -> color_eyre::Result<FileDescriptorInfoCollection> {
   Ok(collection)
 }
 
-pub fn get_mountinfo_by_mnt_id(pid: Pid, mnt_id: c_int) -> color_eyre::Result<ArcStr> {
+fn get_mountinfo_by_mnt_id(pid: Pid, mnt_id: c_int) -> color_eyre::Result<ArcStr> {
   let filename = format!("/proc/{pid}/mountinfo");
   let file = std::fs::File::open(filename)?;
   let reader = BufReader::new(file);
