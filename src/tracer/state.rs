@@ -1,4 +1,8 @@
-use std::{collections::{BTreeMap, HashMap}, path::PathBuf, sync::Arc};
+use std::{
+  collections::{BTreeMap, HashMap},
+  path::PathBuf,
+  sync::Arc,
+};
 
 use arcstr::ArcStr;
 use nix::{sys::signal::Signal, unistd::Pid};
