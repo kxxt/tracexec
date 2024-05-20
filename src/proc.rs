@@ -196,9 +196,9 @@ fn get_mountinfo_by_mnt_id(pid: Pid, mnt_id: c_int) -> color_eyre::Result<ArcStr
 #[derive(Debug, Clone, PartialEq)]
 pub enum Interpreter {
   None,
-  Shebang(String),
+  Shebang(ArcStr),
   ExecutableUnaccessible,
-  Error(String),
+  Error(ArcStr),
 }
 
 impl Display for Interpreter {
@@ -240,7 +240,9 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
     if e.kind() == io::ErrorKind::PermissionDenied || e.kind() == io::ErrorKind::NotFound {
       Interpreter::ExecutableUnaccessible
     } else {
-      Interpreter::Error(e.to_string())
+      let mut cache = CACHE.write().unwrap();
+      let e = cache.get_or_insert_owned(e.to_string());
+      Interpreter::Error(e)
     }
   }
   let file = match std::fs::File::open(exe) {
@@ -252,7 +254,9 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
   let mut buf = [0u8; 2];
 
   if let Err(e) = reader.read_exact(&mut buf) {
-    return Interpreter::Error(e.to_string());
+    let mut cache = CACHE.write().unwrap();
+    let e = cache.get_or_insert_owned(e.to_string());
+    return Interpreter::Error(e);
   };
   if &buf != b"#!" {
     return Interpreter::None;
@@ -261,7 +265,9 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
   let mut buf = Vec::new();
 
   if let Err(e) = reader.read_until(b'\n', &mut buf) {
-    return Interpreter::Error(e.to_string());
+    let mut cache = CACHE.write().unwrap();
+    let e = cache.get_or_insert_owned(e.to_string());
+    return Interpreter::Error(e);
   };
   // Get trimmed shebang line [start, end) indices
   // If the shebang line is empty, we don't care
@@ -275,7 +281,9 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
     .map(|x| x + 1)
     .unwrap_or(buf.len());
   let shebang = String::from_utf8_lossy(&buf[start..end]);
-  Interpreter::Shebang(shebang.into_owned())
+  let mut cache = CACHE.write().unwrap();
+  let shebang = cache.get_or_insert(&shebang);
+  Interpreter::Shebang(shebang)
 }
 
 fn parse_env_entry(item: &str) -> (&str, &str) {
