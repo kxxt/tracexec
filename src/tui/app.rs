@@ -707,13 +707,13 @@ impl App {
     );
 
     if let Some(popup) = &self.popup {
-      items.extend(help_item!("Q", "Close Popup"));
+      items.extend(help_item!("Q", "Close\u{00a0}Popup"));
       match popup {
         ActivePopup::ViewDetails(state) => {
           if state.active_tab() == "Info" {
-            items.extend(help_item!("W/S", "Move Focus"));
+            items.extend(help_item!("W/S", "Move\u{00a0}Focus"));
           }
-          items.extend(help_item!("←/Tab/→", "Switch Tab"));
+          items.extend(help_item!("←/Tab/→", "Switch\u{00a0}Tab"));
         }
         ActivePopup::CopyTargetSelection(state) => {
           items.extend(help_item!("Enter", "Choose"));
