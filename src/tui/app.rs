@@ -724,10 +724,8 @@ impl App {
     } else if let Some(query_builder) = self.query_builder.as_ref().filter(|q| q.editing()) {
       items.extend(query_builder.help());
     } else if self.active_pane == ActivePane::Events {
-      if self.clipboard.is_some() {
-        items.extend(help_item!("C", "Copy"));
-      }
       items.extend(chain!(
+        help_item!("F1", "Help"),
         help_item!("G/S", "Grow/Shrink\u{00a0}Pane"),
         help_item!("Alt+L", "Layout"),
         help_item!(
@@ -757,14 +755,13 @@ impl App {
         help_item!("V", "View"),
         help_item!("Ctrl+F", "Search"),
       ));
+      if self.clipboard.is_some() {
+        items.extend(help_item!("C", "Copy"));
+      }
       if let Some(query_builder) = self.query_builder.as_ref() {
         items.extend(query_builder.help());
       }
-      items.extend(
-        [help_item!("Q", "Quit"), help_item!("F1", "Help")]
-          .into_iter()
-          .flatten(),
-      );
+      items.extend(help_item!("Q", "Quit"));
     } else {
       // Terminal
     };
