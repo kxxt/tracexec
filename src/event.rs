@@ -434,28 +434,16 @@ impl TracerEventDetails {
     let mut env_mask = None;
     if enable_mask {
       if let Some(range) = cwd_range {
-        let mask = Mask {
-          value: line.spans[range.clone()]
-            .iter()
-            .map(|s| s.content.to_string())
-            .collect(),
-          range,
-        };
+        let mut mask = Mask::new(range);
         if !rt_modifier.show_cwd {
-          mask.apply(&mut line);
+          mask.toggle(&mut line);
         }
         cwd_mask.replace(mask);
       }
       if let Some((start, end)) = env_range {
-        let mask = Mask {
-          range: start..end,
-          value: line.spans[start..end]
-            .iter()
-            .map(|s| s.content.to_string())
-            .collect(),
-        };
+        let mut mask = Mask::new(start..end);
         if !rt_modifier.show_env {
-          mask.apply(&mut line);
+          mask.toggle(&mut line);
         }
         env_mask.replace(mask);
       }

@@ -140,12 +140,8 @@ impl EventList {
   pub fn toggle_env_display(&mut self) {
     self.rt_modifier.show_env = !self.rt_modifier.show_env;
     for line in &mut self.event_lines {
-      if let Some(mask) = &line.env_mask {
-        if self.rt_modifier.show_env {
-          mask.unapply(&mut line.line);
-        } else {
-          mask.apply(&mut line.line);
-        }
+      if let Some(mask) = &mut line.env_mask {
+        mask.toggle(&mut line.line);
       }
     }
     self.should_refresh_list_cache = true;
@@ -155,12 +151,8 @@ impl EventList {
   pub fn toggle_cwd_display(&mut self) {
     self.rt_modifier.show_cwd = !self.rt_modifier.show_cwd;
     for line in &mut self.event_lines {
-      if let Some(mask) = &line.cwd_mask {
-        if self.rt_modifier.show_cwd {
-          mask.unapply(&mut line.line);
-        } else {
-          mask.apply(&mut line.line);
-        }
+      if let Some(mask) = &mut line.cwd_mask {
+        mask.toggle(&mut line.line);
       }
     }
     self.should_refresh_list_cache = true;
