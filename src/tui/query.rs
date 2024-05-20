@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -180,7 +182,9 @@ impl QueryBuilder {
                 .syntax(syntax::Config::new().case_insensitive(!self.case_sensitive))
                 .build(text)
                 .map_err(|e| {
-                  e.to_string()
+                  e.source()
+                    .unwrap() // We are directly building it from pattern text, the source syntax error is present
+                    .to_string()
                     .lines()
                     .map(|line| Line::raw(line.to_owned()))
                     .collect_vec()
