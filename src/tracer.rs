@@ -39,10 +39,14 @@ use crate::{
   },
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{
-    cached_argv, diff_env, parse_envp, read_comm, read_cwd, read_exe, read_fd, read_fds, read_interpreter_recursive, BaselineInfo
+    diff_env, parse_envp, read_comm, read_cwd, read_exe, read_fd, read_fds,
+    read_interpreter_recursive, BaselineInfo,
   },
   pty::{self, Child, UnixSlavePty},
-  tracer::{inspect::read_env, state::ProcessExit},
+  tracer::{
+    inspect::{read_arcstr_array, read_env},
+    state::ProcessExit,
+  },
 };
 
 use self::inspect::{read_pathbuf, read_string, read_string_array};
@@ -596,7 +600,7 @@ impl Tracer {
       };
       let filename = self.get_filename_for_display(pid, filename)?;
       self.warn_for_filename(&filename, pid)?;
-      let argv = read_string_array(pid, syscall_arg!(regs, 2) as AddressType).map(cached_argv);
+      let argv = read_arcstr_array(pid, syscall_arg!(regs, 2) as AddressType);
       self.warn_for_argv(&argv, pid)?;
       let envp = read_env(pid, syscall_arg!(regs, 3) as AddressType);
       self.warn_for_envp(&envp, pid)?;
@@ -619,7 +623,7 @@ impl Tracer {
       let filename = read_pathbuf(pid, syscall_arg!(regs, 0) as AddressType);
       let filename = self.get_filename_for_display(pid, filename)?;
       self.warn_for_filename(&filename, pid)?;
-      let argv = read_string_array(pid, syscall_arg!(regs, 1) as AddressType).map(cached_argv);
+      let argv = read_arcstr_array(pid, syscall_arg!(regs, 1) as AddressType);
       self.warn_for_argv(&argv, pid)?;
       let envp = read_string_array(pid, syscall_arg!(regs, 2) as AddressType).map(parse_envp);
       self.warn_for_envp(&envp, pid)?;

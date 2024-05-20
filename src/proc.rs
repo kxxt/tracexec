@@ -327,16 +327,6 @@ pub fn parse_envp(envp: Vec<String>) -> BTreeMap<ArcStr, ArcStr> {
     .collect()
 }
 
-pub fn cached_argv(argv: Vec<String>) -> Vec<ArcStr> {
-  argv
-    .into_iter()
-    .map(|arg| {
-      let mut cache = CACHE.write().unwrap();
-      cache.get_or_insert_owned(arg)
-    })
-    .collect()
-}
-
 pub fn cached_str(s: &str) -> ArcStr {
   let mut cache = CACHE.write().unwrap();
   cache.get_or_insert(s)
