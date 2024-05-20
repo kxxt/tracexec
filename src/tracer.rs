@@ -42,7 +42,7 @@ use crate::{
     cached_argv, diff_env, parse_envp, read_comm, read_cwd, read_exe, read_fd, read_fds, read_interpreter_recursive, BaselineInfo
   },
   pty::{self, Child, UnixSlavePty},
-  tracer::state::ProcessExit,
+  tracer::{inspect::read_env, state::ProcessExit},
 };
 
 use self::inspect::{read_pathbuf, read_string, read_string_array};
@@ -598,7 +598,7 @@ impl Tracer {
       self.warn_for_filename(&filename, pid)?;
       let argv = read_string_array(pid, syscall_arg!(regs, 2) as AddressType).map(cached_argv);
       self.warn_for_argv(&argv, pid)?;
-      let envp = read_string_array(pid, syscall_arg!(regs, 3) as AddressType).map(parse_envp);
+      let envp = read_env(pid, syscall_arg!(regs, 3) as AddressType);
       self.warn_for_envp(&envp, pid)?;
 
       let interpreters = if self.printer.args.trace_interpreter && filename.is_ok() {

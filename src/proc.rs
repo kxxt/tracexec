@@ -288,7 +288,7 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
   Interpreter::Shebang(shebang)
 }
 
-fn parse_env_entry(item: &str) -> (&str, &str) {
+pub fn parse_env_entry(item: &str) -> (&str, &str) {
   // trace!("Parsing envp entry: {:?}", item);
   let Some(mut sep_loc) = item.as_bytes().iter().position(|&x| x == b'=') else {
     warn!(
@@ -335,6 +335,16 @@ pub fn cached_argv(argv: Vec<String>) -> Vec<ArcStr> {
       cache.get_or_insert_owned(arg)
     })
     .collect()
+}
+
+pub fn cached_str(s: &str) -> ArcStr {
+  let mut cache = CACHE.write().unwrap();
+  cache.get_or_insert(s)
+}
+
+pub fn cached_string(s: String) -> ArcStr {
+  let mut cache = CACHE.write().unwrap();
+  cache.get_or_insert_owned(s)
 }
 
 #[derive(Debug, Clone, PartialEq)]

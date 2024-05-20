@@ -1,15 +1,19 @@
 use std::{
+  collections::BTreeMap,
   ffi::{CString, OsString},
   os::unix::prelude::OsStringExt,
   path::PathBuf,
 };
 
+use arcstr::ArcStr;
 use nix::{
   errno::Errno,
   sys::ptrace::{self, AddressType},
   unistd::Pid,
 };
 use tracing::warn;
+
+use crate::proc::{cached_str, cached_string, parse_env_entry};
 
 pub type InspectError = Errno;
 
@@ -85,4 +89,44 @@ pub fn read_cstring_array(pid: Pid, address: AddressType) -> Result<Vec<CString>
 
 pub fn read_string_array(pid: Pid, address: AddressType) -> Result<Vec<String>, InspectError> {
   read_null_ended_array(pid, address, read_string)
+}
+
+pub fn read_arcstr_array(pid: Pid, address: AddressType) -> Result<Vec<ArcStr>, InspectError> {
+  read_null_ended_array(pid, address, |pid, address| {
+    read_string(pid, address).map(cached_string)
+  })
+}
+
+fn read_single_env_entry(pid: Pid, address: AddressType) -> Result<(ArcStr, ArcStr), InspectError> {
+  read_generic_string(pid, address, |bytes| {
+    let utf8 = String::from_utf8_lossy(&bytes);
+    let (k, v) = parse_env_entry(&utf8);
+    let k = cached_str(k);
+    let v = cached_str(v);
+    (k, v)
+  })
+}
+
+pub fn read_env(
+  pid: Pid,
+  mut address: AddressType,
+) -> Result<BTreeMap<ArcStr, ArcStr>, InspectError> {
+  let mut res = BTreeMap::new();
+  const WORD_SIZE: usize = 8; // FIXME
+  loop {
+    let ptr = match ptrace::read(pid, address) {
+      Err(e) => {
+        warn!("Cannot read tracee {pid} memory {address:?}: {e}");
+        return Err(e);
+      }
+      Ok(ptr) => ptr,
+    };
+    if ptr == 0 {
+      return Ok(res);
+    } else {
+      let (k, v) = read_single_env_entry(pid, ptr as AddressType)?;
+      res.insert(k, v);
+    }
+    address = unsafe { address.add(WORD_SIZE) };
+  }
 }
