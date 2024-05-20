@@ -1,5 +1,39 @@
 # Changelog
 
+## v0.3.0
+
+tracexec v0.3.0 released!
+
+Changes since v0.2.2:
+
+### Added
+
+- Shell completions are now available for bash, elvish, fish, powershell and zsh!
+  - Run `tracexec generate-completions <SHELL>` to get the completion file to install for your favorite shell.
+  - Or generate completions when packaging tracexec so that users don't need to install the completions themselves.
+- TUI: Toggle showing/hiding CWDS by pressing `W`.
+- Musl builds are now available for x86_64 and aarch64.
+- TUI: Add `Ctrl+U` key binding to bottom help text, which clears the text in the search bar when editing it.
+
+### Changed
+
+- TUI: To optimize memory usage(avoiding storing a contiguous string separately),
+the internal regex implementation is switched to `regex-cursor` from `regex`.
+- TUI: The order of the key bindings in the bottom help text is changed.
+
+### Fixed
+
+- Fix build issues on musl.
+- TUI: Fix search result not being updated after toggling show/hide CWD/Env.
+- TUI: Stop following when navigating through the search results.
+- TUI: Fix incorrect wrapping behavior of the bottom key binding help text by updating rataui and use NBSPs.
+- TUI: Fix crash when resizing the terminal by updating rataui.
+
+### Performance
+
+- Store more information as cached arcstr to reduce memory usage.
+- Other optimizations to reduce memory usage.
+
 ## v0.3.0-alpha.1
 
 tracexec v0.3.0-alpha.1 released!
