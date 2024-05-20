@@ -38,11 +38,13 @@ pub fn read_argv(pid: Pid) -> color_eyre::Result<Vec<CString>> {
   )
 }
 
-pub fn read_comm(pid: Pid) -> color_eyre::Result<String> {
+pub fn read_comm(pid: Pid) -> color_eyre::Result<ArcStr> {
   let filename = format!("/proc/{pid}/comm");
   let mut buf = std::fs::read(filename)?;
   buf.pop(); // remove trailing newline
-  Ok(String::from_utf8(buf)?)
+  let utf8 = String::from_utf8_lossy(&buf);
+  let mut cache = CACHE.write().unwrap();
+  Ok(cache.get_or_insert(&utf8))
 }
 
 pub fn read_cwd(pid: Pid) -> std::io::Result<PathBuf> {

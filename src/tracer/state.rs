@@ -22,7 +22,7 @@ pub struct ProcessState {
   pub ppid: Option<Pid>,
   pub status: ProcessStatus,
   pub start_time: u64,
-  pub comm: String,
+  pub comm: ArcStr,
   pub presyscall: bool,
   pub is_exec_successful: bool,
   pub syscall: i64,

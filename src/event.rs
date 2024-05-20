@@ -95,7 +95,7 @@ pub enum TracerEventDetails {
   Error(TracerEventMessage),
   NewChild {
     ppid: Pid,
-    pcomm: String,
+    pcomm: ArcStr,
     pid: Pid,
   },
   Exec(Box<ExecEvent>),
@@ -116,7 +116,7 @@ pub struct TracerEventMessage {
 pub struct ExecEvent {
   pub pid: Pid,
   pub cwd: PathBuf,
-  pub comm: String,
+  pub comm: ArcStr,
   pub filename: Result<PathBuf, InspectError>,
   pub argv: Arc<Result<Vec<ArcStr>, InspectError>>,
   pub envp: Arc<Result<BTreeMap<ArcStr, ArcStr>, InspectError>>,
