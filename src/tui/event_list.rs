@@ -24,7 +24,6 @@ use ratatui::{
   layout::Alignment::Right,
   prelude::{Buffer, Rect},
   style::{Color, Modifier, Style},
-  text::Line,
   widgets::{
     block::Title, HighlightSpacing, List, ListItem, ListState, Scrollbar, ScrollbarOrientation,
     ScrollbarState, StatefulWidget, StatefulWidgetRef, Widget,
@@ -53,13 +52,14 @@ pub struct Event {
 }
 
 impl Event {
-  fn to_tui_line(&self, list: &EventList) -> Line<'static> {
-    self.details.to_tui_line(
+  fn to_event_line(&self, list: &EventList) -> EventLine {
+    self.details.to_event_line(
       &list.baseline,
       false,
       &list.modifier_args,
       list.runtime_modifier(),
       self.status,
+      true,
     )
   }
 }
@@ -139,12 +139,32 @@ impl EventList {
 
   pub fn toggle_env_display(&mut self) {
     self.rt_modifier.show_env = !self.rt_modifier.show_env;
-    self.rebuild_lines();
+    for line in &mut self.event_lines {
+      if let Some(mask) = &line.env_mask {
+        if self.rt_modifier.show_env {
+          mask.unapply(&mut line.line);
+        } else {
+          mask.apply(&mut line.line);
+        }
+      }
+    }
+    self.should_refresh_list_cache = true;
+    self.search();
   }
 
   pub fn toggle_cwd_display(&mut self) {
     self.rt_modifier.show_cwd = !self.rt_modifier.show_cwd;
-    self.rebuild_lines();
+    for line in &mut self.event_lines {
+      if let Some(mask) = &line.cwd_mask {
+        if self.rt_modifier.show_cwd {
+          mask.unapply(&mut line.line);
+        } else {
+          mask.apply(&mut line.line);
+        }
+      }
+    }
+    self.should_refresh_list_cache = true;
+    self.search();
   }
 
   /// returns the index of the selected item if there is any
@@ -400,7 +420,7 @@ impl EventList {
       },
       details: event,
     };
-    self.event_lines.push(event.to_tui_line(self).into());
+    self.event_lines.push(event.to_event_line(self));
     self.events.push(event);
     self.incremental_search();
   }
@@ -439,7 +459,7 @@ impl EventList {
         }
         ProcessStateUpdate::Exit(ProcessExit::Signal(s)) => Some(EventStatus::ProcessSignaled(s)),
       };
-      self.event_lines[i] = self.events[i].to_tui_line(self).into();
+      self.event_lines[i] = self.events[i].to_event_line(self);
       if self.window.0 <= i && i < self.window.1 {
         self.should_refresh_list_cache = true;
       }
@@ -451,7 +471,7 @@ impl EventList {
     self.event_lines = self
       .events
       .iter()
-      .map(|evt| evt.to_tui_line(self).into())
+      .map(|evt| evt.to_event_line(self))
       .collect();
     self.should_refresh_list_cache = true;
   }

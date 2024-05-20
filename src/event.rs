@@ -31,7 +31,10 @@ use crate::{
   printer::{escape_str_for_bash, ListPrinter},
   proc::{BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter},
   tracer::{state::ProcessExit, InspectError},
-  tui::theme::THEME,
+  tui::{
+    event_line::{EventLine, Mask},
+    theme::THEME,
+  },
 };
 
 #[derive(Debug, Clone, Display, PartialEq)]
@@ -143,9 +146,6 @@ impl TracerEventDetails {
     TracerMessage::Event(self.into())
   }
 
-  /// Convert the event to a TUI line
-  ///
-  /// This method is resource intensive and the caller should cache the result
   pub fn to_tui_line(
     &self,
     baseline: &BaselineInfo,
@@ -154,7 +154,41 @@ impl TracerEventDetails {
     rt_modifier: RuntimeModifier,
     event_status: Option<EventStatus>,
   ) -> Line<'static> {
-    match self {
+    self
+      .to_event_line(
+        baseline,
+        cmdline_only,
+        modifier,
+        rt_modifier,
+        event_status,
+        false,
+      )
+      .line
+  }
+
+  /// Convert the event to a EventLine
+  ///
+  /// This method is resource intensive and the caller should cache the result
+  pub fn to_event_line(
+    &self,
+    baseline: &BaselineInfo,
+    cmdline_only: bool,
+    modifier: &ModifierArgs,
+    rt_modifier: RuntimeModifier,
+    event_status: Option<EventStatus>,
+    enable_mask: bool,
+  ) -> EventLine {
+    let mut env_range = None;
+    let mut cwd_range = None;
+
+    let rt_modifier_effective = if enable_mask {
+      // Enable all modifiers so that the mask can be toggled later
+      RuntimeModifier::default()
+    } else {
+      rt_modifier
+    };
+
+    let mut line = match self {
       TracerEventDetails::Info(TracerEventMessage { ref msg, pid }) => chain!(
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
@@ -235,11 +269,13 @@ impl TracerEventDetails {
           });
         });
         // Handle cwd
-        if cwd != &baseline.cwd && rt_modifier.show_cwd {
+        if cwd != &baseline.cwd && rt_modifier_effective.show_cwd {
+          cwd_range = Some(spans.len()..(spans.len() + 2));
           spans.push(space.clone());
           spans.push(format!("-C {}", escape_str_for_bash!(cwd)).set_style(THEME.cwd));
         }
-        if rt_modifier.show_env {
+        if rt_modifier_effective.show_env {
+          env_range = Some((spans.len(), 0));
           if let Ok(env_diff) = env_diff {
             // Handle env diff
             for k in env_diff.removed.iter() {
@@ -272,6 +308,9 @@ impl TracerEventDetails {
                 .set_style(THEME.modified_env_var),
               );
             }
+          }
+          if let Some(r) = env_range.as_mut() {
+            r.1 = spans.len();
           }
         }
         spans.push(space.clone());
@@ -390,6 +429,41 @@ impl TracerEventDetails {
       )
       .into(),
       TracerEventDetails::TraceeSpawn(pid) => format!("tracee spawned: {}", pid).into(),
+    };
+    let mut cwd_mask = None;
+    let mut env_mask = None;
+    if enable_mask {
+      if let Some(range) = cwd_range {
+        let mask = Mask {
+          value: line.spans[range.clone()]
+            .iter()
+            .map(|s| s.content.to_string())
+            .collect(),
+          range,
+        };
+        if !rt_modifier.show_cwd {
+          mask.apply(&mut line);
+        }
+        cwd_mask.replace(mask);
+      }
+      if let Some((start, end)) = env_range {
+        let mask = Mask {
+          range: start..end,
+          value: line.spans[start..end]
+            .iter()
+            .map(|s| s.content.to_string())
+            .collect(),
+        };
+        if !rt_modifier.show_env {
+          mask.apply(&mut line);
+        }
+        env_mask.replace(mask);
+      }
+    }
+    EventLine {
+      line,
+      cwd_mask,
+      env_mask,
     }
   }
 }
@@ -404,7 +478,7 @@ impl TracerEventDetails {
   ) -> Cow<'a, str> {
     if let CopyTarget::Line = target {
       return self
-        .to_tui_line(baseline, false, modifier_args, rt_modifier, None)
+        .to_event_line(baseline, false, modifier_args, rt_modifier, None, false)
         .to_string()
         .into();
     }
@@ -415,13 +489,27 @@ impl TracerEventDetails {
     let mut modifier_args = ModifierArgs::default();
     match target {
       CopyTarget::Commandline(_) => self
-        .to_tui_line(baseline, true, &modifier_args, Default::default(), None)
+        .to_event_line(
+          baseline,
+          true,
+          &modifier_args,
+          Default::default(),
+          None,
+          false,
+        )
         .to_string()
         .into(),
       CopyTarget::CommandlineWithStdio(_) => {
         modifier_args.stdio_in_cmdline = true;
         self
-          .to_tui_line(baseline, true, &modifier_args, Default::default(), None)
+          .to_event_line(
+            baseline,
+            true,
+            &modifier_args,
+            Default::default(),
+            None,
+            false,
+          )
           .to_string()
           .into()
       }
@@ -429,7 +517,14 @@ impl TracerEventDetails {
         modifier_args.fd_in_cmdline = true;
         modifier_args.stdio_in_cmdline = true;
         self
-          .to_tui_line(baseline, true, &modifier_args, Default::default(), None)
+          .to_event_line(
+            baseline,
+            true,
+            &modifier_args,
+            Default::default(),
+            None,
+            false,
+          )
           .to_string()
           .into()
       }

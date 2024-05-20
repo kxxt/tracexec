@@ -1,27 +1,50 @@
-use std::fmt::Display;
+use std::{borrow::Cow, fmt::Display, ops::Range};
 
 use ratatui::text::{Line, Span};
 use regex_cursor::{Cursor, IntoCursor};
 
 #[derive(Debug, Clone)]
-pub enum ValueOrRange {
-  Value(Vec<String>),
-  Range(usize, usize),
+pub struct Mask {
+  /// The range of the spans to mask
+  pub range: Range<usize>,
+  /// The value of the spans to mask
+  pub value: Vec<String>,
+}
+
+impl Mask {
+  // TODO: there should be a more efficient way to do this
+  //       Ideally, we should avoid cloning values into Vec<Span>
+  //       Maybe take the String and leave an empty String in its place?
+
+  pub fn apply(&self, line: &mut Line) {
+    for span in line.spans[self.range.clone()].iter_mut() {
+      span.content = Cow::Borrowed("");
+    }
+  }
+
+  pub fn unapply(&self, line: &mut Line) {
+    for (span, value) in line.spans[self.range.clone()]
+      .iter_mut()
+      .zip(self.value.iter())
+    {
+      span.content = Cow::Owned(value.clone());
+    }
+  }
 }
 
 #[derive(Debug, Clone)]
 pub struct EventLine {
   pub line: Line<'static>,
-  pub cwd: Option<ValueOrRange>,
-  pub env_range: Option<ValueOrRange>,
+  pub cwd_mask: Option<Mask>,
+  pub env_mask: Option<Mask>,
 }
 
 impl From<Line<'static>> for EventLine {
   fn from(line: Line<'static>) -> Self {
     Self {
       line,
-      cwd: None,
-      env_range: None,
+      cwd_mask: None,
+      env_mask: None,
     }
   }
 }
@@ -29,6 +52,19 @@ impl From<Line<'static>> for EventLine {
 impl Display for EventLine {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{}", self.line)
+  }
+}
+
+impl EventLine {
+  pub fn generate_line(&self) -> Line<'static> {
+    let mut line = self.line.clone();
+    if let Some(cwd) = &self.cwd_mask {
+      cwd.apply(&mut line);
+    }
+    if let Some(env_range) = &self.env_mask {
+      env_range.apply(&mut line);
+    }
+    line
   }
 }
 
