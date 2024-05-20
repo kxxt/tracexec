@@ -237,6 +237,7 @@ impl QueryBuilder {
             "Text\u{00a0}Mode"
           }
         ),
+        help_item!("Ctrl+U", "Clear"),
       ]
       .into_iter()
       .flatten()
