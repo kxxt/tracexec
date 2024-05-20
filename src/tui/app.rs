@@ -741,17 +741,17 @@ impl App {
         help_item!(
           "E",
           if self.event_list.is_env_in_cmdline() {
-            "Hide Env"
+            "Hide\u{00a0}Env"
           } else {
-            "Show Env"
+            "Show\u{00a0}Env"
           }
         ),
         help_item!(
           "W",
           if self.event_list.is_cwd_in_cmdline() {
-            "Hide CWD"
+            "Hide\u{00a0}CWD"
           } else {
-            "Show CWD"
+            "Show\u{00a0}CWD"
           }
         ),
         help_item!("V", "View"),
