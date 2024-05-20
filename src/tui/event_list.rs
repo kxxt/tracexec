@@ -382,6 +382,7 @@ impl EventList {
       query_result.next_result();
       let selection = query_result.selection();
       self.scroll_to(selection);
+      self.stop_follow();
     }
   }
 
@@ -390,6 +391,7 @@ impl EventList {
       query_result.prev_result();
       let selection = query_result.selection();
       self.scroll_to(selection);
+      self.stop_follow();
     }
   }
 }
