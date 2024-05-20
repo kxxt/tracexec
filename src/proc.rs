@@ -325,6 +325,16 @@ pub fn parse_envp(envp: Vec<String>) -> BTreeMap<ArcStr, ArcStr> {
     .collect()
 }
 
+pub fn cached_argv(argv: Vec<String>) -> Vec<ArcStr> {
+  argv
+    .into_iter()
+    .map(|arg| {
+      let mut cache = CACHE.write().unwrap();
+      cache.get_or_insert_owned(arg)
+    })
+    .collect()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnvDiff {
   pub added: BTreeMap<ArcStr, ArcStr>,

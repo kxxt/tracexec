@@ -48,7 +48,7 @@ pub enum ProcessStatus {
 #[derive(Debug)]
 pub struct ExecData {
   pub filename: Result<PathBuf, InspectError>,
-  pub argv: Arc<Result<Vec<String>, InspectError>>,
+  pub argv: Arc<Result<Vec<ArcStr>, InspectError>>,
   pub envp: Arc<Result<BTreeMap<ArcStr, ArcStr>, InspectError>>,
   pub cwd: PathBuf,
   pub interpreters: Vec<Interpreter>,
@@ -58,7 +58,7 @@ pub struct ExecData {
 impl ExecData {
   pub fn new(
     filename: Result<PathBuf, InspectError>,
-    argv: Result<Vec<String>, InspectError>,
+    argv: Result<Vec<ArcStr>, InspectError>,
     envp: Result<BTreeMap<ArcStr, ArcStr>, InspectError>,
     cwd: PathBuf,
     interpreters: Vec<Interpreter>,

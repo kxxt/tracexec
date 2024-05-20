@@ -39,8 +39,7 @@ use crate::{
   },
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{
-    diff_env, parse_envp, read_comm, read_cwd, read_exe, read_fd, read_fds,
-    read_interpreter_recursive, BaselineInfo,
+    cached_argv, diff_env, parse_envp, read_comm, read_cwd, read_exe, read_fd, read_fds, read_interpreter_recursive, BaselineInfo
   },
   pty::{self, Child, UnixSlavePty},
   tracer::state::ProcessExit,
@@ -597,7 +596,7 @@ impl Tracer {
       };
       let filename = self.get_filename_for_display(pid, filename)?;
       self.warn_for_filename(&filename, pid)?;
-      let argv = read_string_array(pid, syscall_arg!(regs, 2) as AddressType);
+      let argv = read_string_array(pid, syscall_arg!(regs, 2) as AddressType).map(cached_argv);
       self.warn_for_argv(&argv, pid)?;
       let envp = read_string_array(pid, syscall_arg!(regs, 3) as AddressType).map(parse_envp);
       self.warn_for_envp(&envp, pid)?;
@@ -620,7 +619,7 @@ impl Tracer {
       let filename = read_pathbuf(pid, syscall_arg!(regs, 0) as AddressType);
       let filename = self.get_filename_for_display(pid, filename)?;
       self.warn_for_filename(&filename, pid)?;
-      let argv = read_string_array(pid, syscall_arg!(regs, 1) as AddressType);
+      let argv = read_string_array(pid, syscall_arg!(regs, 1) as AddressType).map(cached_argv);
       self.warn_for_argv(&argv, pid)?;
       let envp = read_string_array(pid, syscall_arg!(regs, 2) as AddressType).map(parse_envp);
       self.warn_for_envp(&envp, pid)?;
@@ -762,7 +761,7 @@ impl Tracer {
 
   fn warn_for_argv(
     &self,
-    argv: &Result<Vec<String>, InspectError>,
+    argv: &Result<Vec<ArcStr>, InspectError>,
     pid: Pid,
   ) -> color_eyre::Result<()> {
     if self.filter.intersects(TracerEventDetailsKind::Warning) {

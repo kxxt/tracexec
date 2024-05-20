@@ -118,7 +118,7 @@ pub struct ExecEvent {
   pub cwd: PathBuf,
   pub comm: String,
   pub filename: Result<PathBuf, InspectError>,
-  pub argv: Arc<Result<Vec<String>, InspectError>>,
+  pub argv: Arc<Result<Vec<ArcStr>, InspectError>>,
   pub envp: Arc<Result<BTreeMap<ArcStr, ArcStr>, InspectError>>,
   pub interpreter: Vec<Interpreter>,
   pub env_diff: Result<EnvDiff, InspectError>,
@@ -262,9 +262,12 @@ impl TracerEventDetails {
         // Handle argv[0]
         let _ = argv.as_deref().inspect(|v| {
           v.first().inspect(|&arg0| {
-            if filename.is_ok() && filename.as_ref().unwrap().as_os_str() != OsStr::new(arg0) {
+            if filename.is_ok()
+              && filename.as_ref().unwrap().as_os_str() != OsStr::new(arg0.as_str())
+            {
               spans.push(space.clone());
-              spans.push(format!("-a {}", escape_str_for_bash!(arg0)).set_style(THEME.arg0))
+              spans
+                .push(format!("-a {}", escape_str_for_bash!(arg0.as_str())).set_style(THEME.arg0))
             }
           });
         });
@@ -328,7 +331,7 @@ impl TracerEventDetails {
           Ok(argv) => {
             for arg in argv.iter().skip(1) {
               spans.push(space.clone());
-              spans.push(format!("{}", escape_str_for_bash!(arg)).set_style(THEME.argv));
+              spans.push(format!("{}", escape_str_for_bash!(arg.as_str())).set_style(THEME.argv));
             }
           }
           Err(_) => {
@@ -563,7 +566,7 @@ impl TracerEventDetails {
     }
   }
 
-  pub fn argv_to_string(argv: &Result<Vec<String>, InspectError>) -> String {
+  pub fn argv_to_string(argv: &Result<Vec<ArcStr>, InspectError>) -> String {
     let Ok(argv) = argv else {
       return "[failed to read argv]".into();
     };
