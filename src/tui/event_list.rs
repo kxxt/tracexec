@@ -417,6 +417,9 @@ impl EventList {
     self.event_lines.push(event.to_event_line(self));
     self.events.push(event);
     self.incremental_search();
+    if (self.window.0..self.window.1).contains(&(self.events.len() - 1)) {
+      self.should_refresh_list_cache = true;
+    }
   }
 
   pub fn update(&mut self, update: ProcessStateUpdateEvent) {
