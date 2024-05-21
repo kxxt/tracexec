@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.3.1
+
+tracexec v0.3.1 released!
+
+Changes since v0.3.0:
+
+### Fixed
+
+- TUI: Fix a bug that the event list is not refreshed when new events are available in some cases.
+
 ## v0.3.0
 
 tracexec v0.3.0 released!
