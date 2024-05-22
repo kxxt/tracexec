@@ -155,7 +155,7 @@ impl App {
       pattern: BreakPointPattern::ExactFilename(PathBuf::from("/bin/cat")),
       ty: BreakPointType::Every,
       activated: true,
-      stop: BreakPointStop::SyscallEnter,
+      stop: BreakPointStop::SyscallExit,
     });
 
     loop {
@@ -388,8 +388,8 @@ impl App {
                 } = &update
                 {
                   trace!("Detaching process {pid} (breakpoint {bid})");
-                  // self.tracer.request_process_detach(*pid, None)?;
-                  self.tracer.request_process_resume(*pid, *stop)?;
+                  self.tracer.request_process_detach(*pid, None)?;
+                  // self.tracer.request_process_resume(*pid, *stop)?;
                 }
                 self.event_list.update(update);
               }
