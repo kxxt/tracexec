@@ -442,6 +442,8 @@ impl Tracer {
               // This means, that if our tracee forked and said fork exits before the parent, the parent will get stopped.
               // Therefor issue a PTRACE_SYSCALL request to the parent to continue execution.
               // This is also important if we trace without the following forks option.
+
+              // The SIGCHLD can't come from other untraced subprocesses because WUNTRACED is not set.
               self.seccomp_aware_cont_with_signal(pid, Signal::SIGCHLD)?;
             }
             _ => {
@@ -461,43 +463,34 @@ impl Tracer {
           }
         }
         WaitStatus::Exited(pid, code) => {
+          // pid could also be a not traced subprocess.
           trace!("exited: pid {}, code {:?}", pid, code);
-          self
-            .store
-            .write()
-            .unwrap()
-            .get_current_mut(pid)
-            .unwrap()
-            .status = ProcessStatus::Exited(ProcessExit::Code(code));
-          let mut should_exit = false;
-          if pid == root_child {
-            filterable_event!(TraceeExit {
-              signal: None,
-              exit_code: code,
-            })
-            .send_if_match(&self.msg_tx, self.filter)?;
-            should_exit = true;
-          }
-          let associated_events = self
-            .store
-            .read()
-            .unwrap()
-            .get_current(pid)
-            .unwrap()
-            .associated_events
-            .clone();
-          if !associated_events.is_empty() {
-            self.msg_tx.send(
-              ProcessStateUpdateEvent {
-                update: ProcessStateUpdate::Exit(ProcessExit::Code(code)),
-                pid,
-                ids: associated_events,
-              }
-              .into(),
-            )?;
-          }
-          if should_exit {
-            return Ok(ControlFlow::Break(()));
+          let mut store = self.store.write().unwrap();
+          if let Some(state) = store.get_current_mut(pid) {
+            state.status = ProcessStatus::Exited(ProcessExit::Code(code));
+            let mut should_exit = false;
+            if pid == root_child {
+              filterable_event!(TraceeExit {
+                signal: None,
+                exit_code: code,
+              })
+              .send_if_match(&self.msg_tx, self.filter)?;
+              should_exit = true;
+            }
+            let associated_events = state.associated_events.clone();
+            if !associated_events.is_empty() {
+              self.msg_tx.send(
+                ProcessStateUpdateEvent {
+                  update: ProcessStateUpdate::Exit(ProcessExit::Code(code)),
+                  pid,
+                  ids: associated_events,
+                }
+                .into(),
+              )?;
+            }
+            if should_exit {
+              return Ok(ControlFlow::Break(()));
+            }
           }
         }
         WaitStatus::PtraceEvent(pid, sig, evt) => {
@@ -582,38 +575,28 @@ impl Tracer {
         }
         WaitStatus::Signaled(pid, sig, _) => {
           debug!("signaled: {pid}, {:?}", sig);
-          self
-            .store
-            .write()
-            .unwrap()
-            .get_current_mut(pid)
-            .unwrap()
-            .status = ProcessStatus::Exited(ProcessExit::Signal(sig));
-          if pid == root_child {
-            filterable_event!(TraceeExit {
-              signal: Some(sig),
-              exit_code: 128 + (sig as i32),
-            })
-            .send_if_match(&self.msg_tx, self.filter)?;
-            return Ok(ControlFlow::Break(()));
-          }
-          let associated_events = self
-            .store
-            .read()
-            .unwrap()
-            .get_current(pid)
-            .unwrap()
-            .associated_events
-            .clone();
-          if !associated_events.is_empty() {
-            self.msg_tx.send(
-              ProcessStateUpdateEvent {
-                update: ProcessStateUpdate::Exit(ProcessExit::Signal(sig)),
-                pid,
-                ids: associated_events,
-              }
-              .into(),
-            )?;
+          let mut store = self.store.write().unwrap();
+          if let Some(state) = store.get_current_mut(pid) {
+            state.status = ProcessStatus::Exited(ProcessExit::Signal(sig));
+            if pid == root_child {
+              filterable_event!(TraceeExit {
+                signal: Some(sig),
+                exit_code: 128 + (sig as i32),
+              })
+              .send_if_match(&self.msg_tx, self.filter)?;
+              return Ok(ControlFlow::Break(()));
+            }
+            let associated_events = state.associated_events.clone();
+            if !associated_events.is_empty() {
+              self.msg_tx.send(
+                ProcessStateUpdateEvent {
+                  update: ProcessStateUpdate::Exit(ProcessExit::Signal(sig)),
+                  pid,
+                  ids: associated_events,
+                }
+                .into(),
+              )?;
+            }
           }
         }
         WaitStatus::PtraceSyscall(pid) => {
