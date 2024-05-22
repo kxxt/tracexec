@@ -43,6 +43,8 @@ pub enum ProcessStatus {
   PtraceForkEventReceived,
   Running,
   Exited(ProcessExit),
+  BreakPointHit,
+  Detached,
 }
 
 #[derive(Debug)]
@@ -76,6 +78,7 @@ impl ExecData {
 }
 
 impl ProcessStateStore {
+  #[allow(clippy::new_without_default)]
   pub fn new() -> Self {
     Self {
       processes: HashMap::new(),
@@ -117,4 +120,35 @@ impl ProcessState {
   pub fn associate_event(&mut self, id: impl IntoIterator<Item = u64>) {
     self.associated_events.extend(id);
   }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BreakPointStop {
+  SyscallEnter,
+  SyscallExit,
+}
+
+#[derive(Debug, Clone)]
+pub enum BreakPointPattern {
+  /// A regular expression that matches the cmdline of the process. The cmdline is the argv
+  /// concatenated with spaces without any escaping.
+  ArgvRegex(regex_cursor::engines::pikevm::PikeVM),
+  Filename(String),
+  ExactFilename(PathBuf),
+}
+
+#[derive(Debug, Clone)]
+pub enum BreakPointType {
+  /// The breakpoint will be hit once and then deactivated.
+  Once,
+  /// The breakpoint will be hit every time it is encountered.
+  Every,
+}
+
+#[derive(Debug, Clone)]
+pub struct BreakPoint {
+  pub pattern: BreakPointPattern,
+  pub ty: BreakPointType,
+  pub activated: bool,
+  pub stop: BreakPointStop,
 }

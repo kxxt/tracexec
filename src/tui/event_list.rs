@@ -455,6 +455,9 @@ impl EventList {
           Some(EventStatus::ProcessIllegalInstruction)
         }
         ProcessStateUpdate::Exit(ProcessExit::Signal(s)) => Some(EventStatus::ProcessSignaled(s)),
+        ProcessStateUpdate::BreakPointHit { .. } => Some(EventStatus::ProcessPaused),
+        ProcessStateUpdate::Resumed => Some(EventStatus::ProcessRunning),
+        ProcessStateUpdate::Detached => Some(EventStatus::ProcessDetached),
       };
       self.event_lines[i] = self.events[i].to_event_line(self);
       if self.window.0 <= i && i < self.window.1 {

@@ -121,6 +121,10 @@ impl DetailsPopupState {
             EventStatus::ProcessSignaled(_) => {
               formatted.set_style(THEME.status_process_signaled).into()
             }
+            EventStatus::ProcessPaused => formatted.set_style(THEME.status_process_paused).into(),
+            EventStatus::ProcessDetached => {
+              formatted.set_style(THEME.status_process_detached).into()
+            }
           }
         }),
         (

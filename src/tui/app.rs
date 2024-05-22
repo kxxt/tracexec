@@ -16,7 +16,7 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::ops::ControlFlow;
+use std::{ops::ControlFlow, path::PathBuf, sync::Arc};
 
 use arboard::Clipboard;
 use clap::ValueEnum;
@@ -41,10 +41,14 @@ use crate::{
     args::{LogModeArgs, ModifierArgs},
     options::ActivePane,
   },
-  event::{Event, TracerEventDetails, TracerMessage},
+  event::{Event, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEventDetails, TracerMessage},
   printer::PrinterArgs,
   proc::BaselineInfo,
   pty::{PtySize, UnixMasterPty},
+  tracer::{
+    state::{BreakPoint, BreakPointPattern, BreakPointStop, BreakPointType},
+    Tracer,
+  },
   tui::{error_popup::ErrorPopupState, query::QueryKind},
 };
 
@@ -80,11 +84,14 @@ pub struct App {
   pub layout: AppLayout,
   pub should_handle_internal_resize: bool,
   pub popup: Option<ActivePopup>,
+  tracer: Arc<Tracer>,
   query_builder: Option<QueryBuilder>,
 }
 
 impl App {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
+    tracer: Arc<Tracer>,
     tracing_args: &LogModeArgs,
     modifier_args: &ModifierArgs,
     baseline: BaselineInfo,
@@ -126,6 +133,7 @@ impl App {
       should_handle_internal_resize: true,
       popup: None,
       query_builder: None,
+      tracer,
     })
   }
 
@@ -143,6 +151,12 @@ impl App {
 
   pub async fn run(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
+    self.tracer.add_breakpoint(BreakPoint {
+      pattern: BreakPointPattern::ExactFilename(PathBuf::from("/bin/cat")),
+      ty: BreakPointType::Every,
+      activated: true,
+      stop: BreakPointStop::SyscallEnter,
+    });
 
     loop {
       // Handle events
@@ -367,6 +381,16 @@ impl App {
               }
               TracerMessage::StateUpdate(update) => {
                 trace!("Received process state update: {update:?}");
+                if let ProcessStateUpdateEvent {
+                  update: ProcessStateUpdate::BreakPointHit { bid, stop },
+                  pid,
+                  ..
+                } = &update
+                {
+                  trace!("Detaching process {pid} (breakpoint {bid})");
+                  // self.tracer.request_process_detach(*pid, None)?;
+                  self.tracer.request_process_resume(*pid, *stop)?;
+                }
                 self.event_list.update(update);
               }
             }

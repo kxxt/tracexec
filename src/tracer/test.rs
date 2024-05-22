@@ -13,12 +13,16 @@ use crate::{
   tracer::Tracer,
 };
 
-use super::TracerMode;
+use super::{PendingRequest, TracerMode};
 
 #[fixture]
 fn tracer(
   #[default(Default::default())] modifier_args: ModifierArgs,
-) -> (Arc<Tracer>, UnboundedReceiver<TracerMessage>) {
+) -> (
+  Arc<Tracer>,
+  UnboundedReceiver<TracerMessage>,
+  UnboundedReceiver<PendingRequest>,
+) {
   let tracer_mod = TracerMode::Log;
   let tracing_args = LogModeArgs::default();
   let tracer_event_args = TracerEventArgs {
@@ -26,6 +30,7 @@ fn tracer(
     ..Default::default()
   };
   let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+  let (req_tx, req_rx) = tokio::sync::mpsc::unbounded_channel();
   let baseline = BaselineInfo::new().unwrap();
 
   (
@@ -38,20 +43,23 @@ fn tracer(
         baseline,
         msg_tx,
         None,
+        req_tx,
       )
       .unwrap(),
     ),
     msg_rx,
+    req_rx,
   )
 }
 
 async fn run_exe_and_collect_msgs(
   tracer: Arc<Tracer>,
   mut rx: UnboundedReceiver<TracerMessage>,
+  req_rx: UnboundedReceiver<PendingRequest>,
   argv: Vec<String>,
 ) -> Vec<TracerMessage> {
-  let tracer_thread = tracer.spawn(argv, None).unwrap();
-  tracer_thread.join().unwrap().unwrap();
+  let tracer_thread = tracer.spawn(argv, None, req_rx);
+  tracer_thread.await.unwrap().unwrap();
 
   async {
     let mut msgs = vec![];
@@ -62,6 +70,12 @@ async fn run_exe_and_collect_msgs(
   }
   .await
 }
+
+type TracerFixture = (
+  Arc<Tracer>,
+  UnboundedReceiver<TracerMessage>,
+  UnboundedReceiver<PendingRequest>,
+);
 
 #[traced_test]
 #[rstest]
@@ -75,17 +89,18 @@ async fn tracer_decodes_proc_self_exe(
     resolve_proc_self_exe,
     ..Default::default()
   })]
-  tracer: (Arc<Tracer>, UnboundedReceiver<TracerMessage>),
+  tracer: TracerFixture,
 ) {
   // Note that /proc/self/exe is the test driver binary, not tracexec
   info!(
     "tracer_decodes_proc_self_exe test: resolve_proc_self_exe={}",
     resolve_proc_self_exe
   );
-  let (tracer, rx) = tracer;
+  let (tracer, rx, req_rx) = tracer;
   let events = run_exe_and_collect_msgs(
     tracer,
     rx,
+    req_rx,
     vec!["/proc/self/exe".to_string(), "--help".to_string()],
   )
   .await;
@@ -114,10 +129,10 @@ async fn tracer_decodes_proc_self_exe(
 #[rstest]
 #[file_serial]
 #[tokio::test]
-async fn tracer_emits_exec_event(tracer: (Arc<Tracer>, UnboundedReceiver<TracerMessage>)) {
+async fn tracer_emits_exec_event(tracer: TracerFixture) {
   // TODO: don't assume FHS
-  let (tracer, rx) = tracer;
-  let events = run_exe_and_collect_msgs(tracer, rx, vec!["/bin/true".to_string()]).await;
+  let (tracer, rx, req_rx) = tracer;
+  let events = run_exe_and_collect_msgs(tracer, rx, req_rx, vec!["/bin/true".to_string()]).await;
   for event in events {
     if let TracerMessage::Event(TracerEvent {
       details: TracerEventDetails::Exec(exec),

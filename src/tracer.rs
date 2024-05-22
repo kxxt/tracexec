@@ -2,11 +2,12 @@ use std::{
   collections::BTreeMap,
   ffi::CString,
   io::{self, stdin},
+  ops::ControlFlow,
   os::fd::AsRawFd,
   path::PathBuf,
   process::exit,
-  sync::{Arc, RwLock},
-  thread::{self, JoinHandle},
+  sync::{atomic::AtomicU32, Arc, RwLock},
+  time::Duration,
 };
 
 use arcstr::ArcStr;
@@ -15,7 +16,8 @@ use enumflags2::BitFlags;
 use nix::{
   errno::Errno,
   libc::{
-    self, dup2, pid_t, raise, SYS_clone, SYS_clone3, AT_EMPTY_PATH, SIGSTOP, S_ISGID, S_ISUID,
+    self, dup2, pid_t, pthread_self, pthread_setname_np, raise, SYS_clone, SYS_clone3,
+    AT_EMPTY_PATH, SIGSTOP, S_ISGID, S_ISUID,
   },
   sys::{
     signal::Signal,
@@ -23,10 +25,14 @@ use nix::{
     wait::{waitpid, WaitPidFlag, WaitStatus},
   },
   unistd::{
-    getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, Gid, Pid, Uid, User,
+    getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, Gid, Pid, Uid,
+    User,
   },
 };
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::{
+  select,
+  sync::mpsc::{UnboundedReceiver, UnboundedSender},
+};
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{
@@ -49,9 +55,12 @@ use crate::{
   },
 };
 
-use self::inspect::{read_pathbuf, read_string, read_string_array};
-use self::ptrace::*;
-use self::state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus};
+use self::state::{BreakPointPattern, ExecData, ProcessState, ProcessStateStore, ProcessStatus};
+use self::{
+  inspect::{read_pathbuf, read_string, read_string_array},
+  state::BreakPoint,
+};
+use self::{ptrace::*, state::BreakPointStop};
 
 mod inspect;
 mod ptrace;
@@ -67,7 +76,6 @@ cfg_if! {
         use crate::seccomp;
         use crate::tracer::ptrace::ptrace_cont;
     }
-
 }
 
 pub struct Tracer {
@@ -84,11 +92,27 @@ pub struct Tracer {
   seccomp_bpf: SeccompBpf,
   msg_tx: UnboundedSender<TracerMessage>,
   user: Option<User>,
+  breakpoints: RwLock<BTreeMap<u32, BreakPoint>>,
+  req_tx: UnboundedSender<PendingRequest>,
 }
 
 pub enum TracerMode {
   Tui(Option<UnixSlavePty>),
   Log,
+}
+
+#[derive(Debug, Clone)]
+pub struct BreakPointHit {
+  pid: Pid,
+  stop: BreakPointStop,
+}
+
+pub enum PendingRequest {
+  ResumeProcess(BreakPointHit),
+  DetachProcess {
+    info: BreakPointHit,
+    signal: Option<Signal>,
+  },
 }
 
 impl PartialEq for TracerMode {
@@ -113,6 +137,7 @@ impl Tracer {
     baseline: BaselineInfo,
     event_tx: UnboundedSender<TracerMessage>,
     user: Option<User>,
+    req_tx: UnboundedSender<PendingRequest>,
   ) -> color_eyre::Result<Self> {
     let baseline = Arc::new(baseline);
     Ok(Self {
@@ -164,6 +189,8 @@ impl Tracer {
         #[cfg(test)]
         _ => false,
       },
+      breakpoints: RwLock::new(BTreeMap::new()),
+      req_tx,
     })
   }
 
@@ -171,18 +198,27 @@ impl Tracer {
     self: Arc<Self>,
     args: Vec<String>,
     output: Option<Box<PrinterOut>>,
-  ) -> color_eyre::Result<JoinHandle<color_eyre::Result<()>>> {
-    Ok(
-      thread::Builder::new()
-        .name("tracer".to_string())
-        .spawn(|| {
+    req_rx: UnboundedReceiver<PendingRequest>,
+  ) -> tokio::task::JoinHandle<color_eyre::Result<()>> {
+    tokio::task::spawn_blocking({
+      move || {
+        unsafe {
+          let current_thread = pthread_self();
+          pthread_setname_np(current_thread, "tracer\0\0\0\0\0\0\0\0\0\0".as_ptr().cast());
+        }
+        tokio::runtime::Handle::current().block_on(async move {
           self.printer.init_thread_local(output);
-          self.start_root_process(args)
-        })?,
-    )
+          self.run(args, req_rx).await
+        })
+      }
+    })
   }
 
-  fn start_root_process(self: Arc<Self>, args: Vec<String>) -> color_eyre::Result<()> {
+  async fn run(
+    self: Arc<Self>,
+    args: Vec<String>,
+    mut req_rx: UnboundedReceiver<PendingRequest>,
+  ) -> color_eyre::Result<()> {
     trace!("start_root_process: {:?}", args);
 
     let mut cmd = CommandBuilder::new(&args[0]);
@@ -315,8 +351,47 @@ impl Tracer {
     // restart child
     trace!("resuming child");
     self.seccomp_aware_cont(root_child)?;
+    // TODO: make this configurable
+    let mut collect_interval = tokio::time::interval(Duration::from_micros(500));
+
     loop {
-      let status = waitpid(None, Some(WaitPidFlag::__WALL))?;
+      select! {
+        _ = collect_interval.tick() => {
+          let action = self.handle_waitpid_events(root_child)?;
+          match action {
+            ControlFlow::Break(_) => {
+              break Ok(());
+            }
+            ControlFlow::Continue(_) => {}
+          }
+        }
+        Some(req) = req_rx.recv() => {
+          match req {
+            PendingRequest::ResumeProcess(hit) => {
+              let mut store = self.store.write().unwrap();
+              let state = store.get_current_mut(hit.pid).unwrap();
+              self.resume_process(state, hit.stop)?;
+            }
+            PendingRequest::DetachProcess { info, signal } => {
+              let mut store = self.store.write().unwrap();
+              let state = store.get_current_mut(info.pid).unwrap();
+              self.detach_process(state, signal)?;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  fn handle_waitpid_events(&self, root_child: Pid) -> color_eyre::Result<ControlFlow<()>> {
+    let mut counter = 0;
+    loop {
+      let status = waitpid(None, Some(WaitPidFlag::__WALL | WaitPidFlag::WNOHANG))?;
+      if status != WaitStatus::StillAlive {
+        counter += 1;
+      } else {
+        break;
+      }
       // trace!("waitpid: {:?}", status);
       match status {
         WaitStatus::Stopped(pid, sig) => {
@@ -404,7 +479,7 @@ impl Tracer {
             )?;
           }
           if should_exit {
-            return Ok(());
+            return Ok(ControlFlow::Break(()));
           }
         }
         WaitStatus::PtraceEvent(pid, sig, evt) => {
@@ -449,8 +524,8 @@ impl Tracer {
                 }
                 if !handled || pid_reuse {
                   trace!(
-                    "ptrace fork event received before sigstop, pid: {pid}, child: {new_child}, pid_reuse: {pid_reuse}"
-                  );
+                        "ptrace fork event received before sigstop, pid: {pid}, child: {new_child}, pid_reuse: {pid_reuse}"
+                      );
                   let mut state = ProcessState::new(new_child, 0)?;
                   state.status = ProcessStatus::PtraceForkEventReceived;
                   state.ppid = Some(pid);
@@ -502,7 +577,7 @@ impl Tracer {
               exit_code: 128 + (sig as i32),
             })
             .send_if_match(&self.msg_tx, self.filter)?;
-            return Ok(());
+            return Ok(ControlFlow::Break(()));
           }
           let associated_events = self
             .store
@@ -539,7 +614,13 @@ impl Tracer {
         }
         _ => {}
       }
+      if counter > 100 {
+        // Give up if we have handled 100 events, so that we have a chance to handle other events
+        debug!("yielding after 100 events");
+        break;
+      }
     }
+    Ok(ControlFlow::Continue(()))
   }
 
   fn on_syscall_enter(&self, pid: Pid) -> color_eyre::Result<()> {
@@ -642,6 +723,41 @@ impl Tracer {
       ));
     } else if syscallno == SYS_clone || syscallno == SYS_clone3 {
     }
+    if let Some(exec_data) = &p.exec_data {
+      let mut hit = None;
+      for (&idx, brk) in self
+        .breakpoints
+        .read()
+        .unwrap()
+        .iter()
+        .filter(|(_, brk)| brk.activated && brk.stop == BreakPointStop::SyscallEnter)
+      {
+        match &brk.pattern {
+          BreakPointPattern::ArgvRegex(_) => todo!(),
+          BreakPointPattern::Filename(_) => todo!(),
+          BreakPointPattern::ExactFilename(f) => {
+            if exec_data.filename.as_deref().ok() == Some(f) {
+              hit = Some(idx);
+              break;
+            }
+          }
+        }
+      }
+      if let Some(bid) = hit {
+        let associated_events = p.associated_events.clone();
+        let event = ProcessStateUpdateEvent {
+          update: ProcessStateUpdate::BreakPointHit {
+            bid,
+            stop: BreakPointStop::SyscallEnter,
+          },
+          pid,
+          ids: associated_events,
+        };
+        p.status = ProcessStatus::BreakPointHit;
+        self.msg_tx.send(event.into())?;
+        return Ok(()); // Do not continue the syscall
+      }
+    }
     self.syscall_enter_cont(pid)?;
     Ok(())
   }
@@ -723,12 +839,14 @@ impl Tracer {
   }
 
   fn syscall_enter_cont(&self, pid: Pid) -> Result<(), Errno> {
+    trace!("syscall enter cont: {pid}");
     ptrace_syscall(pid, None)
   }
 
   /// When seccomp-bpf is enabled, we use ptrace::cont instead of ptrace::syscall to improve performance.
   /// Then the next syscall-entry stop is skipped and the seccomp stop is used as the syscall entry stop.
   fn seccomp_aware_cont(&self, pid: Pid) -> Result<(), Errno> {
+    trace!("seccomp_aware_cont: {pid}");
     #[cfg(feature = "seccomp-bpf")]
     if self.seccomp_bpf == SeccompBpf::On {
       return ptrace_cont(pid, None);
@@ -857,5 +975,94 @@ impl Tracer {
       result,
       fdinfo: exec_data.fdinfo.clone(),
     })
+  }
+}
+
+lazy_static::lazy_static! {
+  static ref BREAKPOINT_ID: AtomicU32 = 0.into();
+}
+
+/// Breakpoint management
+impl Tracer {
+  pub fn add_breakpoint(&self, breakpoint: BreakPoint) {
+    let id = BREAKPOINT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let mut bs = self.breakpoints.write().unwrap();
+    bs.insert(id, breakpoint);
+  }
+
+  pub fn get_breakpoints(&self) -> BTreeMap<u32, BreakPoint> {
+    self.breakpoints.read().unwrap().clone()
+  }
+
+  pub fn remove_breakpoint(&self, index: u32) {
+    self.breakpoints.write().unwrap().remove(&index);
+  }
+
+  pub fn clear_breakpoints(&self) {
+    self.breakpoints.write().unwrap().clear();
+  }
+
+  fn resume_process(
+    &self,
+    state: &mut ProcessState,
+    stop: BreakPointStop,
+  ) -> color_eyre::Result<()> {
+    state.status = ProcessStatus::Running;
+    if stop == BreakPointStop::SyscallEnter {
+      self.syscall_enter_cont(state.pid)?;
+    } else {
+      self.seccomp_aware_cont(state.pid)?;
+    }
+    let associated_events = state.associated_events.clone();
+    self.msg_tx.send(
+      ProcessStateUpdateEvent {
+        update: ProcessStateUpdate::Resumed,
+        pid: state.pid,
+        ids: associated_events,
+      }
+      .into(),
+    )?;
+    Ok(())
+  }
+
+  fn detach_process(
+    &self,
+    state: &mut ProcessState,
+    signal: Option<Signal>,
+  ) -> color_eyre::Result<()> {
+    let pid = state.pid;
+    trace!("detaching: {pid}, signal: {:?}", signal);
+    state.status = ProcessStatus::Detached;
+    ptrace::detach(pid, signal).inspect_err(|e| warn!("Failed to detach from {pid}: {e}"))?;
+    trace!("detached: {pid}, signal: {:?}", signal);
+    let associated_events = state.associated_events.clone();
+    self.msg_tx.send(
+      ProcessStateUpdateEvent {
+        update: ProcessStateUpdate::Detached,
+        pid,
+        ids: associated_events,
+      }
+      .into(),
+    )?;
+    trace!("detach finished: {pid}, signal: {:?}", signal);
+    Ok(())
+  }
+
+  pub fn request_process_detach(&self, pid: Pid, signal: Option<Signal>) -> color_eyre::Result<()> {
+    let info = BreakPointHit {
+      pid,
+      // Doesn't matter for detach
+      stop: BreakPointStop::SyscallEnter,
+    };
+    self
+      .req_tx
+      .send(PendingRequest::DetachProcess { info, signal })?;
+    Ok(())
+  }
+
+  pub fn request_process_resume(&self, pid: Pid, stop: BreakPointStop) -> color_eyre::Result<()> {
+    let info = BreakPointHit { pid, stop };
+    self.req_tx.send(PendingRequest::ResumeProcess(info))?;
+    Ok(())
   }
 }
