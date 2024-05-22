@@ -351,7 +351,12 @@ impl Tracer {
     trace!("resuming child");
     self.seccomp_aware_cont(root_child)?;
     // TODO: make this configurable
-    let mut collect_interval = tokio::time::interval(Duration::from_micros(500));
+    let mut tracer_delay = Duration::from_micros(1);
+    #[cfg(feature = "seccomp-bpf")]
+    if self.seccomp_bpf == SeccompBpf::On {
+      tracer_delay = Duration::from_micros(500);
+    }
+    let mut collect_interval = tokio::time::interval(tracer_delay);
 
     loop {
       select! {
