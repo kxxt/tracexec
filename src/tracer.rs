@@ -25,8 +25,7 @@ use nix::{
     wait::{waitpid, WaitPidFlag, WaitStatus},
   },
   unistd::{
-    getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, Gid, Pid, Uid,
-    User,
+    getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, Gid, Pid, Uid, User,
   },
 };
 use tokio::{
@@ -782,7 +781,7 @@ impl Tracer {
     let exec_result = if p.is_exec_successful { 0 } else { result };
     let mut event_id = None;
     match p.syscall {
-      nix::libc::SYS_execve => {
+      nix::libc::SYS_execve | nix::libc::SYS_execveat => {
         trace!("post execve in exec");
         if self.printer.args.successful_only && !p.is_exec_successful {
           p.exec_data = None;
@@ -797,43 +796,56 @@ impl Tracer {
             exec_result,
           )));
           event_id = Some(event.id);
+          p.associate_event(event_id);
           self.msg_tx.send(event.into())?;
           self
             .printer
             .print_exec_trace(p, exec_result, &self.baseline.env, &self.baseline.cwd)?;
         }
-        p.exec_data = None;
         p.is_exec_successful = false;
-        // update comm
-        p.comm = read_comm(pid)?;
-      }
-      nix::libc::SYS_execveat => {
-        trace!("post execveat in exec");
-        if self.printer.args.successful_only && !p.is_exec_successful {
-          p.exec_data = None;
-          self.seccomp_aware_cont(pid)?;
-          return Ok(());
+
+        if let Some(exec_data) = &p.exec_data {
+          let mut hit = None;
+          for (&idx, brk) in self
+            .breakpoints
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|(_, brk)| brk.activated && brk.stop == BreakPointStop::SyscallExit)
+          {
+            match &brk.pattern {
+              BreakPointPattern::ArgvRegex(_) => todo!(),
+              BreakPointPattern::Filename(_) => todo!(),
+              BreakPointPattern::ExactFilename(f) => {
+                if exec_data.filename.as_deref().ok() == Some(f) {
+                  hit = Some(idx);
+                  break;
+                }
+              }
+            }
+          }
+          if let Some(bid) = hit {
+            let associated_events = p.associated_events.clone();
+            let event = ProcessStateUpdateEvent {
+              update: ProcessStateUpdate::BreakPointHit {
+                bid,
+                stop: BreakPointStop::SyscallExit,
+              },
+              pid,
+              ids: associated_events,
+            };
+            p.status = ProcessStatus::BreakPointHit;
+            self.msg_tx.send(event.into())?;
+            return Ok(()); // Do not continue the syscall
+          }
         }
-        if self.filter.intersects(TracerEventDetailsKind::Exec) {
-          let event = TracerEvent::from(TracerEventDetails::Exec(Tracer::collect_exec_event(
-            &self.baseline.env,
-            p,
-            exec_result,
-          )));
-          event_id = Some(event.id);
-          self.msg_tx.send(event.into())?;
-          self
-            .printer
-            .print_exec_trace(p, exec_result, &self.baseline.env, &self.baseline.cwd)?;
-        }
+
         p.exec_data = None;
-        p.is_exec_successful = false;
         // update comm
         p.comm = read_comm(pid)?;
       }
       _ => (),
     }
-    p.associate_event(event_id);
     self.seccomp_aware_cont(pid)?;
     Ok(())
   }
