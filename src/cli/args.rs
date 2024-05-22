@@ -117,7 +117,7 @@ impl TracerEventArgs {
   }
 }
 
-#[derive(Args, Debug, Default)]
+#[derive(Args, Debug, Default, Clone)]
 pub struct LogModeArgs {
   #[clap(
     long,

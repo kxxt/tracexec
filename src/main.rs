@@ -104,6 +104,7 @@ async fn main() -> color_eyre::Result<()> {
       };
       let baseline = BaselineInfo::new()?;
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
+      let (req_tx, req_rx) = mpsc::unbounded_channel();
       let tracer = Arc::new(tracer::Tracer::new(
         TracerMode::Log,
         tracing_args,
@@ -112,9 +113,10 @@ async fn main() -> color_eyre::Result<()> {
         baseline,
         tracer_tx,
         user,
+        req_tx,
       )?);
-      let tracer_thread = tracer.spawn(cmd, Some(output))?;
-      tracer_thread.join().unwrap()?;
+      let tracer_thread = tracer.spawn(cmd, Some(output), req_rx);
+      tracer_thread.await??;
       loop {
         if let Some(TracerMessage::Event(TracerEvent {
           details: TracerEventDetails::TraceeExit { exit_code, .. },
@@ -169,27 +171,29 @@ async fn main() -> color_eyre::Result<()> {
         diff_env: true,
         ..Default::default()
       };
+      let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
+      let (req_tx, req_rx) = mpsc::unbounded_channel();
+      let tracer = Arc::new(tracer::Tracer::new(
+        tracer_mode,
+        tracing_args.clone(),
+        modifier_args.clone(),
+        tracer_event_args,
+        baseline.clone(),
+        tracer_tx,
+        user,
+        req_tx,
+      )?);
       let mut app = App::new(
+        tracer.clone(),
         &tracing_args,
         &modifier_args,
-        baseline.clone(),
+        baseline,
         pty_master,
         active_pane,
         layout,
         follow,
       )?;
-      let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
-      let tracer = Arc::new(tracer::Tracer::new(
-        tracer_mode,
-        tracing_args,
-        modifier_args,
-        tracer_event_args,
-        baseline,
-        tracer_tx,
-        user,
-      )?);
-      let tracer_thread: std::thread::JoinHandle<Result<(), color_eyre::eyre::Error>> =
-        tracer.spawn(cmd, None)?;
+      let tracer_thread = tracer.spawn(cmd, None, req_rx);
       let mut tui = tui::Tui::new()?.frame_rate(frame_rate);
       tui.enter(tracer_rx)?;
       app.run(&mut tui).await?;
@@ -200,7 +204,7 @@ async fn main() -> color_eyre::Result<()> {
       // 3. Kill the root process so that the tracer thread exits.
       app.exit(terminate_on_exit, kill_on_exit)?;
       tui::restore_tui()?;
-      tracer_thread.join().unwrap()?;
+      tracer_thread.await??;
     }
     CliCommand::GenerateCompletions { shell } => {
       Cli::generate_completions(shell);

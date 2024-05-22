@@ -30,7 +30,10 @@ use crate::{
   cli::args::ModifierArgs,
   printer::{escape_str_for_bash, ListPrinter},
   proc::{BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter},
-  tracer::{state::ProcessExit, InspectError},
+  tracer::{
+    state::{BreakPointStop, ProcessExit},
+    InspectError,
+  },
   tui::{
     event_line::{EventLine, Mask},
     theme::THEME,
@@ -627,6 +630,9 @@ pub(crate) use filterable_event;
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProcessStateUpdate {
   Exit(ProcessExit),
+  BreakPointHit { bid: u32, stop: BreakPointStop },
+  Resumed,
+  Detached,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -645,6 +651,8 @@ pub enum EventStatus {
   ProcessRunning,
   ProcessExitedNormally,
   ProcessExitedAbnormally(c_int),
+  ProcessPaused,
+  ProcessDetached,
   // signaled
   ProcessKilled,
   ProcessTerminated,
@@ -670,6 +678,8 @@ impl From<EventStatus> for &'static str {
       EventStatus::ProcessAborted => THEME.status_indicator_process_aborted,
       EventStatus::ProcessIllegalInstruction => THEME.status_indicator_process_sigill,
       EventStatus::ProcessSignaled(_) => THEME.status_indicator_process_signaled,
+      EventStatus::ProcessPaused => THEME.status_indicator_process_paused,
+      EventStatus::ProcessDetached => THEME.status_indicator_process_detached,
     }
   }
 }
@@ -694,6 +704,8 @@ impl Display for EventStatus {
       ProcessExitedNormally => write!(f, "Exited(0)")?,
       ProcessExitedAbnormally(code) => write!(f, "Exited({})", code)?,
       ProcessSignaled(signal) => write!(f, "Signaled({})", signal)?,
+      ProcessPaused => write!(f, "Paused due to breakpoint hit")?,
+      ProcessDetached => write!(f, "Detached from tracexec")?,
     }
     Ok(())
   }
