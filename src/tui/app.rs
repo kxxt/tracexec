@@ -16,7 +16,7 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::{ops::ControlFlow, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, ops::ControlFlow, path::PathBuf, sync::Arc};
 
 use arboard::Clipboard;
 use clap::ValueEnum;
@@ -73,6 +73,10 @@ pub enum AppLayout {
   Vertical,
 }
 
+pub enum DetachReaction {
+  ExternalDebugger(String),
+}
+
 pub struct App {
   pub event_list: EventList,
   pub printer_args: PrinterArgs,
@@ -86,6 +90,7 @@ pub struct App {
   pub popup: Option<ActivePopup>,
   tracer: Arc<Tracer>,
   query_builder: Option<QueryBuilder>,
+  pending_detach_reactions: HashMap<Pid, DetachReaction>,
 }
 
 impl App {
@@ -134,6 +139,7 @@ impl App {
       popup: None,
       query_builder: None,
       tracer,
+      pending_detach_reactions: HashMap::new(),
     })
   }
 
@@ -152,7 +158,7 @@ impl App {
   pub async fn run(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
     self.tracer.add_breakpoint(BreakPoint {
-      pattern: BreakPointPattern::ExactFilename(PathBuf::from("/bin/cat")),
+      pattern: BreakPointPattern::ExactFilename(PathBuf::from("/bin/bash")),
       ty: BreakPointType::Every,
       activated: true,
       stop: BreakPointStop::SyscallExit,
@@ -381,17 +387,41 @@ impl App {
               }
               TracerMessage::StateUpdate(update) => {
                 trace!("Received process state update: {update:?}");
-                if let ProcessStateUpdateEvent {
-                  update: ProcessStateUpdate::BreakPointHit { bid, stop: _ },
-                  pid,
-                  ..
-                } = &update
-                {
-                  trace!("Detaching process {pid} (breakpoint {bid})");
-                  self
-                    .tracer
-                    .request_process_detach(*pid, Some(Signal::SIGSTOP))?;
-                  // self.tracer.request_process_resume(*pid, *stop)?;
+                match &update {
+                  ProcessStateUpdateEvent {
+                    update: ProcessStateUpdate::BreakPointHit { bid, stop: _ },
+                    pid,
+                    ..
+                  } => {
+                    trace!("Detaching process {pid} (breakpoint {bid})");
+                    self.pending_detach_reactions.insert(
+                      *pid,
+                      DetachReaction::ExternalDebugger("konsole --hold -e gdb -p {{PID}}".to_owned()),
+                    );
+                    self
+                      .tracer
+                      .request_process_detach(*pid, Some(Signal::SIGSTOP))?;
+                    // self.tracer.request_process_resume(*pid, *stop)?;
+                  }
+                  ProcessStateUpdateEvent {
+                    update: ProcessStateUpdate::Detached,
+                    pid,
+                    ..
+                  } => {
+                    if let Some(reaction) = self.pending_detach_reactions.remove(pid) {
+                      match reaction {
+                        DetachReaction::ExternalDebugger(cmd) => {
+                          let cmd = shell_words::split(
+                            &cmd.replace("{{PID}}", &pid.to_string()),
+                          )?; // TODO: Don't crash the app if shell_words returns an error
+                          tokio::process::Command::new(&cmd[0])
+                            .args(&cmd[1..])
+                            .spawn()?;
+                        }
+                      }
+                    }
+                  }
+                  _ => (),
                 }
                 self.event_list.update(update);
               }
