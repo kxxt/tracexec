@@ -382,13 +382,15 @@ impl App {
               TracerMessage::StateUpdate(update) => {
                 trace!("Received process state update: {update:?}");
                 if let ProcessStateUpdateEvent {
-                  update: ProcessStateUpdate::BreakPointHit { bid, stop },
+                  update: ProcessStateUpdate::BreakPointHit { bid, stop: _ },
                   pid,
                   ..
                 } = &update
                 {
                   trace!("Detaching process {pid} (breakpoint {bid})");
-                  self.tracer.request_process_detach(*pid, None)?;
+                  self
+                    .tracer
+                    .request_process_detach(*pid, Some(Signal::SIGSTOP))?;
                   // self.tracer.request_process_resume(*pid, *stop)?;
                 }
                 self.event_list.update(update);

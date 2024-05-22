@@ -374,7 +374,11 @@ impl Tracer {
             PendingRequest::DetachProcess { info, signal } => {
               let mut store = self.store.write().unwrap();
               let state = store.get_current_mut(info.pid).unwrap();
-              self.detach_process(state, signal)?;
+              if let Some(signal) = signal {
+                self.prepare_to_detach_with_signal(state, info.stop, signal)?;
+              } else {
+                self.detach_process_internal(state, signal)?;
+              }
             }
           }
         }
@@ -436,6 +440,16 @@ impl Tracer {
               self.seccomp_aware_cont_with_signal(pid, Signal::SIGCHLD)?;
             }
             _ => {
+              trace!("other signal: {pid}, sig {:?}", sig);
+              if sig == Signal::SIGALRM {
+                // Check for pending detach requests
+                let mut store = self.store.write().unwrap();
+                let state = store.get_current_mut(pid).unwrap();
+                if let Some(detach_signal) = state.pending_detach.take() {
+                  self.detach_process_internal(state, Some(detach_signal))?;
+                }
+                continue;
+              }
               // Just deliver the signal to tracee
               self.seccomp_aware_cont_with_signal(pid, sig)?;
             }
@@ -779,7 +793,6 @@ impl Tracer {
     let result = syscall_res_from_regs!(regs);
     // If exec is successful, the register value might be clobbered.
     let exec_result = if p.is_exec_successful { 0 } else { result };
-    let mut event_id = None;
     match p.syscall {
       nix::libc::SYS_execve | nix::libc::SYS_execveat => {
         trace!("post execve in exec");
@@ -795,8 +808,7 @@ impl Tracer {
             p,
             exec_result,
           )));
-          event_id = Some(event.id);
-          p.associate_event(event_id);
+          p.associate_event([event.id]);
           self.msg_tx.send(event.into())?;
           self
             .printer
@@ -853,6 +865,11 @@ impl Tracer {
   fn syscall_enter_cont(&self, pid: Pid) -> Result<(), Errno> {
     trace!("syscall enter cont: {pid}");
     ptrace_syscall(pid, None)
+  }
+
+  fn syscall_enter_cont_with_signal(&self, pid: Pid, sig: Signal) -> Result<(), Errno> {
+    trace!("syscall enter cont: {pid} with signal {sig}");
+    ptrace_syscall(pid, Some(sig))
   }
 
   /// When seccomp-bpf is enabled, we use ptrace::cont instead of ptrace::syscall to improve performance.
@@ -1037,7 +1054,23 @@ impl Tracer {
     Ok(())
   }
 
-  fn detach_process(
+  fn prepare_to_detach_with_signal(
+    &self,
+    state: &mut ProcessState,
+    stop: BreakPointStop,
+    signal: Signal,
+  ) -> color_eyre::Result<()> {
+    state.pending_detach = Some(signal);
+    if stop == BreakPointStop::SyscallEnter {
+      self.syscall_enter_cont_with_signal(state.pid, Signal::SIGALRM)?;
+    } else {
+      self.seccomp_aware_cont_with_signal(state.pid, Signal::SIGALRM)?;
+    }
+    Ok(())
+  }
+
+  /// This function should only be called when in signal-delivery-stop if signal is not None. Otherwise, the signal might be ignored.
+  fn detach_process_internal(
     &self,
     state: &mut ProcessState,
     signal: Option<Signal>,

@@ -28,6 +28,8 @@ pub struct ProcessState {
   pub syscall: i64,
   pub exec_data: Option<ExecData>,
   pub associated_events: Vec<u64>,
+  /// A pending detach request with a signal to send to the process
+  pub pending_detach: Option<Signal>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -114,6 +116,7 @@ impl ProcessState {
       syscall: -1,
       exec_data: None,
       associated_events: Vec::new(),
+      pending_detach: None,
     })
   }
 
