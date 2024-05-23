@@ -1016,6 +1016,14 @@ impl Tracer {
     id
   }
 
+  pub fn replace_breakpoint(&self, id: u32, new: BreakPoint) {
+    let mut bs = self.breakpoints.write().unwrap();
+    if !bs.contains_key(&id) {
+      panic!("Breakpoint #{id} does not exist");
+    }
+    bs.insert(id, new);
+  }
+
   pub fn set_breakpoint(&self, id: u32, activated: bool) {
     let mut bs = self.breakpoints.write().unwrap();
     if let Some(b) = bs.get_mut(&id) {
