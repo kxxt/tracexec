@@ -1849,6 +1849,7 @@ dependencies = [
  "tui-prompts",
  "tui-scrollview",
  "tui-term",
+ "tui-widget-list",
  "unicode-segmentation",
  "unicode-width",
  "vt100",
@@ -2003,6 +2004,15 @@ checksum = "c276fa6f3dbd87715b2124b55e3f7479e9b5f632704a37bf6660bdb1410420d2"
 dependencies = [
  "ratatui",
  "vt100",
+]
+
+[[package]]
+name = "tui-widget-list"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df726626b0672a967d70a9ad353f29cfacea79e177f6457e1bdd544b8c1ddcfd"
+dependencies = [
+ "ratatui",
 ]
 
 [[package]]

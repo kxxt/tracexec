@@ -71,6 +71,7 @@ clap_complete = "4.5.2"
 regex-cursor = { version = "0.1.4", default-features = false }
 shell-words = "1.1.0"
 caps = "0.5.5"
+tui-widget-list = "0.9.0"
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 

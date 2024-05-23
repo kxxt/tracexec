@@ -145,7 +145,7 @@ pub enum BreakPointType {
   /// The breakpoint will be hit once and then deactivated.
   Once,
   /// The breakpoint will be hit every time it is encountered.
-  Every,
+  Permanent,
 }
 
 #[derive(Debug, Clone)]
