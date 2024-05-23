@@ -4,3 +4,4 @@ extend-ignore-re = ["\\(L\\)ine"]
 
 [default.extend-words]
 "Sur" = "Sur"
+"inh" = "inh" # abbr for inherited
