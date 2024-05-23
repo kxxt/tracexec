@@ -19,6 +19,7 @@
 use std::{collections::HashMap, ops::ControlFlow, path::PathBuf, sync::Arc};
 
 use arboard::Clipboard;
+use caps::CapSet;
 use clap::ValueEnum;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -396,8 +397,20 @@ impl App {
                     trace!("Detaching process {pid} (breakpoint {bid})");
                     self.pending_detach_reactions.insert(
                       *pid,
-                      DetachReaction::ExternalDebugger("konsole --hold -e gdb -p {{PID}}".to_owned()),
+                      DetachReaction::ExternalDebugger(
+                        "konsole --hold -e gdb -p {{PID}}".to_owned(),
+                      ),
                     );
+                    // Warn: This grants CAP_SYS_ADMIN to not only the tracer but also the tracees
+                    // sudo -E env RUST_LOG=debug setpriv --reuid=$(id -u) --regid=$(id -g) --init-groups --inh-caps=+sys_admin --ambient-caps +sys_admin -- target/debug/tracexec tui -t -- 
+                    let ecap = caps::read(None, CapSet::Effective)?;
+                    debug!("effective caps: {:?}", ecap);
+                    let pcap = caps::read(None, CapSet::Permitted)?;
+                    debug!("permitted caps: {:?}", pcap);
+                    let icap = caps::read(None, CapSet::Inheritable)?;
+                    debug!("inheritable caps: {:?}", icap);
+                    #[cfg(feature = "seccomp-bpf")]
+                    self.tracer.request_suspend_seccomp_bpf(*pid)?;
                     self
                       .tracer
                       .request_process_detach(*pid, Some(Signal::SIGSTOP))?;
@@ -411,9 +424,8 @@ impl App {
                     if let Some(reaction) = self.pending_detach_reactions.remove(pid) {
                       match reaction {
                         DetachReaction::ExternalDebugger(cmd) => {
-                          let cmd = shell_words::split(
-                            &cmd.replace("{{PID}}", &pid.to_string()),
-                          )?; // TODO: Don't crash the app if shell_words returns an error
+                          let cmd = shell_words::split(&cmd.replace("{{PID}}", &pid.to_string()))?; // TODO: Don't crash the app if shell_words returns an error
+                          // TODO: don't spawn in current tty
                           tokio::process::Command::new(&cmd[0])
                             .args(&cmd[1..])
                             .spawn()?;

@@ -112,6 +112,8 @@ pub enum PendingRequest {
     info: BreakPointHit,
     signal: Option<Signal>,
   },
+  #[cfg(feature = "seccomp-bpf")]
+  SuspendSeccompBpf(Pid),
 }
 
 impl PartialEq for TracerMode {
@@ -384,6 +386,12 @@ impl Tracer {
               } else {
                 self.detach_process_internal(state, signal)?;
               }
+            }
+            #[cfg(feature = "seccomp-bpf")]
+            PendingRequest::SuspendSeccompBpf(pid) => {
+              let _err = self.suspend_seccomp_bpf(pid).inspect_err(|e| {
+                error!("Failed to suspend seccomp-bpf for {pid}: {e}");
+              });
             }
           }
         }
@@ -1096,6 +1104,26 @@ impl Tracer {
   pub fn request_process_resume(&self, pid: Pid, stop: BreakPointStop) -> color_eyre::Result<()> {
     let info = BreakPointHit { pid, stop };
     self.req_tx.send(PendingRequest::ResumeProcess(info))?;
+    Ok(())
+  }
+
+  #[cfg(feature = "seccomp-bpf")]
+  fn suspend_seccomp_bpf(&self, pid: Pid) -> Result<(), Errno> {
+    use nix::libc::{ptrace, PTRACE_O_SUSPEND_SECCOMP, PTRACE_SETOPTIONS};
+
+    if self.seccomp_bpf == SeccompBpf::On {
+      unsafe {
+        if -1 == ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_SUSPEND_SECCOMP) {
+          return Err(Errno::last());
+        }
+      }
+    }
+    Ok(())
+  }
+
+  #[cfg(feature = "seccomp-bpf")]
+  pub fn request_suspend_seccomp_bpf(&self, pid: Pid) -> color_eyre::Result<()> {
+    self.req_tx.send(PendingRequest::SuspendSeccompBpf(pid))?;
     Ok(())
   }
 }
