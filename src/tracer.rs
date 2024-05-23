@@ -1009,10 +1009,18 @@ lazy_static::lazy_static! {
 
 /// Breakpoint management
 impl Tracer {
-  pub fn add_breakpoint(&self, breakpoint: BreakPoint) {
+  pub fn add_breakpoint(&self, breakpoint: BreakPoint) -> u32 {
     let id = BREAKPOINT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let mut bs = self.breakpoints.write().unwrap();
     bs.insert(id, breakpoint);
+    id
+  }
+
+  pub fn set_breakpoint(&self, id: u32, activated: bool) {
+    let mut bs = self.breakpoints.write().unwrap();
+    if let Some(b) = bs.get_mut(&id) {
+      b.activated = activated;
+    }
   }
 
   pub fn get_breakpoints(&self) -> BTreeMap<u32, BreakPoint> {

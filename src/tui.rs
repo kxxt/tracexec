@@ -39,6 +39,7 @@ use tracing::{error, trace};
 use crate::event::{Event, TracerMessage};
 
 pub mod app;
+mod breakpoint_manager;
 pub mod copy_popup;
 pub mod details_popup;
 pub mod error_popup;

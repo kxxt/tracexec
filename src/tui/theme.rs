@@ -97,6 +97,14 @@ pub struct Theme {
   pub status_indicator_process_aborted: &'static str,
   pub status_indicator_process_sigill: &'static str,
   pub status_indicator_process_signaled: &'static str,
+  // Breakpoint Manager
+  pub breakpoint_title_selected: Style,
+  pub breakpoint_title: Style,
+  pub breakpoint_pattern_type_label: Style,
+  pub breakpoint_pattern: Style,
+  pub breakpoint_info_label: Style,
+  pub breakpoint_info_label_active: Style,
+  pub breakpoint_info_value: Style,
 }
 
 impl Default for Theme {
@@ -200,6 +208,14 @@ impl Default for Theme {
       status_process_aborted: Style::new().light_red().bold().italic(),
       status_process_sigill: Style::new().light_red().bold().italic(),
       status_process_signaled: Style::new().light_red().bold().italic(),
+      // -- Breakpoint Manager --
+      breakpoint_title_selected: Style::default().white().bold().on_magenta(),
+      breakpoint_title: Style::default().white().bold(),
+      breakpoint_pattern_type_label: Style::default().black().on_light_green(),
+      breakpoint_pattern: Style::default().cyan().bold(),
+      breakpoint_info_label: Style::default().black().on_light_yellow(),
+      breakpoint_info_label_active: Style::default().black().on_light_green(),
+      breakpoint_info_value: Style::default().white().bold(),
     }
   }
 }

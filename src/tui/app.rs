@@ -54,6 +54,7 @@ use crate::{
 };
 
 use super::{
+  breakpoint_manager::{BreakPointManager, BreakPointManagerState},
   copy_popup::{CopyPopup, CopyPopupState},
   details_popup::{DetailsPopup, DetailsPopupState},
   error_popup::ErrorPopup,
@@ -91,6 +92,7 @@ pub struct App {
   pub popup: Option<ActivePopup>,
   tracer: Arc<Tracer>,
   query_builder: Option<QueryBuilder>,
+  breakpoint_manager: Option<BreakPointManagerState>,
   pending_detach_reactions: HashMap<Pid, DetachReaction>,
 }
 
@@ -139,6 +141,7 @@ impl App {
       should_handle_internal_resize: true,
       popup: None,
       query_builder: None,
+      breakpoint_manager: None,
       tracer,
       pending_detach_reactions: HashMap::new(),
     })
@@ -158,12 +161,6 @@ impl App {
 
   pub async fn run(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
     let (action_tx, mut action_rx) = mpsc::unbounded_channel();
-    self.tracer.add_breakpoint(BreakPoint {
-      pattern: BreakPointPattern::ExactFilename(PathBuf::from("/bin/bash")),
-      ty: BreakPointType::Every,
-      activated: true,
-      stop: BreakPointStop::SyscallExit,
-    });
 
     loop {
       // Handle events
@@ -213,6 +210,14 @@ impl App {
                         action_tx.send(action)?;
                       }
                     }
+                  }
+                  continue;
+                }
+
+                // Handle breakpoint manager
+                if let Some(breakpoint_manager) = self.breakpoint_manager.as_mut() {
+                  if let Some(action) = breakpoint_manager.handle_key_event(ke) {
+                    action_tx.send(action)?;
                   }
                   continue;
                 }
@@ -366,6 +371,9 @@ impl App {
                       )))?;
                     }
                   }
+                  KeyCode::Char('b') if ke.modifiers == KeyModifiers::NONE => {
+                    action_tx.send(Action::ShowBreakpointManager)?;
+                  }
                   _ => {}
                 }
               } else {
@@ -402,7 +410,7 @@ impl App {
                       ),
                     );
                     // Warn: This grants CAP_SYS_ADMIN to not only the tracer but also the tracees
-                    // sudo -E env RUST_LOG=debug setpriv --reuid=$(id -u) --regid=$(id -g) --init-groups --inh-caps=+sys_admin --ambient-caps +sys_admin -- target/debug/tracexec tui -t -- 
+                    // sudo -E env RUST_LOG=debug setpriv --reuid=$(id -u) --regid=$(id -g) --init-groups --inh-caps=+sys_admin --ambient-caps +sys_admin -- target/debug/tracexec tui -t --
                     let ecap = caps::read(None, CapSet::Effective)?;
                     debug!("effective caps: {:?}", ecap);
                     let pcap = caps::read(None, CapSet::Permitted)?;
@@ -425,7 +433,7 @@ impl App {
                       match reaction {
                         DetachReaction::ExternalDebugger(cmd) => {
                           let cmd = shell_words::split(&cmd.replace("{{PID}}", &pid.to_string()))?; // TODO: Don't crash the app if shell_words returns an error
-                          // TODO: don't spawn in current tty
+                                                                                                    // TODO: don't spawn in current tty
                           tokio::process::Command::new(&cmd[0])
                             .args(&cmd[1..])
                             .spawn()?;
@@ -620,6 +628,14 @@ impl App {
           Action::PrevMatch => {
             self.event_list.prev_match();
           }
+          Action::ShowBreakpointManager => {
+            if self.breakpoint_manager.is_none() {
+              self.breakpoint_manager = Some(BreakPointManagerState::new(self.tracer.clone()));
+            }
+          }
+          Action::CloseBreakpointManager => {
+            self.breakpoint_manager = None;
+          }
         }
       }
     }
@@ -732,6 +748,10 @@ impl Widget for &mut App {
       block.render(term_area, buf);
     }
 
+    if let Some(breakpoint_mgr_state) = self.breakpoint_manager.as_mut() {
+      BreakPointManager.render_ref(rest_area, buf, breakpoint_mgr_state);
+    }
+
     // popups
     if let Some(popup) = self.popup.as_mut() {
       match popup {
@@ -789,6 +809,8 @@ impl App {
         }
         _ => {}
       }
+    } else if let Some(breakpoint_manager) = self.breakpoint_manager.as_ref() {
+      items.extend(breakpoint_manager.help());
     } else if let Some(query_builder) = self.query_builder.as_ref().filter(|q| q.editing()) {
       items.extend(query_builder.help());
     } else if self.active_pane == ActivePane::Events {
@@ -822,6 +844,7 @@ impl App {
         ),
         help_item!("V", "View"),
         help_item!("Ctrl+F", "Search"),
+        help_item!("B", "Breakpoint Mgr"),
       ));
       if self.clipboard.is_some() {
         items.extend(help_item!("C", "Copy"));

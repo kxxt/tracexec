@@ -60,6 +60,9 @@ pub enum Action {
   PrevMatch,
   // Terminal
   HandleTerminalKeyPress(KeyEvent),
+  // Breakpoint
+  ShowBreakpointManager,
+  CloseBreakpointManager,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
