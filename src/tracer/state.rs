@@ -131,6 +131,15 @@ pub enum BreakPointStop {
   SyscallExit,
 }
 
+impl BreakPointStop {
+  pub fn toggle(&mut self) {
+    *self = match self {
+      BreakPointStop::SyscallEnter => BreakPointStop::SyscallExit,
+      BreakPointStop::SyscallExit => BreakPointStop::SyscallEnter,
+    }
+  }
+}
+
 #[derive(Debug, Clone)]
 pub enum BreakPointPattern {
   /// A regular expression that matches the cmdline of the process. The cmdline is the argv
@@ -154,4 +163,37 @@ pub struct BreakPoint {
   pub ty: BreakPointType,
   pub activated: bool,
   pub stop: BreakPointStop,
+}
+
+impl BreakPointPattern {
+  pub fn pattern(&self) -> &str {
+    match self {
+      BreakPointPattern::ArgvRegex(_regex) => todo!(),
+      BreakPointPattern::Filename(filename) => filename,
+      // Unwrap is fine since user inputs the filename as str
+      BreakPointPattern::ExactFilename(filename) => filename.to_str().unwrap(),
+    }
+  }
+
+  pub fn to_editable(&self) -> String {
+    match self {
+      BreakPointPattern::ArgvRegex(_regex) => todo!(),
+      BreakPointPattern::Filename(filename) => format!("in-filename:{}", filename),
+      BreakPointPattern::ExactFilename(filename) => {
+        format!("exact-filename:{}", filename.to_str().unwrap())
+      }
+    }
+  }
+
+  pub fn from_editable(editable: &str) -> Result<Self, String> {
+    if let Some((prefix, rest)) = editable.split_once(':') {
+      match prefix {
+        "in-filename" => Ok(Self::Filename(rest.to_string())),
+        "exact-filename" => Ok(Self::ExactFilename(PathBuf::from(rest))),
+        _ => Err(format!("Invalid breakpoint pattern type: {prefix}!")),
+      }
+    } else {
+      Err("No valid breakpoint pattern found!".to_string())
+    }
+  }
 }

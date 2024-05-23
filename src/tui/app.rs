@@ -182,6 +182,10 @@ impl App {
                 self.query_builder = None;
                 self.event_list.set_query(None);
               }
+              // Cancel breakpoint manager
+              if self.breakpoint_manager.is_some() {
+                self.breakpoint_manager = None;
+              }
               // action_tx.send(Action::Render)?;
             } else {
               trace!("TUI: Active pane: {}", self.active_pane);
@@ -484,6 +488,13 @@ impl App {
                   let (x, y) = q.cursor();
                   f.set_cursor(x, y);
                 });
+              if let Some((x, y)) = self
+                .breakpoint_manager
+                .as_ref()
+                .and_then(|mgr| mgr.cursor())
+              {
+                f.set_cursor(x, y);
+              }
             })?;
           }
           Action::NextItem => {
