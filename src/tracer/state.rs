@@ -17,6 +17,12 @@ pub struct ProcessStateStore {
 }
 
 #[derive(Debug)]
+pub struct PendingDetach {
+  pub hid: u64,
+  pub signal: Signal,
+}
+
+#[derive(Debug)]
 pub struct ProcessState {
   pub pid: Pid,
   pub ppid: Option<Pid>,
@@ -29,7 +35,7 @@ pub struct ProcessState {
   pub exec_data: Option<ExecData>,
   pub associated_events: Vec<u64>,
   /// A pending detach request with a signal to send to the process
-  pub pending_detach: Option<Signal>,
+  pub pending_detach: Option<PendingDetach>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

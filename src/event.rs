@@ -632,7 +632,7 @@ pub enum ProcessStateUpdate {
   Exit(ProcessExit),
   BreakPointHit { bid: u32, stop: BreakPointStop },
   Resumed,
-  Detached,
+  Detached { hid: u64 },
 }
 
 #[derive(Debug, Clone, PartialEq)]

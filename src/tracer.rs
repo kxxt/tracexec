@@ -28,6 +28,7 @@ use nix::{
     getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, Gid, Pid, Uid, User,
   },
 };
+use state::PendingDetach;
 use tokio::{
   select,
   sync::mpsc::{UnboundedReceiver, UnboundedSender},
@@ -111,6 +112,7 @@ pub enum PendingRequest {
   DetachProcess {
     info: BreakPointHit,
     signal: Option<Signal>,
+    hid: u64,
   },
   #[cfg(feature = "seccomp-bpf")]
   SuspendSeccompBpf(Pid),
@@ -378,13 +380,13 @@ impl Tracer {
               let state = store.get_current_mut(hit.pid).unwrap();
               self.resume_process(state, hit.stop)?;
             }
-            PendingRequest::DetachProcess { info, signal } => {
+            PendingRequest::DetachProcess { info, signal, hid } => {
               let mut store = self.store.write().unwrap();
               let state = store.get_current_mut(info.pid).unwrap();
               if let Some(signal) = signal {
-                self.prepare_to_detach_with_signal(state, info.stop, signal)?;
+                self.prepare_to_detach_with_signal(state, info.stop, signal, hid)?;
               } else {
-                self.detach_process_internal(state, signal)?;
+                self.detach_process_internal(state, signal, hid)?;
               }
             }
             #[cfg(feature = "seccomp-bpf")]
@@ -460,8 +462,8 @@ impl Tracer {
                 // Check for pending detach requests
                 let mut store = self.store.write().unwrap();
                 let state = store.get_current_mut(pid).unwrap();
-                if let Some(detach_signal) = state.pending_detach.take() {
-                  self.detach_process_internal(state, Some(detach_signal))?;
+                if let Some(detach) = state.pending_detach.take() {
+                  self.detach_process_internal(state, Some(detach.signal), detach.hid)?;
                 }
                 continue;
               }
@@ -1071,8 +1073,9 @@ impl Tracer {
     state: &mut ProcessState,
     stop: BreakPointStop,
     signal: Signal,
+    hid: u64,
   ) -> color_eyre::Result<()> {
-    state.pending_detach = Some(signal);
+    state.pending_detach = Some(PendingDetach { signal, hid });
     if stop == BreakPointStop::SyscallEnter {
       self.syscall_enter_cont_with_signal(state.pid, Signal::SIGALRM)?;
     } else {
@@ -1086,6 +1089,7 @@ impl Tracer {
     &self,
     state: &mut ProcessState,
     signal: Option<Signal>,
+    hid: u64,
   ) -> color_eyre::Result<()> {
     let pid = state.pid;
     trace!("detaching: {pid}, signal: {:?}", signal);
@@ -1095,7 +1099,7 @@ impl Tracer {
     let associated_events = state.associated_events.clone();
     self.msg_tx.send(
       ProcessStateUpdateEvent {
-        update: ProcessStateUpdate::Detached,
+        update: ProcessStateUpdate::Detached { hid },
         pid,
         ids: associated_events,
       }
@@ -1105,7 +1109,12 @@ impl Tracer {
     Ok(())
   }
 
-  pub fn request_process_detach(&self, pid: Pid, signal: Option<Signal>) -> color_eyre::Result<()> {
+  pub fn request_process_detach(
+    &self,
+    pid: Pid,
+    signal: Option<Signal>,
+    hid: u64,
+  ) -> color_eyre::Result<()> {
     let info = BreakPointHit {
       pid,
       // Doesn't matter for detach
@@ -1113,7 +1122,7 @@ impl Tracer {
     };
     self
       .req_tx
-      .send(PendingRequest::DetachProcess { info, signal })?;
+      .send(PendingRequest::DetachProcess { info, signal, hid })?;
     Ok(())
   }
 
