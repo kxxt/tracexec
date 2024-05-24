@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use itertools::chain;
 use ratatui::{
   layout::{Alignment, Constraint, Layout},
   prelude::{Buffer, Rect},
@@ -186,6 +187,9 @@ impl BreakPointManagerState {
         KeyCode::Char('a') if key.modifiers == KeyModifiers::ALT => {
           self.active = !self.active;
         }
+        KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => {
+          self.clear_editor();
+        }
         _ => {
           editor.handle_key_event(key);
         }
@@ -247,13 +251,20 @@ impl BreakPointManagerState {
   }
 
   pub fn help(&self) -> impl Iterator<Item = Span> {
-    [
-      help_item!("Q", "Close Mgr"),
-      help_item!("Del/D", "Delete"),
-      help_item!("Enter", "Edit"),
-      help_item!("Space", "Enable/Disable"),
-      help_item!("N", "New Breakpoint"),
-    ]
+    chain!(
+      [
+        help_item!("Q", "Close Mgr"),
+        help_item!("Del/D", "Delete"),
+        help_item!("Enter/E", "Edit"),
+        help_item!("Space", "Enable/Disable"),
+        help_item!("N", "New\u{00a0}Breakpoint"),
+      ],
+      if self.editor.is_some() {
+        Some(help_item!("Ctrl+C", "Cancel"))
+      } else {
+        None
+      }
+    )
     .into_iter()
     .flatten()
   }
