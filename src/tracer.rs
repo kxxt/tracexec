@@ -94,6 +94,7 @@ pub struct Tracer {
   user: Option<User>,
   breakpoints: RwLock<BTreeMap<u32, BreakPoint>>,
   req_tx: UnboundedSender<PendingRequest>,
+  delay: Duration,
 }
 
 pub enum TracerMode {
@@ -143,6 +144,20 @@ impl Tracer {
     req_tx: UnboundedSender<PendingRequest>,
   ) -> color_eyre::Result<Self> {
     let baseline = Arc::new(baseline);
+    #[cfg(feature = "seccomp-bpf")]
+    let seccomp_bpf = if modifier_args.seccomp_bpf == SeccompBpf::Auto {
+      // TODO: check if the kernel supports seccomp-bpf
+      // Let's just enable it for now and see if anyone complains
+      if user.is_some() {
+        // Seccomp-bpf enforces no-new-privs, so when using --user to trace set(u|g)id
+        // binaries, we disable seccomp-bpf by default.
+        SeccompBpf::Off
+      } else {
+        SeccompBpf::On
+      }
+    } else {
+      modifier_args.seccomp_bpf
+    };
     Ok(Self {
       with_tty: match &mode {
         TracerMode::Tui(tty) => tty.is_some(),
@@ -150,19 +165,7 @@ impl Tracer {
       },
       store: RwLock::new(ProcessStateStore::new()),
       #[cfg(feature = "seccomp-bpf")]
-      seccomp_bpf: if modifier_args.seccomp_bpf == SeccompBpf::Auto {
-        // TODO: check if the kernel supports seccomp-bpf
-        // Let's just enable it for now and see if anyone complains
-        if user.is_some() {
-          // Seccomp-bpf enforces no-new-privs, so when using --user to trace set(u|g)id
-          // binaries, we disable seccomp-bpf by default.
-          SeccompBpf::Off
-        } else {
-          SeccompBpf::On
-        }
-      } else {
-        modifier_args.seccomp_bpf
-      },
+      seccomp_bpf,
       msg_tx: event_tx,
       user,
       filter: {
@@ -180,6 +183,17 @@ impl Tracer {
         PrinterArgs::from_cli(&tracing_args, &modifier_args),
         baseline.clone(),
       ),
+      delay: {
+        let mut default = Duration::from_micros(1);
+        #[cfg(feature = "seccomp-bpf")]
+        if seccomp_bpf == SeccompBpf::On {
+          default = Duration::from_micros(500);
+        }
+        modifier_args
+          .tracer_delay
+          .map(Duration::from_micros)
+          .unwrap_or(default)
+      },
       modifier_args,
       baseline,
       mode,
@@ -354,13 +368,7 @@ impl Tracer {
     // restart child
     trace!("resuming child");
     self.seccomp_aware_cont(root_child)?;
-    // TODO: make this configurable
-    let mut tracer_delay = Duration::from_micros(1);
-    #[cfg(feature = "seccomp-bpf")]
-    if self.seccomp_bpf == SeccompBpf::On {
-      tracer_delay = Duration::from_micros(500);
-    }
-    let mut collect_interval = tokio::time::interval(tracer_delay);
+    let mut collect_interval = tokio::time::interval(self.delay);
 
     loop {
       select! {
