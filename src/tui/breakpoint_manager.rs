@@ -265,7 +265,6 @@ impl BreakPointManagerState {
         None
       }
     )
-    .into_iter()
     .flatten()
   }
 }
