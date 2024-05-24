@@ -10,9 +10,9 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use itertools::Itertools;
 use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
-  layout::Alignment,
+  layout::{Alignment, Constraint, Layout},
   prelude::{Buffer, Rect},
-  style::{Modifier, Style},
+  style::{Modifier, Style, Stylize},
   text::{Line, Span},
   widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, Widget, Wrap},
 };
@@ -193,6 +193,15 @@ impl HitManagerState {
         }
         _ => {}
       }
+    } else if key.modifiers == KeyModifiers::ALT {
+      match key.code {
+        KeyCode::Char('p') => {
+          if self.has_cap_sys_admin && self.tracer.seccomp_bpf() {
+            self.suspend_seccomp_bpf = !self.suspend_seccomp_bpf;
+          }
+        }
+        _ => {}
+      }
     }
     None
   }
@@ -286,9 +295,45 @@ impl HitManagerState {
     }
     Ok(())
   }
+
+  fn seccomp_bpf_warning(&self) -> Paragraph<'static> {
+    let space = Span::raw(" ");
+    let line1 = Line::default().spans(vec![
+      " WARNING ".on_light_red().white().bold(),
+      space.clone(),
+      "seccomp-bpf optimization is enabled. ".into(),
+      "Detached tracees and their children will not be able to use execve{,at} syscall, "
+        .light_red(),
+      "unless you choose to ".into(),
+      "suspend seccomp filter before detaching".cyan().bold(),
+      "(requires CAP_SYS_ADMIN capability).".light_yellow(),
+    ]);
+    let mut spans = vec!["Suspend seccomp filter before detaching: ".bold().white()];
+
+    if self.has_cap_sys_admin {
+      spans.extend(help_item!(
+        "Alt+P",
+        if self.suspend_seccomp_bpf {
+          "Yes"
+        } else {
+          "No"
+        }
+      ));
+    } else {
+      spans.push(
+        "Not available due to insufficient capability"
+          .light_red()
+          .bold(),
+      )
+    }
+    let line2 = Line::default().spans(spans);
+    Paragraph::new(vec![line1, line2]).wrap(Wrap { trim: false })
+  }
 }
 
 pub struct HitManager;
+
+impl HitManager {}
 
 impl StatefulWidget for HitManager {
   type State = HitManagerState;
@@ -299,12 +344,25 @@ impl StatefulWidget for HitManager {
       .title(" Breakpoint Manager ")
       .borders(Borders::ALL)
       .title_alignment(Alignment::Center);
-    let inner = block.inner(area);
-    block.render(area, buf);
     let list = tui_widget_list::List::new(state.hits.values().cloned().collect_vec());
-    list.render(inner, buf, &mut state.list_state);
+
     if !state.hits.is_empty() && state.list_state.selected.is_none() {
       state.list_state.select(Some(0));
+    }
+
+    if state.tracer.seccomp_bpf() {
+      let warning = state.seccomp_bpf_warning();
+      let warning_height = warning.line_count(area.width) as u16;
+      let [warning_area, list_area] =
+        Layout::vertical([Constraint::Length(warning_height), Constraint::Min(0)]).areas(area);
+      warning.render(warning_area, buf);
+      let inner = block.inner(list_area);
+      block.render(list_area, buf);
+      list.render(inner, buf, &mut state.list_state);
+    } else {
+      let inner = block.inner(area);
+      block.render(area, buf);
+      list.render(inner, buf, &mut state.list_state);
     }
   }
 }
