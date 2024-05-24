@@ -215,7 +215,7 @@ impl Default for Theme {
       breakpoint_pattern: Style::default().cyan().bold(),
       breakpoint_info_label: Style::default().black().on_light_yellow(),
       breakpoint_info_label_active: Style::default().black().on_light_green(),
-      breakpoint_info_value: Style::default().white().bold(),
+      breakpoint_info_value: Style::default().black().bold().on_light_cyan(),
     }
   }
 }

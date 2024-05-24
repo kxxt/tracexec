@@ -56,7 +56,7 @@ impl BreakPointEntry {
           THEME.breakpoint_title
         },
       ),
-      Span::styled("\u{00a0}Type\u{00a0}", THEME.breakpoint_info_label),
+      Span::styled("\u{00a0}Type\u{00a0}\u{200b}", THEME.breakpoint_info_label),
       Span::styled(
         match self.breakpoint.ty {
           BreakPointType::Once => "\u{00a0}\u{00a0}One-Time\u{00a0}\u{200b}",
@@ -64,7 +64,7 @@ impl BreakPointEntry {
         },
         THEME.breakpoint_info_value,
       ),
-      Span::styled("\u{00a0}On\u{00a0}", THEME.breakpoint_info_label),
+      Span::styled("\u{00a0}On\u{00a0}\u{200b}", THEME.breakpoint_info_label),
       Span::styled(
         match self.breakpoint.stop {
           BreakPointStop::SyscallEnter => "\u{00a0}Syscall\u{00a0}Enter\u{00a0}\u{200b}",
