@@ -46,6 +46,7 @@ pub mod error_popup;
 pub mod event_line;
 mod event_list;
 pub mod help;
+mod hit_manager;
 mod partial_line;
 mod pseudo_term;
 pub mod query;
