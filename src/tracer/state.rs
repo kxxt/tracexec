@@ -6,6 +6,7 @@ use std::{
 
 use arcstr::ArcStr;
 use nix::{sys::signal::Signal, unistd::Pid};
+use strum::IntoStaticStr;
 
 use crate::{
   proc::{read_comm, FileDescriptorInfoCollection, Interpreter},
@@ -131,7 +132,7 @@ impl ProcessState {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, IntoStaticStr)]
 pub enum BreakPointStop {
   SyscallEnter,
   SyscallExit,

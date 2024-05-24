@@ -42,6 +42,17 @@ where
   desc_string.set_style(THEME.help_desc)
 }
 
+pub fn fancy_help_desc<'a, T>(d: T) -> Span<'a>
+where
+  T: Into<Cow<'a, str>>,
+  T: Styled<Item = Span<'a>>,
+{
+  let mut desc_string = String::from("\u{00a0}");
+  desc_string.push_str(&d.into());
+  desc_string.push('\u{00a0}');
+  desc_string.set_style(THEME.fancy_help_desc)
+}
+
 macro_rules! help_item {
   ($key: expr, $desc: expr) => {{
     [

@@ -12,6 +12,7 @@ pub struct Theme {
   pub cli_flag: Style,
   pub help_key: Style,
   pub help_desc: Style,
+  pub fancy_help_desc: Style,
   // Tracer Event
   pub pid_success: Style,
   pub pid_failure: Style,
@@ -105,6 +106,11 @@ pub struct Theme {
   pub breakpoint_info_label: Style,
   pub breakpoint_info_label_active: Style,
   pub breakpoint_info_value: Style,
+  // Hit Manager
+  pub hit_entry_pid: Style,
+  pub hit_entry_plain_text: Style,
+  pub hit_entry_breakpoint_id: Style,
+  pub hit_entry_breakpoint_stop: Style,
 }
 
 impl Default for Theme {
@@ -123,6 +129,7 @@ impl Default for Theme {
         .on_dark_gray()
         .italic()
         .bold(),
+      fancy_help_desc: Style::default().red().on_light_yellow().bold().slow_blink(),
       // -- Tracer Event --
       pid_success: Style::default().light_green(),
       pid_failure: Style::default().light_red(),
@@ -216,6 +223,11 @@ impl Default for Theme {
       breakpoint_info_label: Style::default().black().on_light_yellow(),
       breakpoint_info_label_active: Style::default().black().on_light_green(),
       breakpoint_info_value: Style::default().black().bold().on_light_cyan(),
+      // -- Hit Manager --
+      hit_entry_pid: Style::default().light_magenta(),
+      hit_entry_plain_text: Style::default().bold().white(),
+      hit_entry_breakpoint_id: Style::default().cyan().bold(),
+      hit_entry_breakpoint_stop: Style::default().yellow().bold(),
     }
   }
 }
