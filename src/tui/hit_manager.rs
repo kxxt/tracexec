@@ -4,7 +4,6 @@ use std::{
   sync::Arc,
 };
 
-use caps::CapSet;
 use color_eyre::Section;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use itertools::Itertools;
@@ -24,7 +23,10 @@ use crate::{
   tracer::{state::BreakPointStop, Tracer},
 };
 
-use super::{help::help_item, theme::THEME};
+use super::{
+  help::{cli_flag, help_item},
+  theme::THEME,
+};
 
 #[derive(Debug, Clone)]
 struct BreakPointHitEntry {
@@ -87,33 +89,21 @@ pub enum DetachReaction {
 }
 
 pub struct HitManagerState {
-  has_cap_sys_admin: bool,
   tracer: Arc<Tracer>,
   counter: u64,
   hits: BTreeMap<u64, BreakPointHitEntry>,
   pending_detach_reactions: HashMap<u64, DetachReaction>,
-  suspend_seccomp_bpf: bool,
   list_state: tui_widget_list::ListState,
   pub visible: bool,
 }
 
 impl HitManagerState {
   pub fn new(tracer: Arc<Tracer>) -> color_eyre::Result<Self> {
-    let ecap = caps::read(None, CapSet::Effective)?;
-    debug!("effective caps: {:?}", ecap);
-    debug!("permitted caps: {:?}", caps::read(None, CapSet::Permitted)?);
-    debug!(
-      "inheritable caps: {:?}",
-      caps::read(None, CapSet::Inheritable)?
-    );
-    let has_cap_sys_admin = ecap.contains(&caps::Capability::CAP_SYS_ADMIN);
     Ok(Self {
-      has_cap_sys_admin,
       tracer,
       counter: 0,
       hits: BTreeMap::new(),
       pending_detach_reactions: HashMap::new(),
-      suspend_seccomp_bpf: has_cap_sys_admin,
       list_state: tui_widget_list::ListState::default(),
       visible: false,
     })
@@ -193,15 +183,6 @@ impl HitManagerState {
         }
         _ => {}
       }
-    } else if key.modifiers == KeyModifiers::ALT {
-      match key.code {
-        KeyCode::Char('p') => {
-          if self.has_cap_sys_admin && self.tracer.seccomp_bpf() {
-            self.suspend_seccomp_bpf = !self.suspend_seccomp_bpf;
-          }
-        }
-        _ => {}
-      }
     }
     None
   }
@@ -233,10 +214,6 @@ impl HitManagerState {
 
   pub fn detach(&mut self, hid: u64) -> color_eyre::Result<()> {
     if let Some(hit) = self.hits.remove(&hid) {
-      #[cfg(feature = "seccomp-bpf")]
-      if self.suspend_seccomp_bpf {
-        self.tracer.request_suspend_seccomp_bpf(hit.pid)?;
-      }
       self.tracer.request_process_detach(hit.pid, None, hid)?;
     }
     Ok(())
@@ -263,10 +240,6 @@ impl HitManagerState {
       self
         .pending_detach_reactions
         .insert(hid, DetachReaction::LaunchExternal(cmdline_template));
-      #[cfg(feature = "seccomp-bpf")]
-      if self.suspend_seccomp_bpf {
-        self.tracer.request_suspend_seccomp_bpf(hit.pid)?;
-      }
       self
         .tracer
         .request_process_detach(hit.pid, Some(Signal::SIGSTOP), hid)?;
@@ -302,32 +275,14 @@ impl HitManagerState {
       " WARNING ".on_light_red().white().bold(),
       space.clone(),
       "seccomp-bpf optimization is enabled. ".into(),
-      "Detached tracees and their children will not be able to use execve{,at} syscall, "
+      "Detached tracees and their children will not be able to use execve{,at} syscall. "
         .light_red(),
-      "unless you choose to ".into(),
-      "suspend seccomp filter before detaching".cyan().bold(),
-      "(requires CAP_SYS_ADMIN capability).".light_yellow(),
+      "If the tracee to be detached need to exec other programs, ".into(),
+      "please run tracexec with ".cyan().bold(),
+      cli_flag("--seccomp-bpf=off"),
+      ".".into(),
     ]);
-    let mut spans = vec!["Suspend seccomp filter before detaching: ".bold().white()];
-
-    if self.has_cap_sys_admin {
-      spans.extend(help_item!(
-        "Alt+P",
-        if self.suspend_seccomp_bpf {
-          "Yes"
-        } else {
-          "No"
-        }
-      ));
-    } else {
-      spans.push(
-        "Not available due to insufficient capability"
-          .light_red()
-          .bold(),
-      )
-    }
-    let line2 = Line::default().spans(spans);
-    Paragraph::new(vec![line1, line2]).wrap(Wrap { trim: false })
+    Paragraph::new(vec![line1]).wrap(Wrap { trim: false })
   }
 }
 
