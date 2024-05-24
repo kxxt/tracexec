@@ -227,7 +227,7 @@ impl BreakPointManagerState {
             breakpoint.activated = !breakpoint.activated;
           }
         }
-        KeyCode::Enter => {
+        KeyCode::Char('e') | KeyCode::Enter => {
           if let Some(selected) = self.list_state.selected {
             let id = *self.breakpoints.keys().nth(selected).unwrap();
             let breakpoint = self.breakpoints.get(&id).unwrap();
