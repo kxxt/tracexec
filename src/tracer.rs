@@ -1157,8 +1157,13 @@ impl Tracer {
 
     if self.seccomp_bpf == SeccompBpf::On {
       unsafe {
-        if -1 == ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_SUSPEND_SECCOMP) {
-          return Err(Errno::last());
+        let result = ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_SUSPEND_SECCOMP);
+        if -1 == result {
+          let errno = Errno::last();
+          error!("Failed to suspend {pid}'s seccomp filter: {errno}");
+          return Err(errno);
+        } else {
+          trace!("suspended {pid}'s seccomp filter successfully")
         }
       }
     }
@@ -1167,7 +1172,18 @@ impl Tracer {
 
   #[cfg(feature = "seccomp-bpf")]
   pub fn request_suspend_seccomp_bpf(&self, pid: Pid) -> color_eyre::Result<()> {
+    trace!("received request to suspend {pid}'s seccomp-bpf filter");
     self.req_tx.send(PendingRequest::SuspendSeccompBpf(pid))?;
     Ok(())
+  }
+
+  pub fn seccomp_bpf(&self) -> bool {
+    cfg_if! {
+      if #[cfg(feature = "seccomp-bpf")] {
+        self.seccomp_bpf == SeccompBpf::On
+      } else {
+        false
+      }
+    }
   }
 }
