@@ -16,10 +16,9 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::{collections::HashMap, ops::ControlFlow, path::PathBuf, sync::Arc};
+use std::{ops::ControlFlow, path::PathBuf, sync::Arc};
 
 use arboard::Clipboard;
-use caps::CapSet;
 use clap::ValueEnum;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -59,7 +58,7 @@ use super::{
   details_popup::{DetailsPopup, DetailsPopupState},
   error_popup::ErrorPopup,
   event_list::EventList,
-  help::{help, help_item},
+  help::{fancy_help_desc, help, help_item, help_key},
   hit_manager::{HitManager, HitManagerState},
   pseudo_term::PseudoTerminalPane,
   query::QueryBuilder,
@@ -211,6 +210,14 @@ impl App {
                         action_tx.send(action)?;
                       }
                     }
+                  }
+                  continue;
+                }
+
+                // Handle hit manager
+                if self.hit_manager_state.visible {
+                  if let Some(action) = self.hit_manager_state.handle_key_event(ke) {
+                    action_tx.send(action)?;
                   }
                   continue;
                 }
@@ -374,6 +381,9 @@ impl App {
                   }
                   KeyCode::Char('b') if ke.modifiers == KeyModifiers::NONE => {
                     action_tx.send(Action::ShowBreakpointManager)?;
+                  }
+                  KeyCode::Char('z') if ke.modifiers == KeyModifiers::NONE => {
+                    action_tx.send(Action::ShowHitManager)?;
                   }
                   _ => {}
                 }
@@ -617,6 +627,12 @@ impl App {
           Action::CloseBreakpointManager => {
             self.breakpoint_manager = None;
           }
+          Action::ShowHitManager => {
+            self.hit_manager_state.visible = true;
+          }
+          Action::HideHitManager => {
+            self.hit_manager_state.visible = false;
+          }
         }
       }
     }
@@ -733,6 +749,10 @@ impl Widget for &mut App {
       BreakPointManager.render_ref(rest_area, buf, breakpoint_mgr_state);
     }
 
+    if self.hit_manager_state.visible {
+      HitManager.render(rest_area, buf, &mut self.hit_manager_state);
+    }
+
     // popups
     if let Some(popup) = self.popup.as_mut() {
       match popup {
@@ -792,6 +812,8 @@ impl App {
       }
     } else if let Some(breakpoint_manager) = self.breakpoint_manager.as_ref() {
       items.extend(breakpoint_manager.help());
+    } else if self.hit_manager_state.visible {
+      items.extend(self.hit_manager_state.help());
     } else if let Some(query_builder) = self.query_builder.as_ref().filter(|q| q.editing()) {
       items.extend(query_builder.help());
     } else if self.active_pane == ActivePane::Events {
@@ -825,7 +847,16 @@ impl App {
         ),
         help_item!("V", "View"),
         help_item!("Ctrl+F", "Search"),
-        help_item!("B", "Breakpoint Mgr"),
+        help_item!("B", "Breakpoints"),
+        if self.hit_manager_state.count() > 0 {
+          [
+            help_key("Z"),
+            fancy_help_desc(format!("Hits({})", self.hit_manager_state.count())),
+            "\u{200b}".into(),
+          ]
+        } else {
+          help_item!("Z", "Hits")
+        },
       ));
       if self.clipboard.is_some() {
         items.extend(help_item!("C", "Copy"));
@@ -836,6 +867,13 @@ impl App {
       items.extend(help_item!("Q", "Quit"));
     } else {
       // Terminal
+      if self.hit_manager_state.count() > 0 {
+        items.extend([
+          help_key("Ctrl+S,\u{00a0}Z"),
+          fancy_help_desc(format!("Hits({})", self.hit_manager_state.count())),
+          "\u{200b}".into(),
+        ]);
+      }
     };
 
     let line = Line::default().spans(items);

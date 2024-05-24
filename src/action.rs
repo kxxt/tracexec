@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crossterm::event::KeyEvent;
-use ratatui::layout::Size;
+use ratatui::{layout::Size, text::Line};
 
 use crate::{
   event::TracerEventDetails,
@@ -63,6 +63,17 @@ pub enum Action {
   // Breakpoint
   ShowBreakpointManager,
   CloseBreakpointManager,
+  ShowHitManager,
+  HideHitManager,
+}
+
+impl Action {
+  pub fn show_error_popup<E: ToString>(title: String, error: E) -> Self {
+    Self::SetActivePopup(ActivePopup::ErrorPopup(ErrorPopupState {
+      title,
+      message: vec![Line::raw(error.to_string())],
+    }))
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
