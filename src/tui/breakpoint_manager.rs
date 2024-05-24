@@ -230,7 +230,9 @@ impl BreakPointManagerState {
             self.stop = breakpoint.stop;
             self.active = breakpoint.activated;
             self.editing = Some(id);
-            self.editor = Some(TextState::new().with_value(breakpoint.pattern.to_editable()));
+            let mut editor_state = TextState::new().with_value(breakpoint.pattern.to_editable());
+            editor_state.move_end();
+            self.editor = Some(editor_state);
           }
         }
         KeyCode::Char('n') => {
