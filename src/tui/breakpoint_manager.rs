@@ -5,7 +5,7 @@ use ratatui::{
   layout::{Alignment, Constraint, Layout},
   prelude::{Buffer, Rect},
   text::{Line, Span},
-  widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, StatefulWidgetRef, Widget},
+  widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, StatefulWidgetRef, Widget, Wrap},
 };
 use tui_prompts::{State, TextPrompt, TextState};
 use tui_widget_list::PreRender;
@@ -26,63 +26,79 @@ struct BreakPointEntry {
   selected: bool,
 }
 
-impl Widget for BreakPointEntry {
-  fn render(self, area: Rect, buf: &mut Buffer) {
+impl BreakPointEntry {
+  fn paragraph(&self) -> Paragraph {
     let space = Span::raw(" ");
     let pattern_ty = Span::styled(
       match self.breakpoint.pattern {
-        BreakPointPattern::Filename(_) => " In Filename ",
-        BreakPointPattern::ExactFilename(_) => " Exact Filename ",
-        BreakPointPattern::ArgvRegex(_) => " Argv Regex ",
+        BreakPointPattern::Filename(_) => "\u{00a0}In\u{00a0}Filename\u{00a0}\u{200b}",
+        BreakPointPattern::ExactFilename(_) => "\u{00a0}Exact\u{00a0}Filename\u{00a0}\u{200b}",
+        BreakPointPattern::ArgvRegex(_) => "\u{00a0}Argv\u{00a0}Regex\u{00a0}\u{200b}",
       },
       THEME.breakpoint_pattern_type_label,
     );
     let pattern = Span::styled(self.breakpoint.pattern.pattern(), THEME.breakpoint_pattern);
     let line2 = Line::default().spans(vec![
-      Span::styled(" Condition ", THEME.breakpoint_info_value),
+      Span::styled(
+        "\u{00a0}Condition\u{00a0}\u{200b}",
+        THEME.breakpoint_info_value,
+      ),
       pattern_ty,
       space.clone(),
       pattern,
     ]);
     let line1 = Line::default().spans(vec![
       Span::styled(
-        format!(" Breakpoint #{} ", self.id),
+        format!("\u{00a0}Breakpoint\u{00a0}#{}\u{00a0}\u{200b}", self.id),
         if self.selected {
           THEME.breakpoint_title_selected
         } else {
           THEME.breakpoint_title
         },
       ),
-      Span::styled(" Type ", THEME.breakpoint_info_label),
+      Span::styled("\u{00a0}Type\u{00a0}", THEME.breakpoint_info_label),
       Span::styled(
         match self.breakpoint.ty {
-          BreakPointType::Once => "  One-Time ",
-          BreakPointType::Permanent => " Permanent ",
+          BreakPointType::Once => "\u{00a0}\u{00a0}One-Time\u{00a0}\u{200b}",
+          BreakPointType::Permanent => "\u{00a0}Permanent\u{00a0}\u{200b}",
         },
         THEME.breakpoint_info_value,
       ),
-      Span::styled(" On ", THEME.breakpoint_info_label),
+      Span::styled("\u{00a0}On\u{00a0}", THEME.breakpoint_info_label),
       Span::styled(
         match self.breakpoint.stop {
-          BreakPointStop::SyscallEnter => " Syscall Enter ",
-          BreakPointStop::SyscallExit => " Syscall Exit  ",
+          BreakPointStop::SyscallEnter => "\u{00a0}Syscall\u{00a0}Enter\u{00a0}\u{200b}",
+          BreakPointStop::SyscallExit => "\u{00a0}Syscall\u{00a0}\u{00a0}Exit\u{00a0}\u{200b}",
         },
         THEME.breakpoint_info_value,
       ),
       if self.breakpoint.activated {
-        Span::styled("  Active  ", THEME.breakpoint_info_label_active)
+        Span::styled(
+          "\u{00a0}\u{00a0}Active\u{00a0}\u{00a0}",
+          THEME.breakpoint_info_label_active,
+        )
       } else {
-        Span::styled(" Inactive ", THEME.breakpoint_info_label)
+        Span::styled("\u{00a0}Inactive\u{00a0}", THEME.breakpoint_info_label)
       },
     ]);
-    Paragraph::new(vec![line1, line2]).render(area, buf);
+    Paragraph::new(vec![line1, line2]).wrap(Wrap { trim: false })
+  }
+}
+
+impl Widget for BreakPointEntry {
+  fn render(self, area: Rect, buf: &mut Buffer) {
+    self.paragraph().render(area, buf);
   }
 }
 
 impl PreRender for BreakPointEntry {
   fn pre_render(&mut self, context: &tui_widget_list::PreRenderContext) -> u16 {
     self.selected = context.is_selected;
-    2
+    self
+      .paragraph()
+      .line_count(context.cross_axis_size)
+      .try_into()
+      .unwrap_or(u16::MAX)
   }
 }
 
