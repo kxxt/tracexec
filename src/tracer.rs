@@ -20,7 +20,7 @@ use nix::{
     AT_EMPTY_PATH, SIGSTOP, S_ISGID, S_ISUID,
   },
   sys::{
-    signal::Signal,
+    signal::{kill, Signal},
     stat::fstat,
     wait::{waitpid, WaitPidFlag, WaitStatus},
   },
@@ -566,8 +566,14 @@ impl Tracer {
               // So we need to determine whether exec is successful here.
               // PTRACE_EVENT_EXEC only happens for successful exec.
               p.is_exec_successful = true;
-              // Don't use seccomp_aware_cont here because that will skip the next syscall exit stop
-              self.syscall_enter_cont(pid)?;
+              // Exec event comes first before our special SIGALRM is sent to tracee! (usually happens on syscall-enter)
+              if p.pending_detach.is_none() {
+                // Don't use seccomp_aware_cont here because that will skip the next syscall exit stop
+                self.syscall_enter_cont(pid)?;
+              } else {
+                self.syscall_enter_cont(pid)?;
+                trace!("pending detach, continuing so that signal can be delivered");
+              }
             }
             nix::libc::PTRACE_EVENT_EXIT => {
               trace!("exit event");
@@ -865,6 +871,7 @@ impl Tracer {
     ptrace_syscall(pid, None)
   }
 
+  #[allow(unused)]
   fn syscall_enter_cont_with_signal(&self, pid: Pid, sig: Signal) -> Result<(), Errno> {
     trace!("syscall enter cont: {pid} with signal {sig}");
     ptrace_syscall(pid, Some(sig))
@@ -1076,10 +1083,14 @@ impl Tracer {
     hid: u64,
   ) -> color_eyre::Result<()> {
     state.pending_detach = Some(PendingDetach { signal, hid });
+    // Don't use *cont_with_signal because that causes
+    // the loss of signal when we do it on syscall-enter.
+    // Is this a kernel bug?
+    kill(state.pid, Signal::SIGALRM)?;
     if stop == BreakPointStop::SyscallEnter {
-      self.syscall_enter_cont_with_signal(state.pid, Signal::SIGALRM)?;
+      self.syscall_enter_cont(state.pid)?;
     } else {
-      self.seccomp_aware_cont_with_signal(state.pid, Signal::SIGALRM)?;
+      self.seccomp_aware_cont(state.pid)?;
     }
     Ok(())
   }
