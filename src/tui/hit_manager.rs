@@ -137,6 +137,14 @@ impl HitManagerState {
     .flatten()
   }
 
+  fn close_when_empty(&self) -> Option<Action> {
+    if self.hits.is_empty() {
+      Some(Action::HideHitManager)
+    } else {
+      None
+    }
+  }
+
   pub fn handle_key_event(&mut self, key: KeyEvent) -> Option<Action> {
     if key.modifiers == KeyModifiers::NONE {
       match key.code {
@@ -154,6 +162,7 @@ impl HitManagerState {
             if let Err(e) = self.detach(hid) {
               return Some(Action::show_error_popup("Detach failed".to_string(), e));
             };
+            return self.close_when_empty();
           }
         }
         KeyCode::Enter => {
@@ -168,6 +177,7 @@ impl HitManagerState {
                 e.with_note(|| "Failed to detach or launch external command"),
               ));
             }
+            return self.close_when_empty();
           }
         }
         KeyCode::Char('r') => {
@@ -178,6 +188,7 @@ impl HitManagerState {
             if let Err(e) = self.resume(hid) {
               return Some(Action::show_error_popup("Resume failed".to_string(), e));
             }
+            return self.close_when_empty();
           }
         }
         _ => {}
