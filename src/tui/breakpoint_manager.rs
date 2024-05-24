@@ -185,7 +185,7 @@ impl BreakPointManagerState {
         KeyCode::Up | KeyCode::Char('k') => {
           self.list_state.previous();
         }
-        KeyCode::Delete => {
+        KeyCode::Delete | KeyCode::Char('d') => {
           if let Some(selected) = self.list_state.selected {
             if selected > 0 {
               self.list_state.select(Some(selected - 1));
@@ -231,7 +231,7 @@ impl BreakPointManagerState {
   pub fn help(&self) -> impl Iterator<Item = Span> {
     [
       help_item!("Q", "Close Mgr"),
-      help_item!("Del", "Delete"),
+      help_item!("Del/D", "Delete"),
       help_item!("Enter", "Edit"),
       help_item!("Space", "Enable/Disable"),
       help_item!("N", "New Breakpoint"),
