@@ -6,7 +6,7 @@ use ratatui::{layout::Size, text::Line};
 use crate::{
   event::TracerEventDetails,
   tui::{
-    copy_popup::CopyPopupState, details_popup::DetailsPopupState, error_popup::ErrorPopupState,
+    copy_popup::CopyPopupState, details_popup::DetailsPopupState, error_popup::InfoPopupState,
     query::Query,
   },
 };
@@ -69,10 +69,10 @@ pub enum Action {
 
 impl Action {
   pub fn show_error_popup<E: ToString>(title: String, error: E) -> Self {
-    Self::SetActivePopup(ActivePopup::ErrorPopup(ErrorPopupState {
+    Self::SetActivePopup(ActivePopup::InfoPopup(InfoPopupState::error(
       title,
-      message: vec![Line::raw(error.to_string())],
-    }))
+      vec![Line::raw(error.to_string())],
+    )))
   }
 }
 
@@ -101,5 +101,5 @@ pub enum ActivePopup {
   Help,
   ViewDetails(DetailsPopupState),
   CopyTargetSelection(CopyPopupState),
-  ErrorPopup(ErrorPopupState),
+  InfoPopup(InfoPopupState),
 }

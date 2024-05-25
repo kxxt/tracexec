@@ -66,8 +66,9 @@ pub struct Theme {
   pub open_flag_status: Style,
   pub open_flag_other: Style,
   pub visual_separator: Style,
-  // Error Popup
+  // Info Popup
   pub error_popup: Style,
+  pub info_popup: Style,
   // Tabs
   pub active_tab: Style,
   // Process/Exec Status
@@ -183,8 +184,9 @@ impl Default for Theme {
       open_flag_status: Style::default().light_yellow().bold(),
       open_flag_other: Style::default().light_red().bold(),
       visual_separator: Style::default().light_green(),
-      // -- Error Popup --
+      // -- Info Popup --
       error_popup: Style::default().white().on_red(),
+      info_popup: Style::default().black().on_white(),
       // -- Tabs --
       active_tab: Style::default().white().on_magenta(),
       // -- Process/Exec Status --

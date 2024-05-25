@@ -19,7 +19,7 @@ use crate::{
   },
 };
 
-use super::{error_popup::ErrorPopupState, help::help_item, theme::THEME};
+use super::{error_popup::InfoPopupState, help::help_item, theme::THEME};
 
 struct BreakPointEntry {
   id: u32,
@@ -156,10 +156,10 @@ impl BreakPointManagerState {
             Ok(pattern) => pattern,
             Err(message) => {
               return Some(Action::SetActivePopup(
-                crate::action::ActivePopup::ErrorPopup(ErrorPopupState {
-                  title: "Breakpoint Editor Error".to_string(),
-                  message: vec![Line::from(message)],
-                }),
+                crate::action::ActivePopup::InfoPopup(InfoPopupState::error(
+                  "Breakpoint Editor Error".to_string(),
+                  vec![Line::from(message)],
+                )),
               ))
             }
           };
@@ -309,6 +309,17 @@ impl StatefulWidgetRef for BreakPointManager {
           }
         ))
         .render(active_toggle_area, buf);
+    } else {
+      let help_area = Rect {
+        x: buf.area.width.saturating_sub(10),
+        y: 0,
+        width: 10.min(buf.area.width),
+        height: 1,
+      };
+      Clear.render(help_area, buf);
+      Line::default()
+        .spans(help_item!("F1", "Help"))
+        .render(help_area, buf);
     }
     Clear.render(area, buf);
     let block = Block::new()

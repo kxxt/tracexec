@@ -49,14 +49,14 @@ use crate::{
     state::{BreakPoint, BreakPointPattern, BreakPointStop, BreakPointType},
     Tracer,
   },
-  tui::{error_popup::ErrorPopupState, query::QueryKind},
+  tui::{error_popup::InfoPopupState, query::QueryKind},
 };
 
 use super::{
   breakpoint_manager::{BreakPointManager, BreakPointManagerState},
   copy_popup::{CopyPopup, CopyPopupState},
   details_popup::{DetailsPopup, DetailsPopupState},
-  error_popup::ErrorPopup,
+  error_popup::InfoPopup,
   event_list::EventList,
   help::{fancy_help_desc, help, help_item, help_key},
   hit_manager::{HitManager, HitManagerState},
@@ -205,7 +205,7 @@ impl App {
                         action_tx.send(action)?;
                       }
                     }
-                    ActivePopup::ErrorPopup(state) => {
+                    ActivePopup::InfoPopup(state) => {
                       if let Some(action) = state.handle_key_event(ke) {
                         action_tx.send(action)?;
                       }
@@ -239,10 +239,10 @@ impl App {
                       }
                       Err(e) => {
                         // Regex error
-                        self.popup = Some(ActivePopup::ErrorPopup(ErrorPopupState {
-                          title: "Regex Error".to_owned(),
-                          message: e,
-                        }));
+                        self.popup = Some(ActivePopup::InfoPopup(InfoPopupState::error(
+                          "Regex Error".to_owned(),
+                          e,
+                        )));
                       }
                     }
                     continue;
@@ -763,8 +763,8 @@ impl Widget for &mut App {
         ActivePopup::CopyTargetSelection(state) => {
           CopyPopup.render_ref(area, buf, state);
         }
-        ActivePopup::ErrorPopup(state) => {
-          ErrorPopup.render(area, buf, state);
+        ActivePopup::InfoPopup(state) => {
+          InfoPopup.render(area, buf, state);
         }
         _ => {}
       }
