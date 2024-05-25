@@ -1,7 +1,8 @@
+/// Regex and regex-cursor related code
 use std::usize;
 
 use arcstr::ArcStr;
-///! Regex and regex-cursor related code
+
 use regex_cursor::Cursor;
 
 pub(crate) trait BidirectionalIterator: Iterator {
@@ -260,8 +261,6 @@ mod iter_tests {
   }
 }
 
-pub struct Argv<'a>(&'a [&'a ArcStr]);
-
 // Original Copyright Notice for the following code:
 
 // Copyright (c) 2024 Pascal Kuthe
@@ -305,10 +304,10 @@ pub struct ArgvCursor<'a> {
   offset: usize,
 }
 
-const SPACE: ArcStr = arcstr::literal!(" ");
+pub const SPACE: ArcStr = arcstr::literal!(" ");
 
 impl<'a> ArgvCursor<'a> {
-  fn new(slice: &'a [ArcStr], separator: &'a ArcStr) -> Self {
+  pub fn new(slice: &'a [ArcStr], separator: &'a ArcStr) -> Self {
     let mut res = Self {
       iter: BidirectionalInterspersedIter::new(slice, separator),
       current: &[],
