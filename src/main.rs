@@ -8,6 +8,7 @@ mod log;
 mod printer;
 mod proc;
 mod pty;
+mod regex;
 #[cfg(feature = "seccomp-bpf")]
 mod seccomp;
 mod tracer;
