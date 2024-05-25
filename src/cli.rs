@@ -105,6 +105,12 @@ pub enum CliCommand {
       value_parser = frame_rate_parser
     )]
     frame_rate: f64,
+    #[clap(
+      long,
+      short = 'D',
+      help = "Set the default external command to run when using \"Detach, Stop and Run Command\" feature in Hit Manager"
+    )]
+    default_external_command: Option<String>,
   },
   #[clap(about = "Generate shell completions for tracexec")]
   GenerateCompletions {

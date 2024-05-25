@@ -103,6 +103,7 @@ impl App {
     active_pane: ActivePane,
     layout: AppLayout,
     follow: bool,
+    default_external_command: Option<String>,
   ) -> color_eyre::Result<Self> {
     let active_pane = if pty_master.is_some() {
       active_pane
@@ -138,7 +139,7 @@ impl App {
       popup: None,
       query_builder: None,
       breakpoint_manager: None,
-      hit_manager_state: HitManagerState::new(tracer.clone())?,
+      hit_manager_state: HitManagerState::new(tracer.clone(), default_external_command)?,
       tracer,
     })
   }
