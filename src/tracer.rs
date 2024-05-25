@@ -55,7 +55,7 @@ use crate::{
   },
 };
 
-use self::state::{BreakPointPattern, ExecData, ProcessState, ProcessStateStore, ProcessStatus};
+use self::state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus};
 use self::{
   inspect::{read_pathbuf, read_string, read_string_array},
   state::BreakPoint,
@@ -757,15 +757,12 @@ impl Tracer {
         .iter()
         .filter(|(_, brk)| brk.activated && brk.stop == BreakPointStop::SyscallEnter)
       {
-        match &brk.pattern {
-          BreakPointPattern::ArgvRegex(_) => todo!(),
-          BreakPointPattern::Filename(_) => todo!(),
-          BreakPointPattern::ExactFilename(f) => {
-            if exec_data.filename.as_deref().ok() == Some(f) {
-              hit = Some(idx);
-              break;
-            }
-          }
+        if brk.pattern.matches(
+          exec_data.argv.as_deref().ok(),
+          exec_data.filename.as_deref().ok(),
+        ) {
+          hit = Some(idx);
+          break;
         }
       }
       if let Some(bid) = hit {
@@ -837,15 +834,12 @@ impl Tracer {
             .iter()
             .filter(|(_, brk)| brk.activated && brk.stop == BreakPointStop::SyscallExit)
           {
-            match &brk.pattern {
-              BreakPointPattern::ArgvRegex(_) => todo!(),
-              BreakPointPattern::Filename(_) => todo!(),
-              BreakPointPattern::ExactFilename(f) => {
-                if exec_data.filename.as_deref().ok() == Some(f) {
-                  hit = Some(idx);
-                  break;
-                }
-              }
+            if brk.pattern.matches(
+              exec_data.argv.as_deref().ok(),
+              exec_data.filename.as_deref().ok(),
+            ) {
+              hit = Some(idx);
+              break;
             }
           }
           if let Some(bid) = hit {

@@ -32,7 +32,7 @@ impl BreakPointEntry {
     let space = Span::raw(" ");
     let pattern_ty = Span::styled(
       match self.breakpoint.pattern {
-        BreakPointPattern::Filename(_) => "\u{00a0}In\u{00a0}Filename\u{00a0}\u{200b}",
+        BreakPointPattern::InFilename(_) => "\u{00a0}In\u{00a0}Filename\u{00a0}\u{200b}",
         BreakPointPattern::ExactFilename(_) => "\u{00a0}Exact\u{00a0}Filename\u{00a0}\u{200b}",
         BreakPointPattern::ArgvRegex(_) => "\u{00a0}Argv\u{00a0}Regex\u{00a0}\u{200b}",
       },
