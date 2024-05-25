@@ -95,10 +95,14 @@ pub struct HitManagerState {
   pending_detach_reactions: HashMap<u64, DetachReaction>,
   list_state: tui_widget_list::ListState,
   pub visible: bool,
+  default_external_command: Option<String>,
 }
 
 impl HitManagerState {
-  pub fn new(tracer: Arc<Tracer>) -> color_eyre::Result<Self> {
+  pub fn new(
+    tracer: Arc<Tracer>,
+    default_external_command: Option<String>,
+  ) -> color_eyre::Result<Self> {
     Ok(Self {
       tracer,
       counter: 0,
@@ -106,6 +110,7 @@ impl HitManagerState {
       pending_detach_reactions: HashMap::new(),
       list_state: tui_widget_list::ListState::default(),
       visible: false,
+      default_external_command,
     })
   }
 
@@ -118,8 +123,13 @@ impl HitManagerState {
       help_item!("Q", "Back"),
       help_item!("R", "Resume\u{00a0}Process"),
       help_item!("D", "Detach\u{00a0}Process"),
+      help_item!("E", "Edit\u{00a0}Default\u{00a0}Command"),
       help_item!(
         "Enter",
+        "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Default\u{00a0}Command"
+      ),
+      help_item!(
+        "Shift+Enter",
         "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Command"
       ),
     ]
@@ -157,11 +167,11 @@ impl HitManagerState {
         }
         KeyCode::Enter => {
           if let Some(selected) = self.list_state.selected {
+            let external_command = self.default_external_command.clone()?;
             self.select_near_by(selected);
             let hid = *self.hits.keys().nth(selected).unwrap();
-            if let Err(e) = self
-              .detach_pause_and_launch_external(hid, "konsole --hold -e gdb -p {{PID}}".to_owned())
-            {
+            // "konsole --hold -e gdb -p {{PID}}".to_owned()
+            if let Err(e) = self.detach_pause_and_launch_external(hid, external_command) {
               return Some(Action::show_error_popup(
                 "Error".to_string(),
                 e.with_note(|| "Failed to detach or launch external command"),
