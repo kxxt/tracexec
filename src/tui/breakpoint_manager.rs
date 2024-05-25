@@ -5,6 +5,7 @@ use itertools::chain;
 use ratatui::{
   layout::{Alignment, Constraint, Layout},
   prelude::{Buffer, Rect},
+  style::Stylize,
   text::{Line, Span},
   widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, StatefulWidgetRef, Widget, Wrap},
 };
@@ -12,14 +13,18 @@ use tui_prompts::{State, TextPrompt, TextState};
 use tui_widget_list::PreRender;
 
 use crate::{
-  action::Action,
+  action::{Action, ActivePopup},
   tracer::{
     state::{BreakPoint, BreakPointPattern, BreakPointStop, BreakPointType},
     Tracer,
   },
 };
 
-use super::{error_popup::InfoPopupState, help::help_item, theme::THEME};
+use super::{
+  error_popup::InfoPopupState,
+  help::{help_item, help_key},
+  theme::THEME,
+};
 
 struct BreakPointEntry {
   id: u32,
@@ -119,6 +124,71 @@ pub struct BreakPointManagerState {
   editing: Option<u32>,
 }
 
+impl BreakPointManager {
+  fn help() -> InfoPopupState {
+    InfoPopupState::info(
+      "How to use Breakpoints".to_string(),
+      vec![
+        Line::default().spans(vec![
+          "Breakpoint in tracexec is similar to breakpoints in debuggers. \
+        But instead of setting breakpoint on code lines, you set breakpoints on program exec. \
+        The breakpoints can be set on "
+            .into(),
+          "syscall-enter(right before exec)".cyan().bold(),
+          " or ".into(),
+          "syscall-exit(right after exec)".cyan().bold(),
+          " stops. There are three kinds of breakpoint patterns now:".into(),
+        ]),
+        Line::default().spans(vec![
+          "1. ".cyan().bold(),
+          "in-filename".red().bold(),
+          ": Break when the filename contains the pattern string".into(),
+        ]),
+        Line::default().spans(vec![
+          "2. ".cyan().bold(),
+          "exact-filename".red().bold(),
+          ": Break when the filename is exactly the same as the pattern string".into(),
+        ]),
+        Line::default().spans(vec![
+          "3. ".cyan().bold(),
+          "argv-regex".red().bold(),
+          ": Break when the argv(joined by whitespace without escaping) contains the pattern regex"
+            .into(),
+        ]),
+        Line::default().spans(vec![
+          "Press ".into(),
+          help_key("N"),
+          " to create a new breakpoint. Press ".into(),
+          help_key("Enter/E"),
+          " when a breakpoint is selected to edit it. \
+          While editing a breakpoint, the editor is shown on top of the screen. \
+          The editor accepts breakpoint pattern in the following format: "
+            .into(),
+          "pattern-kind".red().bold().italic(),
+          ":".black().bold(),
+          "pattern-string".cyan().bold().italic(),
+          " where the ".into(),
+          "pattern-kind".red().bold().italic(),
+          " is one of the three kinds mentioned above highlighted in red. \
+          And do note that there's no space between the colon and the "
+            .into(),
+          "pattern-string".cyan().bold().italic(),
+          ". To change the breakpoint stop or disable the breakpoint, please follow on screen instructions. \
+          Press ".into(),
+          help_key("Enter"),
+          " to save the breakpoint. Press ".into(),
+          help_key("Ctrl+C"),
+          " to cancel the editing.".into(),
+        ]),
+        Line::default().spans(vec![
+          "When an exec event hit a breakpoint, the corresponding process is stopped. \
+          It is highlighted in the bottom of the screen and you can follow the instructions to manage stopped processes.",
+        ]),
+      ],
+    )
+  }
+}
+
 impl BreakPointManagerState {
   pub fn new(tracer: Arc<Tracer>) -> Self {
     let breakpoints = tracer.get_breakpoints();
@@ -155,12 +225,12 @@ impl BreakPointManagerState {
           let pattern = match BreakPointPattern::from_editable(editor.value()) {
             Ok(pattern) => pattern,
             Err(message) => {
-              return Some(Action::SetActivePopup(
-                crate::action::ActivePopup::InfoPopup(InfoPopupState::error(
+              return Some(Action::SetActivePopup(ActivePopup::InfoPopup(
+                InfoPopupState::error(
                   "Breakpoint Editor Error".to_string(),
                   vec![Line::from(message)],
-                )),
-              ))
+                ),
+              )))
             }
           };
           let new = BreakPoint {
@@ -198,6 +268,11 @@ impl BreakPointManagerState {
     }
     if key.modifiers == KeyModifiers::NONE {
       match key.code {
+        KeyCode::F(1) => {
+          return Some(Action::SetActivePopup(ActivePopup::InfoPopup(
+            BreakPointManager::help(),
+          )))
+        }
         KeyCode::Char('q') => return Some(Action::CloseBreakpointManager),
         KeyCode::Down | KeyCode::Char('j') => {
           self.list_state.next();
