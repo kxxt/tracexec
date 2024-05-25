@@ -3,6 +3,8 @@ use std::{borrow::Cow, fmt::Display, mem, ops::Range};
 use ratatui::text::{Line, Span};
 use regex_cursor::{Cursor, IntoCursor};
 
+use crate::regex::{BidirectionalIter, BidirectionalIterator, IntoBidirectionalIterator};
+
 #[derive(Debug, Clone)]
 pub struct Mask {
   /// The range of the spans to mask
@@ -49,108 +51,6 @@ impl From<Line<'static>> for EventLine {
 impl Display for EventLine {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{}", self.line)
-  }
-}
-
-trait BidirectionalIterator: Iterator {
-  fn prev(&mut self) -> Option<Self::Item>;
-}
-
-impl<'a, T> Iterator for BidirectionalIter<'a, T> {
-  type Item = &'a T;
-
-  fn next(&mut self) -> Option<Self::Item> {
-    self.index.next(self.slice.len());
-    self.index.get(self.slice)
-  }
-}
-
-impl<'a, T> BidirectionalIterator for BidirectionalIter<'a, T> {
-  fn prev(&mut self) -> Option<Self::Item> {
-    self.index.prev(self.slice.len());
-    self.index.get(self.slice)
-  }
-}
-
-enum BidirectionalIterIndex {
-  Start,
-  Index(usize),
-  End,
-}
-
-impl BidirectionalIterIndex {
-  fn next(&mut self, len: usize) {
-    match self {
-      Self::Start => {
-        *self = if len > 0 { Self::Index(0) } else { Self::Start };
-      }
-      Self::Index(index) => {
-        if *index + 1 < len {
-          *index += 1;
-        } else {
-          *self = Self::End;
-        }
-      }
-      Self::End => {}
-    }
-  }
-
-  fn prev(&mut self, len: usize) {
-    match self {
-      Self::Start => {}
-      Self::Index(index) => {
-        if *index > 0 {
-          *index -= 1;
-        } else {
-          *self = Self::Start;
-        }
-      }
-      Self::End => {
-        *self = Self::Index(len.saturating_sub(1));
-      }
-    }
-  }
-
-  fn get<'a, T>(&self, slice: &'a [T]) -> Option<&'a T> {
-    match self {
-      Self::Start => None,
-      Self::Index(index) => slice.get(*index),
-      Self::End => None,
-    }
-  }
-}
-
-struct BidirectionalIter<'a, T> {
-  slice: &'a [T],
-  index: BidirectionalIterIndex,
-}
-
-impl<'a, T> BidirectionalIter<'a, T> {
-  fn new(slice: &'a [T]) -> Self {
-    Self {
-      slice,
-      index: BidirectionalIterIndex::Start,
-    }
-  }
-}
-
-impl<T> BidirectionalIter<'_, T> {
-  pub fn by_ref(&mut self) -> &mut Self {
-    self
-  }
-}
-
-trait IntoBidirectionalIterator {
-  type Iter: BidirectionalIterator;
-
-  fn into_bidirectional_iter(self) -> Self::Iter;
-}
-
-impl<'a, T> IntoBidirectionalIterator for &'a [T] {
-  type Iter = BidirectionalIter<'a, T>;
-
-  fn into_bidirectional_iter(self) -> Self::Iter {
-    BidirectionalIter::new(self)
   }
 }
 
