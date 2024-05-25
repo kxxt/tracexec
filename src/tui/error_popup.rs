@@ -2,7 +2,7 @@ use crossterm::event::KeyEvent;
 use ratatui::{
   buffer::Buffer,
   layout::Rect,
-  style::Stylize,
+  style::{Style, Stylize},
   text::Line,
   widgets::{Paragraph, StatefulWidget, WidgetRef, Wrap},
 };
@@ -13,22 +13,39 @@ use crate::action::Action;
 use super::{sized_paragraph::SizedParagraph, theme::THEME};
 
 #[derive(Debug, Clone)]
-pub struct ErrorPopupState {
+pub struct InfoPopupState {
   pub title: String,
   pub message: Vec<Line<'static>>,
+  pub style: Style,
 }
 
-impl ErrorPopupState {
+impl InfoPopupState {
   pub fn handle_key_event(&mut self, _key: KeyEvent) -> Option<Action> {
     Some(Action::CancelCurrentPopup)
+  }
+
+  pub fn error(title: String, message: Vec<Line<'static>>) -> Self {
+    Self {
+      title,
+      message,
+      style: THEME.error_popup,
+    }
+  }
+
+  pub fn info(title: String, message: Vec<Line<'static>>) -> Self {
+    Self {
+      title,
+      message,
+      style: THEME.info_popup,
+    }
   }
 }
 
 #[derive(Debug, Clone)]
-pub struct ErrorPopup;
+pub struct InfoPopup;
 
-impl StatefulWidget for ErrorPopup {
-  type State = ErrorPopupState;
+impl StatefulWidget for InfoPopup {
+  type State = InfoPopupState;
 
   fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
     let help = Line::raw("Press any key to close this popup");
@@ -40,7 +57,7 @@ impl StatefulWidget for ErrorPopup {
       Line::raw(state.title.as_str()).centered(),
       SizedParagraph::new(paragraph, (area.width as f32 * 0.7) as usize),
     )
-    .style(THEME.error_popup);
+    .style(state.style);
     popup.render_ref(area, buf);
   }
 }
