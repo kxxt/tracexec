@@ -135,7 +135,7 @@ Arguments:
 
 Options:
       --seccomp-bpf <SECCOMP_BPF>
-          seccomp-bpf filtering option [default: auto] [possible values: auto, on, off]
+          Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
       --successful-only
           Only show successful calls
       --fd-in-cmdline
@@ -238,7 +238,7 @@ Options:
       --no-decode-errno
           Do not decode errno values
       --seccomp-bpf <SECCOMP_BPF>
-          seccomp-bpf filtering option [default: auto] [possible values: auto, on, off]
+          Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
       --successful-only
           Only show successful calls
       --fd-in-cmdline

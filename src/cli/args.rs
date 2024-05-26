@@ -10,7 +10,7 @@ use super::options::SeccompBpf;
 #[derive(Args, Debug, Default, Clone)]
 pub struct ModifierArgs {
   #[cfg(feature = "seccomp-bpf")]
-  #[clap(long, help = "seccomp-bpf filtering option", default_value_t = SeccompBpf::Auto)]
+  #[clap(long, help = "Controls whether to enable seccomp-bpf optimization, which greatly improves performance", default_value_t = SeccompBpf::Auto)]
   pub seccomp_bpf: SeccompBpf,
   #[clap(long, help = "Only show successful calls", default_value_t = false)]
   pub successful_only: bool,
