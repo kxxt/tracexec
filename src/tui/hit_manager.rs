@@ -90,6 +90,12 @@ pub enum DetachReaction {
   LaunchExternal(String),
 }
 
+#[derive(PartialEq, Clone, Copy)]
+enum EditingTarget {
+  DefaultCommand,
+  CustomCommand { selection: usize },
+}
+
 pub struct HitManagerState {
   tracer: Arc<Tracer>,
   counter: u64,
@@ -98,7 +104,7 @@ pub struct HitManagerState {
   list_state: tui_widget_list::ListState,
   pub visible: bool,
   default_external_command: Option<String>,
-  is_editing: bool,
+  editing: Option<EditingTarget>,
   editor_state: TextState<'static>,
 }
 
@@ -115,7 +121,7 @@ impl HitManagerState {
       list_state: tui_widget_list::ListState::default(),
       visible: false,
       default_external_command,
-      is_editing: false,
+      editing: None,
       editor_state: TextState::new(),
     })
   }
@@ -125,7 +131,7 @@ impl HitManagerState {
   }
 
   pub fn help(&self) -> impl Iterator<Item = Span> {
-    if !self.is_editing {
+    if self.editing.is_none() {
       Either::Left(chain!(
         [
           help_item!("Q", "Back"),
@@ -142,7 +148,7 @@ impl HitManagerState {
           None
         },
         [help_item!(
-          "Shift+Enter",
+          "Alt+Enter",
           "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Command"
         ),]
       ))
@@ -166,21 +172,38 @@ impl HitManagerState {
   }
 
   pub fn handle_key_event(&mut self, key: KeyEvent) -> Option<Action> {
-    if self.is_editing {
+    if let Some(editing) = self.editing {
       match key.code {
         KeyCode::Enter => {
           if key.modifiers == KeyModifiers::NONE {
-            self.is_editing = false;
-            self.default_external_command = Some(self.editor_state.value().to_string());
+            self.editing = None;
+            match editing {
+              EditingTarget::DefaultCommand => {
+                self.default_external_command = Some(self.editor_state.value().to_string())
+              }
+              EditingTarget::CustomCommand { selection } => {
+                self.select_near_by(selection);
+                let hid = *self.hits.keys().nth(selection).unwrap();
+                if let Err(e) =
+                  self.detach_pause_and_launch_external(hid, self.editor_state.value().to_string())
+                {
+                  return Some(Action::show_error_popup(
+                    "Error".to_string(),
+                    e.with_note(|| "Failed to detach or launch external command"),
+                  ));
+                }
+                return self.close_when_empty();
+              }
+            }
             return None;
           }
         }
         KeyCode::Esc => {
-          self.is_editing = false;
+          self.editing = None;
           return None;
         }
         KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => {
-          self.is_editing = false;
+          self.editing = None;
           return None;
         }
         _ => {
@@ -210,7 +233,7 @@ impl HitManagerState {
           }
         }
         KeyCode::Char('e') => {
-          self.is_editing = true;
+          self.editing = Some(EditingTarget::DefaultCommand);
           if let Some(command) = self.default_external_command.clone() {
             self.editor_state = TextState::new().with_value(command);
             self.editor_state.move_end();
@@ -243,6 +266,12 @@ impl HitManagerState {
           }
         }
         _ => {}
+      }
+    } else if key.code == KeyCode::Enter && key.modifiers == KeyModifiers::ALT {
+      if let Some(selected) = self.list_state.selected {
+        self.editing = Some(EditingTarget::CustomCommand {
+          selection: selected,
+        });
       }
     }
     None
@@ -347,7 +376,7 @@ impl HitManagerState {
   }
 
   pub fn cursor(&self) -> Option<(u16, u16)> {
-    if self.is_editing {
+    if self.editing.is_some() {
       Some(self.editor_state.cursor())
     } else {
       None
@@ -370,8 +399,14 @@ impl StatefulWidget for HitManager {
       height: 1,
     };
     Clear.render(editor_area, buf);
-    if state.is_editing {
-      let editor = TextPrompt::new("default command".into());
+    if let Some(editing) = state.editing {
+      let editor = TextPrompt::new(
+        match editing {
+          EditingTarget::DefaultCommand => "default command",
+          EditingTarget::CustomCommand { .. } => "command",
+        }
+        .into(),
+      );
       editor.render(editor_area, buf, &mut state.editor_state);
     } else if let Some(command) = state.default_external_command.as_deref() {
       let line = Line::default().spans(vec![
