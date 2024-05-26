@@ -4,7 +4,7 @@ use std::{
   sync::Arc,
 };
 
-use color_eyre::Section;
+use color_eyre::{eyre::eyre, Section};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use either::Either;
 use itertools::{chain, Itertools};
@@ -192,6 +192,12 @@ impl HitManagerState {
       match key.code {
         KeyCode::Enter => {
           if key.modifiers == KeyModifiers::NONE {
+            if self.editor_state.value().trim().is_empty() {
+              return Some(Action::show_error_popup(
+                "Error".to_string(),
+                eyre!("Command cannot be empty or whitespace"),
+              ));
+            }
             self.editing = None;
             match editing {
               EditingTarget::DefaultCommand => {
