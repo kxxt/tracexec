@@ -331,7 +331,7 @@ impl HitManagerState {
     if old > 0 {
       self.list_state.select(Some(old - 1));
     } else if old + 1 < self.hits.len() {
-      self.list_state.select(Some(old + 1));
+      self.list_state.select(Some(old));
     } else {
       self.list_state.select(None);
     }
