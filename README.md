@@ -33,6 +33,16 @@ Nested setuid binary tracing is also possible: A real world use case is to trace
 
 In this real world example, we can easily see that `_FORTIFY_SOURCE` is redefined from `2` to `3`, which lead to a compiler error.
 
+### Use tracexec as a debugger launcher
+
+tracexec can also be used as a debugger launcher to make debugging programs easier. For example, it's not trivial or convenient
+to debug a program executed by a shell/python script(which can use pipes as stdio for the program). The following video shows how to
+use tracexec to launch gdb to detach two simple programs piped together by a shell script.
+
+https://github.com/kxxt/tracexec/assets/18085551/72c755a5-0f2f-4bf9-beb9-98c8d6b5e5fd
+
+Please [read the gdb-launcher example](https://github.com/kxxt/tracexec/blob/main/demonstration/gdb-launcher/README.md) for more details.
+
 ### Log mode
 
 In log mode, by default, `tracexec` will print filename, argv and the diff of the environment variables and file descriptors.
@@ -132,6 +142,12 @@ Options:
           [Experimental] Try to reproduce file descriptors in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
       --stdio-in-cmdline
           [Experimental] Try to reproduce stdio in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
+      --resolve-proc-self-exe
+          Resolve /proc/self/exe symlink
+      --no-resolve-proc-self-exe
+          Do not resolve /proc/self/exe symlink
+      --tracer-delay <TRACER_DELAY>
+          Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1.
       --show-all-events
           Set the default filter to show all events. This option can be used in combination with --filter-exclude to exclude some unwanted events.
       --filter <FILTER>
@@ -154,6 +170,10 @@ Options:
           Set the layout of the TUI when it launches [default: horizontal] [possible values: horizontal, vertical]
   -F, --frame-rate <FRAME_RATE>
           Set the frame rate of the TUI [default: 60.0]
+  -D, --default-external-command <DEFAULT_EXTERNAL_COMMAND>
+          Set the default external command to run when using "Detach, Stop and Run Command" feature in Hit Manager
+  -b, --add-breakpoint <BREAKPOINTS>
+          Add a new breakpoint to the tracer. This option can be used multiple times. The format is <syscall-stop>:<pattern-type>:<pattern>, where syscall-stop can be sysenter or sysexit, pattern-type can be argv-regex, in-filename or exact-filename. For example, sysexit:in-filename:/bash
   -h, --help
           Print help
 ```
@@ -177,6 +197,10 @@ Options:
           More colors
       --less-colors
           Less colors
+      --foreground
+          Set the terminal foreground process group to tracee. This option is useful when tracexec is used interactively.
+      --no-foreground
+          Do not set the terminal foreground process group to tracee
       --diff-fd
           Diff file descriptors with the original std{in/out/err}
       --no-diff-fd
@@ -212,7 +236,7 @@ Options:
       --decode-errno
           Decode errno values
       --no-decode-errno
-          
+          Do not decode errno values
       --seccomp-bpf <SECCOMP_BPF>
           seccomp-bpf filtering option [default: auto] [possible values: auto, on, off]
       --successful-only
@@ -221,6 +245,12 @@ Options:
           [Experimental] Try to reproduce file descriptors in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
       --stdio-in-cmdline
           [Experimental] Try to reproduce stdio in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
+      --resolve-proc-self-exe
+          Resolve /proc/self/exe symlink
+      --no-resolve-proc-self-exe
+          Do not resolve /proc/self/exe symlink
+      --tracer-delay <TRACER_DELAY>
+          Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1.
       --show-all-events
           Set the default filter to show all events. This option can be used in combination with --filter-exclude to exclude some unwanted events.
       --filter <FILTER>
