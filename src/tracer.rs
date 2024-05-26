@@ -12,6 +12,7 @@ use std::{
 
 use arcstr::ArcStr;
 use cfg_if::cfg_if;
+use either::Either;
 use enumflags2::BitFlags;
 use nix::{
   errno::Errno,
@@ -31,7 +32,7 @@ use nix::{
 use state::PendingDetach;
 use tokio::{
   select,
-  sync::mpsc::{UnboundedReceiver, UnboundedSender},
+  sync::mpsc::{error::SendError, UnboundedReceiver, UnboundedSender},
 };
 use tracing::{debug, error, info, trace, warn};
 
@@ -102,16 +103,17 @@ pub enum TracerMode {
   Log,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BreakPointHit {
-  pid: Pid,
-  stop: BreakPointStop,
+  pub bid: u32,
+  pub pid: Pid,
+  pub stop: BreakPointStop,
 }
 
 pub enum PendingRequest {
   ResumeProcess(BreakPointHit),
   DetachProcess {
-    info: BreakPointHit,
+    hit: BreakPointHit,
     signal: Option<Signal>,
     hid: u64,
   },
@@ -386,15 +388,21 @@ impl Tracer {
             PendingRequest::ResumeProcess(hit) => {
               let mut store = self.store.write().unwrap();
               let state = store.get_current_mut(hit.pid).unwrap();
-              self.resume_process(state, hit.stop)?;
+              self.proprgate_operation_error(hit, true, self.resume_process(state, hit.stop))?;
             }
-            PendingRequest::DetachProcess { info, signal, hid } => {
+            PendingRequest::DetachProcess { hit, signal, hid } => {
               let mut store = self.store.write().unwrap();
-              let state = store.get_current_mut(info.pid).unwrap();
+              let state = store.get_current_mut(hit.pid).unwrap();
               if let Some(signal) = signal {
-                self.prepare_to_detach_with_signal(state, info.stop, signal, hid)?;
+                if let Err(e) = self.prepare_to_detach_with_signal(state, hit, signal, hid) {
+                  self.msg_tx.send(ProcessStateUpdateEvent {
+                    update: ProcessStateUpdate::DetachError { hit, error: e },
+                    pid: hit.pid,
+                    ids: vec![],
+                  }.into())?;
+                }
               } else {
-                self.detach_process_internal(state, signal, hid)?;
+                self.proprgate_operation_error(hit, false, self.detach_process_internal(state, signal, hid))?;
               }
             }
             #[cfg(feature = "seccomp-bpf")]
@@ -471,7 +479,11 @@ impl Tracer {
                 let mut store = self.store.write().unwrap();
                 let state = store.get_current_mut(pid).unwrap();
                 if let Some(detach) = state.pending_detach.take() {
-                  self.detach_process_internal(state, Some(detach.signal), detach.hid)?;
+                  self.proprgate_operation_error(
+                    detach.hit,
+                    false,
+                    self.detach_process_internal(state, Some(detach.signal), detach.hid),
+                  )?;
                 }
                 continue;
               }
@@ -768,10 +780,11 @@ impl Tracer {
       if let Some(bid) = hit {
         let associated_events = p.associated_events.clone();
         let event = ProcessStateUpdateEvent {
-          update: ProcessStateUpdate::BreakPointHit {
+          update: ProcessStateUpdate::BreakPointHit(BreakPointHit {
             bid,
+            pid,
             stop: BreakPointStop::SyscallEnter,
-          },
+          }),
           pid,
           ids: associated_events,
         };
@@ -845,10 +858,11 @@ impl Tracer {
           if let Some(bid) = hit {
             let associated_events = p.associated_events.clone();
             let event = ProcessStateUpdateEvent {
-              update: ProcessStateUpdate::BreakPointHit {
+              update: ProcessStateUpdate::BreakPointHit(BreakPointHit {
                 bid,
+                pid,
                 stop: BreakPointStop::SyscallExit,
-              },
+              }),
               pid,
               ids: associated_events,
             };
@@ -873,6 +887,12 @@ impl Tracer {
     ptrace_syscall(pid, None)
   }
 
+  /// Raw syscall enter cont, without catching ESRCH
+  fn raw_syscall_enter_cont(&self, pid: Pid) -> Result<(), Errno> {
+    trace!("raw syscall enter cont: {pid}");
+    ptrace::syscall(pid, None)
+  }
+
   #[allow(unused)]
   fn syscall_enter_cont_with_signal(&self, pid: Pid, sig: Signal) -> Result<(), Errno> {
     trace!("syscall enter cont: {pid} with signal {sig}");
@@ -888,6 +908,15 @@ impl Tracer {
       return ptrace_cont(pid, None);
     }
     ptrace_syscall(pid, None)
+  }
+
+  fn raw_seccomp_aware_cont(&self, pid: Pid) -> Result<(), Errno> {
+    trace!("raw_seccomp_aware_cont: {pid}");
+    #[cfg(feature = "seccomp-bpf")]
+    if self.seccomp_bpf == SeccompBpf::On {
+      return ptrace::cont(pid, None);
+    }
+    ptrace::syscall(pid, None)
   }
 
   fn seccomp_aware_cont_with_signal(&self, pid: Pid, sig: Signal) -> Result<(), Errno> {
@@ -1054,45 +1083,79 @@ impl Tracer {
     self.breakpoints.write().unwrap().clear();
   }
 
+  fn proprgate_operation_error(
+    &self,
+    hit: BreakPointHit,
+    is_resume: bool,
+    r: Result<(), Either<Errno, SendError<TracerMessage>>>,
+  ) -> color_eyre::Result<()> {
+    match r {
+      Ok(_) => {}
+      Err(Either::Left(e)) => {
+        self.msg_tx.send(
+          ProcessStateUpdateEvent {
+            update: if is_resume {
+              ProcessStateUpdate::ResumeError { hit, error: e }
+            } else {
+              ProcessStateUpdate::DetachError { hit, error: e }
+            },
+            pid: hit.pid,
+            ids: vec![],
+          }
+          .into(),
+        )?;
+      }
+      e => e?,
+    }
+    Ok(())
+  }
+
   fn resume_process(
     &self,
     state: &mut ProcessState,
     stop: BreakPointStop,
-  ) -> color_eyre::Result<()> {
+  ) -> Result<(), Either<Errno, SendError<TracerMessage>>> {
     state.status = ProcessStatus::Running;
     if stop == BreakPointStop::SyscallEnter {
-      self.syscall_enter_cont(state.pid)?;
+      self
+        .raw_syscall_enter_cont(state.pid)
+        .map_err(Either::Left)?;
     } else {
-      self.seccomp_aware_cont(state.pid)?;
+      self
+        .raw_seccomp_aware_cont(state.pid)
+        .map_err(Either::Left)?;
     }
     let associated_events = state.associated_events.clone();
-    self.msg_tx.send(
-      ProcessStateUpdateEvent {
-        update: ProcessStateUpdate::Resumed,
-        pid: state.pid,
-        ids: associated_events,
-      }
-      .into(),
-    )?;
+    self
+      .msg_tx
+      .send(
+        ProcessStateUpdateEvent {
+          update: ProcessStateUpdate::Resumed,
+          pid: state.pid,
+          ids: associated_events,
+        }
+        .into(),
+      )
+      .map_err(Either::Right)?;
     Ok(())
   }
 
   fn prepare_to_detach_with_signal(
     &self,
     state: &mut ProcessState,
-    stop: BreakPointStop,
+    hit: BreakPointHit,
     signal: Signal,
     hid: u64,
-  ) -> color_eyre::Result<()> {
-    state.pending_detach = Some(PendingDetach { signal, hid });
+  ) -> Result<(), Errno> {
+    state.pending_detach = Some(PendingDetach { signal, hid, hit });
     // Don't use *cont_with_signal because that causes
     // the loss of signal when we do it on syscall-enter.
     // Is this a kernel bug?
     kill(state.pid, Signal::SIGALRM)?;
-    if stop == BreakPointStop::SyscallEnter {
-      self.syscall_enter_cont(state.pid)?;
+    if hit.stop == BreakPointStop::SyscallEnter {
+      self.raw_syscall_enter_cont(state.pid)?;
     } else {
-      self.seccomp_aware_cont(state.pid)?;
+      self.raw_seccomp_aware_cont(state.pid)?;
     }
     Ok(())
   }
@@ -1103,45 +1166,44 @@ impl Tracer {
     state: &mut ProcessState,
     signal: Option<Signal>,
     hid: u64,
-  ) -> color_eyre::Result<()> {
+  ) -> Result<(), Either<Errno, SendError<TracerMessage>>> {
     let pid = state.pid;
     trace!("detaching: {pid}, signal: {:?}", signal);
     state.status = ProcessStatus::Detached;
-    ptrace::detach(pid, signal).inspect_err(|e| warn!("Failed to detach from {pid}: {e}"))?;
+    ptrace::detach(pid, signal)
+      .inspect_err(|e| warn!("Failed to detach from {pid}: {e}"))
+      .map_err(Either::Left)?;
     trace!("detached: {pid}, signal: {:?}", signal);
     let associated_events = state.associated_events.clone();
-    self.msg_tx.send(
-      ProcessStateUpdateEvent {
-        update: ProcessStateUpdate::Detached { hid },
-        pid,
-        ids: associated_events,
-      }
-      .into(),
-    )?;
+    self
+      .msg_tx
+      .send(
+        ProcessStateUpdateEvent {
+          update: ProcessStateUpdate::Detached { hid },
+          pid,
+          ids: associated_events,
+        }
+        .into(),
+      )
+      .map_err(Either::Right)?;
     trace!("detach finished: {pid}, signal: {:?}", signal);
     Ok(())
   }
 
   pub fn request_process_detach(
     &self,
-    pid: Pid,
+    hit: BreakPointHit,
     signal: Option<Signal>,
     hid: u64,
   ) -> color_eyre::Result<()> {
-    let info = BreakPointHit {
-      pid,
-      // Doesn't matter for detach
-      stop: BreakPointStop::SyscallEnter,
-    };
     self
       .req_tx
-      .send(PendingRequest::DetachProcess { info, signal, hid })?;
+      .send(PendingRequest::DetachProcess { hit, signal, hid })?;
     Ok(())
   }
 
-  pub fn request_process_resume(&self, pid: Pid, stop: BreakPointStop) -> color_eyre::Result<()> {
-    let info = BreakPointHit { pid, stop };
-    self.req_tx.send(PendingRequest::ResumeProcess(info))?;
+  pub fn request_process_resume(&self, hit: BreakPointHit) -> color_eyre::Result<()> {
+    self.req_tx.send(PendingRequest::ResumeProcess(hit))?;
     Ok(())
   }
 

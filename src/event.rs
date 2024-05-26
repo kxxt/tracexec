@@ -16,7 +16,7 @@ use enumflags2::BitFlags;
 use filterable_enum::FilterableEnum;
 use itertools::{chain, Itertools};
 use lazy_static::lazy_static;
-use nix::{fcntl::OFlag, libc::c_int, sys::signal::Signal, unistd::Pid};
+use nix::{errno::Errno, fcntl::OFlag, libc::c_int, sys::signal::Signal, unistd::Pid};
 use ratatui::{
   layout::Size,
   style::Styled,
@@ -30,10 +30,7 @@ use crate::{
   cli::args::ModifierArgs,
   printer::{escape_str_for_bash, ListPrinter},
   proc::{BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter},
-  tracer::{
-    state::{BreakPointStop, ProcessExit},
-    InspectError,
-  },
+  tracer::{state::ProcessExit, BreakPointHit, InspectError},
   tui::{
     event_line::{EventLine, Mask},
     theme::THEME,
@@ -630,9 +627,11 @@ pub(crate) use filterable_event;
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProcessStateUpdate {
   Exit(ProcessExit),
-  BreakPointHit { bid: u32, stop: BreakPointStop },
+  BreakPointHit(BreakPointHit),
   Resumed,
   Detached { hid: u64 },
+  ResumeError { hit: BreakPointHit, error: Errno },
+  DetachError { hit: BreakPointHit, error: Errno },
 }
 
 #[derive(Debug, Clone, PartialEq)]

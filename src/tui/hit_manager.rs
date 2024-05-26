@@ -22,10 +22,7 @@ use tui_widget_list::PreRender;
 
 use crate::{
   action::Action,
-  tracer::{
-    state::{BreakPointStop},
-    Tracer,
-  },
+  tracer::{state::BreakPointStop, BreakPointHit, Tracer},
 };
 
 use super::{
@@ -68,6 +65,14 @@ impl BreakPointHitEntry {
         Style::default()
       });
     Paragraph::new(line).wrap(Wrap { trim: true })
+  }
+
+  fn hit(&self) -> BreakPointHit {
+    BreakPointHit {
+      bid: self.bid,
+      pid: self.pid,
+      stop: self.stop,
+    }
   }
 }
 
@@ -280,8 +285,9 @@ impl HitManagerState {
     None
   }
 
-  pub fn add_hit(&mut self, bid: u32, pid: Pid, stop: BreakPointStop) -> u64 {
+  pub fn add_hit(&mut self, hit: BreakPointHit) -> u64 {
     let id = self.counter;
+    let BreakPointHit { bid, pid, stop } = hit;
     self.hits.insert(
       id,
       BreakPointHitEntry {
@@ -307,14 +313,14 @@ impl HitManagerState {
 
   pub fn detach(&mut self, hid: u64) -> color_eyre::Result<()> {
     if let Some(hit) = self.hits.remove(&hid) {
-      self.tracer.request_process_detach(hit.pid, None, hid)?;
+      self.tracer.request_process_detach(hit.hit(), None, hid)?;
     }
     Ok(())
   }
 
   pub fn resume(&mut self, hid: u64) -> color_eyre::Result<()> {
     if let Some(hit) = self.hits.remove(&hid) {
-      self.tracer.request_process_resume(hit.pid, hit.stop)?;
+      self.tracer.request_process_resume(hit.hit())?;
     }
     Ok(())
   }
@@ -335,7 +341,7 @@ impl HitManagerState {
         .insert(hid, DetachReaction::LaunchExternal(cmdline_template));
       self
         .tracer
-        .request_process_detach(hit.pid, Some(Signal::SIGSTOP), hid)?;
+        .request_process_detach(hit.hit(), Some(Signal::SIGSTOP), hid)?;
     }
     Ok(())
   }

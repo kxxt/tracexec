@@ -17,12 +17,15 @@ use crate::{
   tracer::InspectError,
 };
 
+use super::BreakPointHit;
+
 pub struct ProcessStateStore {
   processes: HashMap<Pid, Vec<ProcessState>>,
 }
 
 #[derive(Debug)]
 pub struct PendingDetach {
+  pub hit: BreakPointHit,
   pub hid: u64,
   pub signal: Signal,
 }
@@ -271,7 +274,7 @@ impl TryFrom<&str> for BreakPoint {
     };
     let pattern = match pattern_kind {
       "argv-regex" => BreakPointPattern::ArgvRegex(BreakPointRegex {
-        regex: PikeVM::new(pattern).map_err(|e| format!("\n{}", e.source().unwrap().to_string()))?,
+        regex: PikeVM::new(pattern).map_err(|e| format!("\n{}", e.source().unwrap()))?,
         editable: pattern.to_string(),
       }),
       "exact-filename" => BreakPointPattern::ExactFilename(PathBuf::from(pattern)),
