@@ -2,6 +2,8 @@
 
 This example demonstrates how to use tracexec as a gdb launcher to debug programs under complex setup.
 
+https://github.com/kxxt/tracexec/assets/18085551/72c755a5-0f2f-4bf9-beb9-98c8d6b5e5fd
+
 Without tracexec, it's not trivial or convenient to debug a program that gets executed by other programs or debug programs with pipes.
 
 - https://stackoverflow.com/questions/5048112/use-gdb-to-debug-a-c-program-called-from-a-shell-script
