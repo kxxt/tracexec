@@ -112,6 +112,8 @@ pub struct Theme {
   pub hit_entry_plain_text: Style,
   pub hit_entry_breakpoint_id: Style,
   pub hit_entry_breakpoint_stop: Style,
+  pub hit_entry_breakpoint_pattern: Style,
+  pub hit_entry_no_breakpoint_pattern: Style,
   pub hit_manager_default_command: Style,
   pub hit_manager_no_default_command: Style,
 }
@@ -230,8 +232,10 @@ impl Default for Theme {
       // -- Hit Manager --
       hit_entry_pid: Style::default().light_magenta(),
       hit_entry_plain_text: Style::default().bold().white(),
-      hit_entry_breakpoint_id: Style::default().cyan().bold(),
+      hit_entry_breakpoint_id: Style::default().green().bold(),
       hit_entry_breakpoint_stop: Style::default().yellow().bold(),
+      hit_entry_breakpoint_pattern: Style::default().cyan().bold(),
+      hit_entry_no_breakpoint_pattern: Style::default().light_red().bold(),
       hit_manager_default_command: Style::default().light_cyan().bold(),
       hit_manager_no_default_command: Style::default().light_yellow().bold(),
     }
