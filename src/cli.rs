@@ -1,8 +1,8 @@
-use std::{io::stdout, num::ParseFloatError, path::PathBuf};
+use std::{borrow::Cow, io::stdout, num::ParseFloatError, path::PathBuf};
 
 use clap::{CommandFactory, Parser, Subcommand};
 
-use crate::tui::app::AppLayout;
+use crate::{tracer::state::BreakPoint, tui::app::AppLayout};
 
 use self::{
   args::{LogModeArgs, ModifierArgs, TracerEventArgs},
@@ -111,6 +111,13 @@ pub enum CliCommand {
       help = "Set the default external command to run when using \"Detach, Stop and Run Command\" feature in Hit Manager"
     )]
     default_external_command: Option<String>,
+    #[clap(
+      long = "add-breakpoint",
+      short = 'b',
+      value_parser = breakpoint_parser,
+      help = "Add a new breakpoint to the tracer. This option can be used multiple times. The format is <syscall-stop>:<pattern-type>:<pattern>, where syscall-stop can be sysenter or sysexit, pattern-type can be argv-regex, in-filename or exact-filename. For example, sysexit:in-filename:/bash",
+    )]
+    breakpoints: Vec<BreakPoint>,
   },
   #[clap(about = "Generate shell completions for tracexec")]
   GenerateCompletions {
@@ -144,6 +151,10 @@ fn frame_rate_parser(s: &str) -> Result<f64, ParseFrameRateError> {
   } else {
     Ok(v)
   }
+}
+
+fn breakpoint_parser(s: &str) -> Result<BreakPoint, Cow<'static, str>> {
+  BreakPoint::try_from(s)
 }
 
 impl Cli {

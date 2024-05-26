@@ -22,7 +22,10 @@ use tui_widget_list::PreRender;
 
 use crate::{
   action::Action,
-  tracer::{state::BreakPointStop, Tracer},
+  tracer::{
+    state::{BreakPointStop},
+    Tracer,
+  },
 };
 
 use super::{

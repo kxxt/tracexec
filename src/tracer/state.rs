@@ -1,5 +1,7 @@
 use std::{
+  borrow::Cow,
   collections::{BTreeMap, HashMap},
+  error::Error,
   path::{Path, PathBuf},
   sync::Arc,
 };
@@ -244,5 +246,50 @@ impl BreakPointPattern {
         filename == path
       }
     }
+  }
+}
+
+impl TryFrom<&str> for BreakPoint {
+  type Error = Cow<'static, str>;
+
+  fn try_from(value: &str) -> Result<Self, Self::Error> {
+    let Some((stop, rest)) = value.split_once(':') else {
+      return Err("No valid syscall stop found! The breakpoint should start with \"sysenter:\" or \"sysexit:\".".into());
+    };
+    let stop = match stop {
+      "sysenter" => BreakPointStop::SyscallEnter,
+      "sysexit" => BreakPointStop::SyscallExit,
+      _ => {
+        return Err(
+          format!("Invalid syscall stop {stop:?}! The breakpoint should start with \"sysenter:\" or \"sysexit:\".")
+            .into(),
+        )
+      }
+    };
+    let Some((pattern_kind, pattern)) = rest.split_once(':') else {
+      return Err("No valid pattern kind found! The breakpoint pattern should start with \"argv-regex:\", \"exact-filename:\" or \"in-filename:\".".into());
+    };
+    let pattern = match pattern_kind {
+      "argv-regex" => BreakPointPattern::ArgvRegex(BreakPointRegex {
+        regex: PikeVM::new(pattern).map_err(|e| format!("\n{}", e.source().unwrap().to_string()))?,
+        editable: pattern.to_string(),
+      }),
+      "exact-filename" => BreakPointPattern::ExactFilename(PathBuf::from(pattern)),
+      "in-filename" => BreakPointPattern::InFilename(pattern.to_string()),
+      _ => {
+        return Err(
+          format!(
+            "Invalid pattern kind {pattern_kind:?}! The breakpoint pattern should start with \"argv-regex:\", \"exact-filename:\" or \"in-filename:\"."
+          )
+          .into(),
+        )
+      }
+    };
+    Ok(Self {
+      ty: BreakPointType::Permanent,
+      stop,
+      pattern,
+      activated: true,
+    })
   }
 }
