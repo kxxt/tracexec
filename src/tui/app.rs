@@ -425,8 +425,21 @@ impl App {
                     pid,
                     ..
                   } => {
-                    // TODO: Don't crash the app if this fails
-                    self.hit_manager_state.react_on_process_detach(*hid, *pid)?;
+                    if let Err(e) = self.hit_manager_state.react_on_process_detach(*hid, *pid) {
+                      action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
+                        InfoPopupState::error(
+                          "Detach Error".to_owned(),
+                          vec![
+                            Line::default().spans(vec![
+                              "Failed to run custom command after detaching process ".into(),
+                              pid.to_string().bold(),
+                              ". Error: ".into(),
+                            ]),
+                            e.to_string().into(),
+                          ],
+                        ),
+                      )))?;
+                    }
                   }
                   ProcessStateUpdateEvent {
                     update: ProcessStateUpdate::ResumeError { hit, error },
