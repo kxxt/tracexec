@@ -1,0 +1,3 @@
+#!/bin/bash
+
+./a --complex-arguments-here | ./b --other --complex --arguments --here
