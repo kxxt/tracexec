@@ -1075,6 +1075,15 @@ impl Tracer {
     self.breakpoints.read().unwrap().clone()
   }
 
+  pub fn get_breakpoint_pattern_string(&self, id: u32) -> Option<String> {
+    self
+      .breakpoints
+      .read()
+      .unwrap()
+      .get(&id)
+      .map(|b| b.pattern.to_editable())
+  }
+
   pub fn remove_breakpoint(&self, index: u32) {
     self.breakpoints.write().unwrap().remove(&index);
   }

@@ -36,6 +36,7 @@ struct BreakPointHitEntry {
   pid: Pid,
   stop: BreakPointStop,
   selected: bool,
+  breakpoint_pattern: Option<String>,
 }
 
 impl BreakPointHitEntry {
@@ -51,6 +52,13 @@ impl BreakPointHitEntry {
           format!("breakpoint #{}", self.bid),
           THEME.hit_entry_plain_text,
         ),
+        Span::raw("("),
+        if let Some(pattern) = &self.breakpoint_pattern {
+          Span::styled(pattern.clone(), THEME.hit_entry_breakpoint_pattern)
+        } else {
+          Span::styled("deleted", THEME.hit_entry_no_breakpoint_pattern)
+        },
+        Span::raw(")"),
         space.clone(),
         Span::styled("at", THEME.hit_entry_plain_text),
         space.clone(),
@@ -295,6 +303,7 @@ impl HitManagerState {
         pid,
         stop,
         selected: false,
+        breakpoint_pattern: self.tracer.get_breakpoint_pattern_string(bid),
       },
     );
     self.counter += 1;
