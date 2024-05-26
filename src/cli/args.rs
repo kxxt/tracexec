@@ -35,8 +35,11 @@ pub struct ModifierArgs {
     conflicts_with = "resolve_proc_self_exe"
   )]
   pub no_resolve_proc_self_exe: bool,
-  #[clap(long, help = "Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1.")]
-  pub tracer_delay: Option<u64>
+  #[clap(
+    long,
+    help = "Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1."
+  )]
+  pub tracer_delay: Option<u64>,
 }
 
 impl ModifierArgs {

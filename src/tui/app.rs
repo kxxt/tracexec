@@ -16,17 +16,18 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::{ops::ControlFlow, path::PathBuf, sync::Arc};
+use std::{ops::ControlFlow, sync::Arc};
 
 use arboard::Clipboard;
 use clap::ValueEnum;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use itertools::chain;
-use nix::{sys::signal::Signal, unistd::Pid};
+use nix::{errno::Errno, sys::signal::Signal, unistd::Pid};
 use ratatui::{
   buffer::Buffer,
   layout::{Constraint, Layout, Rect},
+  style::Stylize,
   text::Line,
   widgets::{Block, Paragraph, StatefulWidget, StatefulWidgetRef, Widget, Wrap},
 };
@@ -45,10 +46,7 @@ use crate::{
   printer::PrinterArgs,
   proc::BaselineInfo,
   pty::{PtySize, UnixMasterPty},
-  tracer::{
-    state::{BreakPoint, BreakPointPattern, BreakPointStop, BreakPointType},
-    Tracer,
-  },
+  tracer::{state::BreakPoint, Tracer},
   tui::{error_popup::InfoPopupState, query::QueryKind},
 };
 
@@ -412,13 +410,13 @@ impl App {
               }
               TracerMessage::StateUpdate(update) => {
                 trace!("Received process state update: {update:?}");
+                let mut handled = false;
                 match &update {
                   ProcessStateUpdateEvent {
-                    update: ProcessStateUpdate::BreakPointHit { bid, stop },
-                    pid,
+                    update: ProcessStateUpdate::BreakPointHit(hit),
                     ..
                   } => {
-                    self.hit_manager_state.add_hit(*bid, *pid, *stop);
+                    self.hit_manager_state.add_hit(*hit);
                     // Warn: This grants CAP_SYS_ADMIN to not only the tracer but also the tracees
                     // sudo -E env RUST_LOG=debug setpriv --reuid=$(id -u) --regid=$(id -g) --init-groups --inh-caps=+sys_admin --ambient-caps +sys_admin -- target/debug/tracexec tui -t --
                   }
@@ -430,9 +428,55 @@ impl App {
                     // TODO: Don't crash the app if this fails
                     self.hit_manager_state.react_on_process_detach(*hid, *pid)?;
                   }
+                  ProcessStateUpdateEvent {
+                    update: ProcessStateUpdate::ResumeError { hit, error },
+                    ..
+                  } => {
+                    if *error != Errno::ESRCH {
+                      self.hit_manager_state.add_hit(*hit);
+                    }
+                    action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
+                      InfoPopupState::error(
+                        "Resume Error".to_owned(),
+                        vec![
+                          Line::default().spans(vec![
+                            "Failed to resume process ".into(),
+                            hit.pid.to_string().bold(),
+                            ". Error: ".into(),
+                          ]),
+                          error.to_string().into(),
+                        ],
+                      ),
+                    )))?;
+                    handled = true;
+                  }
+                  ProcessStateUpdateEvent {
+                    update: ProcessStateUpdate::DetachError { hit, error },
+                    ..
+                  } => {
+                    if *error != Errno::ESRCH {
+                      self.hit_manager_state.add_hit(*hit);
+                    }
+                    action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
+                      InfoPopupState::error(
+                        "Detach Error".to_owned(),
+                        vec![
+                          Line::default().spans(vec![
+                            "Failed to detach process ".into(),
+                            hit.pid.to_string().bold(),
+                            ". Error: ".into(),
+                          ]),
+                          error.to_string().into(),
+                        ],
+                      ),
+                    )))?;
+                    handled = true;
+                  }
                   _ => (),
                 }
-                self.event_list.update(update);
+                if !handled {
+                  self.event_list.update(update);
+                }
               }
             }
             // action_tx.send(Action::Render)?;
