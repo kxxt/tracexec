@@ -1,6 +1,6 @@
 [package]
 name = "tracexec"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 authors = ["Levi Zim <rsworktech@outlook.com>"]
 description = "A small utility for tracing execve{,at} and pre-exec behavior"

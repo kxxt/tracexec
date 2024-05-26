@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.4.0
+
+I am very excited to share that tracexec can now be used as a debugger launcher.
+
+It's usually not trivial or convenient to debug a program executed by a shell/python script(which can use pipes as stdio for the program).
+The following video shows how to use tracexec to launch gdb to detach two simple programs piped together by a shell script.
+
+https://github.com/kxxt/tracexec/assets/18085551/72c755a5-0f2f-4bf9-beb9-98c8d6b5e5fd
+
+Solves:
+
+- https://stackoverflow.com/questions/5048112/use-gdb-to-debug-a-c-program-called-from-a-shell-script
+- https://stackoverflow.com/questions/1456253/gdb-debugging-with-pipe
+- https://stackoverflow.com/questions/455544/how-to-load-program-reading-stdin-and-taking-parameters-in-gdb
+- https://stackoverflow.com/questions/65936457/debugging-a-specific-subprocess
+
+
+To learn more about it, [read the gdb-launcher example](https://github.com/kxxt/tracexec/blob/main/demonstration/gdb-launcher/README.md).
+
+Changes since v0.3.1:
+
+### Added
+
+- Breakpoints.
+  - The breakpoints can be set in CLI(`--add-breakpoint/-b`) and TUI.
+- Managing breakpoint hits.
+  - in CLI: option `--default-external-command`
+  - in TUI: Hit Manager
+  - Detach, Resume, or Detach, stop and run external command
+- `--tracer-delay` option for setting the polling delay of the tracer, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1.
+
+### Changed
+
+- Docs: make the description of --seccomp-bpf more clear
+
 ## v0.3.1
 
 tracexec v0.3.1 released!
