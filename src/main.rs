@@ -140,6 +140,7 @@ async fn main() -> color_eyre::Result<()> {
       follow,
       frame_rate,
       default_external_command,
+      breakpoints,
     } => {
       let modifier_args = modifier_args.processed();
       // Disable owo-colors when running TUI
@@ -195,6 +196,7 @@ async fn main() -> color_eyre::Result<()> {
         layout,
         follow,
         default_external_command,
+        breakpoints,
       )?;
       let tracer_thread = tracer.spawn(cmd, None, req_rx);
       let mut tui = tui::Tui::new()?.frame_rate(frame_rate);

@@ -104,12 +104,16 @@ impl App {
     layout: AppLayout,
     follow: bool,
     default_external_command: Option<String>,
+    breakpoints: Vec<BreakPoint>,
   ) -> color_eyre::Result<Self> {
     let active_pane = if pty_master.is_some() {
       active_pane
     } else {
       ActivePane::Events
     };
+    for bp in breakpoints {
+      tracer.add_breakpoint(bp);
+    }
     Ok(Self {
       event_list: EventList::new(baseline, follow, modifier_args.to_owned()),
       printer_args: PrinterArgs::from_cli(tracing_args, modifier_args),
