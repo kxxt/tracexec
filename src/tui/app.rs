@@ -185,6 +185,10 @@ impl App {
               if self.breakpoint_manager.is_some() {
                 self.breakpoint_manager = None;
               }
+              // Cancel hit manager
+              if self.hit_manager_state.visible {
+                self.hit_manager_state.hide();
+              }
               // action_tx.send(Action::Render)?;
             } else {
               trace!("TUI: Active pane: {}", self.active_pane);

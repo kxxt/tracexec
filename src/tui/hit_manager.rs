@@ -146,6 +146,11 @@ impl HitManagerState {
     self.hits.len()
   }
 
+  pub fn hide(&mut self) {
+    self.visible = false;
+    self.editing = None;
+  }
+
   pub fn help(&self) -> impl Iterator<Item = Span> {
     if self.editing.is_none() {
       Either::Left(chain!(
