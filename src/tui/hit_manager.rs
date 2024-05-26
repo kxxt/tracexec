@@ -26,6 +26,7 @@ use crate::{
 };
 
 use super::{
+  error_popup::InfoPopupState,
   help::{cli_flag, help_item, help_key},
   theme::THEME,
 };
@@ -193,6 +194,11 @@ impl HitManagerState {
   }
 
   pub fn handle_key_event(&mut self, key: KeyEvent) -> Option<Action> {
+    if key.code == KeyCode::F(1) && key.modifiers == KeyModifiers::NONE {
+      return Some(Action::SetActivePopup(
+        crate::action::ActivePopup::InfoPopup(HitManager::help()),
+      ));
+    }
     if let Some(editing) = self.editing {
       match key.code {
         KeyCode::Enter => {
@@ -421,6 +427,16 @@ impl StatefulWidget for HitManager {
   type State = HitManagerState;
 
   fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+    let help_area = Rect {
+      x: buf.area.width.saturating_sub(10),
+      y: 0,
+      width: 10.min(buf.area.width),
+      height: 1,
+    };
+    Clear.render(help_area, buf);
+    Line::default()
+      .spans(help_item!("F1", "Help"))
+      .render(help_area, buf);
     let editor_area = Rect {
       x: 0,
       y: 1,
@@ -480,5 +496,47 @@ impl StatefulWidget for HitManager {
       block.render(area, buf);
       list.render(inner, buf, &mut state.list_state);
     }
+  }
+}
+
+impl HitManager {
+  fn help() -> InfoPopupState {
+    InfoPopupState::info(
+      "Help".to_string(),
+      vec![
+        Line::default().spans(vec![
+          "The Hit Manager shows the processes that hit breakpoints and become stopped by tracexec. A process can stop at "
+            .into(),
+          "syscall-enter(right before exec)".cyan().bold(),
+          " or ".into(),
+          "syscall-exit(right after exec)".cyan().bold(),
+          ". ".into(),
+        ]),
+        #[cfg(feature = "seccomp-bpf")]
+        Line::default().spans(vec![
+          "By default, tracexec uses seccomp-bpf to speed up ptrace operations so that there is minimal overhead \
+          when running programs inside tracexec. ".into(),
+          "However, this comes with a limitation that detached tracees and their children will not be able to use \
+          execve{,at} syscall. Usually it is shown as the following error: ".red(),
+          "Function not implemented".light_red().bold(),
+          ". To workaround this problem, run tracexec with ".into(),
+          cli_flag("--seccomp-bpf=off"),
+          " flag. ".into(),
+        ]),
+        Line::default().spans(vec![
+          "You can detach, resume or detach and launch external commands for the stopped processes. The ".into(),
+          "{{PID}}".cyan().bold(),
+          " parameter in the external command will be replaced with the PID of the detached and stopped process. ".into(),
+          "For example, you can detach a process and launch a debugger to attach to it. \
+          Usually you would want to open a new terminal emulator like: ".into(),
+          "konsole --hold -e gdb -p {{PID}}".cyan().bold(),
+          ". ".into(),
+          "This feature is especially useful when you want to debug a subprocess that is executed from a shell script\
+          (which might use pipes as stdio) or another complex software.".into(),
+          "It is worth mentioning that even if the process is stopped at syscall-enter stop, by the time a debugger \
+          attaches to the process, the process should be already past the syscall-exit stop.".into(),
+        ]),
+      ],
+    )
   }
 }
