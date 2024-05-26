@@ -1808,6 +1808,7 @@ dependencies = [
  "color-eyre",
  "crossterm",
  "directories",
+ "either",
  "enumflags2",
  "filedescriptor",
  "filterable-enum",

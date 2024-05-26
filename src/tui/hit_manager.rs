@@ -6,7 +6,8 @@ use std::{
 
 use color_eyre::Section;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use itertools::Itertools;
+use either::Either;
+use itertools::{chain, Itertools};
 use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
   layout::{Alignment, Constraint, Layout},
@@ -16,6 +17,7 @@ use ratatui::{
   widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, Widget, Wrap},
 };
 use tracing::{debug, trace};
+use tui_prompts::{State, TextPrompt, TextState};
 use tui_widget_list::PreRender;
 
 use crate::{
@@ -24,7 +26,7 @@ use crate::{
 };
 
 use super::{
-  help::{cli_flag, help_item},
+  help::{cli_flag, help_item, help_key},
   theme::THEME,
 };
 
@@ -96,6 +98,8 @@ pub struct HitManagerState {
   list_state: tui_widget_list::ListState,
   pub visible: bool,
   default_external_command: Option<String>,
+  is_editing: bool,
+  editor_state: TextState<'static>,
 }
 
 impl HitManagerState {
@@ -111,6 +115,8 @@ impl HitManagerState {
       list_state: tui_widget_list::ListState::default(),
       visible: false,
       default_external_command,
+      is_editing: false,
+      editor_state: TextState::new(),
     })
   }
 
@@ -119,20 +125,34 @@ impl HitManagerState {
   }
 
   pub fn help(&self) -> impl Iterator<Item = Span> {
-    [
-      help_item!("Q", "Back"),
-      help_item!("R", "Resume\u{00a0}Process"),
-      help_item!("D", "Detach\u{00a0}Process"),
-      help_item!("E", "Edit\u{00a0}Default\u{00a0}Command"),
-      help_item!(
-        "Enter",
-        "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Default\u{00a0}Command"
-      ),
-      help_item!(
-        "Shift+Enter",
-        "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Command"
-      ),
-    ]
+    if !self.is_editing {
+      Either::Left(chain!(
+        [
+          help_item!("Q", "Back"),
+          help_item!("R", "Resume\u{00a0}Process"),
+          help_item!("D", "Detach\u{00a0}Process"),
+          help_item!("E", "Edit\u{00a0}Default\u{00a0}Command")
+        ],
+        if self.default_external_command.is_some() {
+          Some(help_item!(
+            "Enter",
+            "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Default\u{00a0}Command"
+          ))
+        } else {
+          None
+        },
+        [help_item!(
+          "Shift+Enter",
+          "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Command"
+        ),]
+      ))
+    } else {
+      Either::Right(chain!([
+        help_item!("Enter", "Save"),
+        help_item!("Ctrl+U", "Clear"),
+        help_item!("Esc/Ctrl+C", "Cancel"),
+      ],))
+    }
     .into_iter()
     .flatten()
   }
@@ -146,6 +166,30 @@ impl HitManagerState {
   }
 
   pub fn handle_key_event(&mut self, key: KeyEvent) -> Option<Action> {
+    if self.is_editing {
+      match key.code {
+        KeyCode::Enter => {
+          if key.modifiers == KeyModifiers::NONE {
+            self.is_editing = false;
+            self.default_external_command = Some(self.editor_state.value().to_string());
+            return None;
+          }
+        }
+        KeyCode::Esc => {
+          self.is_editing = false;
+          return None;
+        }
+        KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => {
+          self.is_editing = false;
+          return None;
+        }
+        _ => {
+          self.editor_state.handle_key_event(key);
+          return None;
+        }
+      }
+      return None;
+    }
     if key.modifiers == KeyModifiers::NONE {
       match key.code {
         KeyCode::Char('q') => return Some(Action::HideHitManager),
@@ -163,6 +207,13 @@ impl HitManagerState {
               return Some(Action::show_error_popup("Detach failed".to_string(), e));
             };
             return self.close_when_empty();
+          }
+        }
+        KeyCode::Char('e') => {
+          self.is_editing = true;
+          if let Some(command) = self.default_external_command.clone() {
+            self.editor_state = TextState::new().with_value(command);
+            self.editor_state.move_end();
           }
         }
         KeyCode::Enter => {
@@ -294,6 +345,14 @@ impl HitManagerState {
     ]);
     Paragraph::new(vec![line1]).wrap(Wrap { trim: false })
   }
+
+  pub fn cursor(&self) -> Option<(u16, u16)> {
+    if self.is_editing {
+      Some(self.editor_state.cursor())
+    } else {
+      None
+    }
+  }
 }
 
 pub struct HitManager;
@@ -304,9 +363,37 @@ impl StatefulWidget for HitManager {
   type State = HitManagerState;
 
   fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+    let editor_area = Rect {
+      x: 0,
+      y: 1,
+      width: buf.area.width,
+      height: 1,
+    };
+    Clear.render(editor_area, buf);
+    if state.is_editing {
+      let editor = TextPrompt::new("default command".into());
+      editor.render(editor_area, buf, &mut state.editor_state);
+    } else if let Some(command) = state.default_external_command.as_deref() {
+      let line = Line::default().spans(vec![
+        Span::raw("🚀 default command: "),
+        Span::styled(command, THEME.hit_manager_default_command),
+      ]);
+      line.render(editor_area, buf);
+    } else {
+      let line = Line::default().spans(vec![
+        Span::styled(
+          "default command not set. Press ",
+          THEME.hit_manager_no_default_command,
+        ),
+        help_key("E"),
+        Span::styled(" to set", THEME.hit_manager_no_default_command),
+      ]);
+      line.render(editor_area, buf);
+    }
+
     Clear.render(area, buf);
     let block = Block::new()
-      .title(" Breakpoint Manager ")
+      .title(" Hit Manager ")
       .borders(Borders::ALL)
       .title_alignment(Alignment::Center);
     let list = tui_widget_list::List::new(state.hits.values().cloned().collect_vec());

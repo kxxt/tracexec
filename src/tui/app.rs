@@ -476,6 +476,9 @@ impl App {
               {
                 f.set_cursor(x, y);
               }
+              if let Some((x, y)) = self.hit_manager_state.cursor() {
+                f.set_cursor(x, y);
+              }
             })?;
           }
           Action::NextItem => {
