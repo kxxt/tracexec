@@ -1,9 +1,9 @@
 [package]
 name = "tracexec"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 authors = ["Levi Zim <rsworktech@outlook.com>"]
-description = "A small utility for tracing execve{,at} and pre-exec behavior"
+description = "Tracer for execve{,at} and pre-exec behavior, launcher for debuggers."
 license = "GPL-2.0-or-later"
 readme = "README.md"
 repository = "https://github.com/kxxt/tracexec"

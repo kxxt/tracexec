@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.1
+
+Changes since v0.4.0:
+
+- Update dependencies, notably:
+  - `rataui` to v0.27.0, and its friend crates
+  - `shell-quote` to v0.7.1. The escape of utf8 characters is now better.
+  - chore: run cargo update to get rid of yanked bytes 1.6.0
+- Perf: Log Mode: Don't accumulate msgs on unbounded channel
+- Docs: Update crate description
+
 ## v0.4.0
 
 I am very excited to share that tracexec can now be used as a debugger launcher.
