@@ -320,7 +320,7 @@ impl TracerEventDetails {
         // Filename
         match filename {
           Ok(filename) => {
-            spans.push(format!("{}", escape_str_for_bash!(filename)).set_style(THEME.filename));
+            spans.push(escape_str_for_bash!(filename).set_style(THEME.filename));
           }
           Err(_) => {
             spans.push("[failed to read filename]".set_style(THEME.inline_tracer_error));
