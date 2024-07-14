@@ -24,7 +24,7 @@ macro_rules! escape_str_for_bash {
   // TODO: This is ... quite ugly. We should find a better way to do this.
   ($x:expr) => {
     // https://github.com/rust-lang/rust/issues/64727
-    String::from_utf8_lossy(&shell_quote::Bash::quote($x))
+    String::from_utf8_lossy(&shell_quote::Bash::quote_vec($x))
   };
 }
 
