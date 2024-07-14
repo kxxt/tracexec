@@ -352,9 +352,7 @@ impl TracerEventDetails {
               spans.push(space.clone());
               spans.push("<".set_style(THEME.modified_fd_in_cmdline));
               spans.push(
-                escape_str_for_bash!(fdinfo.path.as_str())
-                  .into_owned()
-                  .set_style(THEME.modified_fd_in_cmdline),
+                escape_str_for_bash!(fdinfo.path.as_str()).set_style(THEME.modified_fd_in_cmdline),
               );
             }
           } else {
@@ -372,9 +370,7 @@ impl TracerEventDetails {
               spans.push(space.clone());
               spans.push(">".set_style(THEME.modified_fd_in_cmdline));
               spans.push(
-                escape_str_for_bash!(fdinfo.path.as_str())
-                  .into_owned()
-                  .set_style(THEME.modified_fd_in_cmdline),
+                escape_str_for_bash!(fdinfo.path.as_str()).set_style(THEME.modified_fd_in_cmdline),
               )
             }
           } else {
@@ -392,9 +388,7 @@ impl TracerEventDetails {
               spans.push(space.clone());
               spans.push("2>".set_style(THEME.modified_fd_in_cmdline));
               spans.push(
-                escape_str_for_bash!(fdinfo.path.as_str())
-                  .into_owned()
-                  .set_style(THEME.modified_fd_in_cmdline),
+                escape_str_for_bash!(fdinfo.path.as_str()).set_style(THEME.modified_fd_in_cmdline),
               );
             }
           } else {
@@ -416,11 +410,8 @@ impl TracerEventDetails {
             spans.push(space.clone());
             spans.push(fd.to_string().set_style(THEME.added_fd_in_cmdline));
             spans.push(">".set_style(THEME.added_fd_in_cmdline));
-            spans.push(
-              escape_str_for_bash!(fdinfo.path.as_str())
-                .into_owned()
-                .set_style(THEME.added_fd_in_cmdline),
-            )
+            spans
+              .push(escape_str_for_bash!(fdinfo.path.as_str()).set_style(THEME.added_fd_in_cmdline))
           }
         }
 
