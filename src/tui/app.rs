@@ -826,7 +826,9 @@ impl Widget for &mut App {
     if let Some(popup) = self.popup.as_mut() {
       match popup {
         ActivePopup::Help => {
-          let popup = Popup::new("Help", help(rest_area)).style(THEME.help_popup);
+          let popup = Popup::new(help(rest_area))
+            .title("Help")
+            .style(THEME.help_popup);
           popup.render(area, buf);
         }
         ActivePopup::CopyTargetSelection(state) => {

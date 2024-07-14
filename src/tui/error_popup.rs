@@ -53,10 +53,11 @@ impl StatefulWidget for InfoPopup {
     message.push("".into());
     message.push(help.centered().bold());
     let paragraph = Paragraph::new(message).wrap(Wrap { trim: false });
-    let popup = Popup::new(
-      Line::raw(state.title.as_str()).centered(),
-      SizedParagraph::new(paragraph, (area.width as f32 * 0.7) as usize),
-    )
+    let popup = Popup::new(SizedParagraph::new(
+      paragraph,
+      (area.width as f32 * 0.7) as usize,
+    ))
+    .title(Line::raw(state.title.as_str()).centered())
     .style(state.style);
     popup.render_ref(area, buf);
   }
