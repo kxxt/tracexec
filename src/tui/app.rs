@@ -31,6 +31,7 @@ use ratatui::{
   text::Line,
   widgets::{Block, Paragraph, StatefulWidget, StatefulWidgetRef, Widget, Wrap},
 };
+use serde::{Deserialize, Serialize};
 use strum::Display;
 use tokio::sync::mpsc;
 use tracing::{debug, trace};
@@ -65,7 +66,7 @@ use super::{
   Tui,
 };
 
-#[derive(Debug, Clone, PartialEq, Default, ValueEnum, Display)]
+#[derive(Debug, Clone, PartialEq, Default, ValueEnum, Display, Deserialize, Serialize)]
 #[strum(serialize_all = "kebab-case")]
 pub enum AppLayout {
   #[default]

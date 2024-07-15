@@ -23,11 +23,15 @@ use std::{
 
 use atoi::atoi;
 use clap::Parser;
-use cli::Cli;
+use cli::{
+  config::{Config, ConfigLoadError},
+  Cli,
+};
 use color_eyre::eyre::{bail, OptionExt};
 
 use nix::unistd::{Uid, User};
 use tokio::sync::mpsc;
+use tracing::debug;
 
 use crate::{
   cli::{args::LogModeArgs, options::Color, CliCommand},
@@ -78,6 +82,12 @@ async fn main() -> color_eyre::Result<()> {
       min_support_kver.1
     );
   }
+  let config = match Config::load() {
+    Ok(config) => Some(config),
+    Err(ConfigLoadError::NotFound) => None,
+    Err(e) => Err(e)?,
+  };
+  debug!("{config:?}");
   match cli.cmd {
     CliCommand::Log {
       cmd,

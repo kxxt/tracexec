@@ -1,4 +1,5 @@
 use clap::ValueEnum;
+use serde::{Deserialize, Serialize};
 use strum::Display;
 
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Display)]
@@ -10,7 +11,7 @@ pub enum Color {
 }
 
 #[cfg(feature = "seccomp-bpf")]
-#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Display, Default)]
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Display, Default, Deserialize, Serialize)]
 #[strum(serialize_all = "kebab-case")]
 pub enum SeccompBpf {
   #[default]
@@ -19,7 +20,7 @@ pub enum SeccompBpf {
   Off,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Display, Default)]
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Display, Default, Deserialize, Serialize)]
 #[strum(serialize_all = "kebab-case")]
 pub enum ActivePane {
   #[default]
