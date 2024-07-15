@@ -59,6 +59,7 @@ impl ModifierArgs {
 
   pub fn merge_config(&mut self, config: ModifierConfig) {
     // seccomp-bpf
+    #[cfg(feature = "seccomp-bpf")]
     if let Some(setting) = config.seccomp_bpf {
       if self.seccomp_bpf == SeccompBpf::Auto {
         self.seccomp_bpf = setting;
