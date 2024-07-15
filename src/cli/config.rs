@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, path::PathBuf};
 
 use directories::ProjectDirs;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -27,17 +27,24 @@ pub enum ConfigLoadError {
 }
 
 impl Config {
-  pub fn load() -> Result<Config, ConfigLoadError> {
-    let Some(project_dirs) = project_directory() else {
-      warn!("No valid home directory found! Not loading config.toml.");
-      return Err(ConfigLoadError::NotFound);
+  pub fn load(path: Option<PathBuf>) -> Result<Config, ConfigLoadError> {
+    let config_text = match path {
+      Some(path) => std::fs::read_to_string(path)?, // if manually specified config doesn't exist, return a hard error
+      None => {
+        let Some(project_dirs) = project_directory() else {
+          warn!("No valid home directory found! Not loading config.toml.");
+          return Err(ConfigLoadError::NotFound);
+        };
+        // ~/.config/tracexec/config.toml
+        let config_path = project_dirs.config_dir().join("config.toml");
+        let config_text = std::fs::read_to_string(config_path).map_err(|e| match e.kind() {
+          io::ErrorKind::NotFound => ConfigLoadError::NotFound,
+          _ => ConfigLoadError::from(e),
+        })?;
+        config_text
+      }
     };
-    // ~/.config/tracexec/config.toml
-    let config_path = project_dirs.config_dir().join("config.toml");
-    let config_text = std::fs::read_to_string(config_path).map_err(|e| match e.kind() {
-      io::ErrorKind::NotFound => ConfigLoadError::NotFound,
-      _ => ConfigLoadError::from(e),
-    })?;
+
     let config: Config = toml::from_str(&config_text)?;
     Ok(config)
   }

@@ -81,11 +81,13 @@ async fn main() -> color_eyre::Result<()> {
       min_support_kver.1
     );
   }
-  match Config::load() {
-    Ok(config) => cli.merge_config(config),
-    Err(ConfigLoadError::NotFound) => (),
-    Err(e) => Err(e)?,
-  };
+  if !cli.no_profile {
+    match Config::load(cli.profile.clone()) {
+      Ok(config) => cli.merge_config(config),
+      Err(ConfigLoadError::NotFound) => (),
+      Err(e) => Err(e)?,
+    };
+  }
   match cli.cmd {
     CliCommand::Log {
       cmd,
