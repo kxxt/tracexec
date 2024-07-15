@@ -1,6 +1,8 @@
 use std::{borrow::Cow, io::stdout, num::ParseFloatError, path::PathBuf};
 
 use clap::{CommandFactory, Parser, Subcommand};
+use config::{Config, ExitHandling};
+use tracing::debug;
 
 use crate::{tracer::state::BreakPoint, tui::app::AppLayout};
 
@@ -86,26 +88,23 @@ pub enum CliCommand {
       long,
       short = 'A',
       help = "Set the default active pane to use when TUI launches",
-      requires = "tty",
-      default_value_t
+      requires = "tty"
     )]
-    active_pane: ActivePane,
+    active_pane: Option<ActivePane>,
     #[clap(
       long,
       short = 'L',
       help = "Set the layout of the TUI when it launches",
-      requires = "tty",
-      default_value_t
+      requires = "tty"
     )]
-    layout: AppLayout,
+    layout: Option<AppLayout>,
     #[clap(
       long,
       short = 'F',
-      help = "Set the frame rate of the TUI",
-      default_value = "60.0",
+      help = "Set the frame rate of the TUI (60 by default)",
       value_parser = frame_rate_parser
     )]
-    frame_rate: f64,
+    frame_rate: Option<f64>,
     #[clap(
       long,
       short = 'D',
@@ -162,5 +161,59 @@ impl Cli {
   pub fn generate_completions(shell: clap_complete::Shell) {
     let mut cmd = Cli::command();
     clap_complete::generate(shell, &mut cmd, env!("CARGO_CRATE_NAME"), &mut stdout())
+  }
+
+  pub fn merge_config(&mut self, config: Config) {
+    debug!("Merging config: {config:?}");
+    match &mut self.cmd {
+      CliCommand::Log {
+        tracing_args,
+        modifier_args,
+        ..
+      } => {
+        if let Some(c) = config.modifier {
+          modifier_args.merge_config(c);
+        }
+        if let Some(c) = config.log {
+          tracing_args.merge_config(c);
+        }
+      }
+      CliCommand::Tui {
+        modifier_args,
+        follow,
+        terminate_on_exit,
+        kill_on_exit,
+        active_pane,
+        layout,
+        frame_rate,
+        default_external_command,
+        ..
+      } => {
+        if let Some(c) = config.modifier {
+          modifier_args.merge_config(c);
+        }
+        if let Some(c) = config.tui {
+          if active_pane.is_none() {
+            *active_pane = c.active_pane;
+          }
+          if layout.is_none() {
+            *layout = c.layout;
+          }
+          if default_external_command.is_none() {
+            *default_external_command = c.default_external_command;
+          }
+          *frame_rate = frame_rate.or(c.frame_rate);
+          *follow |= c.follow.unwrap_or_default();
+          if (!*terminate_on_exit) && (!*kill_on_exit) {
+            match c.exit_handling {
+              Some(ExitHandling::Kill) => *kill_on_exit = true,
+              Some(ExitHandling::Terminate) => *terminate_on_exit = true,
+              _ => (),
+            }
+          }
+        }
+      }
+      _ => (),
+    }
   }
 }

@@ -31,7 +31,6 @@ use color_eyre::eyre::{bail, OptionExt};
 
 use nix::unistd::{Uid, User};
 use tokio::sync::mpsc;
-use tracing::debug;
 
 use crate::{
   cli::{args::LogModeArgs, options::Color, CliCommand},
@@ -62,7 +61,7 @@ async fn main() -> color_eyre::Result<()> {
   initialize_panic_handler();
   log::initialize_logging()?;
   log::debug!("Commandline args: {:?}", cli);
-  if let Some(cwd) = cli.cwd {
+  if let Some(cwd) = &cli.cwd {
     std::env::set_current_dir(cwd)?;
   }
   let user = if let Some(user) = cli.user.as_deref() {
@@ -82,12 +81,11 @@ async fn main() -> color_eyre::Result<()> {
       min_support_kver.1
     );
   }
-  let config = match Config::load() {
-    Ok(config) => Some(config),
-    Err(ConfigLoadError::NotFound) => None,
+  match Config::load() {
+    Ok(config) => cli.merge_config(config),
+    Err(ConfigLoadError::NotFound) => (),
     Err(e) => Err(e)?,
   };
-  debug!("{config:?}");
   match cli.cmd {
     CliCommand::Log {
       cmd,
@@ -203,14 +201,14 @@ async fn main() -> color_eyre::Result<()> {
         &modifier_args,
         baseline,
         pty_master,
-        active_pane,
-        layout,
+        active_pane.unwrap_or_default(),
+        layout.unwrap_or_default(),
         follow,
         default_external_command,
         breakpoints,
       )?;
       let tracer_thread = tracer.spawn(cmd, None, req_rx);
-      let mut tui = tui::Tui::new()?.frame_rate(frame_rate);
+      let mut tui = tui::Tui::new()?.frame_rate(frame_rate.unwrap_or(60.));
       tui.enter(tracer_rx)?;
       app.run(&mut tui).await?;
       // Now when TUI exits, the tracer thread is still running.
