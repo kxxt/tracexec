@@ -29,6 +29,15 @@ pub struct Cli {
   )]
   pub cwd: Option<PathBuf>,
   #[arg(
+    short = 'P',
+    long,
+    help = "Load profile from this path",
+    conflicts_with = "no_profile"
+  )]
+  pub profile: Option<PathBuf>,
+  #[arg(long, help = "Do not load profiles")]
+  pub no_profile: bool,
+  #[arg(
     short,
     long,
     help = "Run as user. This option is only available when running tracexec as root"
