@@ -44,7 +44,7 @@ impl Config {
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub(crate) struct ModifierConfig {
+pub struct ModifierConfig {
   pub seccomp_bpf: Option<SeccompBpf>,
   pub successful_only: Option<bool>,
   pub fd_in_cmdline: Option<bool>,
@@ -54,15 +54,17 @@ pub(crate) struct ModifierConfig {
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub(crate) struct TuiModeConfig {
+pub struct TuiModeConfig {
   pub follow: Option<bool>,
   pub exit_handling: Option<ExitHandling>,
   pub active_pane: Option<ActivePane>,
   pub layout: Option<AppLayout>,
+  pub frame_rate: Option<f64>,
+  pub default_external_command: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub(crate) struct LogModeConfig {
+pub struct LogModeConfig {
   pub show_interpreter: Option<bool>,
   pub color_level: Option<ColorLevel>,
   pub foreground: Option<bool>,

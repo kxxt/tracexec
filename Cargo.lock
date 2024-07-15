@@ -1946,6 +1946,7 @@ dependencies = [
  "kxxt-owo-colors",
  "lazy_static",
  "nix 0.29.0",
+ "paste",
  "predicates",
  "ratatui",
  "regex-cursor",

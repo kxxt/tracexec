@@ -331,7 +331,7 @@ impl TracerEventDetails {
           Ok(argv) => {
             for arg in argv.iter().skip(1) {
               spans.push(space.clone());
-              spans.push(format!("{}", escape_str_for_bash!(arg.as_str())).set_style(THEME.argv));
+              spans.push(escape_str_for_bash!(arg.as_str()).set_style(THEME.argv));
             }
           }
           Err(_) => {

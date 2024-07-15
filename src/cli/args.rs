@@ -2,8 +2,12 @@ use clap::{Args, ValueEnum};
 use color_eyre::eyre::bail;
 use enumflags2::BitFlags;
 
-use crate::event::TracerEventDetailsKind;
+use crate::{
+  cli::config::{ColorLevel, EnvDisplay, FileDescriptorDisplay},
+  event::TracerEventDetailsKind,
+};
 
+use super::config::{LogModeConfig, ModifierConfig};
 #[cfg(feature = "seccomp-bpf")]
 use super::options::SeccompBpf;
 
@@ -51,6 +55,24 @@ impl ModifierArgs {
       _ => true, // default
     };
     self
+  }
+
+  pub fn merge_config(&mut self, config: ModifierConfig) {
+    // seccomp-bpf
+    if let Some(setting) = config.seccomp_bpf {
+      if self.seccomp_bpf == SeccompBpf::Auto {
+        self.seccomp_bpf = setting;
+      }
+    }
+    self.tracer_delay = self.tracer_delay.or(config.tracer_delay);
+    // false by default flags
+    self.successful_only = self.successful_only || config.successful_only.unwrap_or_default();
+    self.fd_in_cmdline |= config.fd_in_cmdline.unwrap_or_default();
+    self.stdio_in_cmdline |= config.stdio_in_cmdline.unwrap_or_default();
+    // flags that have negation counterparts
+    if (!self.no_resolve_proc_self_exe) && (!self.resolve_proc_self_exe) {
+      self.resolve_proc_self_exe = config.resolve_proc_self_exe.unwrap_or_default();
+    }
   }
 }
 
@@ -130,13 +152,23 @@ pub struct LogModeArgs {
     conflicts_with_all = ["show_env", "diff_env", "show_argv"]
 )]
   pub show_cmdline: bool,
-  #[clap(long, help = "Try to show script interpreter indicated by shebang")]
-  pub show_interpreter: bool,
   #[clap(long, help = "More colors", conflicts_with = "less_colors")]
   pub more_colors: bool,
   #[clap(long, help = "Less colors", conflicts_with = "more_colors")]
   pub less_colors: bool,
   // BEGIN ugly: https://github.com/clap-rs/clap/issues/815
+  #[clap(
+    long,
+    help = "Try to show script interpreter indicated by shebang",
+    conflicts_with = "no_show_interpreter"
+  )]
+  pub show_interpreter: bool,
+  #[clap(
+    long,
+    help = "Do not show script interpreter indicated by shebang",
+    conflicts_with = "show_interpreter"
+  )]
+  pub no_show_interpreter: bool,
   #[clap(
     long,
     help = "Set the terminal foreground process group to tracee. This option is useful when tracexec is used interactively.",
@@ -226,4 +258,83 @@ pub struct LogModeArgs {
   )]
   pub no_decode_errno: bool,
   // END ugly
+}
+
+impl LogModeArgs {
+  pub fn merge_config(&mut self, config: LogModeConfig) {
+    /// fallback to config value if both --x and --no-x are not set
+    macro_rules! fallback {
+      ($x:ident) => {
+        ::paste::paste! {
+          if (!self.$x) && (!self.[<no_ $x>]) {
+            if let Some(x) = config.$x {
+              if x {
+                self.$x = true;
+              } else {
+                self.[<no_ $x>] = true;
+              }
+            }
+          }
+        }
+      };
+    }
+    fallback!(show_interpreter);
+    fallback!(foreground);
+    fallback!(show_comm);
+    fallback!(show_argv);
+    fallback!(show_filename);
+    fallback!(show_cwd);
+    fallback!(decode_errno);
+    match config.fd_display {
+      Some(FileDescriptorDisplay::Show) => {
+        if (!self.no_show_fd) && (!self.diff_fd) {
+          self.show_fd = true;
+        }
+      }
+      Some(FileDescriptorDisplay::Diff) => {
+        if (!self.show_fd) && (!self.no_diff_fd) {
+          self.diff_fd = true;
+        }
+      }
+      Some(FileDescriptorDisplay::Hide) => {
+        if (!self.diff_fd) && (!self.show_fd) {
+          self.no_diff_fd = true;
+          self.no_show_fd = true;
+        }
+      }
+      _ => (),
+    }
+    match config.env_display {
+      Some(EnvDisplay::Show) => {
+        if (!self.diff_env) && (!self.no_show_env) {
+          self.show_env = true;
+        }
+      }
+      Some(EnvDisplay::Diff) => {
+        if (!self.show_env) && (!self.no_diff_env) {
+          self.diff_env = true;
+        }
+      }
+      Some(EnvDisplay::Hide) => {
+        if (!self.show_env) && (!self.diff_env) {
+          self.no_diff_env = true;
+          self.no_show_env = true;
+        }
+      }
+      _ => (),
+    }
+    match config.color_level {
+      Some(ColorLevel::Less) => {
+        if !self.more_colors {
+          self.less_colors = true;
+        }
+      }
+      Some(ColorLevel::More) => {
+        if !self.less_colors {
+          self.more_colors = true;
+        }
+      }
+      _ => (),
+    }
+  }
 }
