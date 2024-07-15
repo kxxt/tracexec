@@ -19,14 +19,13 @@
 use std::path::PathBuf;
 
 use color_eyre::eyre::Result;
-use directories::ProjectDirs;
 use lazy_static::lazy_static;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{self, layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
 pub use tracing::*;
 
-use crate::tui::restore_tui;
+use crate::{cli::config::project_directory, tui::restore_tui};
 
 lazy_static! {
   pub static ref PROJECT_NAME: String = env!("CARGO_CRATE_NAME").to_uppercase().to_string();
@@ -36,10 +35,6 @@ lazy_static! {
       .map(PathBuf::from);
   pub static ref LOG_ENV: String = format!("{}_LOGLEVEL", PROJECT_NAME.clone());
   pub static ref LOG_FILE: String = format!("{}.log", env!("CARGO_PKG_NAME"));
-}
-
-fn project_directory() -> Option<ProjectDirs> {
-  ProjectDirs::from("dev", "kxxt", env!("CARGO_PKG_NAME"))
 }
 
 pub fn get_data_dir() -> PathBuf {

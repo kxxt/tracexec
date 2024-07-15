@@ -10,6 +10,7 @@ use self::{
 };
 
 pub mod args;
+pub mod config;
 pub mod options;
 #[cfg(test)]
 mod test;
