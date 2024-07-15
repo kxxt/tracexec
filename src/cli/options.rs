@@ -10,7 +10,6 @@ pub enum Color {
   Never,
 }
 
-#[cfg(feature = "seccomp-bpf")]
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Display, Default, Deserialize, Serialize)]
 #[strum(serialize_all = "kebab-case")]
 pub enum SeccompBpf {
