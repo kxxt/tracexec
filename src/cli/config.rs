@@ -1,7 +1,7 @@
 use std::io;
 
 use directories::ProjectDirs;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
@@ -59,8 +59,23 @@ pub struct TuiModeConfig {
   pub exit_handling: Option<ExitHandling>,
   pub active_pane: Option<ActivePane>,
   pub layout: Option<AppLayout>,
+  #[serde(deserialize_with = "deserialize_frame_rate")]
   pub frame_rate: Option<f64>,
   pub default_external_command: Option<String>,
+}
+
+fn deserialize_frame_rate<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value = Option::<f64>::deserialize(deserializer)?;
+  if value.is_some_and(|v| v.is_nan() || v <= 0.) {
+    return Err(serde::de::Error::invalid_value(
+      serde::de::Unexpected::Float(value.unwrap()),
+      &"a positive floating-point number",
+    ));
+  }
+  Ok(value)
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
