@@ -1,3 +1,5 @@
+use std::{borrow::Cow, num::ParseFloatError};
+
 use clap::{Args, ValueEnum};
 use color_eyre::eyre::bail;
 use enumflags2::BitFlags;
@@ -5,11 +7,16 @@ use enumflags2::BitFlags;
 use crate::{
   cli::config::{ColorLevel, EnvDisplay, FileDescriptorDisplay},
   event::TracerEventDetailsKind,
+  tracer::state::BreakPoint,
+  tui::app::AppLayout,
 };
 
-use super::config::{LogModeConfig, ModifierConfig};
 #[cfg(feature = "seccomp-bpf")]
 use super::options::SeccompBpf;
+use super::{
+  config::{ExitHandling, LogModeConfig, ModifierConfig, TuiModeConfig},
+  options::ActivePane,
+};
 
 #[derive(Args, Debug, Default, Clone)]
 pub struct ModifierArgs {
@@ -337,5 +344,112 @@ impl LogModeArgs {
       }
       _ => (),
     }
+  }
+}
+
+#[derive(Args, Debug, Default, Clone)]
+pub struct TuiModeArgs {
+  #[clap(
+    long,
+    short,
+    help = "Allocate a pseudo terminal and show it alongside the TUI"
+  )]
+  pub tty: bool,
+  #[clap(long, short, help = "Keep the event list scrolled to the bottom")]
+  pub follow: bool,
+  #[clap(
+    long,
+    help = "Instead of waiting for the root child to exit, terminate when the TUI exits",
+    conflicts_with = "kill_on_exit"
+  )]
+  pub terminate_on_exit: bool,
+  #[clap(
+    long,
+    help = "Instead of waiting for the root child to exit, kill when the TUI exits"
+  )]
+  pub kill_on_exit: bool,
+  #[clap(
+    long,
+    short = 'A',
+    help = "Set the default active pane to use when TUI launches",
+    requires = "tty"
+  )]
+  pub active_pane: Option<ActivePane>,
+  #[clap(
+    long,
+    short = 'L',
+    help = "Set the layout of the TUI when it launches",
+    requires = "tty"
+  )]
+  pub layout: Option<AppLayout>,
+  #[clap(
+    long,
+    short = 'F',
+    help = "Set the frame rate of the TUI (60 by default)",
+    value_parser = frame_rate_parser
+  )]
+  pub frame_rate: Option<f64>,
+  #[clap(
+    long,
+    short = 'D',
+    help = "Set the default external command to run when using \"Detach, Stop and Run Command\" feature in Hit Manager"
+  )]
+  pub default_external_command: Option<String>,
+  #[clap(
+    long = "add-breakpoint",
+    short = 'b',
+    value_parser = breakpoint_parser,
+    help = "Add a new breakpoint to the tracer. This option can be used multiple times. The format is <syscall-stop>:<pattern-type>:<pattern>, where syscall-stop can be sysenter or sysexit, pattern-type can be argv-regex, in-filename or exact-filename. For example, sysexit:in-filename:/bash",
+  )]
+  pub breakpoints: Vec<BreakPoint>,
+}
+
+impl TuiModeArgs {
+  pub fn merge_config(&mut self, config: TuiModeConfig) {
+    self.active_pane = self.active_pane.or(config.active_pane);
+    self.layout = self.layout.or(config.layout);
+    if self.default_external_command.is_none() {
+      self.default_external_command = config.default_external_command;
+    }
+    self.frame_rate = self.frame_rate.or(config.frame_rate);
+    self.follow |= config.follow.unwrap_or_default();
+    if (!self.terminate_on_exit) && (!self.kill_on_exit) {
+      match config.exit_handling {
+        Some(ExitHandling::Kill) => self.kill_on_exit = true,
+        Some(ExitHandling::Terminate) => self.terminate_on_exit = true,
+        _ => (),
+      }
+    }
+  }
+}
+
+fn frame_rate_parser(s: &str) -> Result<f64, ParseFrameRateError> {
+  let v = s.parse::<f64>()?;
+  if v < 0.0 || v.is_nan() || v.is_infinite() {
+    Err(ParseFrameRateError::InvalidFrameRate)
+  } else if v < 5.0 {
+    Err(ParseFrameRateError::FrameRateTooLow)
+  } else {
+    Ok(v)
+  }
+}
+
+fn breakpoint_parser(s: &str) -> Result<BreakPoint, Cow<'static, str>> {
+  BreakPoint::try_from(s)
+}
+
+#[derive(thiserror::Error, Debug)]
+enum ParseFrameRateError {
+  #[error("Failed to parse frame rate {0} as a floating point number")]
+  ParseFloatError(ParseFloatError),
+  #[error("Invalid frame rate")]
+  InvalidFrameRate,
+  #[error("Frame rate too low, must be at least 5.0")]
+  FrameRateTooLow,
+}
+
+impl From<ParseFloatError> for ParseFrameRateError {
+  fn from(e: ParseFloatError) -> Self {
+    Self::ParseFloatError(e)
   }
 }
