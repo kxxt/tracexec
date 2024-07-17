@@ -66,7 +66,7 @@ pub struct TuiModeConfig {
   pub exit_handling: Option<ExitHandling>,
   pub active_pane: Option<ActivePane>,
   pub layout: Option<AppLayout>,
-  #[serde(deserialize_with = "deserialize_frame_rate")]
+  #[serde(default, deserialize_with = "deserialize_frame_rate")]
   pub frame_rate: Option<f64>,
   pub default_external_command: Option<String>,
 }
