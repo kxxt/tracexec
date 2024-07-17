@@ -1,6 +1,4 @@
 /// Regex and regex-cursor related code
-use std::usize;
-
 use arcstr::ArcStr;
 
 use regex_cursor::Cursor;

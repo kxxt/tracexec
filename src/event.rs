@@ -6,7 +6,6 @@ use std::{
   io::Write,
   path::PathBuf,
   sync::{atomic::AtomicU64, Arc},
-  usize,
 };
 
 use arcstr::ArcStr;

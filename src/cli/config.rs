@@ -37,11 +37,11 @@ impl Config {
         };
         // ~/.config/tracexec/config.toml
         let config_path = project_dirs.config_dir().join("config.toml");
-        let config_text = std::fs::read_to_string(config_path).map_err(|e| match e.kind() {
+        
+        std::fs::read_to_string(config_path).map_err(|e| match e.kind() {
           io::ErrorKind::NotFound => ConfigLoadError::NotFound,
           _ => ConfigLoadError::from(e),
-        })?;
-        config_text
+        })?
       }
     };
 
