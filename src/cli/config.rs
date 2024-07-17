@@ -95,6 +95,7 @@ pub struct LogModeConfig {
   pub show_argv: Option<bool>,
   pub show_filename: Option<bool>,
   pub show_cwd: Option<bool>,
+  pub show_cmdline: Option<bool>,
   pub decode_errno: Option<bool>,
 }
 

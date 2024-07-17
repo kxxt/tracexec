@@ -75,6 +75,10 @@
 # Hide: show nothing
 # env_display = "Diff"
 
+# Print commandline that (hopefully) reproduces what was executed.
+# This option supersedes env_display and show_argv
+# show_cmdline = false
+
 # Show comm of the process before exec
 # show_comm = true
 
