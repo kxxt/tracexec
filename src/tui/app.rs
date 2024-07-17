@@ -40,14 +40,15 @@ use tui_popup::Popup;
 use crate::{
   action::{Action, ActivePopup},
   cli::{
-    args::{LogModeArgs, ModifierArgs},
+    args::{LogModeArgs, ModifierArgs, TuiModeArgs},
+    config::ExitHandling,
     options::ActivePane,
   },
   event::{Event, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEventDetails, TracerMessage},
   printer::PrinterArgs,
   proc::BaselineInfo,
   pty::{PtySize, UnixMasterPty},
-  tracer::{state::BreakPoint, Tracer},
+  tracer::Tracer,
   tui::{error_popup::InfoPopupState, query::QueryKind},
 };
 
@@ -66,7 +67,7 @@ use super::{
   Tui,
 };
 
-#[derive(Debug, Clone, PartialEq, Default, ValueEnum, Display, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, ValueEnum, Display, Deserialize, Serialize)]
 #[strum(serialize_all = "kebab-case")]
 pub enum AppLayout {
   #[default]
@@ -89,6 +90,7 @@ pub struct App {
   query_builder: Option<QueryBuilder>,
   breakpoint_manager: Option<BreakPointManagerState>,
   hit_manager_state: HitManagerState,
+  exit_handling: ExitHandling,
 }
 
 impl App {
@@ -97,24 +99,20 @@ impl App {
     tracer: Arc<Tracer>,
     tracing_args: &LogModeArgs,
     modifier_args: &ModifierArgs,
+    tui_args: TuiModeArgs,
     baseline: BaselineInfo,
     pty_master: Option<UnixMasterPty>,
-    active_pane: ActivePane,
-    layout: AppLayout,
-    follow: bool,
-    default_external_command: Option<String>,
-    breakpoints: Vec<BreakPoint>,
   ) -> color_eyre::Result<Self> {
     let active_pane = if pty_master.is_some() {
-      active_pane
+      tui_args.active_pane.unwrap_or_default()
     } else {
       ActivePane::Events
     };
-    for bp in breakpoints {
+    for bp in tui_args.breakpoints {
       tracer.add_breakpoint(bp);
     }
     Ok(Self {
-      event_list: EventList::new(baseline, follow, modifier_args.to_owned()),
+      event_list: EventList::new(baseline, tui_args.follow, modifier_args.to_owned()),
       printer_args: PrinterArgs::from_cli(tracing_args, modifier_args),
       split_percentage: if pty_master.is_some() { 50 } else { 100 },
       term: if let Some(pty_master) = pty_master {
@@ -137,13 +135,22 @@ impl App {
       root_pid: None,
       active_pane,
       clipboard: Clipboard::new().ok(),
-      layout,
+      layout: tui_args.layout.unwrap_or_default(),
       should_handle_internal_resize: true,
       popup: None,
       query_builder: None,
       breakpoint_manager: None,
-      hit_manager_state: HitManagerState::new(tracer.clone(), default_external_command)?,
+      hit_manager_state: HitManagerState::new(tracer.clone(), tui_args.default_external_command)?,
       tracer,
+      exit_handling: {
+        if tui_args.kill_on_exit {
+          ExitHandling::Kill
+        } else if tui_args.terminate_on_exit {
+          ExitHandling::Terminate
+        } else {
+          ExitHandling::Wait
+        }
+      },
     })
   }
 
@@ -708,14 +715,14 @@ impl App {
     }
   }
 
-  pub fn exit(&self, terminate_on_exit: bool, kill_on_exit: bool) -> color_eyre::Result<()> {
+  pub fn exit(&self) -> color_eyre::Result<()> {
     // Close pty master
     self.term.as_ref().inspect(|t| t.exit());
     // Terminate root process
-    if terminate_on_exit {
-      self.signal_root_process(Signal::SIGTERM)?;
-    } else if kill_on_exit {
-      self.signal_root_process(Signal::SIGKILL)?;
+    match self.exit_handling {
+      ExitHandling::Kill => self.signal_root_process(Signal::SIGKILL)?,
+      ExitHandling::Terminate => self.signal_root_process(Signal::SIGTERM)?,
+      ExitHandling::Wait => (),
     }
     Ok(())
   }

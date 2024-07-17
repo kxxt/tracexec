@@ -143,15 +143,7 @@ async fn main() -> color_eyre::Result<()> {
       cmd,
       modifier_args,
       tracer_event_args,
-      tty,
-      terminate_on_exit,
-      active_pane,
-      kill_on_exit,
-      layout,
-      follow,
-      frame_rate,
-      default_external_command,
-      breakpoints,
+      tui_args,
     } => {
       let modifier_args = modifier_args.processed();
       // Disable owo-colors when running TUI
@@ -160,7 +152,7 @@ async fn main() -> color_eyre::Result<()> {
         "should colorize: {}",
         owo_colors::control::should_colorize()
       );
-      let (baseline, tracer_mode, pty_master) = if tty {
+      let (baseline, tracer_mode, pty_master) = if tui_args.tty {
         let pty_system = native_pty_system();
         let pair = pty_system.openpty(PtySize {
           rows: 24,
@@ -197,20 +189,17 @@ async fn main() -> color_eyre::Result<()> {
         user,
         req_tx,
       )?);
+      let frame_rate = tui_args.frame_rate.unwrap_or(60.);
       let mut app = App::new(
         tracer.clone(),
         &tracing_args,
         &modifier_args,
+        tui_args,
         baseline,
         pty_master,
-        active_pane.unwrap_or_default(),
-        layout.unwrap_or_default(),
-        follow,
-        default_external_command,
-        breakpoints,
       )?;
       let tracer_thread = tracer.spawn(cmd, None, req_rx);
-      let mut tui = tui::Tui::new()?.frame_rate(frame_rate.unwrap_or(60.));
+      let mut tui = tui::Tui::new()?.frame_rate(frame_rate);
       tui.enter(tracer_rx)?;
       app.run(&mut tui).await?;
       // Now when TUI exits, the tracer thread is still running.
@@ -218,7 +207,7 @@ async fn main() -> color_eyre::Result<()> {
       // 1. Wait for the tracer thread to exit.
       // 2. Terminate the root process so that the tracer thread exits.
       // 3. Kill the root process so that the tracer thread exits.
-      app.exit(terminate_on_exit, kill_on_exit)?;
+      app.exit()?;
       tui::restore_tui()?;
       tracer_thread.await??;
     }
