@@ -1,0 +1,91 @@
+# Template profile for tracexec
+# Note that the profile format is not stable yet.
+# The latest profile template is available at: https://github.com/kxxt/tracexec/blob/main/about.toml
+
+
+#
+# Modifier config applies to both TUI and Log mode
+#
+[modifier]
+# Enable seccomp_bpf to optimize performance, values: Auto, On or Off
+# seccomp_bpf = "Auto"
+
+# Only show successful exec events
+# successful_only = false
+
+# Experimental: Try to reproduce stdio in commandline. 
+#               This might result in a broken cmdline if pipes, sockets, etc. are involved.
+# stdio_in_cmdline = false
+
+# Experimental: Try to reproduce file descriptors in commandline. 
+#               This might result in a broken cmdline if pipes, sockets, etc. are involved.
+# fd_in_cmdline = false
+
+# Resolve /proc/self/exe symlink
+# resolve_proc_self_exe = false
+
+#
+# Config for TUI mode
+#
+[tui]
+
+# Keep the event list scrolled to bottom
+# follow = false
+
+# How to handle tracee when we exit? values: Wait, Terminate, Kill
+# exit_handling = "Wait"
+
+# The active pane when tui launches. values: Events, Terminal
+# active_pane = "Terminal"
+
+# The layout of TUI. values: Horizontal, Vertical
+# layout = "Horizontal"
+
+# Target frame rate. A positive floating-point number
+# frame_rate = 60.0
+
+# Set the default external command to run when using "Detach, Stop and Run Command" feature in Hit Manager
+# {{PID}} will be replaced with the PID of the tracee
+# default_external_command = "konsole -e gdb -ex cont -ex cont -p {{PID}}"
+
+
+#
+# Config for Log mode
+#
+[log]
+
+# Try to show script interpreters indicated by shebang
+# show_interpreter = false
+
+# How much colors do you like? values: Normal, Less, More
+# color_level = "Normal"
+
+# Set the terminal foreground process group to tracee.
+# foreground = true
+
+# How to show file descriptors:
+# Diff: show the diff of fds between tracee and original std{in/out/err}.
+# Show: show all the file descriptors
+# Hide: show nothing
+# fd_display = "Diff"
+
+# How to show environment variables:
+# Diff: show the diff of env between tracee and original env.
+# Show: show all the env vars
+# Hide: show nothing
+# env_display = "Diff"
+
+# Show comm of the process before exec
+# show_comm = true
+
+# Show the filename to be executed
+# show_filename = false
+
+# Show argv of the exec
+# show_argv = true
+
+# Show the current working dir of tracee
+# show_cwd = false
+
+# Decode errno of exec failure
+# decode_errno = true
