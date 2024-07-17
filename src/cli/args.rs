@@ -72,7 +72,6 @@ impl ModifierArgs {
         self.seccomp_bpf = setting;
       }
     }
-    self.tracer_delay = self.tracer_delay.or(config.tracer_delay);
     // false by default flags
     self.successful_only = self.successful_only || config.successful_only.unwrap_or_default();
     self.fd_in_cmdline |= config.fd_in_cmdline.unwrap_or_default();
