@@ -153,17 +153,22 @@ impl TracerEventArgs {
 
 #[derive(Args, Debug, Default, Clone)]
 pub struct LogModeArgs {
-  #[clap(
-    long,
-    help = "Print commandline that (hopefully) reproduces what was executed. Note: file descriptors are not handled for now.",
-    conflicts_with_all = ["show_env", "diff_env", "show_argv"]
-)]
-  pub show_cmdline: bool,
   #[clap(long, help = "More colors", conflicts_with = "less_colors")]
   pub more_colors: bool,
   #[clap(long, help = "Less colors", conflicts_with = "more_colors")]
   pub less_colors: bool,
   // BEGIN ugly: https://github.com/clap-rs/clap/issues/815
+  #[clap(
+    long,
+    help = "Print commandline that (hopefully) reproduces what was executed. Note: file descriptors are not handled for now.",
+    conflicts_with_all = ["show_env", "diff_env", "show_argv", "no_show_cmdline"]
+  )]
+  pub show_cmdline: bool,
+  #[clap(
+    long,
+    help = "Don't print commandline that (hopefully) reproduces what was executed."
+  )]
+  pub no_show_cmdline: bool,
   #[clap(
     long,
     help = "Try to show script interpreter indicated by shebang",
@@ -288,7 +293,6 @@ impl LogModeArgs {
     fallback!(show_interpreter);
     fallback!(foreground);
     fallback!(show_comm);
-    fallback!(show_argv);
     fallback!(show_filename);
     fallback!(show_cwd);
     fallback!(decode_errno);
@@ -311,24 +315,29 @@ impl LogModeArgs {
       }
       _ => (),
     }
-    match config.env_display {
-      Some(EnvDisplay::Show) => {
-        if (!self.diff_env) && (!self.no_show_env) {
-          self.show_env = true;
+    fallback!(show_cmdline);
+    if !self.show_cmdline {
+      fallback!(show_argv);
+      tracing::warn!("{}", self.show_argv);
+      match config.env_display {
+        Some(EnvDisplay::Show) => {
+          if (!self.diff_env) && (!self.no_show_env) {
+            self.show_env = true;
+          }
         }
-      }
-      Some(EnvDisplay::Diff) => {
-        if (!self.show_env) && (!self.no_diff_env) {
-          self.diff_env = true;
+        Some(EnvDisplay::Diff) => {
+          if (!self.show_env) && (!self.no_diff_env) {
+            self.diff_env = true;
+          }
         }
-      }
-      Some(EnvDisplay::Hide) => {
-        if (!self.show_env) && (!self.diff_env) {
-          self.no_diff_env = true;
-          self.no_show_env = true;
+        Some(EnvDisplay::Hide) => {
+          if (!self.show_env) && (!self.diff_env) {
+            self.no_diff_env = true;
+            self.no_show_env = true;
+          }
         }
+        _ => (),
       }
-      _ => (),
     }
     match config.color_level {
       Some(ColorLevel::Less) => {
