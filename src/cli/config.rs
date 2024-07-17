@@ -76,7 +76,7 @@ where
   D: Deserializer<'de>,
 {
   let value = Option::<f64>::deserialize(deserializer)?;
-  if value.is_some_and(|v| v.is_nan() || v <= 0.) {
+  if value.is_some_and(|v| v.is_nan() || v <= 0. || v.is_infinite()) {
     return Err(serde::de::Error::invalid_value(
       serde::de::Unexpected::Float(value.unwrap()),
       &"a positive floating-point number",
