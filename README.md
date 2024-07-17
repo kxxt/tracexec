@@ -106,21 +106,24 @@ You can download the binary from the [release page](https://github.com/kxxt/trac
 General CLI help:
 
 ```bash
-A small utility for tracing execve{,at} and pre-exec behavior
+Tracer for execve{,at} and pre-exec behavior, launcher for debuggers.
 
 Usage: tracexec [OPTIONS] <COMMAND>
 
 Commands:
-  log   Run tracexec in logging mode
-  tui   Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default
-  help  Print this message or the help of the given subcommand(s)
+  log                   Run tracexec in logging mode
+  tui                   Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default
+  generate-completions  Generate shell completions for tracexec
+  help                  Print this message or the help of the given subcommand(s)
 
 Options:
-      --color <COLOR>  Control whether colored output is enabled. This flag has no effect on TUI mode. [default: auto] [possible values: auto, always, never]
-  -C, --cwd <CWD>      Change current directory to this path before doing anything
-  -u, --user <USER>    Run as user. This option is only available when running tracexec as root
-  -h, --help           Print help
-  -V, --version        Print version
+      --color <COLOR>      Control whether colored output is enabled. This flag has no effect on TUI mode. [default: auto] [possible values: auto, always, never]
+  -C, --cwd <CWD>          Change current directory to this path before doing anything
+  -P, --profile <PROFILE>  Load profile from this path
+      --no-profile         Do not load profiles
+  -u, --user <USER>        Run as user. This option is only available when running tracexec as root
+  -h, --help               Print help
+  -V, --version            Print version
 ```
 
 TUI Mode:
@@ -165,11 +168,11 @@ Options:
       --kill-on-exit
           Instead of waiting for the root child to exit, kill when the TUI exits
   -A, --active-pane <ACTIVE_PANE>
-          Set the default active pane to use when TUI launches [default: terminal] [possible values: terminal, events]
+          Set the default active pane to use when TUI launches [possible values: terminal, events]
   -L, --layout <LAYOUT>
-          Set the layout of the TUI when it launches [default: horizontal] [possible values: horizontal, vertical]
+          Set the layout of the TUI when it launches [possible values: horizontal, vertical]
   -F, --frame-rate <FRAME_RATE>
-          Set the frame rate of the TUI [default: 60.0]
+          Set the frame rate of the TUI (60 by default)
   -D, --default-external-command <DEFAULT_EXTERNAL_COMMAND>
           Set the default external command to run when using "Detach, Stop and Run Command" feature in Hit Manager
   -b, --add-breakpoint <BREAKPOINTS>
@@ -189,14 +192,18 @@ Arguments:
   <CMD>...  command to be executed
 
 Options:
-      --show-cmdline
-          Print commandline that (hopefully) reproduces what was executed. Note: file descriptors are not handled for now.
-      --show-interpreter
-          Try to show script interpreter indicated by shebang
       --more-colors
           More colors
       --less-colors
           Less colors
+      --show-cmdline
+          Print commandline that (hopefully) reproduces what was executed. Note: file descriptors are not handled for now.
+      --no-show-cmdline
+          Don't print commandline that (hopefully) reproduces what was executed.
+      --show-interpreter
+          Try to show script interpreter indicated by shebang
+      --no-show-interpreter
+          Do not show script interpreter indicated by shebang
       --foreground
           Set the terminal foreground process group to tracee. This option is useful when tracexec is used interactively.
       --no-foreground
@@ -265,15 +272,15 @@ Options:
           Print help
 ```
 
-The recommended way to use `tracexec` is to create an alias with your favorite options in your bashrc:
+## Profile
 
-```bash
-alias tracex='tracexec log --show-cmdline --show-interpreter --show-children --show-filename --'
-alias txtui='tracexec tui -t --'
-# Now you can use
-tracex <command>
-txtui <command>
-```
+`tracexec` can be configured with a profile file. The profile file is a toml file that can be used to set fallback options.
+
+The profile file should be placed at `$XDG_CONFIG_HOME/tracexec/` or `$HOME/.config/tracexec/` and named `config.toml`.
+
+A template profile file can be found at https://github.com/kxxt/tracexec/blob/main/config.toml
+
+As a warning, the profile format is not stable yet and may change in the future. You may need to update your profile file when upgrading tracexec.
 
 ## Known issues
 
