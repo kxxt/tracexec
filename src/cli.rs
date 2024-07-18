@@ -83,7 +83,7 @@ pub enum CliCommand {
     shell: clap_complete::Shell,
   },
   #[clap(about = "Collect exec events and export them")]
-  Export {
+  Collect {
     #[arg(last = true, required = true, help = "command to be executed")]
     cmd: Vec<String>,
     #[clap(flatten)]
