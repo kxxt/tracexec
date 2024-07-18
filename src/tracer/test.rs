@@ -25,10 +25,7 @@ fn tracer(
 ) {
   let tracer_mod = TracerMode::Log;
   let tracing_args = LogModeArgs::default();
-  let tracer_event_args = TracerEventArgs {
-    show_all_events: true,
-    ..Default::default()
-  };
+  let tracer_event_args = TracerEventArgs::all();
   let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
   let (req_tx, req_rx) = tokio::sync::mpsc::unbounded_channel();
   let baseline = BaselineInfo::new().unwrap();

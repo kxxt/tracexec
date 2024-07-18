@@ -240,7 +240,7 @@ impl TracerEventDetails {
           [
             Some(pid.to_string().set_style(if *result == 0 {
               THEME.pid_success
-            } else if *result == (-nix::libc::ENOENT).into() {
+            } else if *result == (-nix::libc::ENOENT) as i64 {
               THEME.pid_enoent
             } else {
               THEME.pid_failure

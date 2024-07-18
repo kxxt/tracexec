@@ -26,3 +26,13 @@ pub enum ActivePane {
   Terminal,
   Events,
 }
+
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Display, Deserialize, Serialize)]
+#[strum(serialize_all = "kebab-case")]
+pub enum ExportFormat {
+  // https://jsonlines.org/
+  JsonLines,
+  Json,
+  // https://clang.llvm.org/docs/JSONCompilationDatabase.html
+  // CompileCommands,
+}

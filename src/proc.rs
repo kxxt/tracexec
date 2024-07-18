@@ -22,6 +22,7 @@ use nix::{
   libc::AT_FDCWD,
   unistd::{getpid, Pid},
 };
+use serde::{ser::SerializeSeq, Serialize, Serializer};
 use tracing::warn;
 
 use crate::{cache::StringCache, pty::UnixSlavePty};
@@ -59,8 +60,9 @@ pub fn read_exe(pid: Pid) -> std::io::Result<PathBuf> {
   Ok(buf)
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct FileDescriptorInfoCollection {
+  #[serde(flatten)]
   pub fdinfo: BTreeMap<c_int, FileDescriptorInfo>,
 }
 
@@ -104,16 +106,31 @@ impl FileDescriptorInfoCollection {
   }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FileDescriptorInfo {
   pub fd: c_int,
   pub path: ArcStr,
   pub pos: usize,
+  #[serde(serialize_with = "serialize_oflags")]
   pub flags: OFlag,
   pub mnt_id: c_int,
   pub ino: c_int,
   pub mnt: ArcStr,
   pub extra: Vec<ArcStr>,
+}
+
+fn serialize_oflags<S>(oflag: &OFlag, serializer: S) -> Result<S::Ok, S::Error>
+where
+  S: Serializer,
+{
+  let mut seq = serializer.serialize_seq(None)?;
+  let mut flag_display = String::with_capacity(16);
+  for f in oflag.iter() {
+    flag_display.clear();
+    bitflags::parser::to_writer(&f, &mut flag_display).unwrap();
+    seq.serialize_element(&flag_display)?;
+  }
+  seq.end()
 }
 
 impl Default for FileDescriptorInfo {
@@ -195,7 +212,8 @@ fn get_mountinfo_by_mnt_id(pid: Pid, mnt_id: c_int) -> color_eyre::Result<ArcStr
   Ok(cache.get_or_insert("Not found. This is probably a pipe or something else."))
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "what", content = "value", rename_all = "kebab-case")]
 pub enum Interpreter {
   None,
   Shebang(ArcStr),
@@ -337,7 +355,7 @@ pub fn cached_string(s: String) -> ArcStr {
   cache.get_or_insert_owned(s)
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EnvDiff {
   pub added: BTreeMap<ArcStr, ArcStr>,
   pub removed: BTreeSet<ArcStr>,
@@ -380,7 +398,7 @@ pub fn diff_env(original: &BTreeMap<ArcStr, ArcStr>, envp: &BTreeMap<ArcStr, Arc
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct BaselineInfo {
   pub cwd: PathBuf,
   pub env: BTreeMap<ArcStr, ArcStr>,

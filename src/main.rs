@@ -4,6 +4,7 @@ mod cache;
 mod cli;
 mod cmdbuilder;
 mod event;
+mod export;
 mod log;
 mod printer;
 mod proc;
@@ -17,6 +18,7 @@ mod tui;
 use std::{
   io::{stderr, stdout, BufWriter},
   os::unix::ffi::OsStrExt,
+  path::PathBuf,
   process,
   sync::Arc,
 };
@@ -24,11 +26,14 @@ use std::{
 use atoi::atoi;
 use clap::Parser;
 use cli::{
+  args::TracerEventArgs,
   config::{Config, ConfigLoadError},
+  options::ExportFormat,
   Cli,
 };
 use color_eyre::eyre::{bail, OptionExt};
 
+use export::{JsonExecEvent, JsonMetaData};
 use nix::unistd::{Uid, User};
 use tokio::sync::mpsc;
 
@@ -42,6 +47,25 @@ use crate::{
   tracer::TracerMode,
   tui::app::App,
 };
+
+fn get_output(path: Option<PathBuf>, color: Color) -> std::io::Result<Box<PrinterOut>> {
+  Ok(match path {
+    None => Box::new(stderr()),
+    Some(ref x) if x.as_os_str() == "-" => Box::new(stdout()),
+    Some(path) => {
+      let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(path)?;
+      if color != Color::Always {
+        // Disable color by default when output is file
+        owo_colors::control::set_should_colorize(false);
+      }
+      Box::new(BufWriter::new(file))
+    }
+  })
+}
 
 #[tokio::main(worker_threads = 2)]
 async fn main() -> color_eyre::Result<()> {
@@ -97,22 +121,7 @@ async fn main() -> color_eyre::Result<()> {
       output,
     } => {
       let modifier_args = modifier_args.processed();
-      let output: Box<PrinterOut> = match output {
-        None => Box::new(stderr()),
-        Some(ref x) if x.as_os_str() == "-" => Box::new(stdout()),
-        Some(path) => {
-          let file = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(path)?;
-          if cli.color != Color::Always {
-            // Disable color by default when output is file
-            owo_colors::control::set_should_colorize(false);
-          }
-          Box::new(BufWriter::new(file))
-        }
-      };
+      let output = get_output(output, cli.color)?;
       let baseline = BaselineInfo::new()?;
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
       let (req_tx, req_rx) = mpsc::unbounded_channel();
@@ -210,6 +219,77 @@ async fn main() -> color_eyre::Result<()> {
       app.exit()?;
       tui::restore_tui()?;
       tracer_thread.await??;
+    }
+    CliCommand::Export {
+      cmd,
+      format,
+      output,
+      modifier_args,
+      pretty,
+    } => {
+      let modifier_args = modifier_args.processed();
+      let mut output = get_output(output, cli.color)?;
+      let tracing_args = LogModeArgs {
+        show_cmdline: false,
+        show_argv: true,
+        show_interpreter: true,
+        more_colors: false,
+        less_colors: false,
+        diff_env: false,
+        ..Default::default()
+      };
+      let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
+      let (req_tx, req_rx) = mpsc::unbounded_channel();
+      let baseline = BaselineInfo::new()?;
+      let tracer = Arc::new(tracer::Tracer::new(
+        TracerMode::None,
+        tracing_args.clone(),
+        modifier_args.clone(),
+        TracerEventArgs::all(),
+        baseline.clone(),
+        tracer_tx,
+        user,
+        req_tx,
+      )?);
+      let tracer_thread = tracer.spawn(cmd, None, req_rx);
+      match format {
+        ExportFormat::Json => {
+          todo!()
+        }
+        ExportFormat::JsonLines => {
+          if pretty {
+            serde_json::ser::to_writer_pretty(&mut output, &JsonMetaData::new(baseline))?;
+          } else {
+            serde_json::ser::to_writer(&mut output, &JsonMetaData::new(baseline))?;
+          }
+          loop {
+            match tracer_rx.recv().await {
+              Some(TracerMessage::Event(TracerEvent {
+                details: TracerEventDetails::TraceeExit { exit_code, .. },
+                ..
+              })) => {
+                tracing::debug!("Waiting for tracer thread to exit");
+                tracer_thread.await??;
+                process::exit(exit_code);
+              }
+              Some(TracerMessage::Event(TracerEvent {
+                details: TracerEventDetails::Exec(exec),
+                id,
+              })) => {
+                let json_event = JsonExecEvent::new(id, *exec);
+                if pretty {
+                  serde_json::ser::to_writer_pretty(&mut output, &json_event)?;
+                } else {
+                  serde_json::ser::to_writer(&mut output, &json_event)?;
+                }
+                output.write_all(&[b'\n'])?;
+                output.flush()?;
+              }
+              _ => (),
+            }
+          }
+        }
+      }
     }
     CliCommand::GenerateCompletions { shell } => {
       Cli::generate_completions(shell);

@@ -3,6 +3,7 @@ use std::{io::stdout, path::PathBuf};
 use args::TuiModeArgs;
 use clap::{CommandFactory, Parser, Subcommand};
 use config::Config;
+use options::ExportFormat;
 use tracing::debug;
 
 use self::{
@@ -80,6 +81,23 @@ pub enum CliCommand {
   GenerateCompletions {
     #[arg(required = true, help = "The shell to generate completions for")]
     shell: clap_complete::Shell,
+  },
+  #[clap(about = "Collect exec events and export them")]
+  Export {
+    #[arg(last = true, required = true, help = "command to be executed")]
+    cmd: Vec<String>,
+    #[clap(flatten)]
+    modifier_args: ModifierArgs,
+    #[clap(short = 'F', long, help = "the format for exported exec events")]
+    format: ExportFormat,
+    #[clap(short, long, help = "prettify the output if supported")]
+    pretty: bool,
+    #[clap(
+      short,
+      long,
+      help = "Output, stderr by default. A single hyphen '-' represents stdout."
+    )]
+    output: Option<PathBuf>,
   },
 }
 
