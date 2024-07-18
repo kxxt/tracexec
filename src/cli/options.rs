@@ -31,7 +31,7 @@ pub enum ActivePane {
 #[strum(serialize_all = "kebab-case")]
 pub enum ExportFormat {
   // https://jsonlines.org/
-  JsonLines,
+  JsonStream,
   Json,
   // https://clang.llvm.org/docs/JSONCompilationDatabase.html
   // CompileCommands,

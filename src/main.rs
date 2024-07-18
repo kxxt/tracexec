@@ -256,7 +256,7 @@ async fn main() -> color_eyre::Result<()> {
         ExportFormat::Json => {
           todo!()
         }
-        ExportFormat::JsonLines => {
+        ExportFormat::JsonStream => {
           if pretty {
             serde_json::ser::to_writer_pretty(&mut output, &JsonMetaData::new(baseline))?;
           } else {
