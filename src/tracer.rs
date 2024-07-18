@@ -101,6 +101,7 @@ pub struct Tracer {
 pub enum TracerMode {
   Tui(Option<UnixSlavePty>),
   Log,
+  None,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -164,6 +165,7 @@ impl Tracer {
       with_tty: match &mode {
         TracerMode::Tui(tty) => tty.is_some(),
         TracerMode::Log => true,
+        TracerMode::None => true,
       },
       store: RwLock::new(ProcessStateStore::new()),
       #[cfg(feature = "seccomp-bpf")]
@@ -248,7 +250,7 @@ impl Tracer {
     let seccomp_bpf = self.seccomp_bpf;
     let slave_pty = match &self.mode {
       TracerMode::Tui(tty) => tty.as_ref(),
-      TracerMode::Log => None,
+      TracerMode::Log | TracerMode::None => None,
     };
     let with_tty = self.with_tty;
     let use_pseudo_term = slave_pty.is_some();

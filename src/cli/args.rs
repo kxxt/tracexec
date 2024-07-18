@@ -83,7 +83,7 @@ impl ModifierArgs {
   }
 }
 
-#[derive(Args, Debug, Default)]
+#[derive(Args, Debug)]
 pub struct TracerEventArgs {
   // TODO:
   //   This isn't really compatible with logging mode
@@ -136,6 +136,15 @@ fn tracer_event_filter_parser(filter: &str) -> Result<BitFlags<TracerEventDetail
 }
 
 impl TracerEventArgs {
+  pub fn all() -> Self {
+    Self {
+      show_all_events: true,
+      filter: Default::default(),
+      filter_include: Default::default(),
+      filter_exclude: Default::default(),
+    }
+  }
+
   pub fn filter(&self) -> color_eyre::Result<BitFlags<TracerEventDetailsKind>> {
     let default_filter = if self.show_all_events {
       BitFlags::all()
