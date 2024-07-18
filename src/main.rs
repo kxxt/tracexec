@@ -221,7 +221,7 @@ async fn main() -> color_eyre::Result<()> {
       tui::restore_tui()?;
       tracer_thread.await??;
     }
-    CliCommand::Export {
+    CliCommand::Collect {
       cmd,
       format,
       output,
