@@ -276,6 +276,33 @@ Options:
 
 ```
 
+Collect and export data:
+
+```
+Collect exec events and export them
+
+Usage: tracexec collect [OPTIONS] --format <FORMAT> -- <CMD>...
+
+Arguments:
+  <CMD>...  command to be executed
+
+Options:
+      --seccomp-bpf <SECCOMP_BPF>    Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
+      --successful-only              Only show successful calls
+      --fd-in-cmdline                [Experimental] Try to reproduce file descriptors in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
+      --stdio-in-cmdline             [Experimental] Try to reproduce stdio in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
+      --resolve-proc-self-exe        Resolve /proc/self/exe symlink
+      --no-resolve-proc-self-exe     Do not resolve /proc/self/exe symlink
+      --tracer-delay <TRACER_DELAY>  Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1.
+  -F, --format <FORMAT>              the format for exported exec events [possible values: json-stream, json]
+  -p, --pretty                       prettify the output if supported
+  -o, --output <OUTPUT>              Output, stderr by default. A single hyphen '-' represents stdout.
+      --foreground                   Set the terminal foreground process group to tracee. This option is useful when tracexec is used interactively. [default]
+      --no-foreground                Do not set the terminal foreground process group to tracee
+  -h, --help                         Print help
+
+```
+
 ## Profile
 
 `tracexec` can be configured with a profile file. The profile file is a toml file that can be used to set fallback options.

@@ -121,6 +121,12 @@ Log Mode:
 %{log}
 ```
 
+Collect and export data:
+
+```
+%{collect}
+```
+
 ## Profile
 
 `tracexec` can be configured with a profile file. The profile file is a toml file that can be used to set fallback options.
