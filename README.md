@@ -311,7 +311,7 @@ The profile file should be placed at `$XDG_CONFIG_HOME/tracexec/` or `$HOME/.con
 
 A template profile file can be found at https://github.com/kxxt/tracexec/blob/main/config.toml
 
-As a warning, the profile format is not stable yet and may change in the future. You may need to update your profile file when upgrading tracexec.
+Note that the profile format is not stable yet and may change in the future. You may need to update your profile file when upgrading tracexec.
 
 ## Known issues
 

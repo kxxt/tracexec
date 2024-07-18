@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.5.0
+
+Changes since v0.4.1:
+
+### Features
+
+The exec events can now be collected and saved as JSON stream or JSON format!
+This feature is implemented by the new `collect` subcommand.
+
+The JSON stream format is newline-delimited JSONs and when `--pretty`(which prettifies the JSON) is not enabled,
+it is also a [JSON Lines text file](https://jsonlines.org/).
+The first JSON of the JSON stream contains metadata like tracexec version and baseline environment information.
+Other JSONs are exec events.
+
+The JSON format is a big JSON object that contains metadata and an array of exec events in the `events` field.
+
+And, tracexec now supports user-level profile🎉!
+
+The profile file is a toml file that can be used to set fallback options.
+It should be placed at `$XDG_CONFIG_HOME/tracexec/` or `$HOME/.config/tracexec/` and named `config.toml`.
+
+A template profile file can be found at https://github.com/kxxt/tracexec/blob/main/config.toml
+
+Note that the profile format is not stable yet and may change in the future. You may need to update your profile file when upgrading tracexec.
+
+### Other changes
+
+- Add `--profile` and `--no-profile` to load non-default profile and ignore profile, respectively.
+- Update dependencies.
+- Internal: Add a ruby script to update README.
+- Internal: Some refactor work.
+
 ## v0.4.1
 
 Changes since v0.4.0:
