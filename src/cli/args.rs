@@ -192,7 +192,7 @@ pub struct LogModeArgs {
   pub no_show_interpreter: bool,
   #[clap(
     long,
-    help = "Set the terminal foreground process group to tracee. This option is useful when tracexec is used interactively.",
+    help = "Set the terminal foreground process group to tracee. This option is useful when tracexec is used interactively. [default]",
     conflicts_with = "no_foreground"
   )]
   pub foreground: bool,

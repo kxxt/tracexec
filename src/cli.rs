@@ -98,6 +98,18 @@ pub enum CliCommand {
       help = "Output, stderr by default. A single hyphen '-' represents stdout."
     )]
     output: Option<PathBuf>,
+    #[clap(
+      long,
+      help = "Set the terminal foreground process group to tracee. This option is useful when tracexec is used interactively. [default]",
+      conflicts_with = "no_foreground"
+    )]
+    foreground: bool,
+    #[clap(
+      long,
+      help = "Do not set the terminal foreground process group to tracee",
+      conflicts_with = "foreground"
+    )]
+    no_foreground: bool,
   },
 }
 
@@ -132,6 +144,23 @@ impl Cli {
         }
         if let Some(c) = config.tui {
           tui_args.merge_config(c);
+        }
+      }
+      CliCommand::Collect {
+        foreground,
+        no_foreground,
+        ..
+      } => {
+        if let Some(c) = config.log {
+          if (!*foreground) && (!*no_foreground) {
+            if let Some(x) = c.foreground {
+              if x {
+                *foreground = true;
+              } else {
+                *no_foreground = true;
+              }
+            }
+          }
         }
       }
       _ => (),

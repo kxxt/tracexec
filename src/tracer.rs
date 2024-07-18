@@ -343,7 +343,7 @@ impl Tracer {
       self.store.write().unwrap().insert(root_child_state);
     }
     // Set foreground process group of the terminal
-    if let TracerMode::Log = &self.mode {
+    if let TracerMode::Log | TracerMode::None = &self.mode {
       if self.foreground {
         match tcsetpgrp(stdin(), root_child) {
           Ok(_) => {}

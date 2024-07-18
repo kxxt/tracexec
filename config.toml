@@ -61,6 +61,7 @@
 # color_level = "Normal"
 
 # Set the terminal foreground process group to tracee.
+# The value here also applies to the collect subcommand
 # foreground = true
 
 # How to show file descriptors:
