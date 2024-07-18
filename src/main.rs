@@ -227,6 +227,8 @@ async fn main() -> color_eyre::Result<()> {
       output,
       modifier_args,
       pretty,
+      foreground,
+      no_foreground,
     } => {
       let modifier_args = modifier_args.processed();
       let mut output = get_output(output, cli.color)?;
@@ -237,6 +239,8 @@ async fn main() -> color_eyre::Result<()> {
         more_colors: false,
         less_colors: false,
         diff_env: false,
+        foreground,
+        no_foreground,
         ..Default::default()
       };
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
