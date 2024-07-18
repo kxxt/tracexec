@@ -16,7 +16,7 @@ mod tracer;
 mod tui;
 
 use std::{
-  io::{stderr, stdout, BufWriter},
+  io::{self, stderr, stdout, BufWriter},
   os::unix::ffi::OsStrExt,
   path::PathBuf,
   process,
@@ -35,6 +35,7 @@ use color_eyre::eyre::{bail, OptionExt};
 
 use export::{JsonExecEvent, JsonMetaData};
 use nix::unistd::{Uid, User};
+use serde::Serialize;
 use tokio::sync::mpsc;
 
 use crate::{
@@ -254,14 +255,35 @@ async fn main() -> color_eyre::Result<()> {
       let tracer_thread = tracer.spawn(cmd, None, req_rx);
       match format {
         ExportFormat::Json => {
-          todo!()
+          let mut json = export::Json {
+            meta: JsonMetaData::new(baseline),
+            events: Vec::new(),
+          };
+          loop {
+            match tracer_rx.recv().await {
+              Some(TracerMessage::Event(TracerEvent {
+                details: TracerEventDetails::TraceeExit { exit_code, .. },
+                ..
+              })) => {
+                tracing::debug!("Waiting for tracer thread to exit");
+                tracer_thread.await??;
+                serialize_json_to_output(&mut output, &json, pretty)?;
+                output.write_all(&[b'\n'])?;
+                output.flush()?;
+                process::exit(exit_code);
+              }
+              Some(TracerMessage::Event(TracerEvent {
+                details: TracerEventDetails::Exec(exec),
+                id,
+              })) => {
+                json.events.push(JsonExecEvent::new(id, *exec));
+              }
+              _ => (),
+            }
+          }
         }
         ExportFormat::JsonStream => {
-          if pretty {
-            serde_json::ser::to_writer_pretty(&mut output, &JsonMetaData::new(baseline))?;
-          } else {
-            serde_json::ser::to_writer(&mut output, &JsonMetaData::new(baseline))?;
-          }
+          serialize_json_to_output(&mut output, &JsonMetaData::new(baseline), pretty)?;
           loop {
             match tracer_rx.recv().await {
               Some(TracerMessage::Event(TracerEvent {
@@ -277,11 +299,7 @@ async fn main() -> color_eyre::Result<()> {
                 id,
               })) => {
                 let json_event = JsonExecEvent::new(id, *exec);
-                if pretty {
-                  serde_json::ser::to_writer_pretty(&mut output, &json_event)?;
-                } else {
-                  serde_json::ser::to_writer(&mut output, &json_event)?;
-                }
+                serialize_json_to_output(&mut output, &json_event, pretty)?;
                 output.write_all(&[b'\n'])?;
                 output.flush()?;
               }
@@ -316,4 +334,16 @@ fn is_current_kernel_greater_than(min_support: (u32, u32)) -> color_eyre::Result
     bail!("Failed to parse kernel minor ver!")
   };
   Ok((major, minor) >= min_support)
+}
+
+pub fn serialize_json_to_output<W, T>(writer: W, value: &T, pretty: bool) -> serde_json::Result<()>
+where
+  W: io::Write,
+  T: ?Sized + Serialize,
+{
+  if pretty {
+    serde_json::ser::to_writer_pretty(writer, value)
+  } else {
+    serde_json::ser::to_writer(writer, value)
+  }
 }
