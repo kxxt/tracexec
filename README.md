@@ -114,6 +114,7 @@ Commands:
   log                   Run tracexec in logging mode
   tui                   Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default
   generate-completions  Generate shell completions for tracexec
+  collect               Collect exec events and export them
   help                  Print this message or the help of the given subcommand(s)
 
 Options:
@@ -124,6 +125,7 @@ Options:
   -u, --user <USER>        Run as user. This option is only available when running tracexec as root
   -h, --help               Print help
   -V, --version            Print version
+
 ```
 
 TUI Mode:
@@ -179,6 +181,7 @@ Options:
           Add a new breakpoint to the tracer. This option can be used multiple times. The format is <syscall-stop>:<pattern-type>:<pattern>, where syscall-stop can be sysenter or sysexit, pattern-type can be argv-regex, in-filename or exact-filename. For example, sysexit:in-filename:/bash
   -h, --help
           Print help
+
 ```
 
 Log Mode:
@@ -205,7 +208,7 @@ Options:
       --no-show-interpreter
           Do not show script interpreter indicated by shebang
       --foreground
-          Set the terminal foreground process group to tracee. This option is useful when tracexec is used interactively.
+          Set the terminal foreground process group to tracee. This option is useful when tracexec is used interactively. [default]
       --no-foreground
           Do not set the terminal foreground process group to tracee
       --diff-fd
@@ -270,6 +273,7 @@ Options:
           Output, stderr by default. A single hyphen '-' represents stdout.
   -h, --help
           Print help
+
 ```
 
 ## Profile
