@@ -82,6 +82,6 @@ impl JsonMetaData {
 #[derive(Debug, Clone, Serialize)]
 pub struct Json {
   #[serde(flatten)]
-  meta: JsonMetaData,
-  events: Vec<JsonExecEvent>,
+  pub meta: JsonMetaData,
+  pub events: Vec<JsonExecEvent>,
 }
