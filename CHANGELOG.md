@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.1
+
+Changes since v0.5.0:
+
+Fix an incorrectly placed `continue` statement that causes tracee to hang when SIGALRM is sent to tracee.
+
 ## v0.5.0
 
 Changes since v0.4.1:
