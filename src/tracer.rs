@@ -486,8 +486,8 @@ impl Tracer {
                     false,
                     self.detach_process_internal(state, Some(detach.signal), detach.hid),
                   )?;
+                  continue;
                 }
-                continue;
               }
               // Just deliver the signal to tracee
               self.seccomp_aware_cont_with_signal(pid, sig)?;
