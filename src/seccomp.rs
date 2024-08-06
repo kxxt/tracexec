@@ -14,6 +14,8 @@ pub fn create_seccomp_filter() -> SeccompFilter {
     TargetArch::x86_64,
     #[cfg(target_arch = "aarch64")]
     TargetArch::aarch64,
+    #[cfg(target_arch = "riscv64")]
+    TargetArch::riscv64,
   )
   .expect("failed to create seccomp filter!")
 }
