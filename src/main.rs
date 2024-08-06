@@ -138,14 +138,22 @@ async fn main() -> color_eyre::Result<()> {
       )?);
       let tracer_thread = tracer.spawn(cmd, Some(output), req_rx);
       loop {
-        if let Some(TracerMessage::Event(TracerEvent {
-          details: TracerEventDetails::TraceeExit { exit_code, .. },
-          ..
-        })) = tracer_rx.recv().await
-        {
-          tracing::debug!("Waiting for tracer thread to exit");
-          tracer_thread.await??;
-          process::exit(exit_code);
+        match tracer_rx.recv().await {
+          Some(TracerMessage::Event(TracerEvent {
+            details: TracerEventDetails::TraceeExit { exit_code, .. },
+            ..
+          })) => {
+            tracing::debug!("Waiting for tracer thread to exit");
+            tracer_thread.await??;
+            process::exit(exit_code);
+          }
+          // channel closed abnormally.
+          None | Some(TracerMessage::FatalError(_)) => {
+            tracing::debug!("Waiting for tracer thread to exit");
+            tracer_thread.await??;
+            process::exit(1);
+          }
+          _ => (),
         }
       }
     }
@@ -282,6 +290,12 @@ async fn main() -> color_eyre::Result<()> {
               })) => {
                 json.events.push(JsonExecEvent::new(id, *exec));
               }
+              // channel closed abnormally.
+              None | Some(TracerMessage::FatalError(_)) => {
+                tracing::debug!("Waiting for tracer thread to exit");
+                tracer_thread.await??;
+                process::exit(1);
+              }
               _ => (),
             }
           }
@@ -306,6 +320,12 @@ async fn main() -> color_eyre::Result<()> {
                 serialize_json_to_output(&mut output, &json_event, pretty)?;
                 output.write_all(&[b'\n'])?;
                 output.flush()?;
+              }
+              // channel closed abnormally.
+              None | Some(TracerMessage::FatalError(_)) => {
+                tracing::debug!("Waiting for tracer thread to exit");
+                tracer_thread.await??;
+                process::exit(1);
               }
               _ => (),
             }

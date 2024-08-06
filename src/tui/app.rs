@@ -503,6 +503,17 @@ impl App {
                   self.event_list.update(update);
                 }
               }
+              TracerMessage::FatalError(e) => {
+                action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
+                  InfoPopupState::error(
+                    "FATAL ERROR in tracer thread".to_string(),
+                    vec![
+                      Line::raw("The tracer thread has died abnormally! error: "),
+                      e.into(),
+                    ],
+                  ),
+                )))?;
+              }
             }
             // action_tx.send(Action::Render)?;
           }

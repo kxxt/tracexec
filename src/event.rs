@@ -51,6 +51,7 @@ pub enum Event {
 pub enum TracerMessage {
   Event(TracerEvent),
   StateUpdate(ProcessStateUpdateEvent),
+  FatalError(String),
 }
 
 impl From<TracerEvent> for TracerMessage {

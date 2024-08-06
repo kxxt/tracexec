@@ -36,7 +36,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{error, trace};
 
-use crate::event::{Event, TracerMessage};
+use crate::event::{Event, TracerEvent, TracerEventDetails, TracerEventMessage, TracerMessage};
 
 pub mod app;
 mod breakpoint_manager;
@@ -112,33 +112,42 @@ impl Tui {
         let crossterm_event = reader.next().fuse();
         let tracer_event = tracer_rx.recv();
         tokio::select! {
-            _ = _cancellation_token.cancelled() => {
-                break;
-            }
-            Some(tracer_event) = tracer_event => {
-              trace!("TUI event: tracer message!");
+          _ = _cancellation_token.cancelled() => {
+              break;
+          }
+          tracer_event = tracer_event => {
+            trace!("TUI event: tracer message!");
+            if let Some(tracer_event) = tracer_event {
               _event_tx.send(Event::Tracer(tracer_event)).unwrap();
+            } else {
+              // channel closed abnormally
+              _event_tx.send(Event::Tracer(TracerMessage::Event(TracerEvent {
+                details: TracerEventDetails::Error(TracerEventMessage {
+                  pid: None,
+                  msg: "The connection between TUI and tracer shutdown abnormally. Tracer is probably died.".to_string()
+                }), id: u64::MAX }))).unwrap();
             }
-            Some(event) = crossterm_event => {
-              #[cfg(debug_assertions)]
-              trace!("TUI event: crossterm event {event:?}!");
-              match event {
-                Ok(evt) => {
-                  match evt {
-                    CrosstermEvent::Key(key) => {
-                        if key.kind == KeyEventKind::Press {
-                            _event_tx.send(Event::Key(key)).unwrap();
-                        }
-                    },
-                    CrosstermEvent::Resize(cols, rows) => {
-                        _event_tx.send(Event::Resize(Size {
-                            width: cols,
-                            height: rows,
-                        })).unwrap();
-                    },
-                    _ => {},
-                  }
+          }
+          Some(event) = crossterm_event => {
+            #[cfg(debug_assertions)]
+            trace!("TUI event: crossterm event {event:?}!");
+            match event {
+              Ok(evt) => {
+                match evt {
+                  CrosstermEvent::Key(key) => {
+                      if key.kind == KeyEventKind::Press {
+                          _event_tx.send(Event::Key(key)).unwrap();
+                      }
+                  },
+                  CrosstermEvent::Resize(cols, rows) => {
+                      _event_tx.send(Event::Resize(Size {
+                          width: cols,
+                          height: rows,
+                      })).unwrap();
+                  },
+                  _ => {},
                 }
+              }
               Err(_) => {
                 _event_tx.send(Event::Error).unwrap();
               }

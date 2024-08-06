@@ -227,10 +227,15 @@ impl Tracer {
           let current_thread = pthread_self();
           pthread_setname_np(current_thread, "tracer\0\0\0\0\0\0\0\0\0\0".as_ptr().cast());
         }
-        tokio::runtime::Handle::current().block_on(async move {
+        let tx = self.msg_tx.clone();
+        let result = tokio::runtime::Handle::current().block_on(async move {
           self.printer.init_thread_local(output);
           self.run(args, req_rx).await
-        })
+        });
+        if let Err(e) = &result {
+          tx.send(TracerMessage::FatalError(e.to_string())).unwrap();
+        }
+        result
       }
     })
   }
