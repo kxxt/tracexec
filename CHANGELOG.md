@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.2
+
+Changes since v0.5.1:
+
+Show error when tracer thread crashed(e.g. when the command doesn't exist). Previously it hangs when tracer thread crashes.
+
+Starting with this version, the tags are signed with my gpg key. The public key can be found here: http://keyserver.ubuntu.com:11371/pks/lookup?search=17AADD6726DDC58B8EE5881757670CCFA42CCF0A&fingerprint=on&op=index
+
 ## v0.5.1
 
 Changes since v0.5.0:
