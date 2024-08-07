@@ -1,2 +1,5 @@
 /target
 .vscode
+# BPF
+*.skel.rs
+*.bpf.o

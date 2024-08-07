@@ -87,7 +87,7 @@ rstest = "0.19.0"
 tracing-test = "0.2.4"
 
 [features]
-default = ["seccomp-bpf"]
+default = ["seccomp-bpf", "ebpf"]
 seccomp-bpf = ["dep:seccompiler"]
 ebpf = ["dep:libbpf-rs"]
 
@@ -108,3 +108,6 @@ path = "fixtures/empty-argv.rs"
 [[bin]]
 name = "corrupted-envp"
 path = "fixtures/corrupted-envp.rs"
+
+[build-dependencies]
+libbpf-cargo = "0.23.3"
