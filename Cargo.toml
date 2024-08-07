@@ -76,6 +76,7 @@ serde = { version = "1.0.204", features = ["derive"] }
 toml = "0.8.14"
 paste = "1.0.15"
 serde_json = "1.0.120"
+libbpf-rs = { version = "0.23.3", optional = true }
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 
@@ -88,6 +89,7 @@ tracing-test = "0.2.4"
 [features]
 default = ["seccomp-bpf"]
 seccomp-bpf = ["dep:seccompiler"]
+ebpf = ["dep:libbpf-rs"]
 
 [profile.dev]
 opt-level = 1
