@@ -1,5 +1,7 @@
 mod action;
 mod arch;
+#[cfg(feature = "ebpf")]
+mod bpf;
 mod cache;
 mod cli;
 mod cmdbuilder;
