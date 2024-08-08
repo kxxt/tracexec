@@ -111,6 +111,9 @@ pub enum CliCommand {
     )]
     no_foreground: bool,
   },
+  #[clap(about = "Experimental ebpf mode")]
+  Ebpf {
+  }
 }
 
 impl Cli {
