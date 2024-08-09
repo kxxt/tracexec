@@ -81,7 +81,7 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
   if (!event)
     return 0;
   // Allocate event id
-  event->eid = __sync_fetch_and_add(&event_counter, 1);
+  event->header.eid = __sync_fetch_and_add(&event_counter, 1);
   // Read comm
   if (0 != bpf_get_current_comm(event->comm, sizeof(event->comm))) {
     // Failed to read comm
@@ -94,7 +94,7 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
     // The filename is possibly truncated, we cannot determine
     event->header.flags |= POSSIBLE_TRUNCATION;
   }
-  debug("%ld %s execve %s UID: %d GID: %d PID: %d\n", event->eid, event->comm,
+  debug("%ld %s execve %s UID: %d GID: %d PID: %d\n", event->header.eid, event->comm,
         event->filename, uid, gid, pid);
   // Read argv
   struct reader_context reader_ctx;
@@ -148,7 +148,7 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   }
   entry->header.type = STRING_EVENT;
   entry->header.pid = event->header.pid;
-  entry->header.eid = event->eid;
+  entry->header.eid = event->header.eid;
   s64 bytes_read =
       bpf_probe_read_user_str(entry->data, sizeof(entry->data), argp);
   if (bytes_read < 0) {
