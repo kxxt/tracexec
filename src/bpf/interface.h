@@ -58,7 +58,6 @@ struct exec_event {
   uid_t gid;
   // argc and env count
   u32 count[2];
-  u64 eid;
   char filename[PATH_MAX];
   char comm[TASK_COMM_LEN];
 };
