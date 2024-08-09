@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use color_eyre::eyre::bail;
-use interface::StringEntryHeader;
+use interface::EventHeader;
 use libbpf_rs::{
   skel::{OpenSkel, Skel, SkelBuilder},
   MapHandle, RingBufferBuilder,
@@ -36,16 +36,19 @@ pub fn experiment() -> color_eyre::Result<()> {
   let open_skel = skel_builder.open()?;
   let mut skel = open_skel.load()?;
   skel.attach()?;
-  let string_io = MapHandle::from_map_id(skel.maps().string_io().info()?.info.id)?;
+  let events = MapHandle::from_map_id(skel.maps().events().info()?.info.id)?;
   let mut builder = RingBufferBuilder::new();
-  builder.add(&string_io, |data| {
-    let header: StringEntryHeader = unsafe { std::ptr::read(data.as_ptr() as *const _) };
-    let header_len = size_of::<StringEntryHeader>();
-    let string = String::from_utf8_lossy(&data[header_len..]);
-    eprintln!(
-      "PID: {}, EID: {}, String: {}",
-      header.pid, header.eid, string
-    );
+  builder.add(&events, |data| {
+    let header: EventHeader = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+    match header.kind {
+      interface::EventType::Sysenter => todo!(),
+      interface::EventType::Sysexit => todo!(),
+      interface::EventType::String => {
+        let header_len = size_of::<EventHeader>();
+        let string = String::from_utf8_lossy(&data[header_len..]);
+        eprintln!("String for EID: {}: {}", header.eid, string);
+      }
+    }
     0
   })?;
   let rb = builder.build()?;

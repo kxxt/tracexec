@@ -24,7 +24,7 @@ struct {
   __uint(type, BPF_MAP_TYPE_ARRAY);
   __uint(max_entries, 64); // TODO: Can we change this at load time?
   __type(key, u32);
-  __type(value, struct string_entry);
+  __type(value, struct string_event);
 } cache SEC(".maps");
 // tracing progs cannot use bpf_spin_lock yet
 // static struct bpf_spin_lock cache_lock;
@@ -32,11 +32,11 @@ struct {
 // This string_io map is used to send variable length cstrings back to
 // userspace. We cannot simply write all cstrings into one single fixed buffer
 // because it's hard to make verifier happy. (PRs are welcome if that could be
-// done)
+// done) (TODO: check if this could be done with dynptr)
 struct {
   __uint(type, BPF_MAP_TYPE_RINGBUF);
   __uint(max_entries, 4096); // TODO: determine a good size for ringbuf
-} string_io SEC(".maps");
+} events SEC(".maps");
 
 struct reader_context {
   struct exec_event *event;
@@ -136,12 +136,12 @@ static int read_strings(u32 index, struct reader_context *ctx) {
     debug("Too many cores!");
     return 1;
   }
-  // bpf_spin_lock(&cache_lock);
-  struct string_entry *entry = bpf_map_lookup_elem(&cache, &entry_index);
+  struct string_event *entry = bpf_map_lookup_elem(&cache, &entry_index);
   if (entry == NULL) {
     debug("This should not happen!");
     return 1;
   }
+  entry->header.type = STRING_EVENT;
   entry->header.pid = event->header.pid;
   entry->header.eid = event->eid;
   s64 bytes_read =
@@ -158,8 +158,8 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   } else if (bytes_read == sizeof(entry->data)) {
     entry->header.flags |= POSSIBLE_TRUNCATION;
   }
-  bpf_ringbuf_output(&string_io, entry, 16 + bytes_read, 0);
-  // bpf_spin_unlock(&cache_lock);
+  bpf_ringbuf_output(&events, entry, sizeof(struct event_header) + bytes_read,
+                     0);
   event->count[ctx->index] = index + 1;
   if (index == ARGC_MAX - 1) {
     // We hit ARGC_MAX
