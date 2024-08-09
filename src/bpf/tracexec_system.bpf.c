@@ -44,6 +44,7 @@ struct reader_context {
   // 0: arg
   // 1: envp
   u32 index;
+  // ptr is a userspace pointer to an array of cstring pointers
   u8 **ptr;
 };
 
@@ -164,6 +165,7 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   if (index == ARGC_MAX - 1) {
     // We hit ARGC_MAX
     // We are not going to iterate further.
+    // Note that TOO_MANY_ITEMS flag is set on event instead of string entry.
     event->header.flags |= TOO_MANY_ITEMS;
   }
   return 0;
