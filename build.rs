@@ -1,4 +1,8 @@
-use std::{env, ffi::OsStr, path::PathBuf};
+use std::{
+  env,
+  ffi::{OsStr, OsString},
+  path::PathBuf,
+};
 
 use libbpf_cargo::SkeletonBuilder;
 
@@ -21,6 +25,8 @@ fn main() {
       "aarch64" => "__aarch64__",
       _ => panic!("Arch {arch} is not supported for now"),
     });
+    let max_cpus = 64;
+    let max_cpus_define = OsString::from(format!("MAX_CPUS={max_cpus}"));
 
     SkeletonBuilder::new()
       .source(BPF_SRC)
@@ -30,6 +36,8 @@ fn main() {
         manifest_dir.join("include").as_os_str(),
         OsStr::new("-D"),
         arch_define,
+        OsStr::new("-D"),
+        &max_cpus_define,
       ])
       .build_and_generate(&skel_out)
       .unwrap();
