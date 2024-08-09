@@ -36,26 +36,28 @@ enum exec_event_flags {
   STR_READ_FAILURE = 64,
 };
 
-struct exec_event {
+struct event_header {
   pid_t pid;
+  u32 flags;
+  // Globally unique counter of events
+  u64 eid;
+};
+
+struct exec_event {
+  struct event_header header;
   pid_t ppid;
   uid_t uid;
   uid_t gid;
   u32 envc;
   // argc and env count
   u32 count[2];
-  u32 flags;
-  // u32 gap;
-  // Globally unique counter of events
   u64 eid;
   char filename[PATH_MAX];
   char comm[TASK_COMM_LEN];
 };
 
 struct string_entry {
-  pid_t pid;
-  u32 flags;
-  u64 eid;
+  struct event_header header;
   char data[_SC_ARG_MAX];
 };
 #endif
