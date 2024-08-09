@@ -40,8 +40,10 @@ struct {
 
 struct reader_context {
   struct exec_event *event;
-  // Points to the first unused byte in event->data
-  u32 tail;
+  // index:
+  // 0: arg
+  // 1: envp
+  u32 index;
   u8 **ptr;
 };
 
@@ -93,10 +95,13 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
   struct reader_context reader_ctx;
   reader_ctx.event = event;
   reader_ctx.ptr = ctx->argv;
-  reader_ctx.tail = 0;
+  reader_ctx.index = 0;
   // bpf_loop allows 1 << 23 (~8 million) loops, otherwise we cannot achieve it
   bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
   // Read envp
+  reader_ctx.ptr = ctx->envp;
+  reader_ctx.index = 1;
+  bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
   // Read file descriptors
   return 0;
 }
@@ -122,7 +127,7 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   }
   if (argp == NULL) {
     // We have reached the end of argv
-    event->argc = index;
+    event->count[ctx->index] = index;
     return 1;
   }
   // Read the str into a temporary buffer
@@ -147,15 +152,15 @@ static int read_strings(u32 index, struct reader_context *ctx) {
     // Replace such args with '\0'
     entry->data[0] = '\0';
     bytes_read = 1;
-    event->argc = index + 1;
+    event->count[ctx->index] = index + 1;
     // continue
     return 0;
   } else if (bytes_read == sizeof(entry->data)) {
     entry->flags |= POSSIBLE_TRUNCATION;
   }
   bpf_ringbuf_output(&string_io, entry, 16 + bytes_read, 0);
-  // bpf_spin_unlock(&cache_lock);
-  event->argc = index + 1;
+  // bpf_spin_unlock(&cache_lock);  
+  event->count[ctx->index] = index + 1;
   if (index == ARGC_MAX - 1) {
     // We hit ARGC_MAX
     // We are not going to iterate further.
