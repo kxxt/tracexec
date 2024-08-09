@@ -34,5 +34,7 @@ fn main() {
       .build_and_generate(&skel_out)
       .unwrap();
     println!("cargo:rerun-if-changed={BPF_SRC}");
+    println!("cargo:rerun-if-changed=src/bpf/common.h");
+    println!("cargo:rerun-if-changed=src/bpf/interface.h");
   }
 }
