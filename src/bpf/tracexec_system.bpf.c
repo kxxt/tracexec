@@ -45,7 +45,7 @@ struct reader_context {
   u8 **ptr;
 };
 
-static int read_argv(u32 index, struct reader_context *ctx);
+static int read_strings(u32 index, struct reader_context *ctx);
 
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
 
@@ -85,7 +85,7 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
   if (bpf_probe_read_user_str(event->filename, sizeof(event->filename),
                               ctx->filename) == sizeof(event->filename)) {
     // The filename is possibly truncated, we cannot determine
-    event->flags |= FILENAME_POSSIBLE_TRUNCATION;
+    event->flags |= POSSIBLE_TRUNCATION;
   }
   bpf_printk("%ld %s execve %s UID: %d GID: %d PID: %d\n", event->eid,
              event->comm, event->filename, uid, gid, pid);
@@ -95,7 +95,7 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
   reader_ctx.ptr = ctx->argv;
   reader_ctx.tail = 0;
   // bpf_loop allows 1 << 23 (~8 million) loops, otherwise we cannot achieve it
-  bpf_loop(ARGC_MAX, read_argv, &reader_ctx, 0);
+  bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
   // Read envp
   // Read file descriptors
   return 0;
@@ -111,12 +111,12 @@ int tp_sys_exit_execve(struct sys_exit_exec_args *ctx) {
   return 0;
 }
 
-static int read_argv(u32 index, struct reader_context *ctx) {
+static int read_strings(u32 index, struct reader_context *ctx) {
   struct exec_event *event = ctx->event;
   const u8 *argp = NULL;
   int ret = bpf_probe_read_user(&argp, sizeof(argp), &ctx->ptr[index]);
   if (ret < 0) {
-    event->flags |= ARG_PTR_READ_FAILURE;
+    event->flags |= PTR_READ_FAILURE;
     debug("Failed to read pointer to arg");
     return 1;
   }
@@ -143,7 +143,7 @@ static int read_argv(u32 index, struct reader_context *ctx) {
       bpf_probe_read_user_str(entry->data, sizeof(entry->data), argp);
   if (bytes_read < 0) {
     debug("failed to read arg %d(addr:%x) from userspace", index, argp);
-    entry->flags |= ARG_READ_FAILURE;
+    entry->flags |= STR_READ_FAILURE;
     // Replace such args with '\0'
     entry->data[0] = '\0';
     bytes_read = 1;
@@ -151,7 +151,7 @@ static int read_argv(u32 index, struct reader_context *ctx) {
     // continue
     return 0;
   } else if (bytes_read == sizeof(entry->data)) {
-    entry->flags |= ARG_POSSIBLE_TRUNCATION;
+    entry->flags |= POSSIBLE_TRUNCATION;
   }
   bpf_ringbuf_output(&string_io, entry, 16 + bytes_read, 0);
   // bpf_spin_unlock(&cache_lock);
@@ -159,7 +159,7 @@ static int read_argv(u32 index, struct reader_context *ctx) {
   if (index == ARGC_MAX - 1) {
     // We hit ARGC_MAX
     // We are not going to iterate further.
-    event->flags |= TOO_MANY_ARGS;
+    event->flags |= TOO_MANY_ITEMS;
   }
   return 0;
 }
