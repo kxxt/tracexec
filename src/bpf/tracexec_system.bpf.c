@@ -7,7 +7,7 @@
 char LICENSE[] SEC("license") = "GPL";
 
 static const struct exec_event empty_event = {};
-
+static u64 event_counter = 0;
 static u32 drop_counter = 0;
 
 struct {
@@ -16,6 +16,27 @@ struct {
   __type(key, pid_t);
   __type(value, struct exec_event);
 } execs SEC(".maps");
+
+// A staging area for writing variable length strings
+// I cannot really use a percpu array due to size limit:
+// https://github.com/iovisor/bcc/issues/2519
+struct {
+  __uint(type, BPF_MAP_TYPE_ARRAY);
+  __uint(max_entries, 64); // TODO: Can we change this at load time?
+  __type(key, u32);
+  __type(value, struct string_entry);
+} cache SEC(".maps");
+// tracing progs cannot use bpf_spin_lock yet
+// static struct bpf_spin_lock cache_lock;
+
+// This string_io map is used to send variable length cstrings back to
+// userspace. We cannot simply write all cstrings into one single fixed buffer
+// because it's hard to make verifier happy. (PRs are welcome if that could be
+// done)
+struct {
+  __uint(type, BPF_MAP_TYPE_RINGBUF);
+  __uint(max_entries, 4096); // TODO: determine a good size for ringbuf
+} string_io SEC(".maps");
 
 struct reader_context {
   struct exec_event *event;
@@ -52,6 +73,8 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
   event = bpf_map_lookup_elem(&execs, &pid);
   if (!event)
     return 0;
+  // Allocate event id
+  event->eid = __sync_fetch_and_add(&event_counter, 1);
   // Read comm
   if (0 != bpf_get_current_comm(event->comm, sizeof(event->comm))) {
     // Failed to read comm
@@ -64,8 +87,8 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
     // The filename is possibly truncated, we cannot determine
     event->flags |= FILENAME_POSSIBLE_TRUNCATION;
   }
-  bpf_printk("%s execve %s UID: %d GID: %d PID: %d\n", event->comm,
-             event->filename, uid, gid, pid);
+  bpf_printk("%ld %s execve %s UID: %d GID: %d PID: %d\n", event->eid,
+             event->comm, event->filename, uid, gid, pid);
   // Read argv
   struct reader_context reader_ctx;
   reader_ctx.event = event;
@@ -102,45 +125,37 @@ static int read_argv(u32 index, struct reader_context *ctx) {
     event->argc = index;
     return 1;
   }
-  // Read the str into data
-  s64 rest = (s64)sizeof(event->data) - (s64)ctx->tail;
-  if (rest <= 0) {
-    event->flags |= NO_ROOM_FOR_ARGS;
-    event->argc = index - 1;
+  // Read the str into a temporary buffer
+  u32 entry_index = bpf_get_smp_processor_id();
+  if (entry_index > 64) {
+    debug("Too many cores!");
     return 1;
   }
-  if (ctx->tail >= sizeof(event->data)) {
-    // This is not going to happen. Just make the verifier happy.
+  // bpf_spin_lock(&cache_lock);
+  struct string_entry *entry = bpf_map_lookup_elem(&cache, &entry_index);
+  if (entry == NULL) {
+    debug("This should not happen!");
     return 1;
   }
-  void *start = &event->data[ctx->tail];
-  if (start >= (void *)&event->data[_SC_ARG_MAX - 1]) {
-    return 1;
-  }
-  // The verifier assumes that start is a variable in range [0, 2101291]
-  // and rest in range [0, 2101292], so it rejects access to ptr (start + rest)
-  // where start = 2101291, rest = 2101292
-  // But in practice, rest is bounded by [0, end - start].
-  // The verifier seems unable to reason about variables in ranges.
-  s64 bytes_read = bpf_probe_read_user_str(start, (u32)rest, argp);
+  entry->pid = event->pid;
+  entry->eid = event->eid;
+  s64 bytes_read =
+      bpf_probe_read_user_str(entry->data, sizeof(entry->data), argp);
   if (bytes_read < 0) {
     debug("failed to read arg %d(addr:%x) from userspace", index, argp);
-    event->flags |= ARG_READ_FAILURE;
+    entry->flags |= ARG_READ_FAILURE;
     // Replace such args with '\0'
-    if (ctx->tail > sizeof(event->data)) {
-      // This is not going to happen. Just make the verifier happy.
-      return 1;
-    }
-    event->data[ctx->tail] = '\0';
-    ++ctx->tail;
+    entry->data[0] = '\0';
+    bytes_read = 1;
+    event->argc = index + 1;
     // continue
     return 0;
-  } else if (bytes_read == rest) {
-    event->flags |= ARG_POSSIBLE_TRUNCATION;
+  } else if (bytes_read == sizeof(entry->data)) {
+    entry->flags |= ARG_POSSIBLE_TRUNCATION;
   }
-  ctx->tail += bytes_read;
+  bpf_ringbuf_output(&string_io, entry, 16 + bytes_read, 0);
+  // bpf_spin_unlock(&cache_lock);
   event->argc = index + 1;
-
   if (index == ARGC_MAX - 1) {
     // We hit ARGC_MAX
     // We are not going to iterate further.

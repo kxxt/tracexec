@@ -49,9 +49,17 @@ struct exec_event {
   u32 envc;
   u32 argc; // KERNEL_MAX_ARG_STRINGS fits in s32
   u32 flags;
+  // u32 gap;
+  // Globally unique counter of events
+  u64 eid;
   char filename[PATH_MAX];
   char comm[TASK_COMM_LEN];
-  char data[_SC_ARG_MAX]; // NULL separated argv, NULL, and NULL separated envp
-  // u8 unused;
+};
+
+struct string_entry {
+  pid_t pid;
+  u32 flags;
+  u64 eid;
+  char data[_SC_ARG_MAX];
 };
 #endif
