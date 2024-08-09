@@ -1,7 +1,11 @@
-use std::{thread::sleep, time::Duration};
+use std::time::Duration;
 
 use color_eyre::eyre::bail;
-use libbpf_rs::skel::{OpenSkel, Skel, SkelBuilder};
+use interface::StringEntryHeader;
+use libbpf_rs::{
+  skel::{OpenSkel, Skel, SkelBuilder},
+  MapHandle, RingBufferBuilder,
+};
 use nix::libc;
 
 pub mod skel {
@@ -10,6 +14,8 @@ pub mod skel {
     "/src/bpf/tracexec_system.skel.rs"
   ));
 }
+
+mod interface;
 
 fn bump_memlock_rlimit() -> color_eyre::Result<()> {
   let rlimit = libc::rlimit {
@@ -30,6 +36,20 @@ pub fn experiment() -> color_eyre::Result<()> {
   let open_skel = skel_builder.open()?;
   let mut skel = open_skel.load()?;
   skel.attach()?;
-  sleep(Duration::from_secs(1000));
-  Ok(())
+  let string_io = MapHandle::from_map_id(skel.maps().string_io().info()?.info.id)?;
+  let mut builder = RingBufferBuilder::new();
+  builder.add(&string_io, |data| {
+    let header: StringEntryHeader = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+    let header_len = size_of::<StringEntryHeader>();
+    let string = String::from_utf8_lossy(&data[header_len..]);
+    eprintln!(
+      "PID: {}, EID: {}, String: {}",
+      header.pid, header.eid, string
+    );
+    0
+  })?;
+  let rb = builder.build()?;
+  loop {
+    rb.poll(Duration::from_millis(1000))?;
+  }
 }

@@ -1,3 +1,5 @@
+// This file must be kept in sync with interface.rs to ensure ABI compatibility
+
 #ifndef __INTERFACE_H__
 #define __INTERFACE_H__
 
