@@ -22,7 +22,7 @@ struct {
 // https://github.com/iovisor/bcc/issues/2519
 struct {
   __uint(type, BPF_MAP_TYPE_ARRAY);
-  __uint(max_entries, 64); // TODO: Can we change this at load time?
+  __uint(max_entries, MAX_CPUS); // TODO: Can we change this at load time?
   __type(key, u32);
   __type(value, struct string_event);
 } cache SEC(".maps");
@@ -133,7 +133,7 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   }
   // Read the str into a temporary buffer
   u32 entry_index = bpf_get_smp_processor_id();
-  if (entry_index > 64) {
+  if (entry_index > MAX_CPUS) {
     debug("Too many cores!");
     return 1;
   }
