@@ -13,7 +13,7 @@
 // getconf ARG_MAX
 // TODO: determine it at runtime
 #define _SC_ARG_MAX 2097152
-// The maximum possible value of argc, used in loop
+// The maximum possible value of argc and num of env, used in loop
 // ceil(ARG_MAX/9)
 //   each pointer takes 8 bytes and each arg contains at least one NUL byte
 #define ARGC_MAX 233017
@@ -40,7 +40,8 @@ struct exec_event {
   uid_t uid;
   uid_t gid;
   u32 envc;
-  u32 argc; // KERNEL_MAX_ARG_STRINGS fits in s32
+  // argc and env count
+  u32 count[2];
   u32 flags;
   // u32 gap;
   // Globally unique counter of events
