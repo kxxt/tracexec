@@ -36,11 +36,18 @@ enum exec_event_flags {
   STR_READ_FAILURE = 64,
 };
 
+enum event_type {
+  SYSENTER_EVENT,
+  SYSEXIT_EVENT,
+  STRING_EVENT,
+};
+
 struct event_header {
   pid_t pid;
   u32 flags;
   // Globally unique counter of events
   u64 eid;
+  enum event_type type;
 };
 
 struct exec_event {
@@ -48,7 +55,6 @@ struct exec_event {
   pid_t ppid;
   uid_t uid;
   uid_t gid;
-  u32 envc;
   // argc and env count
   u32 count[2];
   u64 eid;
@@ -56,7 +62,7 @@ struct exec_event {
   char comm[TASK_COMM_LEN];
 };
 
-struct string_entry {
+struct string_event {
   struct event_header header;
   char data[_SC_ARG_MAX];
 };
