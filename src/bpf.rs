@@ -1,10 +1,10 @@
-use std::time::Duration;
+use std::{mem::MaybeUninit, time::Duration};
 
 use color_eyre::eyre::bail;
 use interface::EventHeader;
 use libbpf_rs::{
   skel::{OpenSkel, Skel, SkelBuilder},
-  MapHandle, RingBufferBuilder,
+  RingBufferBuilder,
 };
 use nix::libc;
 
@@ -33,10 +33,11 @@ fn bump_memlock_rlimit() -> color_eyre::Result<()> {
 pub fn experiment() -> color_eyre::Result<()> {
   let skel_builder = skel::TracexecSystemSkelBuilder::default();
   bump_memlock_rlimit()?;
-  let open_skel = skel_builder.open()?;
+  let mut obj = MaybeUninit::uninit();
+  let open_skel = skel_builder.open(&mut obj)?;
   let mut skel = open_skel.load()?;
   skel.attach()?;
-  let events = MapHandle::from_map_id(skel.maps().events().info()?.info.id)?;
+  let events = skel.maps.events;
   let mut builder = RingBufferBuilder::new();
   builder.add(&events, |data| {
     let header: EventHeader = unsafe { std::ptr::read(data.as_ptr() as *const _) };
