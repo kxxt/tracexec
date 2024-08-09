@@ -81,13 +81,13 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
   if (0 != bpf_get_current_comm(event->comm, sizeof(event->comm))) {
     // Failed to read comm
     event->comm[0] = '\0';
-    event->flags |= COMM_READ_FAILURE;
+    event->header.flags |= COMM_READ_FAILURE;
   };
   // Read filename
   if (bpf_probe_read_user_str(event->filename, sizeof(event->filename),
                               ctx->filename) == sizeof(event->filename)) {
     // The filename is possibly truncated, we cannot determine
-    event->flags |= POSSIBLE_TRUNCATION;
+    event->header.flags |= POSSIBLE_TRUNCATION;
   }
   bpf_printk("%ld %s execve %s UID: %d GID: %d PID: %d\n", event->eid,
              event->comm, event->filename, uid, gid, pid);
@@ -121,7 +121,7 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   const u8 *argp = NULL;
   int ret = bpf_probe_read_user(&argp, sizeof(argp), &ctx->ptr[index]);
   if (ret < 0) {
-    event->flags |= PTR_READ_FAILURE;
+    event->header.flags |= PTR_READ_FAILURE;
     debug("Failed to read pointer to arg");
     return 1;
   }
@@ -142,13 +142,13 @@ static int read_strings(u32 index, struct reader_context *ctx) {
     debug("This should not happen!");
     return 1;
   }
-  entry->pid = event->pid;
-  entry->eid = event->eid;
+  entry->header.pid = event->header.pid;
+  entry->header.eid = event->eid;
   s64 bytes_read =
       bpf_probe_read_user_str(entry->data, sizeof(entry->data), argp);
   if (bytes_read < 0) {
     debug("failed to read arg %d(addr:%x) from userspace", index, argp);
-    entry->flags |= STR_READ_FAILURE;
+    entry->header.flags |= STR_READ_FAILURE;
     // Replace such args with '\0'
     entry->data[0] = '\0';
     bytes_read = 1;
@@ -156,15 +156,15 @@ static int read_strings(u32 index, struct reader_context *ctx) {
     // continue
     return 0;
   } else if (bytes_read == sizeof(entry->data)) {
-    entry->flags |= POSSIBLE_TRUNCATION;
+    entry->header.flags |= POSSIBLE_TRUNCATION;
   }
   bpf_ringbuf_output(&string_io, entry, 16 + bytes_read, 0);
-  // bpf_spin_unlock(&cache_lock);  
+  // bpf_spin_unlock(&cache_lock);
   event->count[ctx->index] = index + 1;
   if (index == ARGC_MAX - 1) {
     // We hit ARGC_MAX
     // We are not going to iterate further.
-    event->flags |= TOO_MANY_ITEMS;
+    event->header.flags |= TOO_MANY_ITEMS;
   }
   return 0;
 }
