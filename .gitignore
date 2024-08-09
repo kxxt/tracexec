@@ -3,3 +3,5 @@
 # BPF
 *.skel.rs
 *.bpf.o
+# Clangd
+/.cache
