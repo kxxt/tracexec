@@ -25,12 +25,20 @@
 enum exec_event_flags {
   // This flag is set if any other error occurs
   ERROR = 1,
-  // This flag is set if we don't have enough space to store argv
+  // This flag is set if we don't have enough loops to read argv
   TOO_MANY_ARGS = 2,
-  // This flag is set if we don't have enough space to store envp
+  // This flag is set if we don't have enough loops to read envp
   TOO_MANY_ENVS = 4,
   COMM_READ_FAILURE = 8,
   FILENAME_POSSIBLE_TRUNCATION = 16,
+  ARG_PTR_READ_FAILURE = 32,
+  ENV_PTR_READ_FAILURE = 64,
+  NO_ROOM_FOR_ARGS = 128,
+  NO_ROOM_FOR_ENVS = 256,
+  ARG_READ_FAILURE = 512,
+  ENV_READ_FAILURE = 1024,
+  ARG_POSSIBLE_TRUNCATION = 2048,
+  ENV_POSSIBLE_TRUNCATION = 4096,
 };
 
 struct exec_event {
@@ -44,5 +52,6 @@ struct exec_event {
   char filename[PATH_MAX];
   char comm[TASK_COMM_LEN];
   char data[_SC_ARG_MAX]; // NULL separated argv, NULL, and NULL separated envp
+  // u8 unused;
 };
 #endif
