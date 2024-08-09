@@ -90,6 +90,7 @@ tracing-test = "0.2.4"
 default = ["seccomp-bpf", "ebpf"]
 seccomp-bpf = ["dep:seccompiler"]
 ebpf = ["dep:libbpf-rs"]
+ebpf-debug = ["ebpf"]
 
 [profile.dev]
 opt-level = 1

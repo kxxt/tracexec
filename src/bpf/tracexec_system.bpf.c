@@ -50,7 +50,11 @@ struct reader_context {
 
 static int read_strings(u32 index, struct reader_context *ctx);
 
+#ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
+#else
+#define debug(...)
+#endif
 
 SEC("tracepoint/syscalls/sys_enter_execve")
 int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
@@ -69,7 +73,7 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
   // Create event
   if (bpf_map_update_elem(&execs, &pid, &empty_event, BPF_NOEXIST)) {
     // Cannot allocate new event, map is full!
-    bpf_printk("tracexec_system: Failed to allocate new event!");
+    debug("Failed to allocate new event!");
     drop_counter++;
     return 0;
   }
@@ -90,8 +94,8 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
     // The filename is possibly truncated, we cannot determine
     event->header.flags |= POSSIBLE_TRUNCATION;
   }
-  bpf_printk("%ld %s execve %s UID: %d GID: %d PID: %d\n", event->eid,
-             event->comm, event->filename, uid, gid, pid);
+  debug("%ld %s execve %s UID: %d GID: %d PID: %d\n", event->eid, event->comm,
+        event->filename, uid, gid, pid);
   // Read argv
   struct reader_context reader_ctx;
   reader_ctx.event = event;
@@ -110,9 +114,9 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
 SEC("tracepoint/syscalls/sys_exit_execve")
 int tp_sys_exit_execve(struct sys_exit_exec_args *ctx) {
   pid_t pid = (pid_t)bpf_get_current_pid_tgid();
-  bpf_printk("execve result: %d PID %d\n", ctx->ret, pid);
+  debug("execve result: %d PID %d\n", ctx->ret, pid);
   if (0 != bpf_map_delete_elem(&execs, &pid)) {
-    bpf_printk("Failed to del element from execs map");
+    debug("Failed to del element from execs map");
   }
   return 0;
 }

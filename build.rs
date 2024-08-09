@@ -27,18 +27,22 @@ fn main() {
     });
     let max_cpus = 64;
     let max_cpus_define = OsString::from(format!("MAX_CPUS={max_cpus}"));
-
+    let include_dir = manifest_dir.join("include");
+    let mut clang_args = vec![
+      // vmlinux.h
+      OsStr::new("-I"),
+      include_dir.as_os_str(),
+      OsStr::new("-D"),
+      arch_define,
+      OsStr::new("-D"),
+      &max_cpus_define,
+    ];
+    if cfg!(any(feature = "ebpf-debug", debug_assertions)) {
+      clang_args.push(OsStr::new("-DEBPF_DEBUG"));
+    }
     SkeletonBuilder::new()
       .source(BPF_SRC)
-      .clang_args([
-        // vmlinux.h
-        OsStr::new("-I"),
-        manifest_dir.join("include").as_os_str(),
-        OsStr::new("-D"),
-        arch_define,
-        OsStr::new("-D"),
-        &max_cpus_define,
-      ])
+      .clang_args(clang_args)
       .build_and_generate(&skel_out)
       .unwrap();
     println!("cargo:rerun-if-changed={BPF_SRC}");
