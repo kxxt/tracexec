@@ -2,6 +2,12 @@
 #define __COMMON_H__
 
 #include "vmlinux.h"
+#include <bpf/bpf_helpers.h>
+
+// KFuncs
+
+extern void bpf_rcu_read_lock(void) __ksym;
+extern void bpf_rcu_read_unlock(void) __ksym;
 
 /* BPF cannot access this struct */
 struct forbidden_common_args {

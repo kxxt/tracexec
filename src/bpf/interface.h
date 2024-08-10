@@ -1,4 +1,5 @@
-// This header contains the binary interface between ebpf program and userspace program
+// This header contains the binary interface between ebpf program and userspace
+// program
 
 #ifndef __INTERFACE_H__
 #define __INTERFACE_H__
@@ -34,12 +35,15 @@ enum exec_event_flags {
   PTR_READ_FAILURE = 16,
   NO_ROOM = 32,
   STR_READ_FAILURE = 64,
+  // Failed to get information about fds
+  FDS_PROBE_FAILURE = 128,
 };
 
 enum event_type {
   SYSENTER_EVENT,
   SYSEXIT_EVENT,
   STRING_EVENT,
+  FD_EVENT,
 };
 
 struct event_header {
@@ -66,5 +70,10 @@ struct exec_event {
 struct string_event {
   struct event_header header;
   u8 data[_SC_ARG_MAX];
+};
+
+struct fd_event {
+  struct event_header header;
+  u8 path[PATH_MAX];
 };
 #endif

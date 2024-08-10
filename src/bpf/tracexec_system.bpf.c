@@ -3,6 +3,7 @@
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
+#include <errno.h>
 
 char LICENSE[] SEC("license") = "GPL";
 
@@ -41,12 +42,11 @@ struct {
 struct {
   __uint(type, BPF_MAP_TYPE_RINGBUF);
   // Every exec event takes up to 2MiB space for argc+argv+envp,
-  // so on a machine with 64 cores, there can be at most 64 execs happening in parallel,
-  // taking at most 128MiB space in a burst.
-  // We haven't considered the rate at which the userspace code consumes event,
-  // 256MiB is used as a heruistic for now
-  __uint(max_entries,
-         268435456);
+  // so on a machine with 64 cores, there can be at most 64 execs happening in
+  // parallel, taking at most 128MiB space in a burst. We haven't considered the
+  // rate at which the userspace code consumes event, 256MiB is used as a
+  // heruistic for now
+  __uint(max_entries, 268435456);
 } events SEC(".maps");
 
 struct reader_context {
@@ -60,6 +60,7 @@ struct reader_context {
 };
 
 static int read_strings(u32 index, struct reader_context *ctx);
+static int read_fds(struct exec_event *event);
 
 #ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
@@ -121,6 +122,8 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   reader_ctx.ptr = ctx->envp;
   reader_ctx.index = 1;
   bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
+  // Read file descriptors
+  read_fds(event);
   return 0;
 }
 
@@ -133,7 +136,6 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
                                            .envp = ctx->envp,
                                            .base_filename = ctx->filename};
   trace_exec_common(&common_ctx);
-  // Read file descriptors
   return 0;
 }
 
@@ -161,6 +163,40 @@ int tp_sys_exit_execve(struct sys_exit_exec_args *ctx) {
     debug("Failed to del element from execs map");
   }
   return 0;
+}
+
+// Collect information about file descriptors of the process on sysenter of exec
+static int read_fds(struct exec_event *event) {
+  if (event == NULL)
+    return 1;
+  struct task_struct *current = (struct task_struct *)bpf_get_current_task();
+  struct files_struct *files;
+  int ret;
+  ret = bpf_core_read(&files, sizeof(void *), &current->files);
+  if (ret < 0) {
+    debug("Failed to read current->files! err: %d", ret);
+    goto probe_failure;
+  }
+  // Accessing fdt usually requires RCU. Is it okay to access without it in BPF?
+  // bpf_rcu_read_lock is a kfunc anyway.
+  // https://docs.kernel.org/filesystems/files.html
+  // files_fdtable() uses rcu_dereference() macro which takes care of the memory
+  // barrier requirements for lock-free dereference. The fdtable pointer must be
+  // read within the read-side critical section.
+  struct fdtable *fdt;
+  bpf_rcu_read_lock();
+  ret = bpf_core_read(&fdt, sizeof(void *), &files->fdt);
+  if (ret < 0) {
+    debug("Failed to read files->fdt! err: %d", ret);
+    goto probe_failure_locked_rcu;
+  }
+  bpf_rcu_read_unlock();
+  return 0;
+probe_failure_locked_rcu:
+  bpf_rcu_read_unlock();
+probe_failure:
+  event->header.flags |= FDS_PROBE_FAILURE;
+  return -EFAULT;
 }
 
 static int read_strings(u32 index, struct reader_context *ctx) {
