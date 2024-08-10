@@ -80,7 +80,9 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
   event = bpf_map_lookup_elem(&execs, &pid);
   if (!event)
     return 0;
-  // Allocate event id
+  // Initialize event
+  event->header.pid = pid;
+  event->header.type = SYSEXIT_EVENT;
   event->header.eid = __sync_fetch_and_add(&event_counter, 1);
   // Read comm
   if (0 != bpf_get_current_comm(event->comm, sizeof(event->comm))) {
@@ -94,8 +96,8 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
     // The filename is possibly truncated, we cannot determine
     event->header.flags |= POSSIBLE_TRUNCATION;
   }
-  debug("%ld %s execve %s UID: %d GID: %d PID: %d\n", event->header.eid, event->comm,
-        event->filename, uid, gid, pid);
+  debug("%ld %s execve %s UID: %d GID: %d PID: %d\n", event->header.eid,
+        event->comm, event->filename, uid, gid, pid);
   // Read argv
   struct reader_context reader_ctx;
   reader_ctx.event = event;
@@ -114,7 +116,23 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
 SEC("tracepoint/syscalls/sys_exit_execve")
 int tp_sys_exit_execve(struct sys_exit_exec_args *ctx) {
   pid_t pid = (pid_t)bpf_get_current_pid_tgid();
+  struct exec_event *event;
+  event = bpf_map_lookup_elem(&execs, &pid);
+  if (event == NULL) {
+    debug("Failed to lookup exec_event on sysexit");
+    drop_counter += 1;
+    return 0;
+  }
+  event->ret = ctx->ret;
+  event->header.type = SYSEXIT_EVENT;
   debug("execve result: %d PID %d\n", ctx->ret, pid);
+  long ret = bpf_ringbuf_output(&events, event, sizeof(struct exec_event), 0);
+  if (ret != 0) {
+#ifdef EBPF_DEBUG
+    u64 avail = bpf_ringbuf_query(&events, BPF_RB_AVAIL_DATA);
+    debug("Failed to write exec event to ringbuf: %d, avail: %lu", ret, avail);
+#endif
+  }
   if (0 != bpf_map_delete_elem(&execs, &pid)) {
     debug("Failed to del element from execs map");
   }

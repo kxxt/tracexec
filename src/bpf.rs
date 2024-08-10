@@ -1,12 +1,12 @@
 use std::{mem::MaybeUninit, time::Duration};
 
 use color_eyre::eyre::bail;
-use interface::EventHeader;
 use libbpf_rs::{
   skel::{OpenSkel, Skel, SkelBuilder},
   RingBufferBuilder,
 };
 use nix::libc;
+use skel::types::{event_header, event_type, exec_event};
 
 pub mod skel {
   include!(concat!(
@@ -14,8 +14,6 @@ pub mod skel {
     "/src/bpf/tracexec_system.skel.rs"
   ));
 }
-
-mod interface;
 
 fn bump_memlock_rlimit() -> color_eyre::Result<()> {
   let rlimit = libc::rlimit {
@@ -40,12 +38,23 @@ pub fn experiment() -> color_eyre::Result<()> {
   let events = skel.maps.events;
   let mut builder = RingBufferBuilder::new();
   builder.add(&events, |data| {
-    let header: EventHeader = unsafe { std::ptr::read(data.as_ptr() as *const _) };
-    match header.kind {
-      interface::EventType::Sysenter => todo!(),
-      interface::EventType::Sysexit => todo!(),
-      interface::EventType::String => {
-        let header_len = size_of::<EventHeader>();
+    assert!(data.len() > size_of::<event_header>());
+    let header: event_header = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+    match unsafe { header.r#type.assume_init() } {
+      event_type::SYSENTER_EVENT => unreachable!(),
+      event_type::SYSEXIT_EVENT => {
+        assert_eq!(data.len(), size_of::<exec_event>());
+        let event: exec_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+        eprintln!(
+          "Exec event: {} exec {} argc {} envc {}",
+          String::from_utf8_lossy(&event.comm),
+          String::from_utf8_lossy(&event.filename),
+          event.count[0],
+          event.count[1]
+        );
+      }
+      event_type::STRING_EVENT => {
+        let header_len = size_of::<event_header>();
         let string = String::from_utf8_lossy(&data[header_len..]);
         eprintln!("String for EID: {}: {}", header.eid, string);
       }
