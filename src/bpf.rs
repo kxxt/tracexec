@@ -48,7 +48,7 @@ pub fn experiment() -> color_eyre::Result<()> {
         eprintln!(
           "Exec event: {} exec {} argc {} envc {}",
           String::from_utf8_lossy(&event.comm),
-          String::from_utf8_lossy(&event.filename),
+          String::from_utf8_lossy(&event.base_filename),
           event.count[0],
           event.count[1]
         );

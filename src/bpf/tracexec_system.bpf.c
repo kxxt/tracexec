@@ -35,7 +35,8 @@ struct {
 // done) (TODO: check if this could be done with dynptr)
 struct {
   __uint(type, BPF_MAP_TYPE_RINGBUF);
-  __uint(max_entries, 134217728); // TODO: determine a good size for ringbuf, 128MiB for now
+  __uint(max_entries,
+         134217728); // TODO: determine a good size for ringbuf, 128MiB for now
 } events SEC(".maps");
 
 struct reader_context {
@@ -56,10 +57,7 @@ static int read_strings(u32 index, struct reader_context *ctx);
 #define debug(...)
 #endif
 
-SEC("tracepoint/syscalls/sys_enter_execve")
-int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
-  struct task_struct *task;
-  struct exec_event *event;
+int trace_exec_common(struct sys_enter_exec_args *ctx) {
   // Collect UID/GID information
   uid_t uid, gid;
   u64 tmp = bpf_get_current_uid_gid();
@@ -77,8 +75,8 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
     drop_counter++;
     return 0;
   }
-  event = bpf_map_lookup_elem(&execs, &pid);
-  if (!event)
+  struct exec_event *event = bpf_map_lookup_elem(&execs, &pid);
+  if (!event || !ctx)
     return 0;
   // Initialize event
   event->header.pid = pid;
@@ -90,14 +88,18 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
     event->comm[0] = '\0';
     event->header.flags |= COMM_READ_FAILURE;
   };
-  // Read filename
-  if (bpf_probe_read_user_str(event->filename, sizeof(event->filename),
-                              ctx->filename) == sizeof(event->filename)) {
+  // Read base filename
+  if (ctx->base_filename == NULL) {
+    debug("filename is NULL");
+    event->base_filename[0] = '\0';
+  } else if (bpf_probe_read_user_str(
+                 event->base_filename, sizeof(event->base_filename),
+                 ctx->base_filename) == sizeof(event->base_filename)) {
     // The filename is possibly truncated, we cannot determine
     event->header.flags |= POSSIBLE_TRUNCATION;
   }
   debug("%ld %s execve %s UID: %d GID: %d PID: %d\n", event->header.eid,
-        event->comm, event->filename, uid, gid, pid);
+        event->comm, event->base_filename, uid, gid, pid);
   // Read argv
   struct reader_context reader_ctx;
   reader_ctx.event = event;
@@ -109,6 +111,18 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
   reader_ctx.ptr = ctx->envp;
   reader_ctx.index = 1;
   bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
+  return 0;
+}
+
+SEC("tracepoint/syscalls/sys_enter_execve")
+int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
+  struct task_struct *task;
+  struct exec_event *event;
+  struct sys_enter_exec_args common_ctx = {.__syscall_nr = ctx->__syscall_nr,
+                                           .argv = ctx->argv,
+                                           .envp = ctx->envp,
+                                           .base_filename = ctx->filename};
+  trace_exec_common(&common_ctx);
   // Read file descriptors
   return 0;
 }

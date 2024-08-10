@@ -20,6 +20,23 @@ struct sys_enter_execve_args {
   const u8 *const *envp;
 };
 
+struct sys_enter_execveat_args {
+  struct forbidden_common_args common;
+  s32 __syscall_nr;
+  u64 fd;
+  const u8 *filename;
+  const u8 *const *argv;
+  const u8 *const *envp;
+  u64 flags;
+};
+
+struct sys_enter_exec_args {
+  s32 __syscall_nr;
+  const u8 *base_filename;
+  const u8 *const *argv;
+  const u8 *const *envp;
+};
+
 struct sys_exit_exec_args {
   struct forbidden_common_args common;
   s32 __syscall_nr;
