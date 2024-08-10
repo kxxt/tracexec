@@ -1,5 +1,4 @@
 // This header contains the binary interface between ebpf program and userspace program
-// Thus it must be kept in sync with interface.rs to ensure ABI compatibility
 
 #ifndef __INTERFACE_H__
 #define __INTERFACE_H__
@@ -56,14 +55,15 @@ struct exec_event {
   pid_t ppid;
   uid_t uid;
   uid_t gid;
+  s64 ret;
   // argc and env count
   u32 count[2];
-  char filename[PATH_MAX];
-  char comm[TASK_COMM_LEN];
+  u8 filename[PATH_MAX];
+  u8 comm[TASK_COMM_LEN];
 };
 
 struct string_event {
   struct event_header header;
-  char data[_SC_ARG_MAX];
+  u8 data[_SC_ARG_MAX];
 };
 #endif
