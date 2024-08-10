@@ -2,7 +2,9 @@ use std::{mem::MaybeUninit, time::Duration};
 
 use color_eyre::eyre::bail;
 use libbpf_rs::{
-  num_possible_cpus, skel::{OpenSkel, Skel, SkelBuilder}, RingBufferBuilder
+  num_possible_cpus,
+  skel::{OpenSkel, Skel, SkelBuilder},
+  RingBufferBuilder,
 };
 use nix::libc;
 use skel::types::{event_header, event_type, exec_event};
@@ -60,6 +62,7 @@ pub fn experiment() -> color_eyre::Result<()> {
         let string = String::from_utf8_lossy(&data[header_len..]);
         eprintln!("String for EID: {}: {}", header.eid, string);
       }
+      event_type::FD_EVENT => todo!(),
     }
     0
   })?;
