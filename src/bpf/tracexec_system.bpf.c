@@ -35,7 +35,7 @@ struct {
 // done) (TODO: check if this could be done with dynptr)
 struct {
   __uint(type, BPF_MAP_TYPE_RINGBUF);
-  __uint(max_entries, 4096); // TODO: determine a good size for ringbuf
+  __uint(max_entries, 134217728); // TODO: determine a good size for ringbuf, 128MiB for now
 } events SEC(".maps");
 
 struct reader_context {
