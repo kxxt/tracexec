@@ -2,8 +2,7 @@ use std::{mem::MaybeUninit, time::Duration};
 
 use color_eyre::eyre::bail;
 use libbpf_rs::{
-  skel::{OpenSkel, Skel, SkelBuilder},
-  RingBufferBuilder,
+  num_possible_cpus, skel::{OpenSkel, Skel, SkelBuilder}, RingBufferBuilder
 };
 use nix::libc;
 use skel::types::{event_header, event_type, exec_event};
@@ -32,7 +31,10 @@ pub fn experiment() -> color_eyre::Result<()> {
   let skel_builder = skel::TracexecSystemSkelBuilder::default();
   bump_memlock_rlimit()?;
   let mut obj = MaybeUninit::uninit();
-  let open_skel = skel_builder.open(&mut obj)?;
+  let mut open_skel = skel_builder.open(&mut obj)?;
+  let ncpu = num_possible_cpus()?.try_into().expect("Too many cores!");
+  open_skel.maps.rodata_data.config.max_num_cpus = ncpu;
+  open_skel.maps.cache.set_max_entries(ncpu)?;
   let mut skel = open_skel.load()?;
   skel.attach()?;
   let events = skel.maps.events;

@@ -9,6 +9,11 @@ char LICENSE[] SEC("license") = "GPL";
 static const struct exec_event empty_event = {};
 static u64 event_counter = 0;
 static u32 drop_counter = 0;
+const volatile struct {
+  u32 max_num_cpus;
+} config = {
+    .max_num_cpus = MAX_CPUS,
+};
 
 struct {
   __uint(type, BPF_MAP_TYPE_HASH);
@@ -22,7 +27,7 @@ struct {
 // https://github.com/iovisor/bcc/issues/2519
 struct {
   __uint(type, BPF_MAP_TYPE_ARRAY);
-  __uint(max_entries, MAX_CPUS); // TODO: Can we change this at load time?
+  __uint(max_entries, MAX_CPUS);
   __type(key, u32);
   __type(value, struct string_event);
 } cache SEC(".maps");
@@ -169,7 +174,7 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   }
   // Read the str into a temporary buffer
   u32 entry_index = bpf_get_smp_processor_id();
-  if (entry_index > MAX_CPUS) {
+  if (entry_index > config.max_num_cpus) {
     debug("Too many cores!");
     return 1;
   }
