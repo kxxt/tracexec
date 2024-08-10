@@ -40,8 +40,13 @@ struct {
 // done) (TODO: check if this could be done with dynptr)
 struct {
   __uint(type, BPF_MAP_TYPE_RINGBUF);
+  // Every exec event takes up to 2MiB space for argc+argv+envp,
+  // so on a machine with 64 cores, there can be at most 64 execs happening in parallel,
+  // taking at most 128MiB space in a burst.
+  // We haven't considered the rate at which the userspace code consumes event,
+  // 256MiB is used as a heruistic for now
   __uint(max_entries,
-         134217728); // TODO: determine a good size for ringbuf, 128MiB for now
+         268435456);
 } events SEC(".maps");
 
 struct reader_context {
