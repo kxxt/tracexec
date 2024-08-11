@@ -7,10 +7,7 @@
 
 char LICENSE[] SEC("license") = "GPL";
 
-#define BITS_PER_LONG 64
-#define NOFILE_MAX 2147483584
-// 33554431. it is still too large for bpf_loop
-#define FDSET_SIZE_MAX ((NOFILE_MAX) / (BITS_PER_LONG))
+
 
 static const struct exec_event empty_event = {};
 static u64 event_counter = 0;
@@ -36,7 +33,7 @@ struct {
   __uint(type, BPF_MAP_TYPE_ARRAY);
   __uint(max_entries, MAX_CPUS);
   __type(key, u32);
-  __type(value, struct string_event);
+  __type(value, union cache_item);
 } cache SEC(".maps");
 // tracing progs cannot use bpf_spin_lock yet
 // static struct bpf_spin_lock cache_lock;
