@@ -7,8 +7,6 @@
 
 char LICENSE[] SEC("license") = "GPL";
 
-
-
 static const struct exec_event empty_event = {};
 static u64 event_counter = 0;
 static u32 drop_counter = 0;
@@ -62,8 +60,16 @@ struct reader_context {
   u8 **ptr;
 };
 
+struct fdset_reader_context {
+  struct exec_event *event;
+  struct file *fd_array;
+  long *fdset;
+  unsigned int size;
+};
+
 static int read_strings(u32 index, struct reader_context *ctx);
 static int read_fds(struct exec_event *event);
+static int read_fds_impl(u32 index, struct fdset_reader_context *ctx);
 
 #ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
@@ -199,25 +205,60 @@ static int read_fds(struct exec_event *event) {
     debug("Failed to read fdt->fd! err: %d", ret);
     goto probe_failure_locked_rcu;
   }
+  long *fdset;
+  ret = bpf_core_read(&fdset, sizeof(void *), &fdt->open_fds);
+  if (ret < 0) {
+    debug("Failed to read fdt->open_fds! err: %d", ret);
+    goto probe_failure_locked_rcu;
+  }
   unsigned int max_fds;
   // max_fds is 128 or 256 for most processes that does not open too many files
+  // max_fds is a multiple of BITS_PER_LONG. TODO: Should we rely on this kernel implementation detail.
   ret = bpf_core_read(&max_fds, sizeof(max_fds), &fdt->max_fds);
   if (ret < 0) {
     debug("Failed to read fdt->max_fds! err: %d", ret);
     goto probe_failure_locked_rcu;
   }
-  debug("max_fds = %u", max_fds);
-  // open_fds is a fd set
-  // TODO: Iterate over open files
+  bpf_rcu_read_unlock();
+  // open_fds is a fd set, which is a bitmap
+  // Copy it into cache first
   // Ref: https://github.com/torvalds/linux/blob/5189dafa4cf950e675f02ee04b577dfbbad0d9b1/fs/file.c#L279-L291
   unsigned int fdset_size = max_fds / BITS_PER_LONG;
-  bpf_rcu_read_unlock();
+  fdset_size = min(fdset_size, FDSET_SIZE_MAX_IN_LONG);
+  struct fdset_reader_context ctx = {
+      .event = event,
+      .fdset = fdset,
+      .fd_array = fd_array,
+      .size = fdset_size,
+  };
+  bpf_loop(fdset_size, read_fds_impl, &ctx, 0);
   return 0;
 probe_failure_locked_rcu:
   bpf_rcu_read_unlock();
 probe_failure:
   event->header.flags |= FDS_PROBE_FAILURE;
   return -EFAULT;
+}
+
+// A helper to read fdset into cache,
+// read open file descriptors and send info into ringbuf
+static int read_fds_impl(u32 index, struct fdset_reader_context *ctx) {
+  struct exec_event *event;
+  if (ctx == NULL || (event = ctx->event) == NULL)
+    return 1;
+  struct file *fd_array = ctx->fd_array;
+  // 64 bits of a larger fdset.
+  long *pfdset = &ctx->fdset[index];
+  long fdset;
+  // Read a 64bits part of fdset from kernel
+  int ret = bpf_core_read(&fdset, sizeof(fdset), pfdset);
+  if (ret < 0) {
+    debug("Failed to read %u/%u member of fdset", index, ctx->size);
+    event->header.flags |= FDS_PROBE_FAILURE;
+    return 1;
+  }
+  debug("fdset %u/%u = %lx", index, ctx->size, fdset);
+  return 0;
 }
 
 static int read_strings(u32 index, struct reader_context *ctx) {
