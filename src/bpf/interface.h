@@ -25,6 +25,15 @@
 // https://elixir.bootlin.com/linux/v6.10.3/source/include/uapi/linux/limits.h#L13
 #define PATH_MAX 4096
 
+#define BITS_PER_LONG 64
+#define NOFILE_MAX 2147483584
+// ((NOFILE_MAX) / (BITS_PER_LONG)) = 33554431. it is still too large for
+// bpf_loop 1 << 23 = 8388608 is the bpf loop limit. This will take 64MiB space
+// per cpu, which is probably too big. Let's set this limit to 2MiB and wait to
+// see if anyone complains.
+#define FDSET_SIZE_MAX_BYTES 2097152
+#define FDSET_SIZE_MAX_IN_LONG ((2097152) / sizeof(long))
+
 enum exec_event_flags {
   // This flag is set if any other error occurs
   ERROR = 1,
@@ -75,5 +84,12 @@ struct string_event {
 struct fd_event {
   struct event_header header;
   u8 path[PATH_MAX];
+};
+
+union cache_item {
+  struct string_event string;
+  struct {
+    long openset[FDSET_SIZE_MAX_IN_LONG];
+  } fd_tmp;
 };
 #endif
