@@ -7,14 +7,20 @@
 
 char LICENSE[] SEC("license") = "GPL";
 
+#define BITS_PER_LONG 64
+#define NOFILE_MAX 2147483584
+// 33554431. it is still too large for bpf_loop
+#define FDSET_SIZE_MAX ((NOFILE_MAX) / (BITS_PER_LONG))
+
 static const struct exec_event empty_event = {};
 static u64 event_counter = 0;
 static u32 drop_counter = 0;
 const volatile struct {
   u32 max_num_cpus;
-} config = {
-    .max_num_cpus = MAX_CPUS,
-};
+  u32 nofile;
+} config = {.max_num_cpus = MAX_CPUS,
+            // https://www.kxxt.dev/blog/max-possible-value-of-rlimit-nofile/
+            .nofile = 2147483584};
 
 struct {
   __uint(type, BPF_MAP_TYPE_HASH);
@@ -190,6 +196,24 @@ static int read_fds(struct exec_event *event) {
     debug("Failed to read files->fdt! err: %d", ret);
     goto probe_failure_locked_rcu;
   }
+  struct file *fd_array;
+  ret = bpf_core_read(&fd_array, sizeof(void *), &fdt->fd);
+  if (ret < 0) {
+    debug("Failed to read fdt->fd! err: %d", ret);
+    goto probe_failure_locked_rcu;
+  }
+  unsigned int max_fds;
+  // max_fds is 128 or 256 for most processes that does not open too many files
+  ret = bpf_core_read(&max_fds, sizeof(max_fds), &fdt->max_fds);
+  if (ret < 0) {
+    debug("Failed to read fdt->max_fds! err: %d", ret);
+    goto probe_failure_locked_rcu;
+  }
+  debug("max_fds = %u", max_fds);
+  // open_fds is a fd set
+  // TODO: Iterate over open files
+  // Ref: https://github.com/torvalds/linux/blob/5189dafa4cf950e675f02ee04b577dfbbad0d9b1/fs/file.c#L279-L291
+  unsigned int fdset_size = max_fds / BITS_PER_LONG;
   bpf_rcu_read_unlock();
   return 0;
 probe_failure_locked_rcu:
