@@ -88,8 +88,5 @@ struct fd_event {
 
 union cache_item {
   struct string_event string;
-  struct {
-    long openset[FDSET_SIZE_MAX_IN_LONG];
-  } fd_tmp;
 };
 #endif
