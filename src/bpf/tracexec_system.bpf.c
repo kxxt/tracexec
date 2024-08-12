@@ -70,6 +70,7 @@ struct fdset_reader_context {
 static int read_strings(u32 index, struct reader_context *ctx);
 static int read_fds(struct exec_event *event);
 static int read_fds_impl(u32 index, struct fdset_reader_context *ctx);
+static int read_fd(unsigned int fd_num, struct file *fd_array);
 
 #ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
@@ -213,7 +214,8 @@ static int read_fds(struct exec_event *event) {
   }
   unsigned int max_fds;
   // max_fds is 128 or 256 for most processes that does not open too many files
-  // max_fds is a multiple of BITS_PER_LONG. TODO: Should we rely on this kernel implementation detail.
+  // max_fds is a multiple of BITS_PER_LONG. TODO: Should we rely on this kernel
+  // implementation detail.
   ret = bpf_core_read(&max_fds, sizeof(max_fds), &fdt->max_fds);
   if (ret < 0) {
     debug("Failed to read fdt->max_fds! err: %d", ret);
@@ -222,7 +224,8 @@ static int read_fds(struct exec_event *event) {
   bpf_rcu_read_unlock();
   // open_fds is a fd set, which is a bitmap
   // Copy it into cache first
-  // Ref: https://github.com/torvalds/linux/blob/5189dafa4cf950e675f02ee04b577dfbbad0d9b1/fs/file.c#L279-L291
+  // Ref:
+  // https://github.com/torvalds/linux/blob/5189dafa4cf950e675f02ee04b577dfbbad0d9b1/fs/file.c#L279-L291
   unsigned int fdset_size = max_fds / BITS_PER_LONG;
   fdset_size = min(fdset_size, FDSET_SIZE_MAX_IN_LONG);
   struct fdset_reader_context ctx = {
@@ -240,12 +243,57 @@ probe_failure:
   return -EFAULT;
 }
 
+// Ref:
+// https://elixir.bootlin.com/linux/v6.10.3/source/include/asm-generic/bitops/__ffs.h#L45
+static __always_inline unsigned int generic___ffs(unsigned long word) {
+  unsigned int num = 0;
+
+#if BITS_PER_LONG == 64
+  if ((word & 0xffffffff) == 0) {
+    num += 32;
+    word >>= 32;
+  }
+#endif
+  if ((word & 0xffff) == 0) {
+    num += 16;
+    word >>= 16;
+  }
+  if ((word & 0xff) == 0) {
+    num += 8;
+    word >>= 8;
+  }
+  if ((word & 0xf) == 0) {
+    num += 4;
+    word >>= 4;
+  }
+  if ((word & 0x3) == 0) {
+    num += 2;
+    word >>= 2;
+  }
+  if ((word & 0x1) == 0)
+    num += 1;
+  return num;
+}
+
+// Find the next set bit
+//   Returns the bit number for the next set bit
+//   If no bits are set, returns BITS_PER_LONG.
+// Ref:
+// https://github.com/torvalds/linux/blob/0b2811ba11b04353033237359c9d042eb0cdc1c1/include/linux/find.h#L44-L69
+static __always_inline unsigned int find_next_bit(long bitmap,
+                                                  unsigned int offset) {
+  if (offset > BITS_PER_LONG)
+    return BITS_PER_LONG;
+  bitmap &= GENMASK(BITS_PER_LONG - 1, offset);
+  return bitmap ? generic___ffs(bitmap) : BITS_PER_LONG;
+}
+
 // A helper to read fdset into cache,
 // read open file descriptors and send info into ringbuf
 static int read_fds_impl(u32 index, struct fdset_reader_context *ctx) {
   struct exec_event *event;
   if (ctx == NULL || (event = ctx->event) == NULL)
-    return 1;
+    return 1; // unreachable
   struct file *fd_array = ctx->fd_array;
   // 64 bits of a larger fdset.
   long *pfdset = &ctx->fdset[index];
@@ -258,6 +306,25 @@ static int read_fds_impl(u32 index, struct fdset_reader_context *ctx) {
     return 1;
   }
   debug("fdset %u/%u = %lx", index, ctx->size, fdset);
+  // if it's all zeros, let's skip it:
+  if (fdset == 0)
+    return 0;
+  unsigned int next_bit = BITS_PER_LONG;
+  next_bit = find_next_bit(fdset, 0);
+#pragma unroll
+  for (int i = 0; i < BITS_PER_LONG; i++) {
+    if (next_bit == BITS_PER_LONG)
+      break;
+    unsigned int fdnum = next_bit + BITS_PER_LONG * index;
+    debug("open fd: %u", fdnum);
+    read_fd(fdnum, fd_array);
+    next_bit = find_next_bit(fdset, next_bit + 1);
+  }
+  return 0;
+}
+
+static int read_fd(unsigned int fd_num, struct file *fd_array) {
+  // TODO
   return 0;
 }
 

@@ -20,6 +20,14 @@ extern void bpf_rcu_read_unlock(void) __ksym;
        __typeof__ (b) _b = (b); \
      _a > _b ? _b : _a; })
 
+// Ref: https://elixir.bootlin.com/linux/v6.10.3/source/include/uapi/linux/bits.h#L7
+#define __AC(X,Y)	(X##Y)
+#define _AC(X,Y)	__AC(X,Y)
+#define _UL(x)		(_AC(x, UL))
+#define GENMASK(h, l) \
+        (((~_UL(0)) - (_UL(1) << (l)) + 1) & \
+         (~_UL(0) >> (BITS_PER_LONG - 1 - (h))))
+
 /* BPF cannot access this struct */
 struct forbidden_common_args {
   u16 type;
