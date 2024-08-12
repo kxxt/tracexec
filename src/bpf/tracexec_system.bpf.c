@@ -70,7 +70,8 @@ struct fdset_reader_context {
 static int read_strings(u32 index, struct reader_context *ctx);
 static int read_fds(struct exec_event *event);
 static int read_fds_impl(u32 index, struct fdset_reader_context *ctx);
-static int read_fd(unsigned int fd_num, struct file *fd_array);
+static int read_fd(unsigned int fd_num, struct file *fd_array,
+                   struct exec_event *event);
 
 #ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
@@ -316,15 +317,45 @@ static int read_fds_impl(u32 index, struct fdset_reader_context *ctx) {
     if (next_bit == BITS_PER_LONG)
       break;
     unsigned int fdnum = next_bit + BITS_PER_LONG * index;
-    debug("open fd: %u", fdnum);
-    read_fd(fdnum, fd_array);
+    read_fd(fdnum, fd_array, event);
     next_bit = find_next_bit(fdset, next_bit + 1);
   }
   return 0;
 }
 
-static int read_fd(unsigned int fd_num, struct file *fd_array) {
-  // TODO
+// Gather information about a single fd and send it back to userspace
+static int read_fd(unsigned int fd_num, struct file *fd_array,
+                   struct exec_event *event) {
+  if (event == NULL)
+    return 1;
+  u32 entry_index = bpf_get_smp_processor_id();
+  if (entry_index > config.max_num_cpus) {
+    debug("Too many cores!");
+    return 1;
+  }
+  struct fd_event *entry = bpf_map_lookup_elem(&cache, &entry_index);
+  if (entry == NULL) {
+    debug("This should not happen!");
+    return 1;
+  }
+  entry->header.type = FD_EVENT;
+  entry->header.pid = event->header.pid;
+  entry->header.eid = event->header.eid;
+
+  struct file *file = &fd_array[fd_num];
+  struct path *path;
+  int ret = bpf_core_read(&path, sizeof(void *), &file->f_path);
+  if (ret < 0) {
+    debug("failed to read file->f_path: %d", ret);
+    entry->path[0] = '\0';
+    goto out;
+  }
+  // bpf_d_path is not available
+  // ret = bpf_d_path(path, (char *)entry->path, PATH_MAX);
+  entry->path[0] = '\0';
+  debug("open fd: %u -> %s", fd_num, entry->path);
+out:
+  bpf_ringbuf_output(&events, entry, sizeof(struct fd_event), 0);
   return 0;
 }
 
@@ -370,8 +401,11 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   } else if (bytes_read == sizeof(entry->data)) {
     entry->header.flags |= POSSIBLE_TRUNCATION;
   }
-  bpf_ringbuf_output(&events, entry, sizeof(struct event_header) + bytes_read,
-                     0);
+  ret = bpf_ringbuf_output(&events, entry,
+                           sizeof(struct event_header) + bytes_read, 0);
+  if (ret < 0) {
+    event->header.flags |= OUTPUT_FAILURE;
+  }
   event->count[ctx->index] = index + 1;
   if (index == ARGC_MAX - 1) {
     // We hit ARGC_MAX
