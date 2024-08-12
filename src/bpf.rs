@@ -95,7 +95,7 @@ pub fn experiment() -> color_eyre::Result<()> {
         strings.push((cached, header.flags));
         drop(lock_guard);
       }
-      event_type::FD_EVENT => todo!(),
+      event_type::FD_EVENT => {},
     }
     0
   })?;
