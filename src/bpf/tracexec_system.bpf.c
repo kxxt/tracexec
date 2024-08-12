@@ -388,7 +388,13 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
     entry->header.flags |= STR_READ_FAILURE;
     entry->path[0] = '\0';
   }
-  debug("open fd: %u -> %s", fd_num, entry->path);
+  entry->flags = 0;
+  ret = bpf_core_read(&entry->flags, sizeof(entry->flags), &file->f_flags);
+  if (ret < 0) {
+    debug("failed to read file->f_flags: %d", ret);
+    entry->flags |= FLAGS_READ_FAILURE;
+  }
+  debug("open fd: %u -> %s with flags %u", fd_num, entry->path, entry->flags);
   bpf_ringbuf_output(&events, entry, sizeof(struct fd_event), 0);
   return 0;
 ptr_err:
