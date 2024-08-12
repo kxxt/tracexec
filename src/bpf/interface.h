@@ -48,6 +48,8 @@ enum exec_event_flags {
   FDS_PROBE_FAILURE = 128,
   // Failed to send event into ringbuf
   OUTPUT_FAILURE = 256,
+  // Failed to read flags
+  FLAGS_READ_FAILURE = 512,
 };
 
 enum event_type {
@@ -85,6 +87,7 @@ struct string_event {
 
 struct fd_event {
   struct event_header header;
+  unsigned int flags;
   u8 path[PATH_MAX];
 };
 
