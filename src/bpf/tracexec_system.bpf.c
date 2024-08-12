@@ -396,11 +396,11 @@ static int read_strings(u32 index, struct reader_context *ctx) {
     entry->data[0] = '\0';
     bytes_read = 1;
     event->count[ctx->index] = index + 1;
-    // continue
-    return 0;
+    goto out;
   } else if (bytes_read == sizeof(entry->data)) {
     entry->header.flags |= POSSIBLE_TRUNCATION;
   }
+out:
   ret = bpf_ringbuf_output(&events, entry,
                            sizeof(struct event_header) + bytes_read, 0);
   if (ret < 0) {
