@@ -3,6 +3,7 @@ use std::{
   collections::HashMap,
   ffi::CStr,
   mem::MaybeUninit,
+  os::fd::RawFd,
   sync::{Arc, OnceLock, RwLock},
   time::Duration,
 };
@@ -14,10 +15,16 @@ use libbpf_rs::{
   skel::{OpenSkel, Skel, SkelBuilder},
   RingBufferBuilder,
 };
-use nix::libc;
-use skel::types::{event_header, event_type, exec_event};
+use nix::{
+  fcntl::OFlag,
+  libc::{self, c_int},
+};
+use skel::types::{event_header, event_type, exec_event, fd_event};
 
-use crate::cache::StringCache;
+use crate::{
+  cache::StringCache,
+  proc::{FileDescriptorInfo, FileDescriptorInfoCollection},
+};
 
 pub mod skel {
   include!(concat!(
@@ -53,8 +60,13 @@ pub fn experiment() -> color_eyre::Result<()> {
   let mut builder = RingBufferBuilder::new();
   let strings: Arc<RwLock<HashMap<u64, Vec<(ArcStr, u32)>>>> =
     Arc::new(RwLock::new(HashMap::new()));
+  let fdinfo_map: Arc<RwLock<HashMap<u64, FileDescriptorInfoCollection>>> =
+    Arc::new(RwLock::new(HashMap::new()));
   builder.add(&events, move |data| {
-    assert!(data.len() > size_of::<event_header>(), "data too short: {data:?}");
+    assert!(
+      data.len() > size_of::<event_header>(),
+      "data too short: {data:?}"
+    );
     let header: event_header = unsafe { std::ptr::read(data.as_ptr() as *const _) };
     match unsafe { header.r#type.assume_init() } {
       event_type::SYSENTER_EVENT => unreachable!(),
@@ -83,19 +95,31 @@ pub fn experiment() -> color_eyre::Result<()> {
       }
       event_type::STRING_EVENT => {
         let header_len = size_of::<event_header>();
-        let header: event_header = unsafe { std::ptr::read(data.as_ptr() as *const _) };
-        let string = String::from_utf8_lossy(
-          CStr::from_bytes_with_nul(&data[header_len..])
-            .unwrap()
-            .to_bytes(),
-        );
+        let string = utf8_lossy_cow_from_bytes_with_nul(&data[header_len..]);
         let cached = cached_cow(string);
         let mut lock_guard = strings.write().unwrap();
         let strings = lock_guard.entry(header.eid).or_default();
         strings.push((cached, header.flags));
         drop(lock_guard);
       }
-      event_type::FD_EVENT => {},
+      event_type::FD_EVENT => {
+        assert_eq!(data.len(), size_of::<fd_event>());
+        let event: fd_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+        let fdinfo = FileDescriptorInfo {
+          fd: event.fd as RawFd,
+          path: cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.path)),
+          pos: 0, // TODO
+          flags: OFlag::from_bits_retain(event.flags as c_int),
+          mnt_id: 0,                                    // TODO
+          ino: 0,                                       // TODO
+          mnt: arcstr::literal!("[tracexec: unknown]"), // TODO
+          extra: vec![arcstr::literal!("")],            // TODO
+        };
+        let mut lock_guard = fdinfo_map.write().unwrap();
+        let fdc = lock_guard.entry(header.eid).or_default();
+        fdc.fdinfo.insert(event.fd as RawFd, fdinfo);
+        drop(lock_guard);
+      }
     }
     0
   })?;
@@ -103,6 +127,10 @@ pub fn experiment() -> color_eyre::Result<()> {
   loop {
     rb.poll(Duration::from_millis(1000))?;
   }
+}
+
+fn utf8_lossy_cow_from_bytes_with_nul(data: &[u8]) -> Cow<str> {
+  String::from_utf8_lossy(CStr::from_bytes_until_nul(data).unwrap().to_bytes())
 }
 
 fn cached_cow(cow: Cow<str>) -> ArcStr {

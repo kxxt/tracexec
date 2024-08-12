@@ -362,6 +362,7 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
   entry->header.type = FD_EVENT;
   entry->header.pid = event->header.pid;
   entry->header.eid = event->header.eid;
+  entry->fd = fd_num;
   // read f_path
   struct file *file;
   int ret = bpf_core_read(&file, sizeof(void *), &fd_array[fd_num]);
