@@ -292,7 +292,7 @@ static __always_inline unsigned int generic___ffs(unsigned long word) {
 // https://github.com/torvalds/linux/blob/0b2811ba11b04353033237359c9d042eb0cdc1c1/include/linux/find.h#L44-L69
 static __always_inline unsigned int find_next_bit(long bitmap,
                                                   unsigned int offset) {
-  if (offset > BITS_PER_LONG)
+  if (offset >= BITS_PER_LONG)
     return BITS_PER_LONG;
   bitmap &= GENMASK(BITS_PER_LONG - 1, offset);
   return bitmap ? generic___ffs(bitmap) : BITS_PER_LONG;
