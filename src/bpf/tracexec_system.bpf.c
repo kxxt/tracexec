@@ -67,11 +67,20 @@ struct fdset_reader_context {
   unsigned int size;
 };
 
+struct fdset_word_reader_context {
+  struct exec_event *event;
+  struct file *fd_array;
+  long fdset;
+  unsigned int next_bit;
+  unsigned int word_index;
+};
+
 static int read_strings(u32 index, struct reader_context *ctx);
 static int read_fds(struct exec_event *event);
 static int read_fds_impl(u32 index, struct fdset_reader_context *ctx);
-static int read_fd(unsigned int fd_num, struct file *fd_array,
-                   struct exec_event *event);
+static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx);
+static int _read_fd(unsigned int fd_num, struct file *fd_array,
+                    struct exec_event *event);
 
 #ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
@@ -310,22 +319,32 @@ static int read_fds_impl(u32 index, struct fdset_reader_context *ctx) {
   // if it's all zeros, let's skip it:
   if (fdset == 0)
     return 0;
-  unsigned int next_bit = BITS_PER_LONG;
-  next_bit = find_next_bit(fdset, 0);
-// #pragma unroll
-//   for (int i = 0; i < BITS_PER_LONG; i++) {
-//     if (next_bit == BITS_PER_LONG)
-//       break;
-//     unsigned int fdnum = next_bit + BITS_PER_LONG * index;
-//     read_fd(fdnum, fd_array, event);
-//     next_bit = find_next_bit(fdset, next_bit + 1);
-//   }
+  struct fdset_word_reader_context subctx = {
+      .fdset = fdset,
+      .event = event,
+      .fd_array = fd_array,
+      .next_bit = BITS_PER_LONG,
+      .word_index = index,
+  };
+  subctx.next_bit = find_next_bit(fdset, 0);
+  bpf_loop(BITS_PER_LONG, read_fdset_word, &subctx, 0);
+  return 0;
+}
+
+static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx) {
+  if (ctx == NULL)
+    return 1;
+  if (ctx->next_bit == BITS_PER_LONG)
+    return 1;
+  unsigned int fdnum = ctx->next_bit + BITS_PER_LONG * ctx->word_index;
+  _read_fd(fdnum, ctx->fd_array, ctx->event);
+  ctx->next_bit = find_next_bit(ctx->fdset, ctx->next_bit + 1);
   return 0;
 }
 
 // Gather information about a single fd and send it back to userspace
-static int read_fd(unsigned int fd_num, struct file *fd_array,
-                   struct exec_event *event) {
+static int _read_fd(unsigned int fd_num, struct file *fd_array,
+                    struct exec_event *event) {
   if (event == NULL)
     return 1;
   u32 entry_index = bpf_get_smp_processor_id();
@@ -395,12 +414,13 @@ static int read_strings(u32 index, struct reader_context *ctx) {
     // Replace such args with '\0'
     entry->data[0] = '\0';
     bytes_read = 1;
-    event->count[ctx->index] = index + 1;
-    goto out;
+  } else if (bytes_read == 0) {
+    debug("read arg %d(addr:%x) = %ld", index, argp, bytes_read);
+    entry->data[0] = '\0';
+    bytes_read = 1;
   } else if (bytes_read == sizeof(entry->data)) {
     entry->header.flags |= POSSIBLE_TRUNCATION;
   }
-out:
   ret = bpf_ringbuf_output(&events, entry,
                            sizeof(struct event_header) + bytes_read, 0);
   if (ret < 0) {
