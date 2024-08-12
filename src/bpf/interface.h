@@ -75,6 +75,7 @@ struct exec_event {
   s64 ret;
   // argc and env count
   u32 count[2];
+  u32 fd_count;
   u8 base_filename[PATH_MAX];
   u8 filename[PATH_MAX];
   u8 comm[TASK_COMM_LEN];
