@@ -312,14 +312,14 @@ static int read_fds_impl(u32 index, struct fdset_reader_context *ctx) {
     return 0;
   unsigned int next_bit = BITS_PER_LONG;
   next_bit = find_next_bit(fdset, 0);
-#pragma unroll
-  for (int i = 0; i < BITS_PER_LONG; i++) {
-    if (next_bit == BITS_PER_LONG)
-      break;
-    unsigned int fdnum = next_bit + BITS_PER_LONG * index;
-    read_fd(fdnum, fd_array, event);
-    next_bit = find_next_bit(fdset, next_bit + 1);
-  }
+// #pragma unroll
+//   for (int i = 0; i < BITS_PER_LONG; i++) {
+//     if (next_bit == BITS_PER_LONG)
+//       break;
+//     unsigned int fdnum = next_bit + BITS_PER_LONG * index;
+//     read_fd(fdnum, fd_array, event);
+//     next_bit = find_next_bit(fdset, next_bit + 1);
+//   }
   return 0;
 }
 
