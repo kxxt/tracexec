@@ -62,14 +62,14 @@ struct reader_context {
 
 struct fdset_reader_context {
   struct exec_event *event;
-  struct file *fd_array;
+  struct file **fd_array;
   long *fdset;
   unsigned int size;
 };
 
 struct fdset_word_reader_context {
   struct exec_event *event;
-  struct file *fd_array;
+  struct file **fd_array;
   long fdset;
   unsigned int next_bit;
   unsigned int word_index;
@@ -79,7 +79,7 @@ static int read_strings(u32 index, struct reader_context *ctx);
 static int read_fds(struct exec_event *event);
 static int read_fds_impl(u32 index, struct fdset_reader_context *ctx);
 static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx);
-static int _read_fd(unsigned int fd_num, struct file *fd_array,
+static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event);
 
 #ifdef EBPF_DEBUG
@@ -210,7 +210,7 @@ static int read_fds(struct exec_event *event) {
     debug("Failed to read files->fdt! err: %d", ret);
     goto probe_failure_locked_rcu;
   }
-  struct file *fd_array;
+  struct file **fd_array;
   ret = bpf_core_read(&fd_array, sizeof(void *), &fdt->fd);
   if (ret < 0) {
     debug("Failed to read fdt->fd! err: %d", ret);
@@ -304,7 +304,7 @@ static int read_fds_impl(u32 index, struct fdset_reader_context *ctx) {
   struct exec_event *event;
   if (ctx == NULL || (event = ctx->event) == NULL)
     return 1; // unreachable
-  struct file *fd_array = ctx->fd_array;
+  struct file **fd_array = ctx->fd_array;
   // 64 bits of a larger fdset.
   long *pfdset = &ctx->fdset[index];
   long fdset;
@@ -343,7 +343,7 @@ static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx) {
 }
 
 // Gather information about a single fd and send it back to userspace
-static int _read_fd(unsigned int fd_num, struct file *fd_array,
+static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event) {
   if (event == NULL)
     return 1;
@@ -360,22 +360,42 @@ static int _read_fd(unsigned int fd_num, struct file *fd_array,
   entry->header.type = FD_EVENT;
   entry->header.pid = event->header.pid;
   entry->header.eid = event->header.eid;
-
-  struct file *file = &fd_array[fd_num];
-  struct path *path;
-  int ret = bpf_core_read(&path, sizeof(void *), &file->f_path);
+  // read f_path
+  struct file *file;
+  int ret = bpf_core_read(&file, sizeof(void *), &fd_array[fd_num]);
   if (ret < 0) {
-    debug("failed to read file->f_path: %d", ret);
-    entry->path[0] = '\0';
-    goto out;
+    debug("failed to read file struct: %d", ret);
+    goto ptr_err;
+  }
+  struct path *path;
+  struct dentry *dentry;
+  ret = bpf_core_read(&dentry, sizeof(void *), &file->f_path.dentry);
+  if (ret < 0) {
+    debug("failed to read file->f_path.dentry: %d", ret);
+    goto ptr_err;
   }
   // bpf_d_path is not available
-  // ret = bpf_d_path(path, (char *)entry->path, PATH_MAX);
-  entry->path[0] = '\0';
+  // read name
+  unsigned char *name;
+  ret = bpf_core_read(&name, sizeof(void *), &dentry->d_name.name);
+  if (ret < 0) {
+    debug("failed to read dentry->d_name.name: %d", ret);
+    goto ptr_err;
+  }
+  ret = bpf_probe_read_kernel_str(entry->path, PATH_MAX, name);
+  if (ret < 0) {
+    debug("failed to read name string: %d", ret);
+    entry->header.flags |= STR_READ_FAILURE;
+    entry->path[0] = '\0';
+  }
   debug("open fd: %u -> %s", fd_num, entry->path);
-out:
   bpf_ringbuf_output(&events, entry, sizeof(struct fd_event), 0);
   return 0;
+ptr_err:
+  entry->header.flags |= PTR_READ_FAILURE;
+  entry->path[0] = '\0';
+  bpf_ringbuf_output(&events, entry, sizeof(struct fd_event), 0);
+  return 1;
 }
 
 static int read_strings(u32 index, struct reader_context *ctx) {
