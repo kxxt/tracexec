@@ -46,6 +46,8 @@ enum exec_event_flags {
   STR_READ_FAILURE = 64,
   // Failed to get information about fds
   FDS_PROBE_FAILURE = 128,
+  // Failed to send event into ringbuf
+  OUTPUT_FAILURE = 256,
 };
 
 enum event_type {
@@ -88,5 +90,6 @@ struct fd_event {
 
 union cache_item {
   struct string_event string;
+  struct fd_event fd;
 };
 #endif
