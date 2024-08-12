@@ -113,6 +113,7 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   event->header.pid = pid;
   event->header.type = SYSEXIT_EVENT;
   event->header.eid = __sync_fetch_and_add(&event_counter, 1);
+  event->count[0] = event->count[1] = event->fd_count = 0;
   // Read comm
   if (0 != bpf_get_current_comm(event->comm, sizeof(event->comm))) {
     // Failed to read comm
@@ -347,6 +348,7 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event) {
   if (event == NULL)
     return 1;
+  event->fd_count++;
   u32 entry_index = bpf_get_smp_processor_id();
   if (entry_index > config.max_num_cpus) {
     debug("Too many cores!");
