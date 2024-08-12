@@ -89,6 +89,7 @@ struct string_event {
 struct fd_event {
   struct event_header header;
   unsigned int flags;
+  unsigned int fd;
   u8 path[PATH_MAX];
 };
 
