@@ -435,6 +435,7 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   entry->header.type = STRING_EVENT;
   entry->header.pid = event->header.pid;
   entry->header.eid = event->header.eid;
+  entry->header.id = index + ctx->index * event->count[0];
   s64 bytes_read =
       bpf_probe_read_user_str(entry->data, sizeof(entry->data), argp);
   if (bytes_read < 0) {

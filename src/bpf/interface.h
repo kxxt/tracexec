@@ -50,6 +50,8 @@ enum exec_event_flags {
   OUTPUT_FAILURE = 256,
   // Failed to read flags
   FLAGS_READ_FAILURE = 512,
+  // A marker for dropped events. This flag is only set in userspace.
+  USERSPACE_DROP_MARKER = 1024,
 };
 
 enum event_type {
@@ -64,6 +66,8 @@ struct event_header {
   u32 flags;
   // Globally unique counter of events
   u64 eid;
+  // Local counter to detect event drop
+  u32 id;
   enum event_type type;
 };
 

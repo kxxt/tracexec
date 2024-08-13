@@ -2,6 +2,7 @@ use std::{
   borrow::Cow,
   collections::HashMap,
   ffi::CStr,
+  iter::repeat,
   mem::MaybeUninit,
   os::fd::RawFd,
   sync::{Arc, OnceLock, RwLock},
@@ -10,10 +11,11 @@ use std::{
 
 use arcstr::ArcStr;
 use color_eyre::eyre::bail;
+use interface::exec_event_flags_USERSPACE_DROP_MARKER;
 use libbpf_rs::{
   num_possible_cpus,
   skel::{OpenSkel, Skel, SkelBuilder},
-  RingBufferBuilder,
+  AsRawLibbpf, RingBufferBuilder,
 };
 use nix::{
   fcntl::OFlag,
@@ -33,6 +35,13 @@ pub mod skel {
   ));
 }
 
+pub mod interface {
+  include!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/src/bpf/interface.rs"
+  ));
+}
+
 fn bump_memlock_rlimit() -> color_eyre::Result<()> {
   let rlimit = libc::rlimit {
     rlim_cur: 128 << 20,
@@ -46,7 +55,7 @@ fn bump_memlock_rlimit() -> color_eyre::Result<()> {
   Ok(())
 }
 
-pub fn experiment() -> color_eyre::Result<()> {
+pub fn run() -> color_eyre::Result<()> {
   let skel_builder = skel::TracexecSystemSkelBuilder::default();
   bump_memlock_rlimit()?;
   let mut obj = MaybeUninit::uninit();
@@ -99,6 +108,14 @@ pub fn experiment() -> color_eyre::Result<()> {
         let cached = cached_cow(string);
         let mut lock_guard = strings.write().unwrap();
         let strings = lock_guard.entry(header.eid).or_default();
+        // Catch event drop
+        if strings.len() != header.id as usize {
+          // Insert placeholders for dropped events
+          let placeholder = arcstr::literal!("[dropped from ringbuf]");
+          let dropped_event = (placeholder, exec_event_flags_USERSPACE_DROP_MARKER);
+          strings.extend(repeat(dropped_event).take(header.id as usize - strings.len()));
+          debug_assert_eq!(strings.len(), header.id as usize);
+        }
         strings.push((cached, header.flags));
         drop(lock_guard);
       }

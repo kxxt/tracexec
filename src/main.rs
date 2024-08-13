@@ -339,7 +339,7 @@ async fn main() -> color_eyre::Result<()> {
       Cli::generate_completions(shell);
     }
     CliCommand::Ebpf {} => {
-      bpf::experiment()?;
+      bpf::run()?;
     }
   }
   Ok(())
