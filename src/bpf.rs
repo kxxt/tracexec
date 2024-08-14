@@ -1,10 +1,11 @@
 use std::{
   borrow::Cow,
   collections::HashMap,
-  ffi::CStr,
+  ffi::{CStr, CString},
+  io::stdin,
   iter::repeat,
   mem::MaybeUninit,
-  os::fd::RawFd,
+  os::{fd::RawFd, unix::process::CommandExt},
   sync::{Arc, OnceLock, RwLock},
   time::Duration,
 };
@@ -15,17 +16,28 @@ use interface::exec_event_flags_USERSPACE_DROP_MARKER;
 use libbpf_rs::{
   num_possible_cpus,
   skel::{OpenSkel, Skel, SkelBuilder},
-  AsRawLibbpf, RingBufferBuilder,
+  RingBufferBuilder,
 };
 use nix::{
+  errno::Errno,
   fcntl::OFlag,
   libc::{self, c_int},
+  sys::{
+    signal::{kill, raise, Signal},
+    wait::{waitpid, WaitPidFlag, WaitStatus},
+  },
+  unistd::{
+    fork, getpid, initgroups, setpgid, setresgid, setresuid, tcsetpgrp, ForkResult, Gid, Uid, User,
+  },
 };
 use skel::types::{event_header, event_type, exec_event, fd_event};
 
 use crate::{
   cache::StringCache,
+  cmdbuilder::CommandBuilder,
+  printer::PrinterOut,
   proc::{FileDescriptorInfo, FileDescriptorInfoCollection},
+  pty,
 };
 
 pub mod skel {
@@ -36,10 +48,7 @@ pub mod skel {
 }
 
 pub mod interface {
-  include!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/src/bpf/interface.rs"
-  ));
+  include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bpf/interface.rs"));
 }
 
 fn bump_memlock_rlimit() -> color_eyre::Result<()> {
@@ -55,7 +64,11 @@ fn bump_memlock_rlimit() -> color_eyre::Result<()> {
   Ok(())
 }
 
-pub fn run() -> color_eyre::Result<()> {
+pub fn run(
+  output: Box<PrinterOut>,
+  args: Vec<String>,
+  user: Option<User>,
+) -> color_eyre::Result<()> {
   let skel_builder = skel::TracexecSystemSkelBuilder::default();
   bump_memlock_rlimit()?;
   let mut obj = MaybeUninit::uninit();
@@ -63,8 +76,76 @@ pub fn run() -> color_eyre::Result<()> {
   let ncpu = num_possible_cpus()?.try_into().expect("Too many cores!");
   open_skel.maps.rodata_data.config.max_num_cpus = ncpu;
   open_skel.maps.cache.set_max_entries(ncpu)?;
-  let mut skel = open_skel.load()?;
-  skel.attach()?;
+  let skel = if !args.is_empty() {
+    let mut cmd = CommandBuilder::new(&args[0]);
+    cmd.args(args.iter().skip(1));
+    cmd.cwd(std::env::current_dir()?);
+    let mut cmd = cmd.as_command()?;
+    match unsafe { fork()? } {
+      ForkResult::Parent { child } => {
+        match tcsetpgrp(stdin(), child) {
+          Ok(_) => {}
+          Err(Errno::ENOTTY) => {
+            eprintln!("tcsetpgrp failed: ENOTTY");
+          }
+          r => r?,
+        }
+        open_skel.maps.rodata_data.config.follow_fork = MaybeUninit::new(true);
+        open_skel.maps.rodata_data.config.tracee_pid = child.as_raw();
+        let mut skel = open_skel.load()?;
+        skel.attach()?;
+        match waitpid(child, Some(WaitPidFlag::WSTOPPED))? {
+          terminated @ WaitStatus::Exited(_, _) | terminated @ WaitStatus::Signaled(_, _, _) => {
+            panic!("Child exited abnormally before tracing is started: status: {terminated:?}");
+          }
+          WaitStatus::Stopped(_, _) => kill(child, Signal::SIGCONT)?,
+          _ => unreachable!("Invalid wait status!"),
+        }
+        skel
+      }
+      ForkResult::Child => {
+        let me = getpid();
+        setpgid(me, me)?;
+
+        // Wait for eBPF program to load
+        raise(Signal::SIGSTOP)?;
+
+        if let Some(user) = &user {
+          initgroups(&CString::new(user.name.as_str())?[..], user.gid)?;
+          setresgid(user.gid, user.gid, Gid::from_raw(u32::MAX))?;
+          setresuid(user.uid, user.uid, Uid::from_raw(u32::MAX))?;
+        }
+
+        // Clean up a few things before we exec the program
+        // Clear out any potentially problematic signal
+        // dispositions that we might have inherited
+        for signo in &[
+          libc::SIGCHLD,
+          libc::SIGHUP,
+          libc::SIGINT,
+          libc::SIGQUIT,
+          libc::SIGTERM,
+          libc::SIGALRM,
+        ] {
+          unsafe {
+            libc::signal(*signo, libc::SIG_DFL);
+          }
+        }
+        unsafe {
+          let empty_set: libc::sigset_t = std::mem::zeroed();
+          libc::sigprocmask(libc::SIG_SETMASK, &empty_set, std::ptr::null_mut());
+        }
+
+        pty::close_random_fds();
+
+        return Err(cmd.exec().into());
+      }
+    }
+  } else {
+    let mut skel = open_skel.load()?;
+    skel.attach()?;
+    skel
+  };
   let events = skel.maps.events;
   let mut builder = RingBufferBuilder::new();
   let strings: Arc<RwLock<HashMap<u64, Vec<(ArcStr, u32)>>>> =
