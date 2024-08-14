@@ -13,9 +13,15 @@ static u32 drop_counter = 0;
 const volatile struct {
   u32 max_num_cpus;
   u32 nofile;
-} config = {.max_num_cpus = MAX_CPUS,
-            // https://www.kxxt.dev/blog/max-possible-value-of-rlimit-nofile/
-            .nofile = 2147483584};
+  bool follow_fork;
+  pid_t tracee_pid;
+} config = {
+    .max_num_cpus = MAX_CPUS,
+    // https://www.kxxt.dev/blog/max-possible-value-of-rlimit-nofile/
+    .nofile = 2147483584,
+    .follow_fork = false,
+    .tracee_pid = 0,
+};
 
 struct {
   __uint(type, BPF_MAP_TYPE_HASH);
@@ -23,6 +29,16 @@ struct {
   __type(key, pid_t);
   __type(value, struct exec_event);
 } execs SEC(".maps");
+
+struct {
+  __uint(type, BPF_MAP_TYPE_HASH);
+  // 2^22 = 4194304, max number of pid on x86_64
+  // Some pids cannot be used (like pid 0)
+  __uint(max_entries, 4194303);
+  __type(key, pid_t);
+  // The value is useless. We just use this map as a hash set.
+  __type(value, char);
+} tgid_closure SEC(".maps");
 
 // A staging area for writing variable length strings
 // I cannot really use a percpu array due to size limit:
@@ -81,12 +97,29 @@ static int read_fds_impl(u32 index, struct fdset_reader_context *ctx);
 static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx);
 static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event);
+static int add_tgid_to_closure(pid_t tgid);
 
 #ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
 #else
 #define debug(...)
 #endif
+
+// TODO: namespace
+// task->nsproxy->pid_ns_for_children->last_pid
+
+bool should_trace(pid_t old_tgid) {
+  if (!config.follow_fork)
+    return true;
+  // TODO: config.tracee_pid might be in a different namespace. How could we
+  // handle it?
+  if (old_tgid == config.tracee_pid)
+    return true;
+  void *ptr = bpf_map_lookup_elem(&tgid_closure, &old_tgid);
+  return ptr != NULL;
+}
+
+// TODO: follow-forks: trace do_fork
 
 int trace_exec_common(struct sys_enter_exec_args *ctx) {
   // Collect UID/GID information
@@ -99,6 +132,7 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   tmp = bpf_get_current_pid_tgid();
   pid = (pid_t)tmp;
   tgid = tmp >> 32;
+  // debug("sysenter: pid=%d, tgid=%d, tracee=%d", pid, tgid, config.tracee_pid);
   // Create event
   if (bpf_map_update_elem(&execs, &pid, &empty_event, BPF_NOEXIST)) {
     // Cannot allocate new event, map is full!
@@ -111,6 +145,12 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
     return 0;
   // Initialize event
   event->header.pid = pid;
+  event->tgid = tgid;
+  // Initialize the event even if we don't really trace it.
+  // This way we have access to old tgid on exec sysexit so that
+  // we are also able to check it on exec sysexit
+  if (!should_trace(tgid))
+    return 0;
   event->header.type = SYSEXIT_EVENT;
   event->header.eid = __sync_fetch_and_add(&event_counter, 1);
   event->count[0] = event->count[1] = event->fd_count = 0;
@@ -148,6 +188,29 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   return 0;
 }
 
+SEC("tp_btf/sched_process_fork")
+int trace_fork(u64 *ctx) {
+  if (!config.follow_fork)
+    return 0;
+  struct task_struct *parent = (struct task_struct *)ctx[0];
+  struct task_struct *child = (struct task_struct *)ctx[1];
+  pid_t pid, parent_tgid;
+  int ret = bpf_core_read(&pid, sizeof(pid), &child->pid);
+  if (ret < 0) {
+    debug("Failed to read child pid of fork: %d", ret);
+    return -EFAULT;
+  }
+  ret = bpf_core_read(&parent_tgid, sizeof(pid), &parent->tgid);
+  if (ret < 0) {
+    debug("Failed to read parent tgid of fork: %d", ret);
+    return -EFAULT;
+  }
+  if (should_trace(parent_tgid)) {
+    add_tgid_to_closure(pid);
+  }
+  return 0;
+}
+
 SEC("tracepoint/syscalls/sys_enter_execve")
 int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
   struct task_struct *task;
@@ -162,12 +225,23 @@ int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
 
 SEC("tracepoint/syscalls/sys_exit_execve")
 int tp_sys_exit_execve(struct sys_exit_exec_args *ctx) {
-  pid_t pid = (pid_t)bpf_get_current_pid_tgid();
+  pid_t pid, tgid;
+  u64 tmp = bpf_get_current_pid_tgid();
+  pid = (pid_t)tmp;
+  tgid = tmp >> 32;
+  // debug("sysexit: pid=%d, tgid=%d, ret=%d", pid, tgid, ctx->ret);
   struct exec_event *event;
   event = bpf_map_lookup_elem(&execs, &pid);
   if (event == NULL) {
     debug("Failed to lookup exec_event on sysexit");
     drop_counter += 1;
+    return 0;
+  }
+  // Use the old tgid. If the exec is successful, tgid is already set to pid.
+  if (!should_trace(event->tgid)) {
+    if (0 != bpf_map_delete_elem(&execs, &pid)) {
+      debug("Failed to del element from execs map");
+    }
     return 0;
   }
   event->ret = ctx->ret;
@@ -462,6 +536,21 @@ static int read_strings(u32 index, struct reader_context *ctx) {
     // We are not going to iterate further.
     // Note that TOO_MANY_ITEMS flag is set on event instead of string entry.
     event->header.flags |= TOO_MANY_ITEMS;
+  }
+  return 0;
+}
+
+static int add_tgid_to_closure(pid_t tgid) {
+  char dummy = 0;
+  int ret = bpf_map_update_elem(&tgid_closure, &tgid, &dummy, 0);
+  if (ret < 0) {
+    // Failed to insert to tgid closure. This shouldn't happen on a standard
+    // kernel.
+    debug("Failed to insert %d into tgid_closure, this shouldn't happen on a "
+          "standard kernel: %d",
+          tgid, ret);
+    // TODO: set a flag to notify user space
+    return ret;
   }
   return 0;
 }

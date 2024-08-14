@@ -20,6 +20,7 @@ use super::{
 
 #[derive(Args, Debug, Default, Clone)]
 pub struct ModifierArgs {
+  // TODO: move it to a PtraceArgs struct
   #[cfg(feature = "seccomp-bpf")]
   #[clap(long, help = "Controls whether to enable seccomp-bpf optimization, which greatly improves performance", default_value_t = SeccompBpf::Auto)]
   pub seccomp_bpf: SeccompBpf,

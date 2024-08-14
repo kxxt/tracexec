@@ -113,7 +113,15 @@ pub enum CliCommand {
   },
   #[clap(about = "Experimental ebpf mode")]
   Ebpf {
-  }
+    #[arg(last = true, help = "command to be executed. Leave it empty to trace all exec on system")]
+    cmd: Vec<String>,
+    #[clap(
+      short,
+      long,
+      help = "Output, stderr by default. A single hyphen '-' represents stdout."
+    )]
+    output: Option<PathBuf>,
+  },
 }
 
 impl Cli {

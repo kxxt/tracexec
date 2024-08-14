@@ -73,7 +73,7 @@ struct event_header {
 
 struct exec_event {
   struct event_header header;
-  pid_t ppid;
+  pid_t tgid;
   uid_t uid;
   uid_t gid;
   s64 ret;
