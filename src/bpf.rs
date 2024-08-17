@@ -152,6 +152,7 @@ pub fn run(
     Arc::new(RwLock::new(HashMap::new()));
   let fdinfo_map: Arc<RwLock<HashMap<u64, FileDescriptorInfoCollection>>> =
     Arc::new(RwLock::new(HashMap::new()));
+  let mut eid = 0;
   builder.add(&events, move |data| {
     assert!(
       data.len() > size_of::<event_header>(),
@@ -161,6 +162,20 @@ pub fn run(
     match unsafe { header.r#type.assume_init() } {
       event_type::SYSENTER_EVENT => unreachable!(),
       event_type::SYSEXIT_EVENT => {
+        if header.eid > eid {
+          eprintln!(
+            "warning: inconsistent event id counter: local = {eid}, kernel = {}. Possible event loss!",
+            header.eid
+          );
+          // reset local counter
+          eid = header.eid + 1;
+        } else if header.eid < eid {
+          // This should never happen
+          panic!("inconsistent event id counter: local = {} > kernel = {}.", eid, header.eid);
+        } else {
+          // increase local counter for next event
+          eid += 1;
+        }
         assert_eq!(data.len(), size_of::<exec_event>());
         let event: exec_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
         eprint!(
