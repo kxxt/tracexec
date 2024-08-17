@@ -120,6 +120,7 @@ async fn main() -> color_eyre::Result<()> {
       cmd,
       tracing_args,
       modifier_args,
+      ptrace_args,
       tracer_event_args,
       output,
     } => {
@@ -132,6 +133,7 @@ async fn main() -> color_eyre::Result<()> {
         TracerMode::Log,
         tracing_args,
         modifier_args,
+        ptrace_args,
         tracer_event_args,
         baseline,
         tracer_tx,
@@ -162,6 +164,7 @@ async fn main() -> color_eyre::Result<()> {
     CliCommand::Tui {
       cmd,
       modifier_args,
+      ptrace_args,
       tracer_event_args,
       tui_args,
     } => {
@@ -203,6 +206,7 @@ async fn main() -> color_eyre::Result<()> {
         tracer_mode,
         tracing_args.clone(),
         modifier_args.clone(),
+        ptrace_args,
         tracer_event_args,
         baseline.clone(),
         tracer_tx,
@@ -236,6 +240,7 @@ async fn main() -> color_eyre::Result<()> {
       format,
       output,
       modifier_args,
+      ptrace_args,
       pretty,
       foreground,
       no_foreground,
@@ -260,6 +265,7 @@ async fn main() -> color_eyre::Result<()> {
         TracerMode::None,
         tracing_args.clone(),
         modifier_args.clone(),
+        ptrace_args,
         TracerEventArgs::all(),
         baseline.clone(),
         tracer_tx,

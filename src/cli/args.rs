@@ -14,16 +14,24 @@ use crate::{
 #[cfg(feature = "seccomp-bpf")]
 use super::options::SeccompBpf;
 use super::{
-  config::{ExitHandling, LogModeConfig, ModifierConfig, TuiModeConfig},
+  config::{ExitHandling, LogModeConfig, ModifierConfig, PtraceConfig, TuiModeConfig},
   options::ActivePane,
 };
 
 #[derive(Args, Debug, Default, Clone)]
-pub struct ModifierArgs {
-  // TODO: move it to a PtraceArgs struct
+pub struct PtraceArgs {
   #[cfg(feature = "seccomp-bpf")]
   #[clap(long, help = "Controls whether to enable seccomp-bpf optimization, which greatly improves performance", default_value_t = SeccompBpf::Auto)]
   pub seccomp_bpf: SeccompBpf,
+  #[clap(
+    long,
+    help = "Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1."
+  )]
+  pub tracer_delay: Option<u64>,
+}
+
+#[derive(Args, Debug, Default, Clone)]
+pub struct ModifierArgs {
   #[clap(long, help = "Only show successful calls", default_value_t = false)]
   pub successful_only: bool,
   #[clap(
@@ -47,11 +55,18 @@ pub struct ModifierArgs {
     conflicts_with = "resolve_proc_self_exe"
   )]
   pub no_resolve_proc_self_exe: bool,
-  #[clap(
-    long,
-    help = "Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1."
-  )]
-  pub tracer_delay: Option<u64>,
+}
+
+impl PtraceArgs {
+  pub fn merge_config(&mut self, config: PtraceConfig) {
+    // seccomp-bpf
+    #[cfg(feature = "seccomp-bpf")]
+    if let Some(setting) = config.seccomp_bpf {
+      if self.seccomp_bpf == SeccompBpf::Auto {
+        self.seccomp_bpf = setting;
+      }
+    }
+  }
 }
 
 impl ModifierArgs {
@@ -66,13 +81,6 @@ impl ModifierArgs {
   }
 
   pub fn merge_config(&mut self, config: ModifierConfig) {
-    // seccomp-bpf
-    #[cfg(feature = "seccomp-bpf")]
-    if let Some(setting) = config.seccomp_bpf {
-      if self.seccomp_bpf == SeccompBpf::Auto {
-        self.seccomp_bpf = setting;
-      }
-    }
     // false by default flags
     self.successful_only = self.successful_only || config.successful_only.unwrap_or_default();
     self.fd_in_cmdline |= config.fd_in_cmdline.unwrap_or_default();

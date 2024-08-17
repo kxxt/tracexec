@@ -14,6 +14,7 @@ pub struct Config {
   pub log: Option<LogModeConfig>,
   pub tui: Option<TuiModeConfig>,
   pub modifier: Option<ModifierConfig>,
+  pub ptrace: Option<PtraceConfig>,
 }
 
 #[derive(Debug, Error)]
@@ -37,7 +38,7 @@ impl Config {
         };
         // ~/.config/tracexec/config.toml
         let config_path = project_dirs.config_dir().join("config.toml");
-        
+
         std::fs::read_to_string(config_path).map_err(|e| match e.kind() {
           io::ErrorKind::NotFound => ConfigLoadError::NotFound,
           _ => ConfigLoadError::from(e),
@@ -57,6 +58,11 @@ pub struct ModifierConfig {
   pub fd_in_cmdline: Option<bool>,
   pub stdio_in_cmdline: Option<bool>,
   pub resolve_proc_self_exe: Option<bool>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct PtraceConfig {
+  pub seccomp_bpf: Option<SeccompBpf>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]

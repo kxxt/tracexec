@@ -1,6 +1,6 @@
 use std::{io::stdout, path::PathBuf};
 
-use args::TuiModeArgs;
+use args::{PtraceArgs, TuiModeArgs};
 use clap::{CommandFactory, Parser, Subcommand};
 use config::Config;
 use options::ExportFormat;
@@ -58,6 +58,8 @@ pub enum CliCommand {
     #[clap(flatten)]
     modifier_args: ModifierArgs,
     #[clap(flatten)]
+    ptrace_args: PtraceArgs,
+    #[clap(flatten)]
     tracer_event_args: TracerEventArgs,
     #[clap(
       short,
@@ -72,6 +74,8 @@ pub enum CliCommand {
     cmd: Vec<String>,
     #[clap(flatten)]
     modifier_args: ModifierArgs,
+    #[clap(flatten)]
+    ptrace_args: PtraceArgs,
     #[clap(flatten)]
     tracer_event_args: TracerEventArgs,
     #[clap(flatten)]
@@ -88,6 +92,8 @@ pub enum CliCommand {
     cmd: Vec<String>,
     #[clap(flatten)]
     modifier_args: ModifierArgs,
+    #[clap(flatten)]
+    ptrace_args: PtraceArgs,
     #[clap(short = 'F', long, help = "the format for exported exec events")]
     format: ExportFormat,
     #[clap(short, long, help = "prettify the output if supported")]
@@ -114,7 +120,10 @@ pub enum CliCommand {
   #[cfg(feature = "ebpf")]
   #[clap(about = "Experimental ebpf mode")]
   Ebpf {
-    #[arg(last = true, help = "command to be executed. Leave it empty to trace all exec on system")]
+    #[arg(
+      last = true,
+      help = "command to be executed. Leave it empty to trace all exec on system"
+    )]
     cmd: Vec<String>,
     #[clap(
       short,
@@ -137,8 +146,12 @@ impl Cli {
       CliCommand::Log {
         tracing_args,
         modifier_args,
+        ptrace_args,
         ..
       } => {
+        if let Some(c) = config.ptrace {
+          ptrace_args.merge_config(c);
+        }
         if let Some(c) = config.modifier {
           modifier_args.merge_config(c);
         }
@@ -148,9 +161,13 @@ impl Cli {
       }
       CliCommand::Tui {
         modifier_args,
+        ptrace_args,
         tui_args,
         ..
       } => {
+        if let Some(c) = config.ptrace {
+          ptrace_args.merge_config(c);
+        }
         if let Some(c) = config.modifier {
           modifier_args.merge_config(c);
         }
@@ -161,8 +178,12 @@ impl Cli {
       CliCommand::Collect {
         foreground,
         no_foreground,
+        ptrace_args,
         ..
       } => {
+        if let Some(c) = config.ptrace {
+          ptrace_args.merge_config(c);
+        }
         if let Some(c) = config.log {
           if (!*foreground) && (!*no_foreground) {
             if let Some(x) = c.foreground {
