@@ -48,7 +48,7 @@ futures = "0.3.30"
 signal-hook = "0.3.17"
 better-panic = "0.3.0"
 itertools = "0.13.0"
-tui-term = "0.1.12"
+tui-term = "=0.1.12"
 filedescriptor = "0.8.2"
 vt100 = "0.15.2"
 bytes = "1.6.0"
@@ -86,11 +86,19 @@ predicates = "3.1.0"
 rstest = "0.19.0"
 tracing-test = "0.2.4"
 
+[build-dependencies]
+libbpf-cargo = "0.24.1"
+
+[patch.crates-io]
+libbpf-sys = { path="../libbpf-sys" }
+
 [features]
 default = ["seccomp-bpf", "ebpf"]
 seccomp-bpf = ["dep:seccompiler"]
 ebpf = ["dep:libbpf-rs"]
 ebpf-debug = ["ebpf"]
+static = ["libbpf-rs/static"]
+vendored = ["libbpf-rs/vendored"]
 
 [profile.dev]
 opt-level = 1
@@ -110,5 +118,3 @@ path = "fixtures/empty-argv.rs"
 name = "corrupted-envp"
 path = "fixtures/corrupted-envp.rs"
 
-[build-dependencies]
-libbpf-cargo = "0.24.1"
