@@ -839,9 +839,14 @@ impl Tracer {
           )));
           p.associate_event([event.id]);
           self.msg_tx.send(event.into())?;
-          self
-            .printer
-            .print_exec_trace(p, exec_result, &self.baseline.env, &self.baseline.cwd)?;
+          self.printer.print_exec_trace(
+            p.pid,
+            p.comm.clone(),
+            exec_result,
+            p.exec_data.as_ref().unwrap(),
+            &self.baseline.env,
+            &self.baseline.cwd,
+          )?;
         }
         p.is_exec_successful = false;
 
