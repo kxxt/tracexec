@@ -111,6 +111,7 @@ pub enum CliCommand {
     )]
     no_foreground: bool,
   },
+  #[cfg(feature = "ebpf")]
   #[clap(about = "Experimental ebpf mode")]
   Ebpf {
     #[arg(last = true, help = "command to be executed. Leave it empty to trace all exec on system")]
