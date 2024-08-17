@@ -38,7 +38,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use crate::{
   arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
-  cli::args::{LogModeArgs, ModifierArgs, TracerEventArgs},
+  cli::args::{LogModeArgs, ModifierArgs, PtraceArgs, TracerEventArgs},
   cmdbuilder::CommandBuilder,
   event::{
     filterable_event, ExecEvent, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEvent,
@@ -140,6 +140,7 @@ impl Tracer {
     mode: TracerMode,
     tracing_args: LogModeArgs,
     modifier_args: ModifierArgs,
+    ptrace_args: PtraceArgs,
     tracer_event_args: TracerEventArgs,
     baseline: BaselineInfo,
     event_tx: UnboundedSender<TracerMessage>,
@@ -148,7 +149,7 @@ impl Tracer {
   ) -> color_eyre::Result<Self> {
     let baseline = Arc::new(baseline);
     #[cfg(feature = "seccomp-bpf")]
-    let seccomp_bpf = if modifier_args.seccomp_bpf == SeccompBpf::Auto {
+    let seccomp_bpf = if ptrace_args.seccomp_bpf == SeccompBpf::Auto {
       // TODO: check if the kernel supports seccomp-bpf
       // Let's just enable it for now and see if anyone complains
       if user.is_some() {
@@ -159,7 +160,7 @@ impl Tracer {
         SeccompBpf::On
       }
     } else {
-      modifier_args.seccomp_bpf
+      ptrace_args.seccomp_bpf
     };
     Ok(Self {
       with_tty: match &mode {
@@ -193,7 +194,7 @@ impl Tracer {
         if seccomp_bpf == SeccompBpf::On {
           default = Duration::from_micros(500);
         }
-        modifier_args
+        ptrace_args
           .tracer_delay
           .map(Duration::from_micros)
           .unwrap_or(default)

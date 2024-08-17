@@ -4,11 +4,17 @@
 
 
 #
+# Ptrace config applies to tui and log subcommands
+# but doesn't apply to ebpf subcommand.
+#
+[ptrace]
+# Enable seccomp_bpf to optimize performance, values: Auto, On or Off
+# seccomp_bpf = "Auto"
+
+#
 # Modifier config applies to both TUI and Log mode
 #
 [modifier]
-# Enable seccomp_bpf to optimize performance, values: Auto, On or Off
-# seccomp_bpf = "Auto"
 
 # Only show successful exec events
 # successful_only = false
