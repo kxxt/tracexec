@@ -1,16 +1,15 @@
-use std::{
-  env,
-  ffi::{OsStr, OsString},
-  path::PathBuf,
-};
-
-use libbpf_cargo::SkeletonBuilder;
-
-const BPF_SRC: &str = "src/bpf/tracexec_system.bpf.c";
-
 fn main() {
   #[cfg(feature = "ebpf")]
   {
+    use std::{
+      env,
+      ffi::{OsStr, OsString},
+      path::PathBuf,
+    };
+
+    use libbpf_cargo::SkeletonBuilder;
+
+    const BPF_SRC: &str = "src/bpf/tracexec_system.bpf.c";
     let manifest_dir =
       PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
     let skel_out = manifest_dir
