@@ -34,6 +34,7 @@ use skel::types::{event_header, event_type, exec_event, fd_event};
 
 use crate::{
   cache::StringCache,
+  cli::args::ModifierArgs,
   cmdbuilder::CommandBuilder,
   printer::PrinterOut,
   proc::{FileDescriptorInfo, FileDescriptorInfoCollection},
@@ -68,6 +69,7 @@ pub fn run(
   output: Box<PrinterOut>,
   args: Vec<String>,
   user: Option<User>,
+  modifier: ModifierArgs,
 ) -> color_eyre::Result<()> {
   let skel_builder = skel::TracexecSystemSkelBuilder::default();
   bump_memlock_rlimit()?;
@@ -178,6 +180,9 @@ pub fn run(
         }
         assert_eq!(data.len(), size_of::<exec_event>());
         let event: exec_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+        if event.ret != 0 && modifier.successful_only {
+          return 0;
+        }
         eprint!(
           "{} exec {} argv ",
           String::from_utf8_lossy(&event.comm),

@@ -131,6 +131,8 @@ pub enum CliCommand {
       help = "Output, stderr by default. A single hyphen '-' represents stdout."
     )]
     output: Option<PathBuf>,
+    #[clap(flatten)]
+    modifier_args: ModifierArgs,
   },
 }
 
