@@ -11,8 +11,10 @@ use crate::{
   cli::args::{LogModeArgs, ModifierArgs},
   event::TracerEventDetails,
   proc::{diff_env, BaselineInfo, FileDescriptorInfoCollection, Interpreter},
-  tracer::state::ProcessState,
-  tracer::InspectError,
+  tracer::{
+    state::{ExecData, ProcessState},
+    InspectError,
+  },
 };
 
 use arcstr::ArcStr;
@@ -398,8 +400,10 @@ impl Printer {
 
   pub fn print_exec_trace(
     &self,
-    state: &ProcessState,
+    pid: Pid,
+    comm: ArcStr,
     result: i64,
+    exec_data: &ExecData,
     env: &BTreeMap<ArcStr, ArcStr>,
     cwd: &Path,
   ) -> color_eyre::Result<()> {
@@ -414,17 +418,16 @@ impl Printer {
       let Some(out) = out else {
         return Ok(());
       };
-      let exec_data = state.exec_data.as_ref().unwrap();
       let list_printer = ListPrinter::new(self.args.color);
       if result == 0 {
-        write!(out, "{}", state.pid.bright_green())?;
+        write!(out, "{}", pid.bright_green())?;
       } else if result == -ENOENT as i64 {
-        write!(out, "{}", state.pid.bright_yellow())?;
+        write!(out, "{}", pid.bright_yellow())?;
       } else {
-        write!(out, "{}", state.pid.bright_red())?;
+        write!(out, "{}", pid.bright_red())?;
       }
       if self.args.trace_comm {
-        write!(out, "<{}>", state.comm.cyan())?;
+        write!(out, "<{}>", comm.cyan())?;
       }
       write!(out, ":")?;
 
@@ -445,7 +448,7 @@ impl Printer {
           )?;
           _deferred_warnings.push(DeferredWarnings {
             warning: DeferredWarningKind::FailedReadingFilename(*e),
-            pid: state.pid,
+            pid,
           });
         }
       }
@@ -454,7 +457,7 @@ impl Printer {
         Err(e) => {
           _deferred_warnings.push(DeferredWarnings {
             warning: DeferredWarningKind::FailedReadingArgv(*e),
-            pid: state.pid,
+            pid,
           });
         }
         Ok(argv) => {
@@ -587,7 +590,7 @@ impl Printer {
           }
           _deferred_warnings.push(DeferredWarnings {
             warning: DeferredWarningKind::FailedReadingEnvp(*e),
-            pid: state.pid,
+            pid,
           });
         }
       }
@@ -696,7 +699,7 @@ impl Printer {
             } else {
               _deferred_warnings.push(DeferredWarnings {
                 warning: DeferredWarningKind::NoArgv0,
-                pid: state.pid,
+                pid,
               });
             }
             if cwd != exec_data.cwd {
@@ -770,7 +773,7 @@ impl Printer {
           Err(e) => {
             _deferred_warnings.push(DeferredWarnings {
               warning: DeferredWarningKind::FailedReadingArgv(*e),
-              pid: state.pid,
+              pid,
             });
           }
         }
