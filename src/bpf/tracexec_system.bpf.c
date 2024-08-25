@@ -15,12 +15,14 @@ const volatile struct {
   u32 nofile;
   bool follow_fork;
   pid_t tracee_pid;
+  unsigned int tracee_pidns_inum;
 } config = {
     .max_num_cpus = MAX_CPUS,
     // https://www.kxxt.dev/blog/max-possible-value-of-rlimit-nofile/
     .nofile = 2147483584,
     .follow_fork = false,
     .tracee_pid = 0,
+    .tracee_pidns_inum = 0,
 };
 
 struct {
@@ -105,18 +107,67 @@ static int add_tgid_to_closure(pid_t tgid);
 #define debug(...)
 #endif
 
-// TODO: namespace
-// task->nsproxy->pid_ns_for_children->last_pid
-
 bool should_trace(pid_t old_tgid) {
+  // Trace all if not following forks
   if (!config.follow_fork)
     return true;
-  // TODO: config.tracee_pid might be in a different namespace. How could we
-  // handle it?
-  if (old_tgid == config.tracee_pid)
-    return true;
+  // Check if it is in the closure
   void *ptr = bpf_map_lookup_elem(&tgid_closure, &old_tgid);
-  return ptr != NULL;
+  if (ptr != NULL)
+    return true;
+  // config.tracee_pid might not be in init pid ns,
+  // thus we cannot simply compare tgid and config.tracee_pid
+  // Here we solve it by comparing tgid and the inode number of pid namespace
+  struct task_struct *task = (void *)bpf_get_current_task();
+  struct nsproxy *nsproxy;
+  struct pid *pid_struct;
+  int ret = bpf_core_read(&nsproxy, sizeof(void *), &task->nsproxy);
+  if (ret < 0) {
+    debug("failed to read nsproxy struct: %d", ret);
+    return false;
+  }
+  // RCU read lock when accessing the active pid ns,
+  // ref: https://elixir.bootlin.com/linux/v6.11-rc4/source/kernel/pid.c#L505
+  bpf_rcu_read_lock();
+  ret = bpf_core_read(&pid_struct, sizeof(void *), &task->thread_pid);
+  if (ret < 0) {
+    debug("failed to read task->thread_pid: %d", ret);
+    goto err_unlock;
+  }
+  int level;
+  ret = bpf_core_read(&level, sizeof(int), &pid_struct->level);
+  if (ret < 0) {
+    debug("failed to read pid->level: %d", ret);
+    goto err_unlock;
+  }
+  // ref: ns_of_pid
+  // https://elixir.bootlin.com/linux/v6.11-rc4/source/include/linux/pid.h#L145
+  struct upid upid;
+  ret = bpf_core_read(&upid, sizeof(struct upid), &pid_struct->numbers[level]);
+  if (ret < 0) {
+    debug("failed to read pid->numbers[level]: %d", ret);
+    goto err_unlock;
+  }
+  pid_t pid_in_ns = upid.nr;
+  struct pid_namespace *pid_ns = upid.ns;
+  // inode number of this pid_ns
+  unsigned int ns_inum;
+  ret = bpf_core_read(&ns_inum, sizeof(unsigned int), &pid_ns->ns.inum);
+  if (ret < 0) {
+    debug("failed to read pid_ns->ns.inum: %d", ret);
+    goto err_unlock;
+  }
+  bpf_rcu_read_unlock();
+  if (pid_in_ns == config.tracee_pid && ns_inum == config.tracee_pidns_inum) {
+    debug("TASK %d (%d in pidns %u) is tracee", old_tgid, pid_in_ns, ns_inum);
+    // Add it to the closure to avoid hitting this slow path in the future
+    add_tgid_to_closure(old_tgid);
+    return true;
+  }
+  return false;
+err_unlock:
+  bpf_rcu_read_unlock();
+  return false;
 }
 
 // TODO: follow-forks: trace do_fork
@@ -132,8 +183,8 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   tmp = bpf_get_current_pid_tgid();
   pid = (pid_t)tmp;
   tgid = tmp >> 32;
-  // debug("sysenter: pid=%d, tgid=%d, tracee=%d", pid, tgid, config.tracee_pid);
-  // Create event
+  // debug("sysenter: pid=%d, tgid=%d, tracee=%d", pid, tgid,
+  // config.tracee_pid); Create event
   if (bpf_map_update_elem(&execs, &pid, &empty_event, BPF_NOEXIST)) {
     // Cannot allocate new event, map is full!
     debug("Failed to allocate new event!");
