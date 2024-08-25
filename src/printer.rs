@@ -108,14 +108,10 @@ impl PrinterArgs {
       print_cmdline: tracing_args.show_cmdline,
       successful_only: modifier_args.successful_only,
       trace_interpreter: tracing_args.show_interpreter,
-      trace_filename: match (
-        tracing_args.show_filename,
-        tracing_args.no_show_filename,
-        tracing_args.show_cmdline,
-      ) {
-        (true, _, _) => true,
-        // show filename by default, but not in show-cmdline mode
-        (false, _, true) => false,
+      trace_filename: match (tracing_args.show_filename, tracing_args.no_show_filename) {
+        (_, true) => false,
+        (true, _) => true,
+        // default
         _ => true,
       },
       decode_errno: !tracing_args.no_decode_errno,

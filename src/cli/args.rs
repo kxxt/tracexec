@@ -269,7 +269,6 @@ pub struct LogModeArgs {
   #[clap(
     long,
     help = "Show filename",
-    default_value_t = true,
     conflicts_with = "no_show_filename"
   )]
   pub show_filename: bool,
