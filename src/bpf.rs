@@ -1,11 +1,14 @@
 use std::{
   borrow::Cow,
-  collections::HashMap,
+  collections::{HashMap, HashSet},
   ffi::{CStr, CString},
   io::stdin,
   iter::repeat,
   mem::MaybeUninit,
-  os::{fd::RawFd, unix::{fs::MetadataExt, process::CommandExt}},
+  os::{
+    fd::RawFd,
+    unix::{fs::MetadataExt, process::CommandExt},
+  },
   sync::{Arc, OnceLock, RwLock},
   time::Duration,
 };
@@ -157,6 +160,7 @@ pub fn run(
     Arc::new(RwLock::new(HashMap::new()));
   let fdinfo_map: Arc<RwLock<HashMap<u64, FileDescriptorInfoCollection>>> =
     Arc::new(RwLock::new(HashMap::new()));
+  let lost_events: RwLock<HashSet<u64>> = RwLock::new(HashSet::new());
   let mut eid = 0;
   builder.add(&events, move |data| {
     assert!(
@@ -168,15 +172,22 @@ pub fn run(
       event_type::SYSENTER_EVENT => unreachable!(),
       event_type::SYSEXIT_EVENT => {
         if header.eid > eid {
+          // There are some lost events
+          // In some cases the events are not really lost but sent out of order because of parallism
           eprintln!(
             "warning: inconsistent event id counter: local = {eid}, kernel = {}. Possible event loss!",
             header.eid
           );
+          lost_events.write().unwrap().extend(eid..header.eid);
           // reset local counter
           eid = header.eid + 1;
         } else if header.eid < eid {
-          // This should never happen
-          panic!("inconsistent event id counter: local = {} > kernel = {}.", eid, header.eid);
+          // This should only happen for lost events
+          if lost_events.write().unwrap().remove(&header.eid) {
+            // do nothing
+          } else {
+            panic!("inconsistent event id counter: local = {}, kernel = {}.", eid, header.eid);
+          }
         } else {
           // increase local counter for next event
           eid += 1;
