@@ -96,6 +96,12 @@ libbpf-sys = { path="../libbpf-sys" }
 default = ["seccomp-bpf", "ebpf"]
 seccomp-bpf = ["dep:seccompiler"]
 ebpf = ["dep:libbpf-rs"]
+# The ebpf-debug feature is not meant for end users.
+# This feature also has a bug:
+# Building with --release after building --release -F ebpf-debug
+# produces binaries with ebpf-debug enabled!
+# Either cargo doesn't rebuild and run build.rs on feature flag change,
+# or some logic is wrong in build.rs
 ebpf-debug = ["ebpf"]
 static = ["libbpf-rs/static"]
 vendored = ["libbpf-rs/vendored"]
