@@ -5,7 +5,7 @@ use std::{
   io::stdin,
   iter::repeat,
   mem::MaybeUninit,
-  os::{fd::RawFd, unix::process::CommandExt},
+  os::{fd::RawFd, unix::{fs::MetadataExt, process::CommandExt}},
   sync::{Arc, OnceLock, RwLock},
   time::Duration,
 };
@@ -78,6 +78,8 @@ pub fn run(
   let ncpu = num_possible_cpus()?.try_into().expect("Too many cores!");
   open_skel.maps.rodata_data.config.max_num_cpus = ncpu;
   open_skel.maps.cache.set_max_entries(ncpu)?;
+  // tracexec runs in the same pid namespace with the tracee
+  let pid_ns_ino = std::fs::metadata("/proc/self/ns/pid")?.ino();
   let skel = if !args.is_empty() {
     let mut cmd = CommandBuilder::new(&args[0]);
     cmd.args(args.iter().skip(1));
@@ -94,6 +96,7 @@ pub fn run(
         }
         open_skel.maps.rodata_data.config.follow_fork = MaybeUninit::new(true);
         open_skel.maps.rodata_data.config.tracee_pid = child.as_raw();
+        open_skel.maps.rodata_data.config.tracee_pidns_inum = pid_ns_ino as u32;
         let mut skel = open_skel.load()?;
         skel.attach()?;
         match waitpid(child, Some(WaitPidFlag::WSTOPPED))? {
