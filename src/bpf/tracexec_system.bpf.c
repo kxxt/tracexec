@@ -108,7 +108,8 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event);
 static int add_tgid_to_closure(pid_t tgid);
 static struct dentry *read_send_path_segments_recursive(
-    struct dentry *dentry, const struct event_header *base_header, u32 path_id);
+    struct dentry *dentry, struct dentry *mnt_root,
+    const struct event_header *base_header, u32 path_id);
 
 #ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
@@ -505,17 +506,29 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
     goto ptr_err;
   }
   struct path *path;
-  struct dentry *dentry;
+  struct dentry *dentry, *mnt_root;
   ret = bpf_core_read(&dentry, sizeof(void *), &file->f_path.dentry);
   if (ret < 0) {
     debug("failed to read file->f_path.dentry: %d", ret);
     goto ptr_err;
   }
   // bpf_d_path is not available
+  // read mnt_root
+  struct vfsmount *vfsmnt;
+  ret = bpf_core_read(&vfsmnt, sizeof(void *), &file->f_path.mnt);
+  if (ret < 0) {
+    debug("failed to read file->f_path.mnt: %d", ret);
+    goto ptr_err;
+  }
+  ret = bpf_core_read(&mnt_root, sizeof(void *), &vfsmnt->mnt_root);
+  if (ret < 0) {
+    debug("failed to read vfsmnt->mnt_root: %d", ret);
+    goto ptr_err;
+  }
   // read name
   entry->path_id = event->path_count++;
-  struct dentry *mountpoint_dentry =
-      read_send_path_segments_recursive(dentry, &event->header, entry->path_id);
+  struct dentry *mountpoint_dentry = read_send_path_segments_recursive(
+      dentry, mnt_root, &event->header, entry->path_id);
   if (mountpoint_dentry == NULL) {
     event->header.flags |= PATH_READ_ERR;
   }
@@ -614,6 +627,7 @@ static int add_tgid_to_closure(pid_t tgid) {
 
 struct path_segment_ctx {
   struct dentry *dentry;
+  struct dentry *mnt_root;
   struct path_event *path_event;
   const struct event_header *base_header;
 };
@@ -623,10 +637,9 @@ static int read_send_path_segment(u32 index, struct path_segment_ctx *ctx);
 // Read all path segments and send them to userspace.
 // It ends at mount point.
 // Returns the mount point dentry on success
-static struct dentry *
-read_send_path_segments_recursive(struct dentry *dentry,
-                                  const struct event_header *base_header,
-                                  u32 path_id) {
+static struct dentry *read_send_path_segments_recursive(
+    struct dentry *dentry, struct dentry *mnt_root,
+    const struct event_header *base_header, u32 path_id) {
 
   // Initialize
   struct path_event event = {
@@ -642,6 +655,7 @@ read_send_path_segments_recursive(struct dentry *dentry,
       .path_event = &event,
       .base_header = base_header,
       .dentry = dentry,
+      .mnt_root = mnt_root,
   };
 
   // while dentry->d_parent != dentry, read dentry->d_name.name and send it back
@@ -714,7 +728,7 @@ send:;
     // break
     return 1;
   }
-  if (parent == ctx->dentry) {
+  if (parent == ctx->dentry || parent == ctx->mnt_root) {
     // break
     return 1;
   }
