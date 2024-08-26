@@ -33,7 +33,8 @@ use nix::{
     fork, getpid, initgroups, setpgid, setresgid, setresuid, tcsetpgrp, ForkResult, Gid, Uid, User,
   },
 };
-use skel::types::{event_header, event_type, exec_event, fd_event};
+use owo_colors::OwoColorize;
+use skel::types::{event_header, event_type, exec_event, fd_event, path_event, path_segment_event};
 
 use crate::{
   cache::StringCache,
@@ -239,7 +240,7 @@ pub fn run(
         let event: fd_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
         let fdinfo = FileDescriptorInfo {
           fd: event.fd as RawFd,
-          path: cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.path)),
+          path: Default::default(),// cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.path)),
           pos: 0, // TODO
           flags: OFlag::from_bits_retain(event.flags as c_int),
           mnt_id: 0,                                    // TODO
@@ -251,6 +252,15 @@ pub fn run(
         let fdc = lock_guard.entry(header.eid).or_default();
         fdc.fdinfo.insert(event.fd as RawFd, fdinfo);
         drop(lock_guard);
+      }
+      event_type::PATH_EVENT => {
+        assert_eq!(data.len(), size_of::<path_event>());
+        let event: path_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+      }
+      event_type::PATH_SEGMENT_EVENT => {
+        assert_eq!(data.len(), size_of::<path_segment_event>());
+        let event: path_segment_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+        eprintln!("Received path segment {}: {}", event.index, utf8_lossy_cow_from_bytes_with_nul(&event.segment).green());
       }
     }
     0
