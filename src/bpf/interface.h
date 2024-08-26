@@ -23,7 +23,15 @@
 
 // The limit for filename
 // https://elixir.bootlin.com/linux/v6.10.3/source/include/uapi/linux/limits.h#L13
+// This limit can be bypass-ed by using relative paths and the *_at syscall.
 #define PATH_MAX 4096
+// We set a practical limit for path length
+#define PATH_LEN_MAX 65536
+// In theory the path depth is unlimited
+#define PATH_DEPTH_MAX 65536
+// The maximum length of a single segment in the path
+// aka NAME_MAX in limits.h
+#define PATH_SEGMENT_MAX 255
 
 #define BITS_PER_LONG 64
 #define NOFILE_MAX 2147483584
@@ -52,6 +60,12 @@ enum exec_event_flags {
   FLAGS_READ_FAILURE = 512,
   // A marker for dropped events. This flag is only set in userspace.
   USERSPACE_DROP_MARKER = 1024,
+  // Operation stopped early because of errors
+  BAIL_OUT = 2048,
+  // bpf_loop failure
+  LOOP_FAIL = 4096,
+  // Failed to read whole path
+  PATH_READ_ERR = 8192,
 };
 
 enum event_type {
@@ -59,6 +73,8 @@ enum event_type {
   SYSEXIT_EVENT,
   STRING_EVENT,
   FD_EVENT,
+  PATH_SEGMENT_EVENT,
+  PATH_EVENT,
 };
 
 struct event_header {
@@ -80,6 +96,7 @@ struct exec_event {
   // argc and env count
   u32 count[2];
   u32 fd_count;
+  u32 path_count;
   u8 base_filename[PATH_MAX];
   u8 filename[PATH_MAX];
   u8 comm[TASK_COMM_LEN];
@@ -94,11 +111,27 @@ struct fd_event {
   struct event_header header;
   unsigned int flags;
   unsigned int fd;
-  u8 path[PATH_MAX];
+  u32 path_id;
+  u32 mount_point_path_id;
+};
+
+struct path_event {
+  // id: A locally(w.r.t an event) unique counter of path events
+  struct event_header header;
+  u32 segment_count;
+};
+
+struct path_segment_event {
+  // id: index of this segment
+  struct event_header header;
+  u32 index;
+  u8 segment[PATH_SEGMENT_MAX];
 };
 
 union cache_item {
   struct string_event string;
   struct fd_event fd;
+  struct path_event path;
+  struct path_segment_event segment;
 };
 #endif
