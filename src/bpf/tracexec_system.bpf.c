@@ -49,6 +49,13 @@ struct {
   __uint(max_entries, 1);
 } path_segment_cache SEC(".maps");
 
+struct {
+  __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+  __type(key, u32);
+  __type(value, struct path_event);
+  __uint(max_entries, 1);
+} path_event_cache SEC(".maps");
+
 // A staging area for writing variable length strings
 // I cannot really use a percpu array due to size limit:
 // https://github.com/iovisor/bcc/issues/2519
@@ -107,9 +114,8 @@ static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx);
 static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event);
 static int add_tgid_to_closure(pid_t tgid);
-static struct dentry *read_send_path_segments_recursive(
-    struct dentry *dentry, struct dentry *mnt_root,
-    const struct event_header *base_header, u32 path_id);
+static int read_send_path(const struct path *path,
+                          const struct event_header *base_header, u32 path_id);
 
 #ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
@@ -505,31 +511,12 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
     debug("failed to read file struct: %d", ret);
     goto ptr_err;
   }
-  struct path *path;
-  struct dentry *dentry, *mnt_root;
-  ret = bpf_core_read(&dentry, sizeof(void *), &file->f_path.dentry);
-  if (ret < 0) {
-    debug("failed to read file->f_path.dentry: %d", ret);
-    goto ptr_err;
-  }
-  // bpf_d_path is not available
-  // read mnt_root
-  struct vfsmount *vfsmnt;
-  ret = bpf_core_read(&vfsmnt, sizeof(void *), &file->f_path.mnt);
-  if (ret < 0) {
-    debug("failed to read file->f_path.mnt: %d", ret);
-    goto ptr_err;
-  }
-  ret = bpf_core_read(&mnt_root, sizeof(void *), &vfsmnt->mnt_root);
-  if (ret < 0) {
-    debug("failed to read vfsmnt->mnt_root: %d", ret);
-    goto ptr_err;
-  }
+  struct path path;
+  ret = bpf_core_read(&path, sizeof(path), &file->f_path);
   // read name
   entry->path_id = event->path_count++;
-  struct dentry *mountpoint_dentry = read_send_path_segments_recursive(
-      dentry, mnt_root, &event->header, entry->path_id);
-  if (mountpoint_dentry == NULL) {
+  ret = read_send_path(&path, &entry->header, entry->path_id);
+  if (ret < 0) {
     event->header.flags |= PATH_READ_ERR;
   }
   entry->mount_point_path_id = -1;
@@ -628,57 +615,33 @@ static int add_tgid_to_closure(pid_t tgid) {
 struct path_segment_ctx {
   struct dentry *dentry;
   struct dentry *mnt_root;
+  struct dentry *root;
   struct path_event *path_event;
   const struct event_header *base_header;
+  u32 base_index;
 };
 
-static int read_send_path_segment(u32 index, struct path_segment_ctx *ctx);
+static int read_send_dentry_segment(u32 index, struct path_segment_ctx *ctx);
 
-// Read all path segments and send them to userspace.
-// It ends at mount point.
-// Returns the mount point dentry on success
-static struct dentry *read_send_path_segments_recursive(
-    struct dentry *dentry, struct dentry *mnt_root,
-    const struct event_header *base_header, u32 path_id) {
-
-  // Initialize
-  struct path_event event = {
-      .header = {.eid = base_header->eid,
-                 .pid = base_header->pid,
-                 .flags = 0,
-                 .id = path_id,
-                 .type = PATH_EVENT},
-      .segment_count = 0,
-  };
-  event.header.flags = 0;
-  struct path_segment_ctx ctx = {
-      .path_event = &event,
-      .base_header = base_header,
-      .dentry = dentry,
-      .mnt_root = mnt_root,
-  };
+// Read all dentry segments upto the mount point and send them to userspace.
+// Returns the number of segments iterated on success, -1 on failure
+static inline int read_send_dentry_segments_recursive(
+    struct path_segment_ctx *ctx, struct path_event *path_event, u32 path_id) {
 
   // while dentry->d_parent != dentry, read dentry->d_name.name and send it back
   // to userspace
-  int ret = bpf_loop(PATH_DEPTH_MAX, read_send_path_segment, &ctx, 0);
+  int ret = bpf_loop(PATH_DEPTH_MAX, read_send_dentry_segment, ctx, 0);
   if (ret < 0) {
-    debug("Failed to iter over path segments: %d!", ret);
-    event.header.flags |= LOOP_FAIL;
+    debug("Failed to iter over dentry segments: %d!", ret);
+    path_event->header.flags |= LOOP_FAIL;
+    return -1;
   }
 
-  // Send event back to userspace
-  event.segment_count = ret;
-
-  ret = bpf_ringbuf_output(&events, &event, sizeof(event), 0);
-  if (ret < 0) {
-    debug("Failed to output path_event to ringbuf");
-    return NULL;
-  }
-  return ctx.dentry;
+  return ret;
 }
 
 // bpf_loop helper:
-static int read_send_path_segment(u32 index, struct path_segment_ctx *ctx) {
+static int read_send_dentry_segment(u32 index, struct path_segment_ctx *ctx) {
   int ret = 1; // break
   if (ctx == NULL || ctx->base_header == NULL)
     return ret;
@@ -695,13 +658,13 @@ static int read_send_path_segment(u32 index, struct path_segment_ctx *ctx) {
       .pid = ctx->base_header->pid,
       .flags = 0,
   };
-  event->index = index;
+  event->index = index + ctx->base_index;
 
   unsigned char *name;
   struct dentry *dentry = ctx->dentry;
   ret = bpf_core_read(&name, sizeof(void *), &dentry->d_name.name);
   if (ret < 0) {
-    debug("failed to read dentry->d_name.name: %d", ret);
+    debug("failed to read dentry->d_name.name: %d, dentry = %p", ret, dentry);
     event->header.flags |= PTR_READ_FAILURE;
     event->segment[0] = '\0';
     goto send;
@@ -728,11 +691,186 @@ send:;
     // break
     return 1;
   }
-  if (parent == ctx->dentry || parent == ctx->mnt_root) {
+  debug("got segment: index:%d, %s, dentry = %p, mnt_root = %p, parent = %p",
+        event->index, event->segment, ctx->dentry, ctx->mnt_root, parent);
+  if (parent == ctx->dentry || parent == ctx->mnt_root || parent == ctx->root) {
+    debug("skipping: parent=%p, root = %p, mnt_root = %p", parent, ctx->root,
+          ctx->mnt_root);
     // break
     return 1;
   }
   ctx->dentry = parent;
   // continue
   return 0;
+}
+
+struct mount_ctx {
+  struct mount *mnt;
+  struct path_event *path_event;
+  int base_index;
+  u32 path_id;
+  struct path_segment_ctx *segment_ctx;
+};
+
+// root: current->fs->root
+// bpf_loop helper:
+static int read_send_mount_segments(u32 index, struct mount_ctx *ctx) {
+  int ret = 1; // break
+  if (ctx == NULL || ctx->path_event == NULL)
+    return ret;
+  // Read the mountpoint dentry
+  struct dentry *mnt_mountpoint, *mnt_root;
+  struct mount *parent, *mnt = ctx->mnt;
+  struct mountpoint *mountpoint;
+  // struct vfsmount *vfsmnt;
+  ret = bpf_core_read(&mnt_mountpoint, sizeof(void *), &mnt->mnt_mountpoint);
+  if (ret < 0) {
+    debug("failed to read mnt->mnt_mountpoint: %d", ret);
+    goto err_out;
+  }
+  ret = bpf_core_read(&parent, sizeof(void *), &mnt->mnt_parent);
+  if (ret < 0) {
+    debug("failed to read mnt->mnt_parent: %d", ret);
+    goto err_out;
+  }
+  ret = bpf_core_read(&mnt_root, sizeof(void *), &parent->mnt.mnt_root);
+  if (ret < 0) {
+    debug("failed to read mnt->mnt.mnt_root: %d", ret);
+    goto err_out;
+  }
+  int mnt_id;
+  ret = bpf_core_read(&mnt_id, sizeof(int), &mnt->mnt_id);
+  if (ret < 0) {
+    debug("failed to read mnt->mnt_id: %d", ret);
+    goto err_out;
+  }
+  // Break if we reached top mount
+  if (parent == mnt) {
+    // break
+    debug("should break");
+    return 1;
+  }
+  debug("iter mount %p %d", mnt, mnt_id);
+  *ctx->segment_ctx = (struct path_segment_ctx){
+      .path_event = ctx->path_event,
+      .base_header = &ctx->path_event->header,
+      .dentry = mnt_mountpoint,
+      .mnt_root = mnt_root,
+      .root = ctx->segment_ctx->root,
+      .base_index = ctx->base_index,
+  };
+  // Read the segments and send them to userspace
+  int iter_nr = read_send_dentry_segments_recursive(
+      ctx->segment_ctx, ctx->path_event, ctx->path_id);
+  if (iter_nr < 0) {
+    goto err_out;
+  }
+  ctx->base_index += iter_nr;
+  ctx->mnt = parent;
+  return 0;
+err_out:
+  // If we failed to read the segments of this mount, send a placeholder to
+  // userspace
+  // TODO
+
+  // continue
+  return 0;
+}
+
+// Read all dentry path segments up to mnt_root,
+// and then read all ancestor mount entries to reconstruct
+// an absolute path.
+//
+// Arguments:
+//   path: a pointer to a path struct, this is not a kernel pointer
+static int read_send_path(const struct path *path,
+                          const struct event_header *base_header, u32 path_id) {
+  int ret = -1;
+  // Initialize
+  int index = 0;
+  struct path_event *event = bpf_map_lookup_elem(&path_event_cache, &index);
+  if (event == NULL) {
+    debug("This should not happen!");
+    return 1;
+  }
+
+  *event = (struct path_event){
+      .header = {.eid = base_header->eid,
+                 .pid = base_header->pid,
+                 .flags = 0,
+                 .id = path_id,
+                 .type = PATH_EVENT},
+      .segment_count = 0,
+  };
+  event->header.flags = 0;
+  // Get root dentry
+  struct task_struct *current = (void *)bpf_get_current_task();
+  struct dentry *root;
+  struct fs_struct *fs;
+  ret = bpf_core_read(&fs, sizeof(void *), &current->fs);
+  if (ret < 0) {
+    debug("failed to read current->fs: %d", ret);
+    goto ptr_err;
+  }
+  ret = bpf_core_read(&root, sizeof(void *), &fs->root.dentry);
+  if (ret < 0) {
+    debug("failed to read fs->root.dentry: %d", ret);
+    goto ptr_err;
+  }
+  // Get vfsmount and mnt_root
+  struct vfsmount *vfsmnt = path->mnt;
+  struct dentry *mnt_root, *dentry = path->dentry;
+  ret = bpf_core_read(&mnt_root, sizeof(void *), &vfsmnt->mnt_root);
+  if (ret < 0) {
+    debug("failed to read vfsmnt->mnt_root: %d", ret);
+    goto ptr_err;
+  }
+  struct path_segment_ctx segment_ctx = {
+      .path_event = event,
+      .base_header = &event->header,
+      .dentry = dentry,
+      .mnt_root = mnt_root,
+      .root = root,
+      .base_index = 0,
+  };
+  // Send the dentry segments to userspace
+  index = read_send_dentry_segments_recursive(&segment_ctx, event, path_id);
+  if (index < 0) {
+    goto loop_err;
+  }
+  // Iterate over all ancestor mounts and send segments to userspace
+  struct mount *mnt = container_of(vfsmnt, struct mount, mnt);
+  struct mount_ctx ctx = {
+      .base_index = index,
+      .mnt = mnt,
+      .path_event = event,
+      .path_id = path_id,
+      // Reuse the above segment_ctx to save stack space
+      .segment_ctx = &segment_ctx,
+  };
+  ret = bpf_loop(PATH_DEPTH_MAX, read_send_mount_segments, &ctx, 0);
+  if (ret < 0) {
+    goto loop_err;
+  }
+  // Send path event to userspace
+  event->segment_count = ctx.base_index;
+  ret = bpf_ringbuf_output(&events, event, sizeof(*event), 0);
+  if (ret < 0) {
+    debug("Failed to output path_event to ringbuf");
+    return -1;
+  }
+ptr_err:
+  event->header.flags |= PTR_READ_FAILURE;
+  goto err_out;
+loop_err:
+  event->header.flags |= LOOP_FAIL;
+  goto err_out;
+err_out:
+  event->segment_count = 0;
+  ret = bpf_ringbuf_output(&events, event, sizeof(*event), 0);
+  if (ret < 0) {
+    debug("Failed to output path_event to ringbuf");
+    return -1;
+  }
+  return -1;
 }

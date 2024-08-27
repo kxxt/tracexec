@@ -260,7 +260,7 @@ pub fn run(
       event_type::PATH_SEGMENT_EVENT => {
         assert_eq!(data.len(), size_of::<path_segment_event>());
         let event: path_segment_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
-        eprintln!("Received path segment {}: {}", event.index, utf8_lossy_cow_from_bytes_with_nul(&event.segment).green());
+        eprintln!("Received path {} segment {}: {}", header.id, event.index, utf8_lossy_cow_from_bytes_with_nul(&event.segment).green());
       }
     }
     0
