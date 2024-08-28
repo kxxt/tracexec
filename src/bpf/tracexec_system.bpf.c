@@ -56,6 +56,13 @@ struct {
   __uint(max_entries, 1);
 } path_event_cache SEC(".maps");
 
+struct {
+  __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+  __type(key, u32);
+  __type(value, struct sys_enter_exec_args);
+  __uint(max_entries, 1);
+} exec_args_alloc SEC(".maps");
+
 // A staging area for writing variable length strings
 // I cannot really use a percpu array due to size limit:
 // https://github.com/iovisor/bcc/issues/2519
@@ -245,6 +252,25 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
   // Read file descriptors
   read_fds(event);
+  // Read CWD
+  event->cwd_path_id = -1;
+  struct task_struct *current = (void *)bpf_get_current_task();
+  struct path pwd;
+  struct fs_struct *fs;
+  int ret = bpf_core_read(&fs, sizeof(void *), &current->fs);
+  if (ret < 0) {
+    debug("failed to read current->fs: %d", ret);
+    return 0;
+  }
+  // spin_lock(&fs->lock);
+  ret = bpf_core_read(&pwd, sizeof(pwd), &fs->pwd);
+  if (ret < 0) {
+    debug("failed to read fs->pwd: %d", ret);
+    return 0;
+  }
+  // spin_unlock(&fs->lock);
+  debug("Reading pwd...");
+  read_send_path(&pwd, &event->header, AT_FDCWD);
   return 0;
 }
 
@@ -273,18 +299,47 @@ int trace_fork(u64 *ctx) {
 
 SEC("tracepoint/syscalls/sys_enter_execve")
 int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
-  struct task_struct *task;
-  struct exec_event *event;
-  struct sys_enter_exec_args common_ctx = {.syscall_nr = ctx->__syscall_nr,
-                                           .argv = ctx->argv,
-                                           .envp = ctx->envp,
-                                           .base_filename = ctx->filename};
-  trace_exec_common(&common_ctx);
+  int key = 0;
+  struct sys_enter_exec_args *common_ctx =
+      bpf_map_lookup_elem(&exec_args_alloc, &key);
+  if (common_ctx == NULL)
+    return 0;
+  *common_ctx = (struct sys_enter_exec_args){
+      .syscall_nr = ctx->__syscall_nr,
+      .argv = ctx->argv,
+      .envp = ctx->envp,
+      .base_filename = ctx->filename,
+  };
+  trace_exec_common(common_ctx);
   return 0;
 }
 
-SEC("tracepoint/syscalls/sys_exit_execve")
-int tp_sys_exit_execve(struct sys_exit_exec_args *ctx) {
+SEC("tracepoint/syscalls/sys_enter_execveat")
+int tp_sys_enter_execveat(struct sys_enter_execveat_args *ctx) {
+  int key = 0;
+  struct sys_enter_exec_args *common_ctx =
+      bpf_map_lookup_elem(&exec_args_alloc, &key);
+  if (common_ctx == NULL)
+    return 0;
+
+  *common_ctx = (struct sys_enter_exec_args){
+      .syscall_nr = ctx->__syscall_nr,
+      .argv = ctx->argv,
+      .envp = ctx->envp,
+      .base_filename = ctx->filename,
+  };
+  trace_exec_common(common_ctx);
+  pid_t pid = (pid_t)bpf_get_current_pid_tgid();
+  struct exec_event *event = bpf_map_lookup_elem(&execs, &pid);
+  if (!event || !ctx)
+    return 0;
+
+  event->fd = ctx->fd;
+  event->flags = ctx->flags;
+  return 0;
+}
+
+int __always_inline tp_sys_exit_exec(struct sys_exit_exec_args *ctx) {
   pid_t pid, tgid;
   u64 tmp = bpf_get_current_pid_tgid();
   pid = (pid_t)tmp;
@@ -318,6 +373,16 @@ int tp_sys_exit_execve(struct sys_exit_exec_args *ctx) {
     debug("Failed to del element from execs map");
   }
   return 0;
+}
+
+SEC("tracepoint/syscalls/sys_exit_execve")
+int tp_sys_exit_execve(struct sys_exit_exec_args *ctx) {
+  return tp_sys_exit_exec(ctx);
+}
+
+SEC("tracepoint/syscalls/sys_exit_execveat")
+int tp_sys_exit_execveat(struct sys_exit_exec_args *ctx) {
+  return tp_sys_exit_exec(ctx);
 }
 
 // Collect information about file descriptors of the process on sysenter of exec

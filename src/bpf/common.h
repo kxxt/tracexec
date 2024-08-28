@@ -11,6 +11,8 @@ extern void bpf_rcu_read_unlock(void) __ksym;
 
 // Macros
 
+#define AT_FDCWD -100
+
  #define max(a,b) \
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \
