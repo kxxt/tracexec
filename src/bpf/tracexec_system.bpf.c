@@ -65,20 +65,14 @@ struct {
   __type(key, u32);
   __type(value, union cache_item);
 } cache SEC(".maps");
-// tracing progs cannot use bpf_spin_lock yet
-// static struct bpf_spin_lock cache_lock;
 
-// This string_io map is used to send variable length cstrings back to
-// userspace. We cannot simply write all cstrings into one single fixed buffer
-// because it's hard to make verifier happy. (PRs are welcome if that could be
-// done) (TODO: check if this could be done with dynptr)
 struct {
   __uint(type, BPF_MAP_TYPE_RINGBUF);
-  // Every exec event takes up to 2MiB space for argc+argv+envp,
-  // so on a machine with 64 cores, there can be at most 64 execs happening in
-  // parallel, taking at most 128MiB space in a burst. We haven't considered the
-  // rate at which the userspace code consumes event, 256MiB is used as a
-  // heruistic for now
+  // Every exec event takes up to 2MiB space for argc+argv+envp, (without
+  // considering the space taken by path segments) so on a machine with 64
+  // cores, there can be at most 64 execs happening in parallel, taking at most
+  // 128MiB space in a burst. We haven't considered the rate at which the
+  // userspace code consumes event, 256MiB is used as a heruistic for now
   __uint(max_entries, 268435456);
 } events SEC(".maps");
 
@@ -89,7 +83,7 @@ struct reader_context {
   // 1: envp
   u32 index;
   // ptr is a userspace pointer to an array of cstring pointers
-  u8 **ptr;
+  const u8 *const *ptr;
 };
 
 struct fdset_reader_context {
@@ -186,8 +180,6 @@ err_unlock:
   return false;
 }
 
-// TODO: follow-forks: trace do_fork
-
 int trace_exec_common(struct sys_enter_exec_args *ctx) {
   // Collect UID/GID information
   uid_t uid, gid;
@@ -282,7 +274,7 @@ SEC("tracepoint/syscalls/sys_enter_execve")
 int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
   struct task_struct *task;
   struct exec_event *event;
-  struct sys_enter_exec_args common_ctx = {.__syscall_nr = ctx->__syscall_nr,
+  struct sys_enter_exec_args common_ctx = {.syscall_nr = ctx->__syscall_nr,
                                            .argv = ctx->argv,
                                            .envp = ctx->envp,
                                            .base_filename = ctx->filename};
@@ -772,7 +764,7 @@ err_out:
   // If we failed to read the segments of this mount, send a placeholder to
   // userspace
   // TODO
-
+  debug("Failed to send mount %p", mnt);
   // continue
   return 0;
 }

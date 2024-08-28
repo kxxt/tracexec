@@ -56,7 +56,7 @@ struct sys_enter_execveat_args {
 };
 
 struct sys_enter_exec_args {
-  s32 __syscall_nr;
+  s32 syscall_nr;
   const u8 *base_filename;
   const u8 *const *argv;
   const u8 *const *envp;
