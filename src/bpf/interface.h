@@ -92,13 +92,14 @@ struct exec_event {
   pid_t tgid;
   uid_t uid;
   uid_t gid;
+  s32 syscall_nr;
   s64 ret;
   // argc and env count
   u32 count[2];
   u32 fd_count;
   u32 path_count;
+  s32 fd_path_id;
   u8 base_filename[PATH_MAX];
-  u8 filename[PATH_MAX];
   u8 comm[TASK_COMM_LEN];
 };
 
@@ -111,8 +112,7 @@ struct fd_event {
   struct event_header header;
   unsigned int flags;
   unsigned int fd;
-  u32 path_id;
-  u32 mount_point_path_id;
+  s32 path_id;
 };
 
 struct path_event {

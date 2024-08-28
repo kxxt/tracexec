@@ -109,7 +109,7 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event);
 static int add_tgid_to_closure(pid_t tgid);
 static int read_send_path(const struct path *path,
-                          const struct event_header *base_header, u32 path_id);
+                          const struct event_header *base_header, s32 path_id);
 
 #ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
@@ -213,6 +213,7 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   event->header.type = SYSEXIT_EVENT;
   event->header.eid = __sync_fetch_and_add(&event_counter, 1);
   event->count[0] = event->count[1] = event->fd_count = event->path_count = 0;
+  event->syscall_nr = ctx->syscall_nr;
   // Read comm
   if (0 != bpf_get_current_comm(event->comm, sizeof(event->comm))) {
     // Failed to read comm
@@ -511,7 +512,6 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
   if (ret < 0) {
     event->header.flags |= PATH_READ_ERR;
   }
-  entry->mount_point_path_id = -1;
   entry->flags = 0;
   ret = bpf_core_read(&entry->flags, sizeof(entry->flags), &file->f_flags);
   if (ret < 0) {
@@ -525,7 +525,6 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
 ptr_err:
   entry->header.flags |= PTR_READ_FAILURE;
   entry->path_id = -1;
-  entry->mount_point_path_id = -1;
   bpf_ringbuf_output(&events, entry, sizeof(struct fd_event), 0);
   return 1;
 }
@@ -776,7 +775,7 @@ err_out:
 // Arguments:
 //   path: a pointer to a path struct, this is not a kernel pointer
 static int read_send_path(const struct path *path,
-                          const struct event_header *base_header, u32 path_id) {
+                          const struct event_header *base_header, s32 path_id) {
   int ret = -1;
   // Initialize
   int index = 0;
