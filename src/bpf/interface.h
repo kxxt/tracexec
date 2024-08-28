@@ -98,7 +98,9 @@ struct exec_event {
   u32 count[2];
   u32 fd_count;
   u32 path_count;
-  s32 fd_path_id;
+  s32 fd;
+  s32 cwd_path_id;
+  u64 flags;
   u8 base_filename[PATH_MAX];
   u8 comm[TASK_COMM_LEN];
 };
