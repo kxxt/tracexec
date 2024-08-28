@@ -256,6 +256,7 @@ pub fn run(
       event_type::PATH_EVENT => {
         assert_eq!(data.len(), size_of::<path_event>());
         let event: path_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+        eprintln!("Received path {} with {} segments", event.header.id, event.segment_count)
       }
       event_type::PATH_SEGMENT_EVENT => {
         assert_eq!(data.len(), size_of::<path_segment_event>());

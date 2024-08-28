@@ -673,7 +673,6 @@ struct path_segment_ctx {
   struct dentry *mnt_root;
   struct dentry *root;
   struct path_event *path_event;
-  const struct event_header *base_header;
   u32 base_index;
 };
 
@@ -681,7 +680,7 @@ static int read_send_dentry_segment(u32 index, struct path_segment_ctx *ctx);
 
 // Read all dentry segments upto the mount point and send them to userspace.
 // Returns the number of segments iterated on success, -1 on failure
-static inline int read_send_dentry_segments_recursive(
+static __always_inline int read_send_dentry_segments_recursive(
     struct path_segment_ctx *ctx, struct path_event *path_event, u32 path_id) {
 
   // while dentry->d_parent != dentry, read dentry->d_name.name and send it back
@@ -699,7 +698,7 @@ static inline int read_send_dentry_segments_recursive(
 // bpf_loop helper:
 static int read_send_dentry_segment(u32 index, struct path_segment_ctx *ctx) {
   int ret = 1; // break
-  if (ctx == NULL || ctx->base_header == NULL)
+  if (ctx == NULL || ctx->path_event == NULL)
     return ret;
   // Read this segment
   long key = 0;
@@ -707,11 +706,18 @@ static int read_send_dentry_segment(u32 index, struct path_segment_ctx *ctx) {
       bpf_map_lookup_elem(&path_segment_cache, &key);
   if (event == NULL)
     return ret;
+  // Check if we reached mount point or root
+  if (ctx->dentry == ctx->mnt_root || ctx->dentry == ctx->root) {
+    debug("skipping: dentry=%p, root = %p, mnt_root = %p", ctx->dentry,
+          ctx->root, ctx->mnt_root);
+    ctx->base_index += index;
+    return 1;
+  }
   event->header = (struct event_header){
       .id = ctx->path_event->header.id,
       .type = PATH_SEGMENT_EVENT,
-      .eid = ctx->base_header->eid,
-      .pid = ctx->base_header->pid,
+      .eid = ctx->path_event->header.eid,
+      .pid = ctx->path_event->header.pid,
       .flags = 0,
   };
   event->index = index + ctx->base_index;
@@ -737,21 +743,21 @@ send:;
   if (ret < 0) {
     ctx->path_event->header.flags |= OUTPUT_FAILURE;
   }
-  // Check if we reached mount point
   struct dentry *parent;
   ret = bpf_core_read(&parent, sizeof(void *), &dentry->d_parent);
   if (ret < 0) {
     debug("failed to read dentry->d_parent: %d", ret);
     ctx->path_event->header.flags |= BAIL_OUT;
     ctx->dentry = NULL;
+    ctx->base_index += index + 1;
     // break
     return 1;
   }
   debug("got segment: index:%d, %s, dentry = %p, mnt_root = %p, parent = %p",
         event->index, event->segment, ctx->dentry, ctx->mnt_root, parent);
-  if (parent == ctx->dentry || parent == ctx->mnt_root || parent == ctx->root) {
-    debug("skipping: parent=%p, root = %p, mnt_root = %p", parent, ctx->root,
-          ctx->mnt_root);
+  if (parent == ctx->dentry) {
+    // Reached top
+    ctx->base_index += index + 1;
     // break
     return 1;
   }
@@ -763,9 +769,9 @@ send:;
 struct mount_ctx {
   struct mount *mnt;
   struct path_event *path_event;
+  struct path_segment_ctx *segment_ctx;
   int base_index;
   u32 path_id;
-  struct path_segment_ctx *segment_ctx;
 };
 
 // root: current->fs->root
@@ -809,19 +815,18 @@ static int read_send_mount_segments(u32 index, struct mount_ctx *ctx) {
   debug("iter mount %p %d", mnt, mnt_id);
   *ctx->segment_ctx = (struct path_segment_ctx){
       .path_event = ctx->path_event,
-      .base_header = &ctx->path_event->header,
       .dentry = mnt_mountpoint,
       .mnt_root = mnt_root,
       .root = ctx->segment_ctx->root,
       .base_index = ctx->base_index,
   };
   // Read the segments and send them to userspace
-  int iter_nr = read_send_dentry_segments_recursive(
-      ctx->segment_ctx, ctx->path_event, ctx->path_id);
-  if (iter_nr < 0) {
+  ret = read_send_dentry_segments_recursive(ctx->segment_ctx, ctx->path_event,
+                                            ctx->path_id);
+  if (ret < 0) {
     goto err_out;
   }
-  ctx->base_index += iter_nr;
+  ctx->base_index = ctx->segment_ctx->base_index;
   ctx->mnt = parent;
   return 0;
 err_out:
@@ -841,10 +846,9 @@ err_out:
 //   path: a pointer to a path struct, this is not a kernel pointer
 static int read_send_path(const struct path *path,
                           const struct event_header *base_header, s32 path_id) {
-  int ret = -1;
+  int ret = -1, zero = 0;
   // Initialize
-  int index = 0;
-  struct path_event *event = bpf_map_lookup_elem(&path_event_cache, &index);
+  struct path_event *event = bpf_map_lookup_elem(&path_event_cache, &zero);
   if (event == NULL) {
     debug("This should not happen!");
     return 1;
@@ -861,44 +865,41 @@ static int read_send_path(const struct path *path,
   event->header.flags = 0;
   // Get root dentry
   struct task_struct *current = (void *)bpf_get_current_task();
-  struct dentry *root;
   struct fs_struct *fs;
+  struct path_segment_ctx segment_ctx = {
+      .path_event = event,
+      .dentry = path->dentry,
+      .mnt_root = NULL,
+      .root = NULL,
+      .base_index = 0,
+  };
   ret = bpf_core_read(&fs, sizeof(void *), &current->fs);
   if (ret < 0) {
     debug("failed to read current->fs: %d", ret);
     goto ptr_err;
   }
-  ret = bpf_core_read(&root, sizeof(void *), &fs->root.dentry);
+  ret = bpf_core_read(&segment_ctx.root, sizeof(void *), &fs->root.dentry);
   if (ret < 0) {
     debug("failed to read fs->root.dentry: %d", ret);
     goto ptr_err;
   }
   // Get vfsmount and mnt_root
   struct vfsmount *vfsmnt = path->mnt;
-  struct dentry *mnt_root, *dentry = path->dentry;
-  ret = bpf_core_read(&mnt_root, sizeof(void *), &vfsmnt->mnt_root);
+  ret = bpf_core_read(&segment_ctx.mnt_root, sizeof(void *), &vfsmnt->mnt_root);
   if (ret < 0) {
     debug("failed to read vfsmnt->mnt_root: %d", ret);
     goto ptr_err;
   }
-  struct path_segment_ctx segment_ctx = {
-      .path_event = event,
-      .base_header = &event->header,
-      .dentry = dentry,
-      .mnt_root = mnt_root,
-      .root = root,
-      .base_index = 0,
-  };
+
   // Send the dentry segments to userspace
-  index = read_send_dentry_segments_recursive(&segment_ctx, event, path_id);
-  if (index < 0) {
+  ret = read_send_dentry_segments_recursive(&segment_ctx, event, path_id);
+  if (ret < 0) {
     goto loop_err;
   }
   // Iterate over all ancestor mounts and send segments to userspace
-  struct mount *mnt = container_of(vfsmnt, struct mount, mnt);
   struct mount_ctx ctx = {
-      .base_index = index,
-      .mnt = mnt,
+      .base_index = segment_ctx.base_index,
+      .mnt = container_of(vfsmnt, struct mount, mnt),
       .path_event = event,
       .path_id = path_id,
       // Reuse the above segment_ctx to save stack space
@@ -915,6 +916,7 @@ static int read_send_path(const struct path *path,
     debug("Failed to output path_event to ringbuf");
     return -1;
   }
+  return 0;
 ptr_err:
   event->header.flags |= PTR_READ_FAILURE;
   goto err_out;
