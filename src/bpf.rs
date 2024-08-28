@@ -1,5 +1,6 @@
 use std::{
   borrow::Cow,
+  cell::RefCell,
   collections::{HashMap, HashSet},
   ffi::{CStr, CString},
   io::stdin,
@@ -9,7 +10,9 @@ use std::{
     fd::RawFd,
     unix::{fs::MetadataExt, process::CommandExt},
   },
+  process,
   sync::{Arc, OnceLock, RwLock},
+  thread::sleep,
   time::Duration,
 };
 
@@ -19,7 +22,7 @@ use interface::exec_event_flags_USERSPACE_DROP_MARKER;
 use libbpf_rs::{
   num_possible_cpus,
   skel::{OpenSkel, Skel, SkelBuilder},
-  RingBufferBuilder,
+  ErrorKind, RingBufferBuilder,
 };
 use nix::{
   errno::Errno,
@@ -84,7 +87,7 @@ pub fn run(
   open_skel.maps.cache.set_max_entries(ncpu)?;
   // tracexec runs in the same pid namespace with the tracee
   let pid_ns_ino = std::fs::metadata("/proc/self/ns/pid")?.ino();
-  let skel = if !args.is_empty() {
+  let (skel, child) = if !args.is_empty() {
     let mut cmd = CommandBuilder::new(&args[0]);
     cmd.args(args.iter().skip(1));
     cmd.cwd(std::env::current_dir()?);
@@ -110,7 +113,7 @@ pub fn run(
           WaitStatus::Stopped(_, _) => kill(child, Signal::SIGCONT)?,
           _ => unreachable!("Invalid wait status!"),
         }
-        skel
+        (skel, Some(child))
       }
       ForkResult::Child => {
         let me = getpid();
@@ -153,15 +156,14 @@ pub fn run(
   } else {
     let mut skel = open_skel.load()?;
     skel.attach()?;
-    skel
+    (skel, None)
   };
   let events = skel.maps.events;
   let mut builder = RingBufferBuilder::new();
-  let strings: Arc<RwLock<HashMap<u64, Vec<(ArcStr, u32)>>>> =
-    Arc::new(RwLock::new(HashMap::new()));
-  let fdinfo_map: Arc<RwLock<HashMap<u64, FileDescriptorInfoCollection>>> =
-    Arc::new(RwLock::new(HashMap::new()));
-  let lost_events: RwLock<HashSet<u64>> = RwLock::new(HashSet::new());
+  let strings: RefCell<HashMap<u64, Vec<(ArcStr, u32)>>> = RefCell::new(HashMap::new());
+  let fdinfo_map: RefCell<HashMap<u64, FileDescriptorInfoCollection>> =
+    RefCell::new(HashMap::new());
+  let lost_events: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
   let mut eid = 0;
   builder.add(&events, move |data| {
     assert!(
@@ -179,12 +181,12 @@ pub fn run(
             "warning: inconsistent event id counter: local = {eid}, kernel = {}. Possible event loss!",
             header.eid
           );
-          lost_events.write().unwrap().extend(eid..header.eid);
+          lost_events.borrow_mut().extend(eid..header.eid);
           // reset local counter
           eid = header.eid + 1;
         } else if header.eid < eid {
           // This should only happen for lost events
-          if lost_events.write().unwrap().remove(&header.eid) {
+          if lost_events.borrow_mut().remove(&header.eid) {
             // do nothing
           } else {
             panic!("inconsistent event id counter: local = {}, kernel = {}.", eid, header.eid);
@@ -206,14 +208,14 @@ pub fn run(
         for i in 0..event.count[0] {
           eprint!(
             "{:?} ",
-            strings.read().unwrap().get(&event.header.eid).unwrap()[i as usize].0
+            strings.borrow().get(&event.header.eid).unwrap()[i as usize].0
           );
         }
         eprint!("envp ");
         for i in event.count[0]..(event.count[0] + event.count[1]) {
           eprint!(
             "{:?} ",
-            strings.read().unwrap().get(&event.header.eid).unwrap()[i as usize].0
+            strings.borrow().get(&event.header.eid).unwrap()[i as usize].0
           );
         }
         eprintln!("= {}", event.ret);
@@ -222,8 +224,8 @@ pub fn run(
         let header_len = size_of::<event_header>();
         let string = utf8_lossy_cow_from_bytes_with_nul(&data[header_len..]);
         let cached = cached_cow(string);
-        let mut lock_guard = strings.write().unwrap();
-        let strings = lock_guard.entry(header.eid).or_default();
+        let mut guard = strings.borrow_mut();
+        let strings = guard.entry(header.eid).or_default();
         // Catch event drop
         if strings.len() != header.id as usize {
           // Insert placeholders for dropped events
@@ -233,7 +235,7 @@ pub fn run(
           debug_assert_eq!(strings.len(), header.id as usize);
         }
         strings.push((cached, header.flags));
-        drop(lock_guard);
+        drop(guard);
       }
       event_type::FD_EVENT => {
         assert_eq!(data.len(), size_of::<fd_event>());
@@ -248,10 +250,10 @@ pub fn run(
           mnt: arcstr::literal!("[tracexec: unknown]"), // TODO
           extra: vec![arcstr::literal!("")],            // TODO
         };
-        let mut lock_guard = fdinfo_map.write().unwrap();
-        let fdc = lock_guard.entry(header.eid).or_default();
+        let mut guard = fdinfo_map.borrow_mut();
+        let fdc = guard.entry(header.eid).or_default();
         fdc.fdinfo.insert(event.fd as RawFd, fdinfo);
-        drop(lock_guard);
+        drop(guard);
       }
       event_type::PATH_EVENT => {
         assert_eq!(data.len(), size_of::<path_event>());
@@ -267,8 +269,41 @@ pub fn run(
     0
   })?;
   let rb = builder.build()?;
-  loop {
-    rb.poll(Duration::from_millis(1000))?;
+  let ringbuf_task = tokio::task::spawn_blocking(move || loop {
+    match rb.poll(Duration::from_millis(1000)) {
+      Ok(_) => continue,
+      Err(e) => {
+        if e.kind() == ErrorKind::Interrupted {
+          continue;
+        } else {
+          panic!("Failed to poll ringbuf: {e}");
+        }
+      }
+    }
+  });
+  if let Some(child) = child {
+    // TODO: We need to poll on the child and the ringbuf_task
+    // Wait for the child to die
+    match waitpid(child, None)? {
+      WaitStatus::Exited(pid, code) => {
+        eprintln!("child {pid} exited with code {code}");
+        process::exit(0);
+      }
+      WaitStatus::Signaled(pid, sig, coredumped) => {
+        eprintln!(
+          "child {} signaled with {}{}",
+          pid,
+          sig,
+          if coredumped { " (coredumped)" } else { "" }
+        );
+        process::exit(0);
+      }
+      _ => unreachable!("Invalid wait status!"),
+    }
+  } else {
+    loop {
+      sleep(Duration::from_secs(200));
+    }
   }
 }
 
