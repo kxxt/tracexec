@@ -66,7 +66,11 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy,rustfmt
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libelf-dev zlib1g-dev build-essential
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
       - name: Run clippy
@@ -75,47 +79,94 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        toolchain: ["stable"]
-        target:
-          - x86_64-unknown-linux-gnu
-          - x86_64-unknown-linux-musl
-          - aarch64-unknown-linux-gnu
-          - aarch64-unknown-linux-musl
-          - riscv64gc-unknown-linux-gnu
+        include:
+          - os: ubuntu-22.04
+            os-arch: amd64
+            target: x86_64-unknown-linux-gnu
+            arch: x86_64
+            libpath: usr/lib/x86_64-linux-gnu
+            no-default-features: false
+          - os: ubuntu-22.04
+            os-arch: amd64
+            target: x86_64-unknown-linux-musl
+            arch: x86_64
+            libpath: usr/lib/x86_64-linux-gnu
+            no-default-features: false
+            args: '-F static,vendored'
+          - os: ubuntu-22.04
+            os-arch: arm64
+            target: aarch64-unknown-linux-gnu
+            arch: aarch64
+            libpath: usr/lib/aarch64-linux-gnu
+            no-default-features: false
+          - os: ubuntu-22.04
+            os-arch: arm64
+            target: aarch64-unknown-linux-musl
+            arch: aarch64
+            libpath: usr/lib/aarch64-linux-gnu
+            no-default-features: false
+            args: '-F static,vendored'
+          - os: ubuntu-22.04
+            os-arch: riscv64
+            target: riscv64gc-unknown-linux-gnu
+            arch: riscv64
+            libpath: usr/lib/riscv64-linux-gnu
+            no-default-features: true
     runs-on: ${{ matrix.os }}
+    # env:
+    #   LIBBPF_SYS_LIBRARY_PATH: ${{ github.workspace }}/3rdparty/${{ matrix.arch }}/${{ matrix.libpath }}
+    #   LIBBPF_SYS_EXTRA_CFLAGS: -I ${{ github.workspace }}/3rdparty/${{ matrix.arch }}/usr/include
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install Rust {{ matrix.toolchain }}
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ matrix.toolchain }}
+          toolchain: "1.80"
           targets: ${{ matrix.target }}
+          components: rustfmt
       - name: Install cross-compilation tools
         uses: taiki-e/setup-cross-toolchain-action@v1
         with:
           target: ${{ matrix.target }}
+      - name: Add apt sources for ${{ matrix.os-arch }}
+        if: matrix.os-arch != 'amd64'
+        run: |
+          dpkg --add-architecture ${{ matrix.os-arch }}
+
+          release=$(. /etc/os-release && echo "$UBUNTU_CODENAME")
+          sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
+          printf 'deb [arch=${{ matrix.os-arch }}] http://ports.ubuntu.com/ %s main restricted\n' \
+              $release $release-updates $release-security \
+              >> /etc/apt/sources.list
+        shell: sudo sh -e {0}
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential autopoint gettext libelf-dev zlib1g-dev \
+            libelf-dev:${{ matrix.os-arch }} zlib1g-dev:${{ matrix.os-arch }}
+      # - name: Prepare libelf and zlib
+      #   run: 3rdparty/prepare-native-dependencies.sh ${{ matrix.arch }}
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
       - name: Run cargo build with default features
         if: matrix.target != 'riscv64gc-unknown-linux-gnu'
-        run: cargo build --bins --tests --target ${{ matrix.target }}
+        run: cargo build --bins --tests --target ${{ matrix.target }} ${{ matrix.args }}
       - name: Run cargo build with no default features
         if: matrix.target == 'riscv64gc-unknown-linux-gnu'
-        run: cargo build --bins --tests --target ${{ matrix.target }} --no-default-features
+        run: cargo build --bins --tests --target ${{ matrix.target }} --no-default-features ${{ matrix.args }}
       - name: Run cargo check with default features
         if: matrix.target != 'riscv64gc-unknown-linux-gnu'
-        run: cargo check --target ${{ matrix.target }}
+        run: cargo check --target ${{ matrix.target }} ${{ matrix.args }}
         env:
           RUST_BACKTRACE: full
       - name: Run cargo check with no default features
         if: matrix.target == 'riscv64gc-unknown-linux-gnu'
-        run: cargo check --target ${{ matrix.target }} --no-default-features
+        run: cargo check --target ${{ matrix.target }} --no-default-features ${{ matrix.args }}
         env:
           RUST_BACKTRACE: full
       - name: Run cargo test with default features
         if: matrix.target == 'x86_64-unknown-linux-gnu' || matrix.target == 'x86_64-unknown-linux-musl'
-        run: cargo test --target ${{ matrix.target }}
+        run: cargo test --target ${{ matrix.target }} ${{ matrix.args }}
         env:
           RUST_BACKTRACE: full
