@@ -33,11 +33,13 @@ jobs:
             no-default-features: false
           - os: ubuntu-22.04
             os-arch: amd64
-            target: x86_64-unknown-linux-musl
+            target: x86_64-unknown-linux-gnu
             arch: x86_64
             libpath: usr/lib/x86_64-linux-gnu
             no-default-features: false
             features: static,vendored
+            artifact-suffix: -static
+            rust_flags: -C target-feature=+crt-static
           - os: ubuntu-22.04
             os-arch: arm64
             target: aarch64-unknown-linux-gnu
@@ -46,11 +48,13 @@ jobs:
             no-default-features: false
           - os: ubuntu-22.04
             os-arch: arm64
-            target: aarch64-unknown-linux-musl
+            target: aarch64-unknown-linux-gnu
             arch: aarch64
             libpath: usr/lib/aarch64-linux-gnu
             no-default-features: false
             features: static,vendored
+            artifact-suffix: -static
+            rust_flags: -C target-feature=+crt-static
           - os: ubuntu-22.04
             os-arch: riscv64
             target: riscv64gc-unknown-linux-gnu
@@ -102,12 +106,14 @@ jobs:
       - name: Generate third-party licenses
         run: cargo about generate -o THIRD_PARTY_LICENSES.HTML about.hbs
       - uses: taiki-e/upload-rust-binary-action@v1
-        # env:
+        env:
+          RUST_FLAGS: ${{ matrix.rust_flags }}
         #   LIBBPF_SYS_LIBRARY_PATH: ${{ github.workspace }}/3rdparty/${{ matrix.arch }}/${{ matrix.libpath }}
         #   LIBBPF_SYS_EXTRA_CFLAGS: -I ${{ github.workspace }}/3rdparty/${{ matrix.arch }}/usr/include
         with:
           bin: tracexec
           token: ${{ secrets.GITHUB_TOKEN }}
+          archive: $bin-$target${{ matrix.artifact-suffix }}
           target: ${{ matrix.target }}
           no-default-features: ${{ matrix.no-default-features }}
           features: ${{ matrix.features }}
