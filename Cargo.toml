@@ -89,8 +89,6 @@ tracing-test = "0.2.4"
 [build-dependencies]
 libbpf-cargo = "0.24.1"
 
-[patch.crates-io]
-libbpf-sys = { path="../libbpf-sys" }
 
 [features]
 default = ["seccomp-bpf", "ebpf"]
