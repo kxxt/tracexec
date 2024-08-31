@@ -7,6 +7,8 @@ tracexec helps you to figure out what and how programs get executed when you exe
 It's useful for debugging build systems, understanding what shell scripts actually do, figuring out what programs
 does a proprietary software run, etc.
 
+- [Installation Guide](./INSTALL.md)
+
 ## Showcases
 
 ### TUI mode with pseudo terminal
@@ -84,22 +86,6 @@ $ tracexec log --show-interpreter --show-cwd -- makepkg -f
 ```
 
 [![asciicast](https://asciinema.org/a/7jDtrlNRx5XUnDXeDBsMRj09p.svg)](https://asciinema.org/a/7jDtrlNRx5XUnDXeDBsMRj09p)
-
-## Installation
-
-### From source
-
-Via cargo:
-
-```bash
-cargo install tracexec --bin tracexec
-```
-
-Arch Linux users can also install from the official repositories via `pacman -S tracexec`.
-
-### Binary
-
-You can download the binary from the [release page](https://github.com/kxxt/tracexec/releases)
 
 ## Usage
 
