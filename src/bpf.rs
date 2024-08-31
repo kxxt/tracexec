@@ -18,6 +18,7 @@ use std::{
 
 use arcstr::ArcStr;
 use color_eyre::eyre::bail;
+use event::EventStorage;
 use interface::exec_event_flags_USERSPACE_DROP_MARKER;
 use libbpf_rs::{
   num_possible_cpus,
@@ -162,9 +163,7 @@ pub fn run(
   };
   let events = skel.maps.events;
   let mut builder = RingBufferBuilder::new();
-  let strings: RefCell<HashMap<u64, Vec<(ArcStr, u32)>>> = RefCell::new(HashMap::new());
-  let fdinfo_map: RefCell<HashMap<u64, FileDescriptorInfoCollection>> =
-    RefCell::new(HashMap::new());
+  let event_storage: RefCell<HashMap<u64, EventStorage>> = RefCell::new(HashMap::new());
   let lost_events: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
   let mut eid = 0;
   builder.add(&events, move |data| {
@@ -210,14 +209,14 @@ pub fn run(
         for i in 0..event.count[0] {
           eprint!(
             "{:?} ",
-            strings.borrow().get(&event.header.eid).unwrap()[i as usize].0
+            event_storage.borrow().get(&event.header.eid).unwrap().strings[i as usize].0
           );
         }
         eprint!("envp ");
         for i in event.count[0]..(event.count[0] + event.count[1]) {
           eprint!(
             "{:?} ",
-            strings.borrow().get(&event.header.eid).unwrap()[i as usize].0
+            event_storage.borrow().get(&event.header.eid).unwrap().strings[i as usize].0
           );
         }
         eprintln!("= {}", event.ret);
@@ -226,8 +225,8 @@ pub fn run(
         let header_len = size_of::<event_header>();
         let string = utf8_lossy_cow_from_bytes_with_nul(&data[header_len..]);
         let cached = cached_cow(string);
-        let mut guard = strings.borrow_mut();
-        let strings = guard.entry(header.eid).or_default();
+        let mut storage = event_storage.borrow_mut();
+        let strings = &mut storage.entry(header.eid).or_default().strings;
         // Catch event drop
         if strings.len() != header.id as usize {
           // Insert placeholders for dropped events
@@ -237,7 +236,6 @@ pub fn run(
           debug_assert_eq!(strings.len(), header.id as usize);
         }
         strings.push((cached, header.flags));
-        drop(guard);
       }
       event_type::FD_EVENT => {
         assert_eq!(data.len(), size_of::<fd_event>());
@@ -252,10 +250,9 @@ pub fn run(
           mnt: arcstr::literal!("[tracexec: unknown]"), // TODO
           extra: vec![arcstr::literal!("")],            // TODO
         };
-        let mut guard = fdinfo_map.borrow_mut();
-        let fdc = guard.entry(header.eid).or_default();
+        let mut storage = event_storage.borrow_mut();
+        let fdc = &mut storage.entry(header.eid).or_default().fdinfo_map;
         fdc.fdinfo.insert(event.fd as RawFd, fdinfo);
-        drop(guard);
       }
       event_type::PATH_EVENT => {
         assert_eq!(data.len(), size_of::<path_event>());
