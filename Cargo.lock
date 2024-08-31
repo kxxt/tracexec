@@ -2123,6 +2123,7 @@ dependencies = [
  "lazy_static",
  "libbpf-cargo",
  "libbpf-rs",
+ "libbpf-sys",
  "nix 0.29.0",
  "paste",
  "predicates",
