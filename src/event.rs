@@ -21,7 +21,8 @@ use ratatui::{
   style::Styled,
   text::{Line, Span},
 };
-use strum::Display;
+use serde::Serialize;
+use strum::{Display, IntoStaticStr};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -35,6 +36,65 @@ use crate::{
     theme::THEME,
   },
 };
+
+#[cfg(feature = "ebpf")]
+use crate::bpf::BpfError;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FriendlyError {
+  InspectError(Errno),
+}
+
+impl From<&FriendlyError> for &'static str {
+  fn from(value: &FriendlyError) -> Self {
+    match value {
+      FriendlyError::InspectError(_) => "[err: failed to inspect]",
+    }
+  }
+}
+
+// we need to implement custom Display so Result and Either do not fit.
+#[derive(Debug, Clone, PartialEq)]
+pub enum OutputMsg {
+  Ok(ArcStr),
+  Err(FriendlyError),
+}
+
+impl AsRef<str> for OutputMsg {
+  fn as_ref(&self) -> &str {
+    match self {
+      OutputMsg::Ok(s) => s.as_ref(),
+      OutputMsg::Err(e) => <&'static str>::from(e),
+    }
+  }
+}
+
+impl Serialize for OutputMsg {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    match self {
+      OutputMsg::Ok(s) => s.serialize(serializer),
+      OutputMsg::Err(e) => <&'static str>::from(e).serialize(serializer),
+    }
+  }
+}
+
+impl Display for OutputMsg {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      OutputMsg::Ok(msg) => write!(f, "{msg:?}"),
+      OutputMsg::Err(e) => e.fmt(f),
+    }
+  }
+}
+
+impl Display for FriendlyError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{:?}", self)
+  }
+}
 
 #[derive(Debug, Clone, Display, PartialEq)]
 pub enum Event {
@@ -118,7 +178,7 @@ pub struct ExecEvent {
   pub cwd: PathBuf,
   pub comm: ArcStr,
   pub filename: Result<PathBuf, InspectError>,
-  pub argv: Arc<Result<Vec<ArcStr>, InspectError>>,
+  pub argv: Arc<Result<Vec<OutputMsg>, InspectError>>,
   pub envp: Arc<Result<BTreeMap<ArcStr, ArcStr>, InspectError>>,
   pub interpreter: Vec<Interpreter>,
   pub env_diff: Result<EnvDiff, InspectError>,
@@ -263,11 +323,11 @@ impl TracerEventDetails {
         let _ = argv.as_deref().inspect(|v| {
           v.first().inspect(|&arg0| {
             if filename.is_ok()
-              && filename.as_ref().unwrap().as_os_str() != OsStr::new(arg0.as_str())
+              && filename.as_ref().unwrap().as_os_str() != OsStr::new(arg0.as_ref())
             {
               spans.push(space.clone());
               spans
-                .push(format!("-a {}", escape_str_for_bash!(arg0.as_str())).set_style(THEME.arg0))
+                .push(format!("-a {}", escape_str_for_bash!(arg0.as_ref())).set_style(THEME.arg0))
             }
           });
         });
@@ -331,7 +391,7 @@ impl TracerEventDetails {
           Ok(argv) => {
             for arg in argv.iter().skip(1) {
               spans.push(space.clone());
-              spans.push(escape_str_for_bash!(arg.as_str()).set_style(THEME.argv));
+              spans.push(escape_str_for_bash!(arg.as_ref()).set_style(THEME.argv));
             }
           }
           Err(_) => {
@@ -557,11 +617,12 @@ impl TracerEventDetails {
     }
   }
 
-  pub fn argv_to_string(argv: &Result<Vec<ArcStr>, InspectError>) -> String {
+  pub fn argv_to_string(argv: &Result<Vec<OutputMsg>, InspectError>) -> String {
     let Ok(argv) = argv else {
       return "[failed to read argv]".into();
     };
-    let mut result = Vec::with_capacity(argv.iter().map(|s| s.len() + 3).sum::<usize>() + 2);
+    let mut result =
+      Vec::with_capacity(argv.iter().map(|s| s.as_ref().len() + 3).sum::<usize>() + 2);
     let list_printer = ListPrinter::new(crate::printer::ColorLevel::Less);
     list_printer.print_string_list(&mut result, argv).unwrap();
     // SAFETY: argv is printed in debug format, which is always UTF-8

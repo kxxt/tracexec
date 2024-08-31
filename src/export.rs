@@ -6,7 +6,7 @@ use nix::libc::pid_t;
 use serde::Serialize;
 
 use crate::{
-  event::ExecEvent,
+  event::{ExecEvent, OutputMsg},
   proc::{BaselineInfo, EnvDiff, FileDescriptorInfoCollection},
 };
 
@@ -34,7 +34,7 @@ pub struct JsonExecEvent {
   pub comm_before_exec: ArcStr,
   pub result: i64,
   pub filename: JsonResult<PathBuf>,
-  pub argv: JsonResult<Vec<ArcStr>>,
+  pub argv: JsonResult<Vec<OutputMsg>>,
   pub env: JsonResult<EnvDiff>,
   pub fdinfo: FileDescriptorInfoCollection,
 }

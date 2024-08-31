@@ -3,6 +3,8 @@ use arcstr::ArcStr;
 
 use regex_cursor::Cursor;
 
+use crate::event::OutputMsg;
+
 pub(crate) trait BidirectionalIterator: Iterator {
   fn prev(&mut self) -> Option<Self::Item>;
 }
@@ -294,24 +296,27 @@ enum CursorPosition {
 }
 
 /// Argv joined by a single white space between arguments
-pub struct ArgvCursor<'a> {
-  iter: BidirectionalInterspersedIter<'a, ArcStr>,
+pub struct ArgvCursor<'a, T> {
+  iter: BidirectionalInterspersedIter<'a, T>,
   current: &'a [u8],
   position: CursorPosition,
   len: usize,
   offset: usize,
 }
 
-pub const SPACE: ArcStr = arcstr::literal!(" ");
+pub const SPACE: OutputMsg = OutputMsg::Ok(arcstr::literal!(" "));
 
-impl<'a> ArgvCursor<'a> {
-  pub fn new(slice: &'a [ArcStr], separator: &'a ArcStr) -> Self {
+impl<'a, T> ArgvCursor<'a, T>
+where
+  T: AsRef<str>,
+{
+  pub fn new(slice: &'a [T], separator: &'a T) -> Self {
     let mut res = Self {
       iter: BidirectionalInterspersedIter::new(slice, separator),
       current: &[],
       position: CursorPosition::ChunkEnd,
-      len: slice.iter().map(|s| s.len()).sum::<usize>()
-        + (slice.len().saturating_sub(1)) * separator.len(),
+      len: slice.iter().map(|s| s.as_ref().len()).sum::<usize>()
+        + (slice.len().saturating_sub(1)) * separator.as_ref().len(),
       offset: 0,
     };
     res.advance();
@@ -319,7 +324,10 @@ impl<'a> ArgvCursor<'a> {
   }
 }
 
-impl<'a> Cursor for ArgvCursor<'a> {
+impl<'a, T> Cursor for ArgvCursor<'a, T>
+where
+  T: AsRef<str>,
+{
   fn chunk(&self) -> &[u8] {
     self.current
   }
@@ -333,11 +341,11 @@ impl<'a> Cursor for ArgvCursor<'a> {
       CursorPosition::ChunkEnd => (),
     }
     for next in self.iter.by_ref() {
-      if next.is_empty() {
+      if next.as_ref().is_empty() {
         continue;
       }
       self.offset += self.current.len();
-      self.current = next.as_bytes();
+      self.current = next.as_ref().as_bytes();
       return true;
     }
     false
@@ -352,11 +360,11 @@ impl<'a> Cursor for ArgvCursor<'a> {
       }
     }
     while let Some(prev) = self.iter.prev() {
-      if prev.is_empty() {
+      if prev.as_ref().is_empty() {
         continue;
       }
-      self.offset -= prev.len();
-      self.current = prev.as_bytes();
+      self.offset -= prev.as_ref().len();
+      self.current = prev.as_ref().as_bytes();
       return true;
     }
     false
@@ -374,6 +382,8 @@ impl<'a> Cursor for ArgvCursor<'a> {
 #[cfg(test)]
 mod cursor_tests {
   use super::*;
+
+  pub const SPACE: ArcStr = arcstr::literal!(" ");
 
   #[test]
   fn smoke_test() {

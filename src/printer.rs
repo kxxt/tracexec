@@ -2,6 +2,7 @@ use std::{
   cell::RefCell,
   collections::BTreeMap,
   ffi::OsStr,
+  fmt::{Debug, Display},
   io::{self, Write},
   path::Path,
   sync::Arc,
@@ -200,17 +201,21 @@ impl ListPrinter {
     write!(out, "{}", ", ".style(self.style))
   }
 
-  pub fn print_string_list(&self, out: &mut dyn Write, list: &[impl AsRef<str>]) -> io::Result<()> {
+  pub fn print_string_list(
+    &self,
+    out: &mut dyn Write,
+    list: &[impl Display],
+  ) -> io::Result<()> {
     self.begin(out)?;
     if let Some((last, rest)) = list.split_last() {
       if rest.is_empty() {
-        write!(out, "{:?}", last.as_ref())?;
+        write!(out, "{}", last)?;
       } else {
         for s in rest {
-          write!(out, "{:?}", s.as_ref())?;
+          write!(out, "{}", s)?;
           self.comma(out)?;
         }
-        write!(out, "{:?}", last.as_ref())?;
+        write!(out, "{}", last)?;
       }
     }
     self.end(out)
@@ -683,12 +688,12 @@ impl Printer {
             if let Some(arg0) = argv.first() {
               // filename warning is already handled
               if let Ok(filename) = exec_data.filename.as_ref() {
-                if filename.as_os_str() != OsStr::new(arg0.as_str()) {
+                if filename.as_os_str() != OsStr::new(arg0.as_ref()) {
                   write!(
                     out,
                     " {} {}",
                     "-a".bright_white().italic(),
-                    escape_str_for_bash!(arg0.as_str()).bright_white().italic()
+                    escape_str_for_bash!(arg0.as_ref()).bright_white().italic()
                   )?;
                 }
               }
@@ -763,7 +768,8 @@ impl Printer {
               )
             )?;
             for arg in argv.iter().skip(1) {
-              write!(out, " {}", escape_str_for_bash!(arg.as_str()))?;
+              // TODO: don't escape err msg
+              write!(out, " {}", escape_str_for_bash!(arg.as_ref()))?;
             }
           }
           Err(e) => {

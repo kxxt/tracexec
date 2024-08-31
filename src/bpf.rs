@@ -59,6 +59,8 @@ pub mod interface {
   include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bpf/interface.rs"));
 }
 
+mod event;
+
 fn bump_memlock_rlimit() -> color_eyre::Result<()> {
   let rlimit = libc::rlimit {
     rlim_cur: 128 << 20,
