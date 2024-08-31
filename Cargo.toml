@@ -76,7 +76,9 @@ serde = { version = "1.0.204", features = ["derive"] }
 toml = "0.8.14"
 paste = "1.0.15"
 serde_json = "1.0.120"
-libbpf-rs = { version = "0.24.1", optional = true }
+libbpf-rs = { version = "0.24.1", optional = true, default-features = false }
+# libbpf-sys exists here because we want to control its features
+libbpf-sys = { version = "*", optional = true, default-features = false }
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 
@@ -91,9 +93,10 @@ libbpf-cargo = "0.24.1"
 
 
 [features]
-default = ["seccomp-bpf", "ebpf"]
+default = ["recommended", "vendored-libbpf"]
+recommended = ["seccomp-bpf", "ebpf"]
 seccomp-bpf = ["dep:seccompiler"]
-ebpf = ["dep:libbpf-rs"]
+ebpf = ["dep:libbpf-rs", "dep:libbpf-sys"]
 # The ebpf-debug feature is not meant for end users.
 # This feature also has a bug:
 # Building with --release after building --release -F ebpf-debug
@@ -101,8 +104,9 @@ ebpf = ["dep:libbpf-rs"]
 # Either cargo doesn't rebuild and run build.rs on feature flag change,
 # or some logic is wrong in build.rs
 ebpf-debug = ["ebpf"]
-static = ["libbpf-rs/static"]
-vendored = ["libbpf-rs/vendored"]
+static = ["libbpf-sys/static"]
+vendored = ["libbpf-sys/vendored"]
+vendored-libbpf = ["libbpf-sys/vendored-libbpf"]
 
 [profile.dev]
 opt-level = 1
