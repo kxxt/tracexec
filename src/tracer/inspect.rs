@@ -13,7 +13,10 @@ use nix::{
 };
 use tracing::warn;
 
-use crate::proc::{cached_str, cached_string, parse_env_entry};
+use crate::{
+  event::OutputMsg,
+  proc::{cached_str, cached_string, parse_env_entry},
+};
 
 pub type InspectError = Errno;
 
@@ -94,6 +97,17 @@ pub fn read_string_array(pid: Pid, address: AddressType) -> Result<Vec<String>, 
 pub fn read_arcstr_array(pid: Pid, address: AddressType) -> Result<Vec<ArcStr>, InspectError> {
   read_null_ended_array(pid, address, |pid, address| {
     read_string(pid, address).map(cached_string)
+  })
+}
+
+pub fn read_output_msg_array(
+  pid: Pid,
+  address: AddressType,
+) -> Result<Vec<OutputMsg>, InspectError> {
+  read_null_ended_array(pid, address, |pid, address| {
+    read_string(pid, address)
+      .map(cached_string)
+      .map(OutputMsg::Ok)
   })
 }
 

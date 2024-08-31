@@ -12,6 +12,7 @@ use regex_cursor::engines::pikevm::{self, PikeVM};
 use strum::IntoStaticStr;
 
 use crate::{
+  event::OutputMsg,
   proc::{read_comm, FileDescriptorInfoCollection, Interpreter},
   regex::{ArgvCursor, SPACE},
   tracer::InspectError,
@@ -66,7 +67,7 @@ pub enum ProcessStatus {
 #[derive(Debug)]
 pub struct ExecData {
   pub filename: Result<PathBuf, InspectError>,
-  pub argv: Arc<Result<Vec<ArcStr>, InspectError>>,
+  pub argv: Arc<Result<Vec<OutputMsg>, InspectError>>,
   pub envp: Arc<Result<BTreeMap<ArcStr, ArcStr>, InspectError>>,
   pub cwd: PathBuf,
   pub interpreters: Vec<Interpreter>,
@@ -76,7 +77,7 @@ pub struct ExecData {
 impl ExecData {
   pub fn new(
     filename: Result<PathBuf, InspectError>,
-    argv: Result<Vec<ArcStr>, InspectError>,
+    argv: Result<Vec<OutputMsg>, InspectError>,
     envp: Result<BTreeMap<ArcStr, ArcStr>, InspectError>,
     cwd: PathBuf,
     interpreters: Vec<Interpreter>,
@@ -222,7 +223,7 @@ impl BreakPointPattern {
     }
   }
 
-  pub fn matches(&self, argv: Option<&[ArcStr]>, filename: Option<&Path>) -> bool {
+  pub fn matches(&self, argv: Option<&[OutputMsg]>, filename: Option<&Path>) -> bool {
     match self {
       BreakPointPattern::ArgvRegex(regex) => {
         let Some(argv) = argv else {

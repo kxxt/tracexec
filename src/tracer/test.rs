@@ -8,7 +8,7 @@ use tracing_test::traced_test;
 
 use crate::{
   cli::args::{LogModeArgs, ModifierArgs, PtraceArgs, TracerEventArgs},
-  event::{TracerEvent, TracerEventDetails, TracerMessage},
+  event::{OutputMsg, TracerEvent, TracerEventDetails, TracerMessage},
   proc::{BaselineInfo, Interpreter},
   tracer::Tracer,
 };
@@ -110,7 +110,13 @@ async fn tracer_decodes_proc_self_exe(
     }) = event
     {
       let argv = exec.argv.as_deref().unwrap();
-      assert_eq!(argv, &["/proc/self/exe", "--help"]);
+      assert_eq!(
+        argv,
+        &[
+          OutputMsg::Ok("/proc/self/exe".into()),
+          OutputMsg::Ok("--help".into())
+        ]
+      );
       let filename = exec.filename.as_deref().unwrap();
       if !resolve_proc_self_exe {
         assert_eq!(filename, &PathBuf::from("/proc/self/exe"));
@@ -138,7 +144,7 @@ async fn tracer_emits_exec_event(tracer: TracerFixture) {
     }) = event
     {
       let argv = exec.argv.as_deref().unwrap();
-      assert_eq!(argv, &["/bin/true"]);
+      assert_eq!(argv, &[OutputMsg::Ok("/bin/true".into())]);
       let filename = exec.filename.as_deref().unwrap();
       assert_eq!(filename, &PathBuf::from("/bin/true"));
       // The environment is not modified

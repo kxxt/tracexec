@@ -14,6 +14,7 @@ use arcstr::ArcStr;
 use cfg_if::cfg_if;
 use either::Either;
 use enumflags2::BitFlags;
+use inspect::read_output_msg_array;
 use nix::{
   errno::Errno,
   libc::{
@@ -726,7 +727,7 @@ impl Tracer {
       };
       let filename = self.get_filename_for_display(pid, filename)?;
       self.warn_for_filename(&filename, pid)?;
-      let argv = read_arcstr_array(pid, syscall_arg!(regs, 2) as AddressType);
+      let argv = read_output_msg_array(pid, syscall_arg!(regs, 2) as AddressType);
       self.warn_for_argv(&argv, pid)?;
       let envp = read_env(pid, syscall_arg!(regs, 3) as AddressType);
       self.warn_for_envp(&envp, pid)?;
@@ -749,7 +750,7 @@ impl Tracer {
       let filename = read_pathbuf(pid, syscall_arg!(regs, 0) as AddressType);
       let filename = self.get_filename_for_display(pid, filename)?;
       self.warn_for_filename(&filename, pid)?;
-      let argv = read_arcstr_array(pid, syscall_arg!(regs, 1) as AddressType);
+      let argv = read_output_msg_array(pid, syscall_arg!(regs, 1) as AddressType);
       self.warn_for_argv(&argv, pid)?;
       let envp = read_string_array(pid, syscall_arg!(regs, 2) as AddressType).map(parse_envp);
       self.warn_for_envp(&envp, pid)?;
@@ -959,9 +960,9 @@ impl Tracer {
     })
   }
 
-  fn warn_for_argv(
+  fn warn_for_argv<T>(
     &self,
-    argv: &Result<Vec<ArcStr>, InspectError>,
+    argv: &Result<Vec<T>, InspectError>,
     pid: Pid,
   ) -> color_eyre::Result<()> {
     if self.filter.intersects(TracerEventDetailsKind::Warning) {
