@@ -22,7 +22,7 @@ use ratatui::{
   text::{Line, Span},
 };
 use serde::Serialize;
-use strum::{Display, IntoStaticStr};
+use strum::Display;
 use tokio::sync::mpsc;
 
 use crate::{
@@ -43,12 +43,23 @@ use crate::bpf::BpfError;
 #[derive(Debug, Clone, PartialEq)]
 pub enum FriendlyError {
   InspectError(Errno),
+  #[cfg(feature = "ebpf")]
+  Bpf(BpfError),
+}
+
+#[cfg(feature = "ebpf")]
+impl From<BpfError> for FriendlyError {
+  fn from(value: BpfError) -> Self {
+    Self::Bpf(value)
+  }
 }
 
 impl From<&FriendlyError> for &'static str {
   fn from(value: &FriendlyError) -> Self {
     match value {
       FriendlyError::InspectError(_) => "[err: failed to inspect]",
+      #[cfg(feature = "ebpf")]
+      FriendlyError::Bpf(_) => "[err: bpf error]",
     }
   }
 }

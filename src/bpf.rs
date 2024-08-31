@@ -44,6 +44,7 @@ use crate::{
   cache::StringCache,
   cli::args::ModifierArgs,
   cmdbuilder::CommandBuilder,
+  event::OutputMsg,
   printer::PrinterOut,
   proc::{FileDescriptorInfo, FileDescriptorInfoCollection},
   pty,
@@ -61,6 +62,7 @@ pub mod interface {
 }
 
 mod event;
+pub use event::BpfError;
 
 fn bump_memlock_rlimit() -> color_eyre::Result<()> {
   let rlimit = libc::rlimit {
@@ -208,15 +210,15 @@ pub fn run(
         );
         for i in 0..event.count[0] {
           eprint!(
-            "{:?} ",
-            event_storage.borrow().get(&event.header.eid).unwrap().strings[i as usize].0
+            "{} ",
+            event_storage.borrow().get(&event.header.eid).unwrap().strings[i as usize]
           );
         }
         eprint!("envp ");
         for i in event.count[0]..(event.count[0] + event.count[1]) {
           eprint!(
-            "{:?} ",
-            event_storage.borrow().get(&event.header.eid).unwrap().strings[i as usize].0
+            "{} ",
+            event_storage.borrow().get(&event.header.eid).unwrap().strings[i as usize]
           );
         }
         eprintln!("= {}", event.ret);
@@ -230,12 +232,12 @@ pub fn run(
         // Catch event drop
         if strings.len() != header.id as usize {
           // Insert placeholders for dropped events
-          let placeholder = arcstr::literal!("[dropped from ringbuf]");
-          let dropped_event = (placeholder, exec_event_flags_USERSPACE_DROP_MARKER);
+          let dropped_event = OutputMsg::Err(BpfError::Dropped.into());
           strings.extend(repeat(dropped_event).take(header.id as usize - strings.len()));
           debug_assert_eq!(strings.len(), header.id as usize);
         }
-        strings.push((cached, header.flags));
+        // TODO: check flags in header
+        strings.push(OutputMsg::Ok(cached));
       }
       event_type::FD_EVENT => {
         assert_eq!(data.len(), size_of::<fd_event>());

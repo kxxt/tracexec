@@ -8,7 +8,7 @@ use crate::{event::OutputMsg, proc::FileDescriptorInfoCollection};
 /// about an event from the BPF ringbuf
 #[derive(Debug, Default)]
 pub struct EventStorage {
-  pub strings: Vec<(ArcStr, u32)>,
+  pub strings: Vec<OutputMsg>,
   pub fdinfo_map: FileDescriptorInfoCollection,
   pub paths: HashMap<i32, Path>,
 }
@@ -20,4 +20,9 @@ pub struct Path {
   // with /
   is_absolute: bool,
   segments: Vec<OutputMsg>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BpfError {
+  Dropped,
 }
