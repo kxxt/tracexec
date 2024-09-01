@@ -315,7 +315,7 @@ pub struct ExecEvent {
   pub filename: Result<PathBuf, InspectError>,
   pub argv: Arc<Result<Vec<OutputMsg>, InspectError>>,
   pub envp: Arc<Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>>,
-  pub interpreter: Vec<Interpreter>,
+  pub interpreter: Option<Vec<Interpreter>>,
   pub env_diff: Result<EnvDiff, InspectError>,
   pub fdinfo: Arc<FileDescriptorInfoCollection>,
   pub result: i64,

@@ -481,24 +481,26 @@ impl Printer {
       // Interpreter
 
       if self.args.trace_interpreter && result == 0 {
-        // FIXME: show interpreter for errnos other than ENOENT
-        write!(out, " {} ", "interpreter".purple(),)?;
-        match exec_data.interpreters.len() {
-          0 => {
-            write!(out, "{}", Interpreter::None)?;
-          }
-          1 => {
-            write!(out, "{}", exec_data.interpreters[0])?;
-          }
-          _ => {
-            list_printer.begin(out)?;
-            for (idx, interpreter) in exec_data.interpreters.iter().enumerate() {
-              if idx != 0 {
-                list_printer.comma(out)?;
-              }
-              write!(out, "{}", interpreter)?;
+        if let Some(interpreters) = exec_data.interpreters.as_ref() {
+          // FIXME: show interpreter for errnos other than ENOENT
+          write!(out, " {} ", "interpreter".purple(),)?;
+          match interpreters.len() {
+            0 => {
+              write!(out, "{}", Interpreter::None)?;
             }
-            list_printer.end(out)?;
+            1 => {
+              write!(out, "{}", interpreters[0])?;
+            }
+            _ => {
+              list_printer.begin(out)?;
+              for (idx, interpreter) in interpreters.iter().enumerate() {
+                if idx != 0 {
+                  list_printer.comma(out)?;
+                }
+                write!(out, "{}", interpreter)?;
+              }
+              list_printer.end(out)?;
+            }
           }
         }
       }
@@ -560,7 +562,10 @@ impl Printer {
                   "-".bright_red().bold(),
                   k.cli_escaped_styled(THEME.removed_env_var),
                   "=".bright_red().strikethrough(),
-                  env.get(&k).unwrap().cli_escaped_styled(THEME.removed_env_var)
+                  env
+                    .get(&k)
+                    .unwrap()
+                    .cli_escaped_styled(THEME.removed_env_var)
                 )?;
               }
               list_printer.end(out)?;

@@ -742,7 +742,7 @@ impl Tracer {
         argv,
         envp,
         read_cwd(pid)?,
-        interpreters,
+        Some(interpreters),
         read_fds(pid)?,
       ));
     } else if syscallno == nix::libc::SYS_execve {
@@ -764,7 +764,7 @@ impl Tracer {
         argv,
         envp,
         read_cwd(pid)?,
-        interpreters,
+        Some(interpreters),
         read_fds(pid)?,
       ));
     } else if syscallno == SYS_clone || syscallno == SYS_clone3 {

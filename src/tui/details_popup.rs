@@ -142,7 +142,13 @@ impl DetailsPopupState {
         ),
         (
           " Interpreters ",
-          TracerEventDetails::interpreters_to_string(&exec.interpreter).into(),
+          Line::from(
+            exec
+              .interpreter
+              .as_deref()
+              .map(|v| TracerEventDetails::interpreters_to_string(v).into())
+              .unwrap_or_else(|| "Unknown".set_style(THEME.value_unknown)),
+          ),
         ),
         (
           " Stdin ",

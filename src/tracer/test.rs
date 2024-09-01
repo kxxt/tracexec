@@ -168,8 +168,8 @@ async fn tracer_emits_exec_event(tracer: TracerFixture) {
       assert_eq!(exec.fdinfo.as_ref(), &BaselineInfo::new().unwrap().fdinfo);
       // Comm: should be the value before exec
       assert_eq!(exec.comm, "tracer");
-      // Interpreter: doesn't contain errors
-      for interp in exec.interpreter.iter() {
+      // Interpreter: is some(ptrace mode supports it) and doesn't contain errors
+      for interp in exec.interpreter.unwrap().iter() {
         assert!(
           !matches!(interp, Interpreter::Error(_)),
           "error: {:?}",
