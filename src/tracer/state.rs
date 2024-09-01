@@ -70,7 +70,7 @@ pub struct ExecData {
   pub argv: Arc<Result<Vec<OutputMsg>, InspectError>>,
   pub envp: Arc<Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>>,
   pub cwd: PathBuf,
-  pub interpreters: Vec<Interpreter>,
+  pub interpreters: Option<Vec<Interpreter>>,
   pub fdinfo: Arc<FileDescriptorInfoCollection>,
 }
 
@@ -80,7 +80,7 @@ impl ExecData {
     argv: Result<Vec<OutputMsg>, InspectError>,
     envp: Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>,
     cwd: PathBuf,
-    interpreters: Vec<Interpreter>,
+    interpreters: Option<Vec<Interpreter>>,
     fdinfo: FileDescriptorInfoCollection,
   ) -> Self {
     Self {

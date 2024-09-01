@@ -44,6 +44,7 @@ pub struct Theme {
   // Details Popup
   pub exec_result_success: Style,
   pub exec_result_failure: Style,
+  pub value_unknown: Style,
   pub fd_closed: Style,
   pub plus_sign: Style,
   pub minus_sign: Style,
@@ -167,6 +168,7 @@ impl Default for Theme {
       exec_result_success: Style::default().green(),
       exec_result_failure: Style::default().red(),
       fd_closed: Style::default().light_red(),
+      value_unknown: Style::default().light_red().italic(),
       plus_sign: Style::default().light_green(),
       minus_sign: Style::default().light_red(),
       equal_sign: Style::default().yellow().bold(),
