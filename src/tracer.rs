@@ -42,8 +42,8 @@ use crate::{
   cli::args::{LogModeArgs, ModifierArgs, PtraceArgs, TracerEventArgs},
   cmdbuilder::CommandBuilder,
   event::{
-    filterable_event, ExecEvent, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEvent,
-    TracerEventDetails, TracerEventDetailsKind, TracerEventMessage, TracerMessage,
+    filterable_event, ExecEvent, OutputMsg, ProcessStateUpdate, ProcessStateUpdateEvent,
+    TracerEvent, TracerEventDetails, TracerEventDetailsKind, TracerEventMessage, TracerMessage,
   },
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{
@@ -994,7 +994,7 @@ impl Tracer {
 
   fn warn_for_envp(
     &self,
-    envp: &Result<BTreeMap<ArcStr, ArcStr>, InspectError>,
+    envp: &Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>,
     pid: Pid,
   ) -> color_eyre::Result<()> {
     if self.filter.intersects(TracerEventDetailsKind::Warning) {
@@ -1032,7 +1032,7 @@ impl Tracer {
 
   // This function does not take self due to borrow checker
   fn collect_exec_event(
-    env: &BTreeMap<ArcStr, ArcStr>,
+    env: &BTreeMap<OutputMsg, OutputMsg>,
     state: &ProcessState,
     result: i64,
   ) -> Box<ExecEvent> {

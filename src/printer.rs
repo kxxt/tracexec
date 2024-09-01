@@ -9,8 +9,11 @@ use std::{
 };
 
 use crate::{
-  cli::args::{LogModeArgs, ModifierArgs},
-  event::TracerEventDetails,
+  cli::{
+    args::{LogModeArgs, ModifierArgs},
+    theme::THEME,
+  },
+  event::{OutputMsg, TracerEventDetails},
   proc::{diff_env, BaselineInfo, FileDescriptorInfoCollection, Interpreter},
   tracer::{
     state::{ExecData, ProcessState},
@@ -31,7 +34,6 @@ macro_rules! escape_str_for_bash {
 }
 
 pub(crate) use escape_str_for_bash;
-
 #[derive(Debug, Clone, Copy)]
 pub enum EnvPrintFormat {
   Diff,
@@ -201,11 +203,7 @@ impl ListPrinter {
     write!(out, "{}", ", ".style(self.style))
   }
 
-  pub fn print_string_list(
-    &self,
-    out: &mut dyn Write,
-    list: &[impl Display],
-  ) -> io::Result<()> {
+  pub fn print_string_list(&self, out: &mut dyn Write, list: &[impl Display]) -> io::Result<()> {
     self.begin(out)?;
     if let Some((last, rest)) = list.split_last() {
       if rest.is_empty() {
@@ -221,7 +219,11 @@ impl ListPrinter {
     self.end(out)
   }
 
-  pub fn print_env(&self, out: &mut dyn Write, env: &BTreeMap<ArcStr, ArcStr>) -> io::Result<()> {
+  pub fn print_env(
+    &self,
+    out: &mut dyn Write,
+    env: &BTreeMap<OutputMsg, OutputMsg>,
+  ) -> io::Result<()> {
     self.begin(out)?;
     let mut first_item_written = false;
     let mut write_separator = |out: &mut dyn Write| -> io::Result<()> {
@@ -234,7 +236,8 @@ impl ListPrinter {
     };
     for (k, v) in env.iter() {
       write_separator(out)?;
-      write!(out, "{:?}={:?}", k, v)?;
+      // TODO: Maybe stylize error
+      write!(out, "{}={}", k, v)?;
     }
     self.end(out)
   }
@@ -405,7 +408,7 @@ impl Printer {
     comm: ArcStr,
     result: i64,
     exec_data: &ExecData,
-    env: &BTreeMap<ArcStr, ArcStr>,
+    env: &BTreeMap<OutputMsg, OutputMsg>,
     cwd: &Path,
   ) -> color_eyre::Result<()> {
     // Preconditions:
@@ -530,22 +533,22 @@ impl Printer {
                 write_separator(out)?;
                 write!(
                   out,
-                  "{}{:?}{}{:?}",
+                  "{}{}{}{}",
                   "+".bright_green().bold(),
-                  k.green(),
+                  k.cli_escaped_styled(THEME.added_env_var),
                   "=".bright_green().bold(),
-                  v.green()
+                  v.cli_escaped_styled(THEME.added_env_var)
                 )?;
               }
               for (k, v) in diff.modified.into_iter() {
                 write_separator(out)?;
                 write!(
                   out,
-                  "{}{:?}{}{:?}",
+                  "{}{}{}{}",
                   "M".bright_yellow().bold(),
-                  k.yellow(),
+                  k.cli_escaped_styled(THEME.modified_env_key),
                   "=".bright_yellow().bold(),
-                  v.bright_blue()
+                  v.cli_escaped_styled(THEME.modified_env_val)
                 )?;
               }
               // Now we have the tracee removed entries in env
@@ -553,11 +556,11 @@ impl Printer {
                 write_separator(out)?;
                 write!(
                   out,
-                  "{}{:?}{}{:?}",
+                  "{}{}{}{}",
                   "-".bright_red().bold(),
-                  k.bright_red().strikethrough(),
+                  k.cli_escaped_styled(THEME.removed_env_var),
                   "=".bright_red().strikethrough(),
-                  env.get(&k).unwrap().bright_red().strikethrough()
+                  env.get(&k).unwrap().cli_escaped_styled(THEME.removed_env_var)
                 )?;
               }
               list_printer.end(out)?;
@@ -724,10 +727,10 @@ impl Printer {
                     out,
                     " {}{}",
                     "-u ".bright_red(),
-                    escape_str_for_bash!(k.as_str()).bright_red()
+                    k.cli_bash_escaped_with_style(THEME.removed_env_key)
                   )?;
                 } else {
-                  write!(out, " -u={}", escape_str_for_bash!(k.as_str()))?;
+                  write!(out, " -u={}", k.bash_escaped())?;
                 }
               }
               if self.args.color >= ColorLevel::Normal {
@@ -735,28 +738,23 @@ impl Printer {
                   write!(
                     out,
                     " {}{}{}",
-                    escape_str_for_bash!(k.as_str()).green(),
+                    k.cli_bash_escaped_with_style(THEME.added_env_var),
                     "=".green().bold(),
-                    escape_str_for_bash!(v.as_str()).green()
+                    v.cli_bash_escaped_with_style(THEME.added_env_var)
                   )?;
                 }
                 for (k, v) in diff.modified.into_iter() {
                   write!(
                     out,
                     " {}{}{}",
-                    escape_str_for_bash!(k.as_str()),
+                    k.bash_escaped(),
                     "=".bright_yellow().bold(),
-                    escape_str_for_bash!(v.as_str()).bright_blue()
+                    v.cli_bash_escaped_with_style(THEME.modified_env_val)
                   )?;
                 }
               } else {
                 for (k, v) in chain!(diff.added.into_iter(), diff.modified.into_iter()) {
-                  write!(
-                    out,
-                    " {}={}",
-                    escape_str_for_bash!(k.as_str()),
-                    escape_str_for_bash!(v.as_str())
-                  )?;
+                  write!(out, " {}={}", k.bash_escaped(), v.bash_escaped())?;
                 }
               }
             }

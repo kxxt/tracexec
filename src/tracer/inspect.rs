@@ -111,20 +111,27 @@ pub fn read_output_msg_array(
   })
 }
 
-fn read_single_env_entry(pid: Pid, address: AddressType) -> Result<(ArcStr, ArcStr), InspectError> {
-  read_generic_string(pid, address, |bytes| {
+fn read_single_env_entry(pid: Pid, address: AddressType) -> (OutputMsg, OutputMsg) {
+  let result = read_generic_string(pid, address, |bytes| {
     let utf8 = String::from_utf8_lossy(&bytes);
     let (k, v) = parse_env_entry(&utf8);
     let k = cached_str(k);
     let v = cached_str(v);
     (k, v)
-  })
+  });
+  match result {
+    Ok((k, v)) => (OutputMsg::Ok(k), OutputMsg::Ok(v)),
+    Err(e) => {
+      let err = OutputMsg::Err(crate::event::FriendlyError::InspectError(e));
+      (err.clone(), err)
+    }
+  }
 }
 
 pub fn read_env(
   pid: Pid,
   mut address: AddressType,
-) -> Result<BTreeMap<ArcStr, ArcStr>, InspectError> {
+) -> Result<BTreeMap<OutputMsg, OutputMsg>, InspectError> {
   let mut res = BTreeMap::new();
   const WORD_SIZE: usize = 8; // FIXME
   loop {
@@ -138,7 +145,7 @@ pub fn read_env(
     if ptr == 0 {
       return Ok(res);
     } else {
-      let (k, v) = read_single_env_entry(pid, ptr as AddressType)?;
+      let (k, v) = read_single_env_entry(pid, ptr as AddressType);
       res.insert(k, v);
     }
     address = unsafe { address.add(WORD_SIZE) };

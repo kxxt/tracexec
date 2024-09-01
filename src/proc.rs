@@ -25,7 +25,7 @@ use nix::{
 use serde::{ser::SerializeSeq, Serialize, Serializer};
 use tracing::warn;
 
-use crate::{cache::StringCache, pty::UnixSlavePty};
+use crate::{cache::StringCache, event::OutputMsg, pty::UnixSlavePty};
 
 #[allow(unused)]
 pub fn read_argv(pid: Pid) -> color_eyre::Result<Vec<CString>> {
@@ -334,13 +334,16 @@ pub fn parse_env_entry(item: &str) -> (&str, &str) {
   (head, &tail[1..])
 }
 
-pub fn parse_envp(envp: Vec<String>) -> BTreeMap<ArcStr, ArcStr> {
+pub fn parse_envp(envp: Vec<String>) -> BTreeMap<OutputMsg, OutputMsg> {
   envp
     .into_iter()
     .map(|entry| {
       let (key, value) = parse_env_entry(&entry);
       let mut cache = CACHE.write().unwrap();
-      (cache.get_or_insert(key), cache.get_or_insert(value))
+      (
+        OutputMsg::Ok(cache.get_or_insert(key)),
+        OutputMsg::Ok(cache.get_or_insert(value)),
+      )
     })
     .collect()
 }
@@ -357,38 +360,35 @@ pub fn cached_string(s: String) -> ArcStr {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EnvDiff {
-  pub added: BTreeMap<ArcStr, ArcStr>,
-  pub removed: BTreeSet<ArcStr>,
-  pub modified: BTreeMap<ArcStr, ArcStr>,
+  pub added: BTreeMap<OutputMsg, OutputMsg>,
+  pub removed: BTreeSet<OutputMsg>,
+  pub modified: BTreeMap<OutputMsg, OutputMsg>,
 }
 
 impl EnvDiff {
-  pub fn is_modified_or_removed(&self, key: &str) -> bool {
+  pub fn is_modified_or_removed(&self, key: &OutputMsg) -> bool {
     self.modified.contains_key(key) || self.removed.contains(key)
   }
 }
 
-pub fn diff_env(original: &BTreeMap<ArcStr, ArcStr>, envp: &BTreeMap<ArcStr, ArcStr>) -> EnvDiff {
+pub fn diff_env(
+  original: &BTreeMap<OutputMsg, OutputMsg>,
+  envp: &BTreeMap<OutputMsg, OutputMsg>,
+) -> EnvDiff {
   let mut added = BTreeMap::new();
-  let mut modified = BTreeMap::<ArcStr, ArcStr>::new();
+  let mut modified = BTreeMap::<OutputMsg, OutputMsg>::new();
   // Use str to avoid cloning all env vars
-  let mut removed: HashSet<ArcStr> = original.keys().cloned().collect();
+  let mut removed: HashSet<OutputMsg> = original.keys().cloned().collect();
   for (key, value) in envp.iter() {
     // Too bad that we still don't have if- and while-let-chains
     // https://github.com/rust-lang/rust/issues/53667
-    if let Some(orig_v) = original.get(key).map(|x| x.as_str()) {
+    if let Some(orig_v) = original.get(key) {
       if orig_v != value {
-        let mut cache = CACHE.write().unwrap();
-        let key = cache.get_or_insert(key);
-        let value = cache.get_or_insert(value);
-        modified.insert(key, value);
+        modified.insert(key.clone(), value.clone());
       }
       removed.remove(key);
     } else {
-      let mut cache = CACHE.write().unwrap();
-      let key = cache.get_or_insert(key);
-      let value = cache.get_or_insert(value);
-      added.insert(key, value);
+      added.insert(key.clone(), value.clone());
     }
   }
   EnvDiff {
@@ -401,7 +401,7 @@ pub fn diff_env(original: &BTreeMap<ArcStr, ArcStr>, envp: &BTreeMap<ArcStr, Arc
 #[derive(Debug, Clone, Serialize)]
 pub struct BaselineInfo {
   pub cwd: PathBuf,
-  pub env: BTreeMap<ArcStr, ArcStr>,
+  pub env: BTreeMap<OutputMsg, OutputMsg>,
   pub fdinfo: FileDescriptorInfoCollection,
 }
 
@@ -411,7 +411,10 @@ impl BaselineInfo {
     let env = std::env::vars()
       .map(|(k, v)| {
         let mut cache = CACHE.write().unwrap();
-        (cache.get_or_insert_owned(k), cache.get_or_insert_owned(v))
+        (
+          cache.get_or_insert_owned(k).into(),
+          cache.get_or_insert_owned(v).into(),
+        )
       })
       .collect();
     let fdinfo = FileDescriptorInfoCollection::new_baseline()?;
@@ -423,7 +426,10 @@ impl BaselineInfo {
     let env = std::env::vars()
       .map(|(k, v)| {
         let mut cache = CACHE.write().unwrap();
-        (cache.get_or_insert_owned(k), cache.get_or_insert_owned(v))
+        (
+          cache.get_or_insert_owned(k).into(),
+          cache.get_or_insert_owned(v).into(),
+        )
       })
       .collect();
     let fdinfo = FileDescriptorInfoCollection::with_pts(pts)?;
