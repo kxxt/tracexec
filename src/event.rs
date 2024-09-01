@@ -2,7 +2,8 @@ use std::{
   borrow::Cow,
   collections::BTreeMap,
   ffi::OsStr,
-  fmt::Display,
+  fmt::{Debug, Display},
+  hash::Hash,
   io::Write,
   path::PathBuf,
   sync::{atomic::AtomicU64, Arc},
@@ -11,14 +12,16 @@ use std::{
 use arcstr::ArcStr;
 use clap::ValueEnum;
 use crossterm::event::KeyEvent;
+use either::Either;
 use enumflags2::BitFlags;
 use filterable_enum::FilterableEnum;
 use itertools::{chain, Itertools};
 use lazy_static::lazy_static;
 use nix::{errno::Errno, fcntl::OFlag, libc::c_int, sys::signal::Signal, unistd::Pid};
+use owo_colors::OwoColorize;
 use ratatui::{
   layout::Size,
-  style::Styled,
+  style::{Style, Styled},
   text::{Line, Span},
 };
 use serde::Serialize;
@@ -27,7 +30,7 @@ use tokio::sync::mpsc;
 
 use crate::{
   action::CopyTarget,
-  cli::args::ModifierArgs,
+  cli::{self, args::ModifierArgs},
   printer::{escape_str_for_bash, ListPrinter},
   proc::{BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter},
   tracer::{state::ProcessExit, BreakPointHit, InspectError},
@@ -40,11 +43,44 @@ use crate::{
 #[cfg(feature = "ebpf")]
 use crate::bpf::BpfError;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(u64)]
 pub enum FriendlyError {
   InspectError(Errno),
   #[cfg(feature = "ebpf")]
   Bpf(BpfError),
+}
+
+impl PartialOrd for FriendlyError {
+  fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    Some(match (self, other) {
+      (Self::InspectError(a), Self::InspectError(b)) => (*a as i32).cmp(&(*b as i32)),
+      #[cfg(feature = "ebpf")]
+      (Self::Bpf(a), Self::Bpf(b)) => a.cmp(b),
+      #[cfg(feature = "ebpf")]
+      (Self::InspectError(_), Self::Bpf(_)) => std::cmp::Ordering::Less,
+      #[cfg(feature = "ebpf")]
+      (Self::Bpf(_), Self::InspectError(_)) => std::cmp::Ordering::Greater,
+    })
+  }
+}
+
+impl Ord for FriendlyError {
+  fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    // SAFETY: partial_cmp always returns Some
+    self.partial_cmp(other).unwrap()
+  }
+}
+
+impl Hash for FriendlyError {
+  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    core::mem::discriminant(self).hash(state);
+    match self {
+      FriendlyError::InspectError(e) => (*e as i32).hash(state),
+      #[cfg(feature = "ebpf")]
+      FriendlyError::Bpf(e) => e.hash(state),
+    }
+  }
 }
 
 #[cfg(feature = "ebpf")]
@@ -65,7 +101,7 @@ impl From<&FriendlyError> for &'static str {
 }
 
 // we need to implement custom Display so Result and Either do not fit.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum OutputMsg {
   Ok(ArcStr),
   Err(FriendlyError),
@@ -96,7 +132,7 @@ impl Display for OutputMsg {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       OutputMsg::Ok(msg) => write!(f, "{msg:?}"),
-      OutputMsg::Err(e) => e.fmt(f),
+      OutputMsg::Err(e) => Display::fmt(&e, f),
     }
   }
 }
@@ -104,6 +140,94 @@ impl Display for OutputMsg {
 impl Display for FriendlyError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{:?}", self)
+  }
+}
+
+impl From<ArcStr> for OutputMsg {
+  fn from(value: ArcStr) -> Self {
+    Self::Ok(value)
+  }
+}
+
+impl OutputMsg {
+  /// Escape the content for bash shell if it is not error
+  pub fn tui_bash_escaped_with_style(&self, style: Style) -> Span<'static> {
+    match self {
+      OutputMsg::Ok(s) => {
+        shell_quote::QuoteRefExt::<String>::quoted(s.as_str(), shell_quote::Bash).set_style(style)
+      }
+      OutputMsg::Err(e) => <&'static str>::from(e).set_style(THEME.inline_tracer_error),
+    }
+  }
+
+  /// Escape the content for bash shell if it is not error
+  pub fn cli_bash_escaped_with_style(
+    &self,
+    style: owo_colors::Style,
+  ) -> Either<impl Display, impl Display> {
+    match self {
+      OutputMsg::Ok(s) => Either::Left(style.style(shell_quote::QuoteRefExt::<String>::quoted(
+        s.as_str(),
+        shell_quote::Bash,
+      ))),
+      OutputMsg::Err(e) => Either::Right(
+        owo_colors::style()
+          .bright_red()
+          .bold()
+          .blink()
+          .style(<&'static str>::from(e)),
+      ),
+    }
+  }
+
+  /// Escape the content for bash shell if it is not error
+  pub fn bash_escaped(&self) -> Cow<'static, str> {
+    match self {
+      OutputMsg::Ok(s) => Cow::Owned(shell_quote::QuoteRefExt::quoted(
+        s.as_str(),
+        shell_quote::Bash,
+      )),
+      OutputMsg::Err(e) => Cow::Borrowed(<&'static str>::from(e)),
+    }
+  }
+
+  pub fn tui_styled(&self, style: Style) -> Span {
+    match self {
+      OutputMsg::Ok(s) => (*s).set_style(style),
+      OutputMsg::Err(e) => <&'static str>::from(e).set_style(THEME.inline_tracer_error),
+    }
+  }
+
+  pub fn cli_styled(&self, style: owo_colors::Style) -> Either<impl Display + '_, impl Display> {
+    match self {
+      OutputMsg::Ok(s) => Either::Left(s.style(style)),
+      OutputMsg::Err(e) => Either::Right(
+        cli::theme::THEME
+          .inline_error
+          .style(<&'static str>::from(e)),
+      ),
+    }
+  }
+
+  pub fn cli_escaped_styled(
+    &self,
+    style: owo_colors::Style,
+  ) -> Either<impl Display + '_, impl Display> {
+    // We (ab)use Rust's Debug feature to escape our string.
+    struct DebugAsDisplay<T: Debug>(T);
+    impl<T: Debug> Display for DebugAsDisplay<T> {
+      fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+      }
+    }
+    match self {
+      OutputMsg::Ok(s) => Either::Left(style.style(DebugAsDisplay(s))),
+      OutputMsg::Err(e) => Either::Right(
+        cli::theme::THEME
+          .inline_error
+          .style(<&'static str>::from(e)),
+      ),
+    }
   }
 }
 
@@ -190,7 +314,7 @@ pub struct ExecEvent {
   pub comm: ArcStr,
   pub filename: Result<PathBuf, InspectError>,
   pub argv: Arc<Result<Vec<OutputMsg>, InspectError>>,
-  pub envp: Arc<Result<BTreeMap<ArcStr, ArcStr>, InspectError>>,
+  pub envp: Arc<Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>>,
   pub interpreter: Vec<Interpreter>,
   pub env_diff: Result<EnvDiff, InspectError>,
   pub fdinfo: Arc<FileDescriptorInfoCollection>,
@@ -337,8 +461,8 @@ impl TracerEventDetails {
               && filename.as_ref().unwrap().as_os_str() != OsStr::new(arg0.as_ref())
             {
               spans.push(space.clone());
-              spans
-                .push(format!("-a {}", escape_str_for_bash!(arg0.as_ref())).set_style(THEME.arg0))
+              spans.push("-a ".set_style(THEME.arg0));
+              spans.push(arg0.tui_bash_escaped_with_style(THEME.arg0));
             }
           });
         });
@@ -354,33 +478,22 @@ impl TracerEventDetails {
             // Handle env diff
             for k in env_diff.removed.iter() {
               spans.push(space.clone());
-              spans.push(
-                format!("-u {}", escape_str_for_bash!(k.as_str())).set_style(THEME.deleted_env_var),
-              );
+              spans.push("-u ".set_style(THEME.deleted_env_var));
+              spans.push(k.tui_bash_escaped_with_style(THEME.deleted_env_var));
             }
             for (k, v) in env_diff.added.iter() {
               // Added env vars
               spans.push(space.clone());
-              spans.push(
-                format!(
-                  "{}={}",
-                  escape_str_for_bash!(k.as_str()),
-                  escape_str_for_bash!(v.as_str())
-                )
-                .set_style(THEME.added_env_var),
-              );
+              spans.push(k.tui_bash_escaped_with_style(THEME.added_env_var));
+              spans.push("=".set_style(THEME.added_env_var));
+              spans.push(v.tui_bash_escaped_with_style(THEME.added_env_var));
             }
             for (k, v) in env_diff.modified.iter() {
               // Modified env vars
               spans.push(space.clone());
-              spans.push(
-                format!(
-                  "{}={}",
-                  escape_str_for_bash!(k.as_str()),
-                  escape_str_for_bash!(v.as_str())
-                )
-                .set_style(THEME.modified_env_var),
-              );
+              spans.push(k.tui_bash_escaped_with_style(THEME.modified_env_var));
+              spans.push("=".set_style(THEME.modified_env_var));
+              spans.push(v.tui_bash_escaped_with_style(THEME.modified_env_var));
             }
           }
           if let Some(r) = env_range.as_mut() {
@@ -402,7 +515,7 @@ impl TracerEventDetails {
           Ok(argv) => {
             for arg in argv.iter().skip(1) {
               spans.push(space.clone());
-              spans.push(escape_str_for_bash!(arg.as_ref()).set_style(THEME.argv));
+              spans.push(arg.tui_bash_escaped_with_style(THEME.argv));
             }
           }
           Err(_) => {

@@ -22,7 +22,8 @@ pub struct Path {
   segments: Vec<OutputMsg>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[repr(u8)]
 pub enum BpfError {
   Dropped,
 }

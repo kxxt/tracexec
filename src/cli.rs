@@ -14,6 +14,7 @@ use self::{
 pub mod args;
 pub mod config;
 pub mod options;
+pub mod theme;
 #[cfg(test)]
 mod test;
 
