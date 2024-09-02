@@ -17,13 +17,12 @@ use std::{
 };
 
 use arcstr::ArcStr;
-use color_eyre::eyre::bail;
+use color_eyre::Section;
 use event::EventStorage;
-use interface::exec_event_flags_USERSPACE_DROP_MARKER;
 use libbpf_rs::{
   num_possible_cpus,
   skel::{OpenSkel, Skel, SkelBuilder},
-  ErrorKind, RingBufferBuilder,
+  ErrorKind, OpenObject, RingBufferBuilder,
 };
 use nix::{
   errno::Errno,
@@ -34,15 +33,25 @@ use nix::{
     wait::{waitpid, WaitPidFlag, WaitStatus},
   },
   unistd::{
-    fork, getpid, initgroups, setpgid, setresgid, setresuid, tcsetpgrp, ForkResult, Gid, Uid, User,
+    fork, getpid, initgroups, setpgid, setresgid, setresuid, tcsetpgrp, ForkResult, Gid, Pid, Uid,
+    User,
   },
 };
 use owo_colors::OwoColorize;
-use skel::types::{tracexec_event_header, event_type, exec_event, fd_event, path_event, path_segment_event};
+use skel::{
+  types::{
+    event_type, exec_event, fd_event, path_event, path_segment_event, tracexec_event_header,
+  },
+  TracexecSystemSkel,
+};
 
 use crate::{
-  cache::StringCache, cli::args::ModifierArgs, cmdbuilder::CommandBuilder, event::OutputMsg,
-  printer::PrinterOut, proc::FileDescriptorInfo, pty,
+  cache::StringCache,
+  cli::{options::Color, Cli, EbpfCommand},
+  cmdbuilder::CommandBuilder,
+  event::OutputMsg,
+  proc::FileDescriptorInfo,
+  pty,
 };
 
 pub mod skel {
@@ -66,22 +75,23 @@ fn bump_memlock_rlimit() -> color_eyre::Result<()> {
   };
 
   if unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlimit) } != 0 {
-    bail!("Failed to increase rlimit for memlock");
+    return Err(
+      color_eyre::eyre::eyre!("Failed to increase rlimit for memlock")
+        .with_suggestion(|| "Try running as root"),
+    );
   }
 
   Ok(())
 }
 
-pub fn run(
-  output: Box<PrinterOut>,
-  args: Vec<String>,
+fn spawn<'obj>(
+  args: &[String],
   user: Option<User>,
-  modifier: ModifierArgs,
-) -> color_eyre::Result<()> {
+  object: &'obj mut MaybeUninit<OpenObject>,
+) -> color_eyre::Result<(TracexecSystemSkel<'obj>, Option<Pid>)> {
   let skel_builder = skel::TracexecSystemSkelBuilder::default();
   bump_memlock_rlimit()?;
-  let mut obj = MaybeUninit::uninit();
-  let mut open_skel = skel_builder.open(&mut obj)?;
+  let mut open_skel = skel_builder.open(object)?;
   let ncpu = num_possible_cpus()?.try_into().expect("Too many cores!");
   open_skel.maps.rodata_data.tracexec_config.max_num_cpus = ncpu;
   open_skel.maps.cache.set_max_entries(ncpu)?;
@@ -158,148 +168,165 @@ pub fn run(
     skel.attach()?;
     (skel, None)
   };
-  let events = skel.maps.events;
-  let mut builder = RingBufferBuilder::new();
-  let event_storage: RefCell<HashMap<u64, EventStorage>> = RefCell::new(HashMap::new());
-  let lost_events: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
-  let mut eid = 0;
-  builder.add(&events, move |data| {
-    assert!(
-      data.len() > size_of::<tracexec_event_header>(),
-      "data too short: {data:?}"
-    );
-    let header: tracexec_event_header = unsafe { std::ptr::read(data.as_ptr() as *const _) };
-    match unsafe { header.r#type.assume_init() } {
-      event_type::SYSENTER_EVENT => unreachable!(),
-      event_type::SYSEXIT_EVENT => {
-        if header.eid > eid {
-          // There are some lost events
-          // In some cases the events are not really lost but sent out of order because of parallism
-          eprintln!(
-            "warning: inconsistent event id counter: local = {eid}, kernel = {}. Possible event loss!",
-            header.eid
-          );
-          lost_events.borrow_mut().extend(eid..header.eid);
-          // reset local counter
-          eid = header.eid + 1;
-        } else if header.eid < eid {
-          // This should only happen for lost events
-          if lost_events.borrow_mut().remove(&header.eid) {
-            // do nothing
-          } else {
-            panic!("inconsistent event id counter: local = {}, kernel = {}.", eid, header.eid);
+  Ok((skel, child))
+}
+
+pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre::Result<()> {
+  let mut obj = MaybeUninit::uninit();
+  match command {
+    EbpfCommand::Log {
+      cmd,
+      output,
+      modifier_args,
+    } => {
+      let output = Cli::get_output(output, color)?;
+      let (skel, child) = spawn(&cmd, user, &mut obj)?;
+      let events = skel.maps.events;
+      let mut builder = RingBufferBuilder::new();
+      let event_storage: RefCell<HashMap<u64, EventStorage>> = RefCell::new(HashMap::new());
+      let lost_events: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
+      let mut eid = 0;
+      builder.add(&events, move |data| {
+        assert!(
+          data.len() > size_of::<tracexec_event_header>(),
+          "data too short: {data:?}"
+        );
+        let header: tracexec_event_header = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+        match unsafe { header.r#type.assume_init() } {
+          event_type::SYSENTER_EVENT => unreachable!(),
+          event_type::SYSEXIT_EVENT => {
+            if header.eid > eid {
+              // There are some lost events
+              // In some cases the events are not really lost but sent out of order because of parallism
+              eprintln!(
+                "warning: inconsistent event id counter: local = {eid}, kernel = {}. Possible event loss!",
+                header.eid
+              );
+              lost_events.borrow_mut().extend(eid..header.eid);
+              // reset local counter
+              eid = header.eid + 1;
+            } else if header.eid < eid {
+              // This should only happen for lost events
+              if lost_events.borrow_mut().remove(&header.eid) {
+                // do nothing
+              } else {
+                panic!("inconsistent event id counter: local = {}, kernel = {}.", eid, header.eid);
+              }
+            } else {
+              // increase local counter for next event
+              eid += 1;
+            }
+            assert_eq!(data.len(), size_of::<exec_event>());
+            let event: exec_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+            if event.ret != 0 && modifier_args.successful_only {
+              return 0;
+            }
+            eprint!(
+              "{} exec {} argv ",
+              String::from_utf8_lossy(&event.comm),
+              String::from_utf8_lossy(&event.base_filename),
+            );
+            for i in 0..event.count[0] {
+              eprint!(
+                "{} ",
+                event_storage.borrow().get(&event.header.eid).unwrap().strings[i as usize]
+              );
+            }
+            eprint!("envp ");
+            for i in event.count[0]..(event.count[0] + event.count[1]) {
+              eprint!(
+                "{} ",
+                event_storage.borrow().get(&event.header.eid).unwrap().strings[i as usize]
+              );
+            }
+            eprintln!("= {}", event.ret);
           }
-        } else {
-          // increase local counter for next event
-          eid += 1;
+          event_type::STRING_EVENT => {
+            let header_len = size_of::<tracexec_event_header>();
+            let string = utf8_lossy_cow_from_bytes_with_nul(&data[header_len..]);
+            let cached = cached_cow(string);
+            let mut storage = event_storage.borrow_mut();
+            let strings = &mut storage.entry(header.eid).or_default().strings;
+            // Catch event drop
+            if strings.len() != header.id as usize {
+              // Insert placeholders for dropped events
+              let dropped_event = OutputMsg::Err(BpfError::Dropped.into());
+              strings.extend(repeat(dropped_event).take(header.id as usize - strings.len()));
+              debug_assert_eq!(strings.len(), header.id as usize);
+            }
+            // TODO: check flags in header
+            strings.push(OutputMsg::Ok(cached));
+          }
+          event_type::FD_EVENT => {
+            assert_eq!(data.len(), size_of::<fd_event>());
+            let event: fd_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+            let fdinfo = FileDescriptorInfo {
+              fd: event.fd as RawFd,
+              path: Default::default(),// cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.path)),
+              pos: 0, // TODO
+              flags: OFlag::from_bits_retain(event.flags as c_int),
+              mnt_id: 0,                                    // TODO
+              ino: 0,                                       // TODO
+              mnt: arcstr::literal!("[tracexec: unknown]"), // TODO
+              extra: vec![arcstr::literal!("")],            // TODO
+            };
+            let mut storage = event_storage.borrow_mut();
+            let fdc = &mut storage.entry(header.eid).or_default().fdinfo_map;
+            fdc.fdinfo.insert(event.fd as RawFd, fdinfo);
+          }
+          event_type::PATH_EVENT => {
+            assert_eq!(data.len(), size_of::<path_event>());
+            let event: path_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+            eprintln!("Received path {} with {} segments", event.header.id, event.segment_count)
+          }
+          event_type::PATH_SEGMENT_EVENT => {
+            assert_eq!(data.len(), size_of::<path_segment_event>());
+            let event: path_segment_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+            eprintln!("Received path {} segment {}: {}", header.id, event.index, utf8_lossy_cow_from_bytes_with_nul(&event.segment).green());
+          }
         }
-        assert_eq!(data.len(), size_of::<exec_event>());
-        let event: exec_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
-        if event.ret != 0 && modifier.successful_only {
-          return 0;
+        0
+      })?;
+      let rb = builder.build()?;
+      let ringbuf_task = tokio::task::spawn_blocking(move || loop {
+        match rb.poll(Duration::from_millis(1000)) {
+          Ok(_) => continue,
+          Err(e) => {
+            if e.kind() == ErrorKind::Interrupted {
+              continue;
+            } else {
+              panic!("Failed to poll ringbuf: {e}");
+            }
+          }
         }
-        eprint!(
-          "{} exec {} argv ",
-          String::from_utf8_lossy(&event.comm),
-          String::from_utf8_lossy(&event.base_filename),
-        );
-        for i in 0..event.count[0] {
-          eprint!(
-            "{} ",
-            event_storage.borrow().get(&event.header.eid).unwrap().strings[i as usize]
-          );
+      });
+      if let Some(child) = child {
+        // TODO: We need to poll on the child and the ringbuf_task
+        // Wait for the child to die
+        match waitpid(child, None)? {
+          WaitStatus::Exited(pid, code) => {
+            eprintln!("child {pid} exited with code {code}");
+            process::exit(0);
+          }
+          WaitStatus::Signaled(pid, sig, coredumped) => {
+            eprintln!(
+              "child {} signaled with {}{}",
+              pid,
+              sig,
+              if coredumped { " (coredumped)" } else { "" }
+            );
+            process::exit(0);
+          }
+          _ => unreachable!("Invalid wait status!"),
         }
-        eprint!("envp ");
-        for i in event.count[0]..(event.count[0] + event.count[1]) {
-          eprint!(
-            "{} ",
-            event_storage.borrow().get(&event.header.eid).unwrap().strings[i as usize]
-          );
-        }
-        eprintln!("= {}", event.ret);
-      }
-      event_type::STRING_EVENT => {
-        let header_len = size_of::<tracexec_event_header>();
-        let string = utf8_lossy_cow_from_bytes_with_nul(&data[header_len..]);
-        let cached = cached_cow(string);
-        let mut storage = event_storage.borrow_mut();
-        let strings = &mut storage.entry(header.eid).or_default().strings;
-        // Catch event drop
-        if strings.len() != header.id as usize {
-          // Insert placeholders for dropped events
-          let dropped_event = OutputMsg::Err(BpfError::Dropped.into());
-          strings.extend(repeat(dropped_event).take(header.id as usize - strings.len()));
-          debug_assert_eq!(strings.len(), header.id as usize);
-        }
-        // TODO: check flags in header
-        strings.push(OutputMsg::Ok(cached));
-      }
-      event_type::FD_EVENT => {
-        assert_eq!(data.len(), size_of::<fd_event>());
-        let event: fd_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
-        let fdinfo = FileDescriptorInfo {
-          fd: event.fd as RawFd,
-          path: Default::default(),// cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.path)),
-          pos: 0, // TODO
-          flags: OFlag::from_bits_retain(event.flags as c_int),
-          mnt_id: 0,                                    // TODO
-          ino: 0,                                       // TODO
-          mnt: arcstr::literal!("[tracexec: unknown]"), // TODO
-          extra: vec![arcstr::literal!("")],            // TODO
-        };
-        let mut storage = event_storage.borrow_mut();
-        let fdc = &mut storage.entry(header.eid).or_default().fdinfo_map;
-        fdc.fdinfo.insert(event.fd as RawFd, fdinfo);
-      }
-      event_type::PATH_EVENT => {
-        assert_eq!(data.len(), size_of::<path_event>());
-        let event: path_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
-        eprintln!("Received path {} with {} segments", event.header.id, event.segment_count)
-      }
-      event_type::PATH_SEGMENT_EVENT => {
-        assert_eq!(data.len(), size_of::<path_segment_event>());
-        let event: path_segment_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
-        eprintln!("Received path {} segment {}: {}", header.id, event.index, utf8_lossy_cow_from_bytes_with_nul(&event.segment).green());
-      }
-    }
-    0
-  })?;
-  let rb = builder.build()?;
-  let ringbuf_task = tokio::task::spawn_blocking(move || loop {
-    match rb.poll(Duration::from_millis(1000)) {
-      Ok(_) => continue,
-      Err(e) => {
-        if e.kind() == ErrorKind::Interrupted {
-          continue;
-        } else {
-          panic!("Failed to poll ringbuf: {e}");
+      } else {
+        loop {
+          sleep(Duration::from_secs(200));
         }
       }
     }
-  });
-  if let Some(child) = child {
-    // TODO: We need to poll on the child and the ringbuf_task
-    // Wait for the child to die
-    match waitpid(child, None)? {
-      WaitStatus::Exited(pid, code) => {
-        eprintln!("child {pid} exited with code {code}");
-        process::exit(0);
-      }
-      WaitStatus::Signaled(pid, sig, coredumped) => {
-        eprintln!(
-          "child {} signaled with {}{}",
-          pid,
-          sig,
-          if coredumped { " (coredumped)" } else { "" }
-        );
-        process::exit(0);
-      }
-      _ => unreachable!("Invalid wait status!"),
-    }
-  } else {
-    loop {
-      sleep(Duration::from_secs(200));
-    }
+    EbpfCommand::Tui {} => todo!(),
+    EbpfCommand::Collect {} => todo!(),
   }
 }
 
