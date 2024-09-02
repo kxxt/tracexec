@@ -2,7 +2,6 @@ use std::{
   borrow::Cow,
   collections::{BTreeMap, HashMap},
   error::Error,
-  path::{Path, PathBuf},
   sync::Arc,
 };
 
@@ -66,20 +65,20 @@ pub enum ProcessStatus {
 
 #[derive(Debug)]
 pub struct ExecData {
-  pub filename: Result<PathBuf, InspectError>,
+  pub filename: OutputMsg,
   pub argv: Arc<Result<Vec<OutputMsg>, InspectError>>,
   pub envp: Arc<Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>>,
-  pub cwd: PathBuf,
+  pub cwd: OutputMsg,
   pub interpreters: Option<Vec<Interpreter>>,
   pub fdinfo: Arc<FileDescriptorInfoCollection>,
 }
 
 impl ExecData {
   pub fn new(
-    filename: Result<PathBuf, InspectError>,
+    filename: OutputMsg,
     argv: Result<Vec<OutputMsg>, InspectError>,
     envp: Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>,
-    cwd: PathBuf,
+    cwd: OutputMsg,
     interpreters: Option<Vec<Interpreter>>,
     fdinfo: FileDescriptorInfoCollection,
   ) -> Self {
@@ -168,7 +167,7 @@ pub enum BreakPointPattern {
   ArgvRegex(BreakPointRegex),
   // CmdlineRegex(BreakPointRegex),
   InFilename(String),
-  ExactFilename(PathBuf),
+  ExactFilename(String),
 }
 
 #[derive(Debug, Clone)]
@@ -193,7 +192,7 @@ impl BreakPointPattern {
       BreakPointPattern::ArgvRegex(regex) => regex.editable.as_str(),
       BreakPointPattern::InFilename(filename) => filename,
       // Unwrap is fine since user inputs the filename as str
-      BreakPointPattern::ExactFilename(filename) => filename.to_str().unwrap(),
+      BreakPointPattern::ExactFilename(filename) => filename,
     }
   }
 
@@ -202,7 +201,7 @@ impl BreakPointPattern {
       BreakPointPattern::ArgvRegex(regex) => format!("argv-regex:{}", regex.editable),
       BreakPointPattern::InFilename(filename) => format!("in-filename:{}", filename),
       BreakPointPattern::ExactFilename(filename) => {
-        format!("exact-filename:{}", filename.to_str().unwrap())
+        format!("exact-filename:{}", filename)
       }
     }
   }
@@ -211,7 +210,7 @@ impl BreakPointPattern {
     if let Some((prefix, rest)) = editable.split_once(':') {
       match prefix {
         "in-filename" => Ok(Self::InFilename(rest.to_string())),
-        "exact-filename" => Ok(Self::ExactFilename(PathBuf::from(rest))),
+        "exact-filename" => Ok(Self::ExactFilename(rest.to_string())),
         "argv-regex" => Ok(Self::ArgvRegex(BreakPointRegex {
           regex: PikeVM::new(rest).map_err(|e| e.to_string())?,
           editable: rest.to_string(),
@@ -223,7 +222,7 @@ impl BreakPointPattern {
     }
   }
 
-  pub fn matches(&self, argv: Option<&[OutputMsg]>, filename: Option<&Path>) -> bool {
+  pub fn matches(&self, argv: Option<&[OutputMsg]>, filename: &OutputMsg) -> bool {
     match self {
       BreakPointPattern::ArgvRegex(regex) => {
         let Some(argv) = argv else {
@@ -238,13 +237,13 @@ impl BreakPointPattern {
         )
       }
       BreakPointPattern::InFilename(pattern) => {
-        let Some(filename) = filename else {
+        let OutputMsg::Ok(filename) = filename else {
           return false;
         };
-        filename.to_string_lossy().contains(pattern)
+        filename.contains(pattern)
       }
       BreakPointPattern::ExactFilename(path) => {
-        let Some(filename) = filename else {
+        let OutputMsg::Ok(filename) = filename else {
           return false;
         };
         filename == path
@@ -278,7 +277,7 @@ impl TryFrom<&str> for BreakPoint {
         regex: PikeVM::new(pattern).map_err(|e| format!("\n{}", e.source().unwrap()))?,
         editable: pattern.to_string(),
       }),
-      "exact-filename" => BreakPointPattern::ExactFilename(PathBuf::from(pattern)),
+      "exact-filename" => BreakPointPattern::ExactFilename(pattern.to_string()),
       "in-filename" => BreakPointPattern::InFilename(pattern.to_string()),
       _ => {
         return Err(

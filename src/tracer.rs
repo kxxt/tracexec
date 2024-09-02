@@ -4,7 +4,6 @@ use std::{
   io::{self, stdin},
   ops::ControlFlow,
   os::fd::AsRawFd,
-  path::PathBuf,
   process::exit,
   sync::{atomic::AtomicU32, Arc, RwLock},
   time::Duration,
@@ -14,7 +13,7 @@ use arcstr::ArcStr;
 use cfg_if::cfg_if;
 use either::Either;
 use enumflags2::BitFlags;
-use inspect::read_output_msg_array;
+use inspect::{read_arcstr, read_output_msg_array};
 use nix::{
   errno::Errno,
   libc::{
@@ -47,19 +46,16 @@ use crate::{
   },
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{
-    diff_env, parse_envp, read_comm, read_cwd, read_exe, read_fd, read_fds,
+    cached_string, diff_env, parse_envp, read_comm, read_cwd, read_exe, read_fd, read_fds,
     read_interpreter_recursive, BaselineInfo,
   },
   pty::{self, Child, UnixSlavePty},
-  tracer::{
-    inspect::{read_arcstr_array, read_env},
-    state::ProcessExit,
-  },
+  tracer::{inspect::read_env, state::ProcessExit},
 };
 
 use self::state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus};
 use self::{
-  inspect::{read_pathbuf, read_string, read_string_array},
+  inspect::{read_string, read_string_array},
   state::BreakPoint,
 };
 use self::{ptrace::*, state::BreakPointStop};
@@ -700,10 +696,10 @@ impl Tracer {
       let flags = syscall_arg!(regs, 4) as i32;
       let filename = match read_string(pid, syscall_arg!(regs, 1) as AddressType) {
         Ok(pathname) => {
+          let pathname = cached_string(pathname);
           let pathname_is_empty = pathname.is_empty();
-          let pathname = PathBuf::from(pathname);
           let filename = match (
-            pathname.is_absolute(),
+            pathname.starts_with('/'),
             pathname_is_empty && ((flags & AT_EMPTY_PATH) != 0),
           ) {
             (true, _) => {
@@ -718,7 +714,7 @@ impl Tracer {
             (false, false) => {
               // pathname is relative to dirfd
               let dir = read_fd(pid, dirfd)?;
-              dir.join(pathname)
+              cached_string(format!("{dir}/{pathname}"))
             }
           };
           Ok(filename)
@@ -737,17 +733,21 @@ impl Tracer {
       } else {
         vec![]
       };
+      let filename = match filename {
+        Ok(s) => OutputMsg::Ok(s),
+        Err(e) => OutputMsg::Err(crate::event::FriendlyError::InspectError(e)),
+      };
       p.exec_data = Some(ExecData::new(
         filename,
         argv,
         envp,
-        read_cwd(pid)?,
+        OutputMsg::Ok(read_cwd(pid)?),
         Some(interpreters),
         read_fds(pid)?,
       ));
     } else if syscallno == nix::libc::SYS_execve {
       trace!("pre execve {syscallno}",);
-      let filename = read_pathbuf(pid, syscall_arg!(regs, 0) as AddressType);
+      let filename = read_arcstr(pid, syscall_arg!(regs, 0) as AddressType);
       let filename = self.get_filename_for_display(pid, filename)?;
       self.warn_for_filename(&filename, pid)?;
       let argv = read_output_msg_array(pid, syscall_arg!(regs, 1) as AddressType);
@@ -759,11 +759,15 @@ impl Tracer {
       } else {
         vec![]
       };
+      let filename = match filename {
+        Ok(s) => OutputMsg::Ok(s),
+        Err(e) => OutputMsg::Err(crate::event::FriendlyError::InspectError(e)),
+      };
       p.exec_data = Some(ExecData::new(
         filename,
         argv,
         envp,
-        read_cwd(pid)?,
+        OutputMsg::Ok(read_cwd(pid)?),
         Some(interpreters),
         read_fds(pid)?,
       ));
@@ -778,10 +782,10 @@ impl Tracer {
         .iter()
         .filter(|(_, brk)| brk.activated && brk.stop == BreakPointStop::SyscallEnter)
       {
-        if brk.pattern.matches(
-          exec_data.argv.as_deref().ok(),
-          exec_data.filename.as_deref().ok(),
-        ) {
+        if brk
+          .pattern
+          .matches(exec_data.argv.as_deref().ok(), &exec_data.filename)
+        {
           hit = Some(idx);
           break;
         }
@@ -861,10 +865,10 @@ impl Tracer {
             .iter()
             .filter(|(_, brk)| brk.activated && brk.stop == BreakPointStop::SyscallExit)
           {
-            if brk.pattern.matches(
-              exec_data.argv.as_deref().ok(),
-              exec_data.filename.as_deref().ok(),
-            ) {
+            if brk
+              .pattern
+              .matches(exec_data.argv.as_deref().ok(), &exec_data.filename)
+            {
               hit = Some(idx);
               break;
             }
@@ -945,13 +949,13 @@ impl Tracer {
   fn get_filename_for_display(
     &self,
     pid: Pid,
-    filename: Result<PathBuf, Errno>,
-  ) -> io::Result<Result<PathBuf, Errno>> {
+    filename: Result<ArcStr, Errno>,
+  ) -> io::Result<Result<ArcStr, Errno>> {
     if !self.modifier_args.resolve_proc_self_exe {
       return Ok(filename);
     }
     Ok(match filename {
-      Ok(f) => Ok(if f.to_str() == Some("/proc/self/exe") {
+      Ok(f) => Ok(if f == "/proc/self/exe" {
         read_exe(pid)?
       } else {
         f
@@ -1013,7 +1017,7 @@ impl Tracer {
 
   fn warn_for_filename(
     &self,
-    filename: &Result<PathBuf, InspectError>,
+    filename: &Result<ArcStr, InspectError>,
     pid: Pid,
   ) -> color_eyre::Result<()> {
     if self.filter.intersects(TracerEventDetailsKind::Warning) {
@@ -1039,7 +1043,7 @@ impl Tracer {
     let exec_data = state.exec_data.as_ref().unwrap();
     Box::new(ExecEvent {
       pid: state.pid,
-      cwd: exec_data.cwd.to_owned(),
+      cwd: exec_data.cwd.clone(),
       comm: state.comm.clone(),
       filename: exec_data.filename.clone(),
       argv: exec_data.argv.clone(),

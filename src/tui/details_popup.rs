@@ -129,12 +129,12 @@ impl DetailsPopupState {
         }),
         (
           " Cwd ",
-          Span::from(exec.cwd.to_string_lossy().to_string()).into(),
+          Span::from(exec.cwd.as_ref().to_owned()).into(),
         ),
         (" Comm (Before exec) ", exec.comm.to_string().into()),
         (
           " Filename ",
-          Span::from(TracerEventDetails::filename_to_cow(&exec.filename).into_owned()).into(),
+          Span::from(exec.filename.as_ref().to_owned()).into(),
         ),
         (
           " Argv ",

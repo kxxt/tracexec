@@ -1,9 +1,4 @@
-use std::{
-  collections::BTreeMap,
-  ffi::{CString, OsString},
-  os::unix::prelude::OsStringExt,
-  path::PathBuf,
-};
+use std::{collections::BTreeMap, ffi::CString};
 
 use arcstr::ArcStr;
 use nix::{
@@ -52,8 +47,8 @@ pub fn read_cstring(pid: Pid, address: AddressType) -> Result<CString, InspectEr
   read_generic_string(pid, address, |x| CString::new(x).unwrap())
 }
 
-pub fn read_pathbuf(pid: Pid, address: AddressType) -> Result<PathBuf, InspectError> {
-  read_generic_string(pid, address, |x| PathBuf::from(OsString::from_vec(x)))
+pub fn read_arcstr(pid: Pid, address: AddressType) -> Result<ArcStr, InspectError> {
+  read_generic_string(pid, address, |x| cached_str(&String::from_utf8_lossy(&x)))
 }
 
 pub fn read_string(pid: Pid, address: AddressType) -> Result<String, InspectError> {

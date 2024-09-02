@@ -48,16 +48,16 @@ pub fn read_comm(pid: Pid) -> color_eyre::Result<ArcStr> {
   Ok(cache.get_or_insert(&utf8))
 }
 
-pub fn read_cwd(pid: Pid) -> std::io::Result<PathBuf> {
+pub fn read_cwd(pid: Pid) -> std::io::Result<ArcStr> {
   let filename = format!("/proc/{pid}/cwd");
   let buf = std::fs::read_link(filename)?;
-  Ok(buf)
+  Ok(cached_str(&buf.to_string_lossy()))
 }
 
-pub fn read_exe(pid: Pid) -> std::io::Result<PathBuf> {
+pub fn read_exe(pid: Pid) -> std::io::Result<ArcStr> {
   let filename = format!("/proc/{pid}/exe");
   let buf = std::fs::read_link(filename)?;
-  Ok(buf)
+  Ok(cached_str(&buf.to_string_lossy()))
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -148,12 +148,12 @@ impl Default for FileDescriptorInfo {
   }
 }
 
-pub fn read_fd(pid: Pid, fd: i32) -> std::io::Result<PathBuf> {
+pub fn read_fd(pid: Pid, fd: i32) -> std::io::Result<ArcStr> {
   if fd == AT_FDCWD {
     return read_cwd(pid);
   }
   let filename = format!("/proc/{pid}/fd/{fd}");
-  std::fs::read_link(filename)
+  Ok(cached_str(&std::fs::read_link(filename)?.to_string_lossy()))
 }
 
 /// Read /proc/{pid}/fdinfo/{fd} to get more information about the file descriptor.
@@ -180,8 +180,7 @@ pub fn read_fdinfo(pid: Pid, fd: i32) -> color_eyre::Result<FileDescriptorInfo> 
     }
   }
   info.mnt = get_mountinfo_by_mnt_id(pid, info.mnt_id)?;
-  let mut cache = CACHE.write().unwrap();
-  info.path = cache.get_or_insert(&read_fd(pid, fd)?.to_string_lossy());
+  info.path = read_fd(pid, fd)?;
   Ok(info)
 }
 
@@ -400,14 +399,14 @@ pub fn diff_env(
 
 #[derive(Debug, Clone, Serialize)]
 pub struct BaselineInfo {
-  pub cwd: PathBuf,
+  pub cwd: OutputMsg,
   pub env: BTreeMap<OutputMsg, OutputMsg>,
   pub fdinfo: FileDescriptorInfoCollection,
 }
 
 impl BaselineInfo {
   pub fn new() -> color_eyre::Result<Self> {
-    let cwd = std::env::current_dir()?;
+    let cwd = cached_str(&std::env::current_dir()?.to_string_lossy()).into();
     let env = std::env::vars()
       .map(|(k, v)| {
         let mut cache = CACHE.write().unwrap();
@@ -422,7 +421,7 @@ impl BaselineInfo {
   }
 
   pub fn with_pts(pts: &UnixSlavePty) -> color_eyre::Result<Self> {
-    let cwd = std::env::current_dir()?;
+    let cwd = cached_str(&std::env::current_dir()?.to_string_lossy()).into();
     let env = std::env::vars()
       .map(|(k, v)| {
         let mut cache = CACHE.write().unwrap();
