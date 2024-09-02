@@ -117,11 +117,11 @@ async fn tracer_decodes_proc_self_exe(
           OutputMsg::Ok("--help".into())
         ]
       );
-      let filename = exec.filename.as_deref().unwrap();
+      let OutputMsg::Ok(filename) = exec.filename else { panic!("Failed to inspect filename") };
       if !resolve_proc_self_exe {
-        assert_eq!(filename, &PathBuf::from("/proc/self/exe"));
+        assert_eq!(filename, "/proc/self/exe");
       } else {
-        assert_eq!(filename, &path);
+        assert_eq!(filename, path.to_string_lossy());
       }
       return;
     }
@@ -145,8 +145,10 @@ async fn tracer_emits_exec_event(tracer: TracerFixture) {
     {
       let argv = exec.argv.as_deref().unwrap();
       assert_eq!(argv, &[OutputMsg::Ok("/bin/true".into())]);
-      let filename = exec.filename.as_deref().unwrap();
-      assert_eq!(filename, &PathBuf::from("/bin/true"));
+      let OutputMsg::Ok(filename) = exec.filename else {
+        panic!("Failed to inspect filename")
+      };
+      assert_eq!(filename, "/bin/true");
       // The environment is not modified
       let env_diff = exec.env_diff.as_ref().unwrap();
       assert!(env_diff.added.is_empty(), "added env: {:?}", env_diff.added);

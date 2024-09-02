@@ -10,6 +10,9 @@ pub struct Theme {
   pub added_env_var: Style,
   pub modified_env_key: Style,
   pub modified_env_val: Style,
+  // Info
+  pub filename: Style,
+  pub cwd: Style,
 }
 
 impl Default for Theme {
@@ -21,6 +24,8 @@ impl Default for Theme {
       added_env_var: Style::new().green(),
       modified_env_key: Style::new().yellow(),
       modified_env_val: Style::new().bright_blue(),
+      filename: Style::new(),
+      cwd: Style::new().bright_cyan(),
     }
   }
 }

@@ -43,7 +43,7 @@ use crate::{
 #[cfg(feature = "ebpf")]
 use crate::bpf::BpfError;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u64)]
 pub enum FriendlyError {
   InspectError(Errno),
@@ -150,6 +150,20 @@ impl From<ArcStr> for OutputMsg {
 }
 
 impl OutputMsg {
+  pub fn is_ok_and(&self, predicate: impl FnOnce(&str) -> bool) -> bool {
+    match self {
+      OutputMsg::Ok(s) => predicate(&s),
+      OutputMsg::Err(_) => false,
+    }
+  }
+
+  pub fn is_err_or(&self, predicate: impl FnOnce(&str) -> bool) -> bool {
+    match self {
+      OutputMsg::Ok(s) => predicate(&s),
+      OutputMsg::Err(_) => true,
+    }
+  }
+
   /// Escape the content for bash shell if it is not error
   pub fn tui_bash_escaped_with_style(&self, style: Style) -> Span<'static> {
     match self {
@@ -310,9 +324,9 @@ pub struct TracerEventMessage {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExecEvent {
   pub pid: Pid,
-  pub cwd: PathBuf,
+  pub cwd: OutputMsg,
   pub comm: ArcStr,
-  pub filename: Result<PathBuf, InspectError>,
+  pub filename: OutputMsg,
   pub argv: Arc<Result<Vec<OutputMsg>, InspectError>>,
   pub envp: Arc<Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>>,
   pub interpreter: Option<Vec<Interpreter>>,
@@ -457,9 +471,7 @@ impl TracerEventDetails {
         // Handle argv[0]
         let _ = argv.as_deref().inspect(|v| {
           v.first().inspect(|&arg0| {
-            if filename.is_ok()
-              && filename.as_ref().unwrap().as_os_str() != OsStr::new(arg0.as_ref())
-            {
+            if filename != arg0 {
               spans.push(space.clone());
               spans.push("-a ".set_style(THEME.arg0));
               spans.push(arg0.tui_bash_escaped_with_style(THEME.arg0));
@@ -470,7 +482,8 @@ impl TracerEventDetails {
         if cwd != &baseline.cwd && rt_modifier_effective.show_cwd {
           cwd_range = Some(spans.len()..(spans.len() + 2));
           spans.push(space.clone());
-          spans.push(format!("-C {}", escape_str_for_bash!(cwd)).set_style(THEME.cwd));
+          spans.push("-C ".set_style(THEME.cwd));
+          spans.push(cwd.tui_bash_escaped_with_style(THEME.cwd));
         }
         if rt_modifier_effective.show_env {
           env_range = Some((spans.len(), 0));
@@ -502,14 +515,7 @@ impl TracerEventDetails {
         }
         spans.push(space.clone());
         // Filename
-        match filename {
-          Ok(filename) => {
-            spans.push(escape_str_for_bash!(filename).set_style(THEME.filename));
-          }
-          Err(_) => {
-            spans.push("[failed to read filename]".set_style(THEME.inline_tracer_error));
-          }
-        }
+        spans.push(filename.tui_bash_escaped_with_style(THEME.filename));
         // Argv[1..]
         match argv.as_ref() {
           Ok(argv) => {
@@ -728,16 +734,9 @@ impl TracerEventDetails {
         result.into()
       }
       CopyTarget::Argv => Self::argv_to_string(&event.argv).into(),
-      CopyTarget::Filename => Self::filename_to_cow(&event.filename),
+      CopyTarget::Filename => Cow::Borrowed(event.filename.as_ref()),
       CopyTarget::SyscallResult => event.result.to_string().into(),
       CopyTarget::Line => unreachable!(),
-    }
-  }
-
-  pub fn filename_to_cow(filename: &Result<PathBuf, InspectError>) -> Cow<str> {
-    match filename {
-      Ok(filename) => filename.to_string_lossy(),
-      Err(_) => "[failed to read filename]".into(),
     }
   }
 

@@ -1,10 +1,8 @@
 use std::{
   cell::RefCell,
   collections::BTreeMap,
-  ffi::OsStr,
   fmt::{Debug, Display},
   io::{self, Write},
-  path::Path,
   sync::Arc,
 };
 
@@ -13,12 +11,9 @@ use crate::{
     args::{LogModeArgs, ModifierArgs},
     theme::THEME,
   },
-  event::{OutputMsg, TracerEventDetails},
+  event::{FriendlyError, OutputMsg},
   proc::{diff_env, BaselineInfo, FileDescriptorInfoCollection, Interpreter},
-  tracer::{
-    state::{ExecData, ProcessState},
-    InspectError,
-  },
+  tracer::state::{ExecData, ProcessState},
 };
 
 use arcstr::ArcStr;
@@ -134,9 +129,9 @@ pub type PrinterOut = dyn Write + Send + Sync + 'static;
 
 enum DeferredWarningKind {
   NoArgv0,
-  FailedReadingArgv(InspectError),
-  FailedReadingFilename(InspectError),
-  FailedReadingEnvp(InspectError),
+  FailedReadingArgv(FriendlyError),
+  FailedReadingFilename(FriendlyError),
+  FailedReadingEnvp(FriendlyError),
 }
 
 struct DeferredWarnings {
@@ -409,7 +404,7 @@ impl Printer {
     result: i64,
     exec_data: &ExecData,
     env: &BTreeMap<OutputMsg, OutputMsg>,
-    cwd: &Path,
+    cwd: &OutputMsg,
   ) -> color_eyre::Result<()> {
     // Preconditions:
     // 1. execve syscall exit, which leads to 2
@@ -435,32 +430,24 @@ impl Printer {
       }
       write!(out, ":")?;
 
-      match exec_data.filename.as_ref() {
-        Ok(filename) => {
-          if self.args.trace_filename {
-            write!(out, " {:?}", filename)?;
-          }
-        }
-        Err(e) => {
-          write!(
-            out,
-            " {}",
-            format!("[Failed to read filename: {e}]")
-              .bright_red()
-              .blink()
-              .bold()
-          )?;
-          _deferred_warnings.push(DeferredWarnings {
-            warning: DeferredWarningKind::FailedReadingFilename(*e),
-            pid,
-          });
-        }
+      if self.args.trace_filename {
+        write!(
+          out,
+          " {}",
+          exec_data.filename.cli_escaped_styled(THEME.filename)
+        )?;
+      }
+      if let OutputMsg::Err(e) = exec_data.filename {
+        _deferred_warnings.push(DeferredWarnings {
+          warning: DeferredWarningKind::FailedReadingFilename(e),
+          pid,
+        });
       }
 
       match exec_data.argv.as_ref() {
         Err(e) => {
           _deferred_warnings.push(DeferredWarnings {
-            warning: DeferredWarningKind::FailedReadingArgv(*e),
+            warning: DeferredWarningKind::FailedReadingArgv(FriendlyError::InspectError(*e)),
             pid,
           });
         }
@@ -598,7 +585,7 @@ impl Printer {
             EnvPrintFormat::None => {}
           }
           _deferred_warnings.push(DeferredWarnings {
-            warning: DeferredWarningKind::FailedReadingEnvp(*e),
+            warning: DeferredWarningKind::FailedReadingEnvp(FriendlyError::InspectError(*e)),
             pid,
           });
         }
@@ -695,15 +682,13 @@ impl Printer {
           Ok(argv) => {
             if let Some(arg0) = argv.first() {
               // filename warning is already handled
-              if let Ok(filename) = exec_data.filename.as_ref() {
-                if filename.as_os_str() != OsStr::new(arg0.as_ref()) {
-                  write!(
-                    out,
-                    " {} {}",
-                    "-a".bright_white().italic(),
-                    escape_str_for_bash!(arg0.as_ref()).bright_white().italic()
-                  )?;
-                }
+              if &exec_data.filename != arg0 {
+                write!(
+                  out,
+                  " {} {}",
+                  "-a".bright_white().italic(),
+                  escape_str_for_bash!(arg0.as_ref()).bright_white().italic()
+                )?;
               }
             } else {
               _deferred_warnings.push(DeferredWarnings {
@@ -711,15 +696,15 @@ impl Printer {
                 pid,
               });
             }
-            if cwd != exec_data.cwd {
+            if cwd != &exec_data.cwd {
               if self.args.color >= ColorLevel::Normal {
                 write!(
                   out,
                   " -C {}",
-                  escape_str_for_bash!(&exec_data.cwd).bright_cyan()
+                  &exec_data.cwd.cli_bash_escaped_with_style(THEME.cwd)
                 )?;
               } else {
-                write!(out, " -C {}", escape_str_for_bash!(&exec_data.cwd))?;
+                write!(out, " -C {}", exec_data.cwd.bash_escaped())?;
               }
             }
             // envp warning is already handled
@@ -763,21 +748,15 @@ impl Printer {
                 }
               }
             }
-            write!(
-              out,
-              " {}",
-              escape_str_for_bash!(
-                TracerEventDetails::filename_to_cow(&exec_data.filename).as_ref()
-              )
-            )?;
+            write!(out, " {}", exec_data.filename.bash_escaped())?;
             for arg in argv.iter().skip(1) {
               // TODO: don't escape err msg
-              write!(out, " {}", escape_str_for_bash!(arg.as_ref()))?;
+              write!(out, " {}", arg.bash_escaped())?;
             }
           }
           Err(e) => {
             _deferred_warnings.push(DeferredWarnings {
-              warning: DeferredWarningKind::FailedReadingArgv(*e),
+              warning: DeferredWarningKind::FailedReadingArgv(FriendlyError::InspectError(*e)),
               pid,
             });
           }
