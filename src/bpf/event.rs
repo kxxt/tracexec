@@ -13,13 +13,13 @@ pub struct EventStorage {
   pub paths: HashMap<i32, Path>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Path {
   // Used to avoid prefixing
   // paths from synthetic filesystems
   // with /
-  is_absolute: bool,
-  segments: Vec<OutputMsg>,
+  pub is_absolute: bool,
+  pub segments: Vec<OutputMsg>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

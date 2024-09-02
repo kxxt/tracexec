@@ -277,12 +277,22 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
           event_type::PATH_EVENT => {
             assert_eq!(data.len(), size_of::<path_event>());
             let event: &path_event = unsafe { &*(data.as_ptr() as *const _) };
-            eprintln!("Received path {} with {} segments", event.header.id, event.segment_count)
+            let mut storage = event_storage.borrow_mut();
+            let paths = &mut storage.entry(header.eid).or_default().paths;
+            let path = paths.entry(header.id as i32).or_default();
+            assert_eq!(path.segments.len(), event.segment_count as usize);
+            eprintln!("Received path {} = {:?}", event.header.id, path);
           }
           event_type::PATH_SEGMENT_EVENT => {
             assert_eq!(data.len(), size_of::<path_segment_event>());
             let event: &path_segment_event = unsafe { &*(data.as_ptr() as *const _) };
-            eprintln!("Received path {} segment {}: {}", header.id, event.index, utf8_lossy_cow_from_bytes_with_nul(&event.segment).green());
+            let mut storage = event_storage.borrow_mut();
+            let paths = &mut storage.entry(header.eid).or_default().paths;
+            let path = paths.entry(header.id as i32).or_default();
+            // The segments must arrive in order. 
+            assert_eq!(path.segments.len(), event.index as usize);
+            // TODO: check for errors
+            path.segments.push(OutputMsg::Ok(cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.segment))));
           }
         }
         0
