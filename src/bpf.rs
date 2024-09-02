@@ -38,16 +38,11 @@ use nix::{
   },
 };
 use owo_colors::OwoColorize;
-use skel::types::{event_header, event_type, exec_event, fd_event, path_event, path_segment_event};
+use skel::types::{tracexec_event_header, event_type, exec_event, fd_event, path_event, path_segment_event};
 
 use crate::{
-  cache::StringCache,
-  cli::args::ModifierArgs,
-  cmdbuilder::CommandBuilder,
-  event::OutputMsg,
-  printer::PrinterOut,
-  proc::{FileDescriptorInfo, FileDescriptorInfoCollection},
-  pty,
+  cache::StringCache, cli::args::ModifierArgs, cmdbuilder::CommandBuilder, event::OutputMsg,
+  printer::PrinterOut, proc::FileDescriptorInfo, pty,
 };
 
 pub mod skel {
@@ -88,7 +83,7 @@ pub fn run(
   let mut obj = MaybeUninit::uninit();
   let mut open_skel = skel_builder.open(&mut obj)?;
   let ncpu = num_possible_cpus()?.try_into().expect("Too many cores!");
-  open_skel.maps.rodata_data.config.max_num_cpus = ncpu;
+  open_skel.maps.rodata_data.tracexec_config.max_num_cpus = ncpu;
   open_skel.maps.cache.set_max_entries(ncpu)?;
   // tracexec runs in the same pid namespace with the tracee
   let pid_ns_ino = std::fs::metadata("/proc/self/ns/pid")?.ino();
@@ -106,9 +101,9 @@ pub fn run(
           }
           r => r?,
         }
-        open_skel.maps.rodata_data.config.follow_fork = MaybeUninit::new(true);
-        open_skel.maps.rodata_data.config.tracee_pid = child.as_raw();
-        open_skel.maps.rodata_data.config.tracee_pidns_inum = pid_ns_ino as u32;
+        open_skel.maps.rodata_data.tracexec_config.follow_fork = MaybeUninit::new(true);
+        open_skel.maps.rodata_data.tracexec_config.tracee_pid = child.as_raw();
+        open_skel.maps.rodata_data.tracexec_config.tracee_pidns_inum = pid_ns_ino as u32;
         let mut skel = open_skel.load()?;
         skel.attach()?;
         match waitpid(child, Some(WaitPidFlag::WSTOPPED))? {
@@ -170,10 +165,10 @@ pub fn run(
   let mut eid = 0;
   builder.add(&events, move |data| {
     assert!(
-      data.len() > size_of::<event_header>(),
+      data.len() > size_of::<tracexec_event_header>(),
       "data too short: {data:?}"
     );
-    let header: event_header = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+    let header: tracexec_event_header = unsafe { std::ptr::read(data.as_ptr() as *const _) };
     match unsafe { header.r#type.assume_init() } {
       event_type::SYSENTER_EVENT => unreachable!(),
       event_type::SYSEXIT_EVENT => {
@@ -224,7 +219,7 @@ pub fn run(
         eprintln!("= {}", event.ret);
       }
       event_type::STRING_EVENT => {
-        let header_len = size_of::<event_header>();
+        let header_len = size_of::<tracexec_event_header>();
         let string = utf8_lossy_cow_from_bytes_with_nul(&data[header_len..]);
         let cached = cached_cow(string);
         let mut storage = event_storage.borrow_mut();

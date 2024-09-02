@@ -16,7 +16,7 @@ const volatile struct {
   bool follow_fork;
   pid_t tracee_pid;
   unsigned int tracee_pidns_inum;
-} config = {
+} tracexec_config = {
     .max_num_cpus = MAX_CPUS,
     // https://www.kxxt.dev/blog/max-possible-value-of-rlimit-nofile/
     .nofile = 2147483584,
@@ -116,7 +116,7 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event);
 static int add_tgid_to_closure(pid_t tgid);
 static int read_send_path(const struct path *path,
-                          const struct event_header *base_header, s32 path_id);
+                          const struct tracexec_event_header *base_header, s32 path_id);
 
 #ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
@@ -126,7 +126,7 @@ static int read_send_path(const struct path *path,
 
 bool should_trace(pid_t old_tgid) {
   // Trace all if not following forks
-  if (!config.follow_fork)
+  if (!tracexec_config.follow_fork)
     return true;
   // Check if it is in the closure
   void *ptr = bpf_map_lookup_elem(&tgid_closure, &old_tgid);
@@ -175,7 +175,7 @@ bool should_trace(pid_t old_tgid) {
     goto err_unlock;
   }
   bpf_rcu_read_unlock();
-  if (pid_in_ns == config.tracee_pid && ns_inum == config.tracee_pidns_inum) {
+  if (pid_in_ns == tracexec_config.tracee_pid && ns_inum == tracexec_config.tracee_pidns_inum) {
     debug("TASK %d (%d in pidns %u) is tracee", old_tgid, pid_in_ns, ns_inum);
     // Add it to the closure to avoid hitting this slow path in the future
     add_tgid_to_closure(old_tgid);
@@ -276,7 +276,7 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
 
 SEC("tp_btf/sched_process_fork")
 int trace_fork(u64 *ctx) {
-  if (!config.follow_fork)
+  if (!tracexec_config.follow_fork)
     return 0;
   struct task_struct *parent = (struct task_struct *)ctx[0];
   struct task_struct *child = (struct task_struct *)ctx[1];
@@ -549,7 +549,7 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
     return 1;
   event->fd_count++;
   u32 entry_index = bpf_get_smp_processor_id();
-  if (entry_index > config.max_num_cpus) {
+  if (entry_index > tracexec_config.max_num_cpus) {
     debug("Too many cores!");
     return 1;
   }
@@ -610,7 +610,7 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   }
   // Read the str into a temporary buffer
   u32 entry_index = bpf_get_smp_processor_id();
-  if (entry_index > config.max_num_cpus) {
+  if (entry_index > tracexec_config.max_num_cpus) {
     debug("Too many cores!");
     return 1;
   }
@@ -639,7 +639,7 @@ static int read_strings(u32 index, struct reader_context *ctx) {
     entry->header.flags |= POSSIBLE_TRUNCATION;
   }
   ret = bpf_ringbuf_output(&events, entry,
-                           sizeof(struct event_header) + bytes_read, 0);
+                           sizeof(struct tracexec_event_header) + bytes_read, 0);
   if (ret < 0) {
     event->header.flags |= OUTPUT_FAILURE;
   }
@@ -713,7 +713,7 @@ static int read_send_dentry_segment(u32 index, struct path_segment_ctx *ctx) {
     ctx->base_index += index;
     return 1;
   }
-  event->header = (struct event_header){
+  event->header = (struct tracexec_event_header){
       .id = ctx->path_event->header.id,
       .type = PATH_SEGMENT_EVENT,
       .eid = ctx->path_event->header.eid,
@@ -845,7 +845,7 @@ err_out:
 // Arguments:
 //   path: a pointer to a path struct, this is not a kernel pointer
 static int read_send_path(const struct path *path,
-                          const struct event_header *base_header, s32 path_id) {
+                          const struct tracexec_event_header *base_header, s32 path_id) {
   int ret = -1, zero = 0;
   // Initialize
   struct path_event *event = bpf_map_lookup_elem(&path_event_cache, &zero);
