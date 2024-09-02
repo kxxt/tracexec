@@ -77,7 +77,7 @@ enum event_type {
   PATH_EVENT,
 };
 
-struct event_header {
+struct tracexec_event_header {
   pid_t pid;
   u32 flags;
   // Globally unique counter of events
@@ -88,7 +88,7 @@ struct event_header {
 };
 
 struct exec_event {
-  struct event_header header;
+  struct tracexec_event_header header;
   pid_t tgid;
   uid_t uid;
   uid_t gid;
@@ -106,12 +106,12 @@ struct exec_event {
 };
 
 struct string_event {
-  struct event_header header;
+  struct tracexec_event_header header;
   u8 data[_SC_ARG_MAX];
 };
 
 struct fd_event {
-  struct event_header header;
+  struct tracexec_event_header header;
   unsigned int flags;
   unsigned int fd;
   s32 path_id;
@@ -119,13 +119,13 @@ struct fd_event {
 
 struct path_event {
   // id: A locally(w.r.t an event) unique counter of path events
-  struct event_header header;
+  struct tracexec_event_header header;
   u32 segment_count;
 };
 
 struct path_segment_event {
   // id: index of this segment
-  struct event_header header;
+  struct tracexec_event_header header;
   u32 index;
   u8 segment[PATH_SEGMENT_MAX];
 };
