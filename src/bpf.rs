@@ -191,7 +191,7 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
           data.len() > size_of::<tracexec_event_header>(),
           "data too short: {data:?}"
         );
-        let header: tracexec_event_header = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+        let header: &tracexec_event_header = unsafe { &*(data.as_ptr() as *const _) };
         match unsafe { header.r#type.assume_init() } {
           event_type::SYSENTER_EVENT => unreachable!(),
           event_type::SYSEXIT_EVENT => {
@@ -259,7 +259,7 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
           }
           event_type::FD_EVENT => {
             assert_eq!(data.len(), size_of::<fd_event>());
-            let event: fd_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+            let event: &fd_event = unsafe { &*(data.as_ptr() as *const _) };
             let fdinfo = FileDescriptorInfo {
               fd: event.fd as RawFd,
               path: Default::default(),// cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.path)),
@@ -276,12 +276,12 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
           }
           event_type::PATH_EVENT => {
             assert_eq!(data.len(), size_of::<path_event>());
-            let event: path_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+            let event: &path_event = unsafe { &*(data.as_ptr() as *const _) };
             eprintln!("Received path {} with {} segments", event.header.id, event.segment_count)
           }
           event_type::PATH_SEGMENT_EVENT => {
             assert_eq!(data.len(), size_of::<path_segment_event>());
-            let event: path_segment_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+            let event: &path_segment_event = unsafe { &*(data.as_ptr() as *const _) };
             eprintln!("Received path {} segment {}: {}", header.id, event.index, utf8_lossy_cow_from_bytes_with_nul(&event.segment).green());
           }
         }
