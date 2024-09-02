@@ -1,10 +1,15 @@
-use std::{io::stdout, path::PathBuf};
+use std::{
+  io::{stderr, stdout, BufWriter},
+  path::PathBuf,
+};
 
 use args::{PtraceArgs, TuiModeArgs};
 use clap::{CommandFactory, Parser, Subcommand};
 use config::Config;
 use options::ExportFormat;
 use tracing::debug;
+
+use crate::printer::PrinterOut;
 
 use self::{
   args::{LogModeArgs, ModifierArgs, TracerEventArgs},
@@ -14,9 +19,9 @@ use self::{
 pub mod args;
 pub mod config;
 pub mod options;
-pub mod theme;
 #[cfg(test)]
 mod test;
+pub mod theme;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about)]
@@ -121,6 +126,16 @@ pub enum CliCommand {
   #[cfg(feature = "ebpf")]
   #[clap(about = "Experimental ebpf mode")]
   Ebpf {
+    #[clap(subcommand)]
+    command: EbpfCommand,
+  },
+}
+
+#[derive(Subcommand, Debug)]
+#[cfg(feature = "ebpf")]
+pub enum EbpfCommand {
+  #[clap(about = "Run tracexec in logging mode")]
+  Log {
     #[arg(
       last = true,
       help = "command to be executed. Leave it empty to trace all exec on system"
@@ -135,9 +150,32 @@ pub enum CliCommand {
     #[clap(flatten)]
     modifier_args: ModifierArgs,
   },
+  #[clap(about = "Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default")]
+  Tui {},
+  #[clap(about = "Collect exec events and export them")]
+  Collect {},
 }
 
 impl Cli {
+  pub fn get_output(path: Option<PathBuf>, color: Color) -> std::io::Result<Box<PrinterOut>> {
+    Ok(match path {
+      None => Box::new(stderr()),
+      Some(ref x) if x.as_os_str() == "-" => Box::new(stdout()),
+      Some(path) => {
+        let file = std::fs::OpenOptions::new()
+          .create(true)
+          .truncate(true)
+          .write(true)
+          .open(path)?;
+        if color != Color::Always {
+          // Disable color by default when output is file
+          owo_colors::control::set_should_colorize(false);
+        }
+        Box::new(BufWriter::new(file))
+      }
+    })
+  }
+
   pub fn generate_completions(shell: clap_complete::Shell) {
     let mut cmd = Cli::command();
     clap_complete::generate(shell, &mut cmd, env!("CARGO_CRATE_NAME"), &mut stdout())

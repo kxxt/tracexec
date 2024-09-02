@@ -51,24 +51,6 @@ use crate::{
   tui::app::App,
 };
 
-fn get_output(path: Option<PathBuf>, color: Color) -> std::io::Result<Box<PrinterOut>> {
-  Ok(match path {
-    None => Box::new(stderr()),
-    Some(ref x) if x.as_os_str() == "-" => Box::new(stdout()),
-    Some(path) => {
-      let file = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
-        .open(path)?;
-      if color != Color::Always {
-        // Disable color by default when output is file
-        owo_colors::control::set_should_colorize(false);
-      }
-      Box::new(BufWriter::new(file))
-    }
-  })
-}
 
 #[tokio::main(worker_threads = 2)]
 async fn main() -> color_eyre::Result<()> {
@@ -125,7 +107,7 @@ async fn main() -> color_eyre::Result<()> {
       output,
     } => {
       let modifier_args = modifier_args.processed();
-      let output = get_output(output, cli.color)?;
+      let output = Cli::get_output(output, cli.color)?;
       let baseline = BaselineInfo::new()?;
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
       let (req_tx, req_rx) = mpsc::unbounded_channel();
@@ -246,7 +228,7 @@ async fn main() -> color_eyre::Result<()> {
       no_foreground,
     } => {
       let modifier_args = modifier_args.processed();
-      let mut output = get_output(output, cli.color)?;
+      let mut output = Cli::get_output(output, cli.color)?;
       let tracing_args = LogModeArgs {
         show_cmdline: false,
         show_argv: true,
@@ -345,14 +327,9 @@ async fn main() -> color_eyre::Result<()> {
       Cli::generate_completions(shell);
     }
     #[cfg(feature = "ebpf")]
-    CliCommand::Ebpf {
-      cmd,
-      output,
-      modifier_args,
-    } => {
-      let output = get_output(output, cli.color)?;
+    CliCommand::Ebpf { command } => {
       // TODO: warn if --user is set when not follow-forks
-      bpf::run(output, cmd, user, modifier_args)?;
+      bpf::run(command, user, cli.color)?;
     }
   }
   Ok(())
