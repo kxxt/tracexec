@@ -109,7 +109,7 @@ impl FileDescriptorInfoCollection {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FileDescriptorInfo {
   pub fd: c_int,
-  pub path: ArcStr,
+  pub path: OutputMsg,
   pub pos: usize,
   #[serde(serialize_with = "serialize_oflags")]
   pub flags: OFlag,
@@ -137,7 +137,7 @@ impl Default for FileDescriptorInfo {
   fn default() -> Self {
     Self {
       fd: Default::default(),
-      path: Default::default(),
+      path: OutputMsg::Ok("".into()),
       pos: Default::default(),
       flags: OFlag::empty(),
       mnt_id: Default::default(),
@@ -180,7 +180,7 @@ pub fn read_fdinfo(pid: Pid, fd: i32) -> color_eyre::Result<FileDescriptorInfo> 
     }
   }
   info.mnt = get_mountinfo_by_mnt_id(pid, info.mnt_id)?;
-  info.path = read_fd(pid, fd)?;
+  info.path = read_fd(pid, fd).map(OutputMsg::Ok)?;
   Ok(info)
 }
 
@@ -343,6 +343,24 @@ pub fn parse_envp(envp: Vec<String>) -> BTreeMap<OutputMsg, OutputMsg> {
         OutputMsg::Ok(cache.get_or_insert(key)),
         OutputMsg::Ok(cache.get_or_insert(value)),
       )
+    })
+    .collect()
+}
+
+pub fn parse_failiable_envp(envp: Vec<OutputMsg>) -> BTreeMap<OutputMsg, OutputMsg> {
+  envp
+    .into_iter()
+    .map(|entry| {
+      if let OutputMsg::Ok(s) | OutputMsg::PartialOk(s) = entry {
+        let (key, value) = parse_env_entry(&s);
+        let mut cache = CACHE.write().unwrap();
+        (
+          OutputMsg::Ok(cache.get_or_insert(key)),
+          OutputMsg::Ok(cache.get_or_insert(value)),
+        )
+      } else {
+        (entry.clone(), entry)
+      }
     })
     .collect()
 }

@@ -13,6 +13,10 @@ pub struct Theme {
   // Info
   pub filename: Style,
   pub cwd: Style,
+  // Fd
+  pub modified_fd: Style,
+  pub added_fd: Style,
+  // pub removed_fd: Style,
 }
 
 impl Default for Theme {
@@ -26,6 +30,8 @@ impl Default for Theme {
       modified_env_val: Style::new().bright_blue(),
       filename: Style::new(),
       cwd: Style::new().bright_cyan(),
+      modified_fd: Style::new().bright_yellow().bold(),
+      added_fd: Style::new().bright_green().bold(),
     }
   }
 }

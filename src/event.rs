@@ -104,6 +104,8 @@ impl From<&FriendlyError> for &'static str {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum OutputMsg {
   Ok(ArcStr),
+  // Part of the message contains error
+  PartialOk(ArcStr),
   Err(FriendlyError),
 }
 
@@ -111,6 +113,7 @@ impl AsRef<str> for OutputMsg {
   fn as_ref(&self) -> &str {
     match self {
       OutputMsg::Ok(s) => s.as_ref(),
+      OutputMsg::PartialOk(s) => s.as_ref(),
       OutputMsg::Err(e) => <&'static str>::from(e),
     }
   }
@@ -123,6 +126,7 @@ impl Serialize for OutputMsg {
   {
     match self {
       OutputMsg::Ok(s) => s.serialize(serializer),
+      OutputMsg::PartialOk(s) => s.serialize(serializer),
       OutputMsg::Err(e) => <&'static str>::from(e).serialize(serializer),
     }
   }
@@ -132,6 +136,7 @@ impl Display for OutputMsg {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       OutputMsg::Ok(msg) => write!(f, "{msg:?}"),
+      OutputMsg::PartialOk(msg) => write!(f, "{msg:?}"),
       OutputMsg::Err(e) => Display::fmt(&e, f),
     }
   }
@@ -150,9 +155,14 @@ impl From<ArcStr> for OutputMsg {
 }
 
 impl OutputMsg {
+  pub fn not_ok(&self) -> bool {
+    matches!(self, OutputMsg::Ok(_))
+  }
+
   pub fn is_ok_and(&self, predicate: impl FnOnce(&str) -> bool) -> bool {
     match self {
       OutputMsg::Ok(s) => predicate(&s),
+      OutputMsg::PartialOk(_) => false,
       OutputMsg::Err(_) => false,
     }
   }
@@ -160,6 +170,7 @@ impl OutputMsg {
   pub fn is_err_or(&self, predicate: impl FnOnce(&str) -> bool) -> bool {
     match self {
       OutputMsg::Ok(s) => predicate(&s),
+      OutputMsg::PartialOk(_) => true,
       OutputMsg::Err(_) => true,
     }
   }
@@ -169,6 +180,11 @@ impl OutputMsg {
     match self {
       OutputMsg::Ok(s) => {
         shell_quote::QuoteRefExt::<String>::quoted(s.as_str(), shell_quote::Bash).set_style(style)
+      }
+      OutputMsg::PartialOk(s) => {
+        shell_quote::QuoteRefExt::<String>::quoted(s.as_str(), shell_quote::Bash)
+          .set_style(style)
+          .patch_style(THEME.inline_tracer_error)
       }
       OutputMsg::Err(e) => <&'static str>::from(e).set_style(THEME.inline_tracer_error),
     }
@@ -184,11 +200,12 @@ impl OutputMsg {
         s.as_str(),
         shell_quote::Bash,
       ))),
+      OutputMsg::PartialOk(s) => Either::Left(cli::theme::THEME.inline_error.style(
+        shell_quote::QuoteRefExt::<String>::quoted(s.as_str(), shell_quote::Bash),
+      )),
       OutputMsg::Err(e) => Either::Right(
-        owo_colors::style()
-          .bright_red()
-          .bold()
-          .blink()
+        cli::theme::THEME
+          .inline_error
           .style(<&'static str>::from(e)),
       ),
     }
@@ -197,7 +214,7 @@ impl OutputMsg {
   /// Escape the content for bash shell if it is not error
   pub fn bash_escaped(&self) -> Cow<'static, str> {
     match self {
-      OutputMsg::Ok(s) => Cow::Owned(shell_quote::QuoteRefExt::quoted(
+      OutputMsg::Ok(s) | OutputMsg::PartialOk(s) => Cow::Owned(shell_quote::QuoteRefExt::quoted(
         s.as_str(),
         shell_quote::Bash,
       )),
@@ -208,6 +225,7 @@ impl OutputMsg {
   pub fn tui_styled(&self, style: Style) -> Span {
     match self {
       OutputMsg::Ok(s) => (*s).set_style(style),
+      OutputMsg::PartialOk(s) => (*s).set_style(THEME.inline_tracer_error),
       OutputMsg::Err(e) => <&'static str>::from(e).set_style(THEME.inline_tracer_error),
     }
   }
@@ -215,6 +233,7 @@ impl OutputMsg {
   pub fn cli_styled(&self, style: owo_colors::Style) -> Either<impl Display + '_, impl Display> {
     match self {
       OutputMsg::Ok(s) => Either::Left(s.style(style)),
+      OutputMsg::PartialOk(s) => Either::Left(s.style(cli::theme::THEME.inline_error)),
       OutputMsg::Err(e) => Either::Right(
         cli::theme::THEME
           .inline_error
@@ -236,6 +255,9 @@ impl OutputMsg {
     }
     match self {
       OutputMsg::Ok(s) => Either::Left(style.style(DebugAsDisplay(s))),
+      OutputMsg::PartialOk(s) => {
+        Either::Left(cli::theme::THEME.inline_error.style(DebugAsDisplay(s)))
+      }
       OutputMsg::Err(e) => Either::Right(
         cli::theme::THEME
           .inline_error
@@ -542,7 +564,9 @@ impl TracerEventDetails {
               spans.push(space.clone());
               spans.push("<".set_style(THEME.modified_fd_in_cmdline));
               spans.push(
-                escape_str_for_bash!(fdinfo.path.as_str()).set_style(THEME.modified_fd_in_cmdline),
+                fdinfo
+                  .path
+                  .tui_bash_escaped_with_style(THEME.modified_fd_in_cmdline),
               );
             }
           } else {
@@ -560,7 +584,9 @@ impl TracerEventDetails {
               spans.push(space.clone());
               spans.push(">".set_style(THEME.modified_fd_in_cmdline));
               spans.push(
-                escape_str_for_bash!(fdinfo.path.as_str()).set_style(THEME.modified_fd_in_cmdline),
+                fdinfo
+                  .path
+                  .tui_bash_escaped_with_style(THEME.modified_fd_in_cmdline),
               )
             }
           } else {
@@ -578,7 +604,9 @@ impl TracerEventDetails {
               spans.push(space.clone());
               spans.push("2>".set_style(THEME.modified_fd_in_cmdline));
               spans.push(
-                escape_str_for_bash!(fdinfo.path.as_str()).set_style(THEME.modified_fd_in_cmdline),
+                fdinfo
+                  .path
+                  .tui_bash_escaped_with_style(THEME.modified_fd_in_cmdline),
               );
             }
           } else {
@@ -600,8 +628,11 @@ impl TracerEventDetails {
             spans.push(space.clone());
             spans.push(fd.to_string().set_style(THEME.added_fd_in_cmdline));
             spans.push(">".set_style(THEME.added_fd_in_cmdline));
-            spans
-              .push(escape_str_for_bash!(fdinfo.path.as_str()).set_style(THEME.added_fd_in_cmdline))
+            spans.push(
+              fdinfo
+                .path
+                .tui_bash_escaped_with_style(THEME.added_fd_in_cmdline),
+            )
           }
         }
 

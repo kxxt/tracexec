@@ -149,6 +149,8 @@ pub enum EbpfCommand {
     output: Option<PathBuf>,
     #[clap(flatten)]
     modifier_args: ModifierArgs,
+    #[clap(flatten)]
+    log_args: LogModeArgs,
   },
   #[clap(about = "Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default")]
   Tui {},

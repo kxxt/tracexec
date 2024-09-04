@@ -608,9 +608,7 @@ impl Printer {
                 out,
                 " {}{}",
                 "<".bright_yellow().bold(),
-                escape_str_for_bash!(fdinfo.path.as_str())
-                  .bright_yellow()
-                  .bold()
+                fdinfo.path.cli_bash_escaped_with_style(THEME.modified_fd)
               )?;
             }
           } else {
@@ -627,9 +625,7 @@ impl Printer {
                 out,
                 " {}{}",
                 ">".bright_yellow().bold(),
-                escape_str_for_bash!(fdinfo.path.as_str())
-                  .bright_yellow()
-                  .bold()
+                fdinfo.path.cli_bash_escaped_with_style(THEME.modified_fd)
               )?;
             }
           } else {
@@ -646,9 +642,7 @@ impl Printer {
                 out,
                 " {}{}",
                 "2>".bright_yellow().bold(),
-                escape_str_for_bash!(fdinfo.path.as_str())
-                  .bright_yellow()
-                  .bold()
+                fdinfo.path.cli_bash_escaped_with_style(THEME.modified_fd)
               )?;
             }
           } else {
@@ -671,9 +665,7 @@ impl Printer {
               " {}{}{}",
               fd.bright_green().bold(),
               ">".bright_green().bold(),
-              escape_str_for_bash!(fdinfo.path.as_str())
-                .bright_green()
-                .bold()
+              fdinfo.path.cli_bash_escaped_with_style(THEME.added_fd)
             )?;
           }
         }
