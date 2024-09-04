@@ -27,7 +27,7 @@ use libbpf_rs::{
 use nix::{
   errno::Errno,
   fcntl::OFlag,
-  libc::{self, c_int},
+  libc::{self, c_int, AT_FDCWD},
   sys::{
     signal::{kill, raise, Signal},
     wait::{waitpid, WaitPidFlag, WaitStatus},
@@ -37,7 +37,6 @@ use nix::{
     User,
   },
 };
-use owo_colors::OwoColorize;
 use skel::{
   types::{
     event_type, exec_event, fd_event, path_event, path_segment_event, tracexec_event_header,
@@ -46,12 +45,7 @@ use skel::{
 };
 
 use crate::{
-  cache::StringCache,
-  cli::{options::Color, Cli, EbpfCommand},
-  cmdbuilder::CommandBuilder,
-  event::OutputMsg,
-  proc::FileDescriptorInfo,
-  pty,
+  cache::StringCache, cli::{options::Color, Cli, EbpfCommand}, cmdbuilder::CommandBuilder, event::OutputMsg, printer::{Printer, PrinterArgs}, proc::{parse_failiable_envp, BaselineInfo, FileDescriptorInfo}, pty, tracer::state::ExecData
 };
 
 pub mod skel {
@@ -178,8 +172,12 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
       cmd,
       output,
       modifier_args,
+      log_args
     } => {
       let output = Cli::get_output(output, color)?;
+      let baseline = Arc::new(BaselineInfo::new()?);
+      let printer = Arc::new(Printer::new(PrinterArgs::from_cli(&log_args, &modifier_args), baseline.clone()));
+      let printer_clone = printer.clone();
       let (skel, child) = spawn(&cmd, user, &mut obj)?;
       let events = skel.maps.events;
       let mut builder = RingBufferBuilder::new();
@@ -221,25 +219,16 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
             if event.ret != 0 && modifier_args.successful_only {
               return 0;
             }
-            eprint!(
-              "{} exec {} argv ",
-              String::from_utf8_lossy(&event.comm),
-              String::from_utf8_lossy(&event.base_filename),
-            );
-            for i in 0..event.count[0] {
-              eprint!(
-                "{} ",
-                event_storage.borrow().get(&event.header.eid).unwrap().strings[i as usize]
-              );
-            }
-            eprint!("envp ");
-            for i in event.count[0]..(event.count[0] + event.count[1]) {
-              eprint!(
-                "{} ",
-                event_storage.borrow().get(&event.header.eid).unwrap().strings[i as usize]
-              );
-            }
-            eprintln!("= {}", event.ret);
+            let mut storage = event_storage.borrow_mut();
+            // TODO: Properly handle execveat
+            let mut storage = storage.remove(&header.eid).unwrap();
+            let envp = storage.strings.split_off(event.count[0] as usize);
+            let argv = storage.strings;
+            let exec_data = ExecData::new(
+              cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.base_filename)).into(),
+              Ok(argv), Ok(parse_failiable_envp(envp)),
+              storage.paths.remove(&AT_FDCWD).unwrap().into(), None, storage.fdinfo_map);
+            printer.print_exec_trace(Pid::from_raw(header.pid), cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.comm)), event.ret, &exec_data, &baseline.env, &baseline.cwd).unwrap();
           }
           event_type::STRING_EVENT => {
             let header_len = size_of::<tracexec_event_header>();
@@ -260,9 +249,12 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
           event_type::FD_EVENT => {
             assert_eq!(data.len(), size_of::<fd_event>());
             let event: &fd_event = unsafe { &*(data.as_ptr() as *const _) };
+            let mut guard = event_storage.borrow_mut();
+            let storage = guard.get_mut(&header.eid).unwrap();
+            let path = storage.paths.get(&event.path_id).unwrap().to_owned().into();
             let fdinfo = FileDescriptorInfo {
               fd: event.fd as RawFd,
-              path: Default::default(),// cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.path)),
+              path,
               pos: 0, // TODO
               flags: OFlag::from_bits_retain(event.flags as c_int),
               mnt_id: 0,                                    // TODO
@@ -270,8 +262,7 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
               mnt: arcstr::literal!("[tracexec: unknown]"), // TODO
               extra: vec![arcstr::literal!("")],            // TODO
             };
-            let mut storage = event_storage.borrow_mut();
-            let fdc = &mut storage.entry(header.eid).or_default().fdinfo_map;
+            let fdc = &mut storage.fdinfo_map;
             fdc.fdinfo.insert(event.fd as RawFd, fdinfo);
           }
           event_type::PATH_EVENT => {
@@ -280,8 +271,10 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
             let mut storage = event_storage.borrow_mut();
             let paths = &mut storage.entry(header.eid).or_default().paths;
             let path = paths.entry(header.id as i32).or_default();
+            // FIXME
+            path.is_absolute = true;
             assert_eq!(path.segments.len(), event.segment_count as usize);
-            eprintln!("Received path {} = {:?}", event.header.id, path);
+            // eprintln!("Received path {} = {:?}", event.header.id, path);
           }
           event_type::PATH_SEGMENT_EVENT => {
             assert_eq!(data.len(), size_of::<path_segment_event>());
@@ -289,7 +282,7 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
             let mut storage = event_storage.borrow_mut();
             let paths = &mut storage.entry(header.eid).or_default().paths;
             let path = paths.entry(header.id as i32).or_default();
-            // The segments must arrive in order. 
+            // The segments must arrive in order.
             assert_eq!(path.segments.len(), event.index as usize);
             // TODO: check for errors
             path.segments.push(OutputMsg::Ok(cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.segment))));
@@ -298,14 +291,17 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
         0
       })?;
       let rb = builder.build()?;
-      let ringbuf_task = tokio::task::spawn_blocking(move || loop {
-        match rb.poll(Duration::from_millis(1000)) {
-          Ok(_) => continue,
-          Err(e) => {
-            if e.kind() == ErrorKind::Interrupted {
-              continue;
-            } else {
-              panic!("Failed to poll ringbuf: {e}");
+      let ringbuf_task = tokio::task::spawn_blocking(move || {
+        printer_clone.init_thread_local(Some(output));
+        loop {
+          match rb.poll(Duration::from_millis(1000)) {
+            Ok(_) => continue,
+            Err(e) => {
+              if e.kind() == ErrorKind::Interrupted {
+                continue;
+              } else {
+                panic!("Failed to poll ringbuf: {e}");
+              }
             }
           }
         }

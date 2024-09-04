@@ -17,13 +17,7 @@ mod seccomp;
 mod tracer;
 mod tui;
 
-use std::{
-  io::{self, stderr, stdout, BufWriter},
-  os::unix::ffi::OsStrExt,
-  path::PathBuf,
-  process,
-  sync::Arc,
-};
+use std::{io, os::unix::ffi::OsStrExt, process, sync::Arc};
 
 use atoi::atoi;
 use clap::Parser;
@@ -44,13 +38,11 @@ use crate::{
   cli::{args::LogModeArgs, options::Color, CliCommand},
   event::{TracerEvent, TracerEventDetails, TracerMessage},
   log::initialize_panic_handler,
-  printer::PrinterOut,
   proc::BaselineInfo,
   pty::{native_pty_system, PtySize, PtySystem},
   tracer::TracerMode,
   tui::app::App,
 };
-
 
 #[tokio::main(worker_threads = 2)]
 async fn main() -> color_eyre::Result<()> {
