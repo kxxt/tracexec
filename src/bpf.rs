@@ -10,9 +10,10 @@ use std::{
     fd::RawFd,
     unix::{fs::MetadataExt, process::CommandExt},
   },
-  process,
-  sync::{Arc, OnceLock, RwLock},
-  thread::sleep,
+  sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, OnceLock, RwLock,
+  },
   time::Duration,
 };
 
@@ -45,7 +46,14 @@ use skel::{
 };
 
 use crate::{
-  cache::StringCache, cli::{options::Color, Cli, EbpfCommand}, cmdbuilder::CommandBuilder, event::OutputMsg, printer::{Printer, PrinterArgs}, proc::{parse_failiable_envp, BaselineInfo, FileDescriptorInfo}, pty, tracer::state::ExecData
+  cache::StringCache,
+  cli::{options::Color, Cli, EbpfCommand},
+  cmdbuilder::CommandBuilder,
+  event::OutputMsg,
+  printer::{Printer, PrinterArgs},
+  proc::{parse_failiable_envp, BaselineInfo, FileDescriptorInfo},
+  pty,
+  tracer::state::ExecData,
 };
 
 pub mod skel {
@@ -172,21 +180,27 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
       cmd,
       output,
       modifier_args,
-      log_args
+      log_args,
     } => {
       let output = Cli::get_output(output, color)?;
       let baseline = Arc::new(BaselineInfo::new()?);
-      let printer = Arc::new(Printer::new(PrinterArgs::from_cli(&log_args, &modifier_args), baseline.clone()));
+      let printer = Arc::new(Printer::new(
+        PrinterArgs::from_cli(&log_args, &modifier_args),
+        baseline.clone(),
+      ));
       let printer_clone = printer.clone();
-      let (skel, child) = spawn(&cmd, user, &mut obj)?;
+      let (skel, _child) = spawn(&cmd, user, &mut obj)?;
       let events = skel.maps.events;
       let mut builder = RingBufferBuilder::new();
       let event_storage: RefCell<HashMap<u64, EventStorage>> = RefCell::new(HashMap::new());
       let lost_events: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
       let mut eid = 0;
-      builder.add(&events, move |data| {
+      let should_exit = Arc::new(AtomicBool::new(false));
+      builder.add(&events, {
+        let should_exit = should_exit.clone();
+        move |data| {
         assert!(
-          data.len() > size_of::<tracexec_event_header>(),
+          data.len() >= size_of::<tracexec_event_header>(),
           "data too short: {data:?}"
         );
         let header: &tracexec_event_header = unsafe { &*(data.as_ptr() as *const _) };
@@ -287,49 +301,30 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
             // TODO: check for errors
             path.segments.push(OutputMsg::Ok(cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.segment))));
           }
+          event_type::EXIT_EVENT => {
+            should_exit.store(true, Ordering::Relaxed);
+          }
         }
         0
-      })?;
+      }})?;
       let rb = builder.build()?;
-      let ringbuf_task = tokio::task::spawn_blocking(move || {
-        printer_clone.init_thread_local(Some(output));
-        loop {
-          match rb.poll(Duration::from_millis(1000)) {
-            Ok(_) => continue,
-            Err(e) => {
-              if e.kind() == ErrorKind::Interrupted {
-                continue;
-              } else {
-                panic!("Failed to poll ringbuf: {e}");
-              }
+      printer_clone.init_thread_local(Some(output));
+      loop {
+        if should_exit.load(Ordering::Relaxed) {
+          break;
+        }
+        match rb.poll(Duration::from_millis(100)) {
+          Ok(_) => continue,
+          Err(e) => {
+            if e.kind() == ErrorKind::Interrupted {
+              continue;
+            } else {
+              panic!("Failed to poll ringbuf: {e}");
             }
           }
         }
-      });
-      if let Some(child) = child {
-        // TODO: We need to poll on the child and the ringbuf_task
-        // Wait for the child to die
-        match waitpid(child, None)? {
-          WaitStatus::Exited(pid, code) => {
-            eprintln!("child {pid} exited with code {code}");
-            process::exit(0);
-          }
-          WaitStatus::Signaled(pid, sig, coredumped) => {
-            eprintln!(
-              "child {} signaled with {}{}",
-              pid,
-              sig,
-              if coredumped { " (coredumped)" } else { "" }
-            );
-            process::exit(0);
-          }
-          _ => unreachable!("Invalid wait status!"),
-        }
-      } else {
-        loop {
-          sleep(Duration::from_secs(200));
-        }
       }
+      Ok(())
     }
     EbpfCommand::Tui {} => todo!(),
     EbpfCommand::Collect {} => todo!(),

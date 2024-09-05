@@ -75,6 +75,7 @@ enum event_type {
   FD_EVENT,
   PATH_SEGMENT_EVENT,
   PATH_EVENT,
+  EXIT_EVENT,
 };
 
 struct tracexec_event_header {
@@ -131,6 +132,7 @@ struct path_segment_event {
 };
 
 union cache_item {
+  struct tracexec_event_header exit;
   struct string_event string;
   struct fd_event fd;
   struct path_event path;
