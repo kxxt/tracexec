@@ -10,6 +10,12 @@ char LICENSE[] SEC("license") = "GPL";
 static const struct exec_event empty_event = {};
 static u64 event_counter = 0;
 static u32 drop_counter = 0;
+// The tgid of the root tracee in global namespace.
+// This field is used to check whether we should signal
+// userspace tracexec to exit.
+// TODO: probably we should use atomic operation when updating it? Not sure
+// about this for BPF.
+static pid_t tracee_tgid = 0;
 const volatile struct {
   u32 max_num_cpus;
   u32 nofile;
@@ -115,6 +121,7 @@ static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx);
 static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event);
 static int add_tgid_to_closure(pid_t tgid);
+static int send_exit_event();
 static int read_send_path(const struct path *path,
                           const struct tracexec_event_header *base_header,
                           s32 path_id);
@@ -181,6 +188,7 @@ bool should_trace(pid_t old_tgid) {
     debug("TASK %d (%d in pidns %u) is tracee", old_tgid, pid_in_ns, ns_inum);
     // Add it to the closure to avoid hitting this slow path in the future
     add_tgid_to_closure(old_tgid);
+    tracee_tgid = old_tgid;
     return true;
   }
   return false;
@@ -316,6 +324,13 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
   int ret = bpf_map_delete_elem(&tgid_closure, &tgid);
   if (ret < 0)
     debug("Failed to remove %d from closure: %d", tgid, ret);
+  // FIXME: In theory, if the userspace program fails after fork before exec,
+  //        then we won't have the tracee_tgid here and thus hang forever.
+  //        Though it is unlikely to happen in practice.
+  if (tgid == tracee_tgid) {
+    // We should exit now!
+    send_exit_event();
+  }
   return 0;
 }
 
@@ -686,6 +701,29 @@ static int add_tgid_to_closure(pid_t tgid) {
           tgid, ret);
     // TODO: set a flag to notify user space
     return ret;
+  }
+  return 0;
+}
+
+static int send_exit_event() {
+  u32 entry_index = bpf_get_smp_processor_id();
+  if (entry_index > tracexec_config.max_num_cpus) {
+    debug("Too many cores!");
+    return 1;
+  }
+  struct tracexec_event_header *entry =
+      bpf_map_lookup_elem(&cache, &entry_index);
+  if (entry == NULL) {
+    debug("This should not happen!");
+    return 1;
+  }
+  // Other fields doesn't matter for exit event
+  entry->type = EXIT_EVENT;
+  int ret = bpf_ringbuf_output(&events, entry, sizeof(*entry), BPF_RB_FORCE_WAKEUP);
+  if (ret < 0) {
+    // TODO: find a better way to ensure userspace receives exit event
+    debug("Failed to send exit event!");
+    return 1;
   }
   return 0;
 }
