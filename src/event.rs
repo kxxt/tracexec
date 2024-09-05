@@ -32,7 +32,9 @@ use crate::{
   action::CopyTarget,
   cli::{self, args::ModifierArgs},
   printer::{escape_str_for_bash, ListPrinter},
-  proc::{BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter},
+  proc::{
+    cached_str, cached_string, BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter,
+  },
   tracer::{state::ProcessExit, BreakPointHit, InspectError},
   tui::{
     event_line::{EventLine, Mask},
@@ -156,7 +158,7 @@ impl From<ArcStr> for OutputMsg {
 
 impl OutputMsg {
   pub fn not_ok(&self) -> bool {
-    matches!(self, OutputMsg::Ok(_))
+    !matches!(self, OutputMsg::Ok(_))
   }
 
   pub fn is_ok_and(&self, predicate: impl FnOnce(&str) -> bool) -> bool {
@@ -172,6 +174,18 @@ impl OutputMsg {
       OutputMsg::Ok(s) => predicate(&s),
       OutputMsg::PartialOk(_) => true,
       OutputMsg::Err(_) => true,
+    }
+  }
+
+  /// Join two paths with a '/', preserving the semantics of [`OutputMsg`]
+  pub fn join(&self, path: impl AsRef<str>) -> Self {
+    let path = path.as_ref();
+    match self {
+      OutputMsg::Ok(s) => OutputMsg::Ok(cached_string(format!("{s}/{path}"))),
+      OutputMsg::PartialOk(s) => OutputMsg::PartialOk(cached_string(format!("{s}/{path}"))),
+      OutputMsg::Err(s) => {
+        OutputMsg::PartialOk(cached_string(format!("{}/{path}", <&'static str>::from(s))))
+      }
     }
   }
 

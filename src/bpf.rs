@@ -28,7 +28,7 @@ use libbpf_rs::{
 use nix::{
   errno::Errno,
   fcntl::OFlag,
-  libc::{self, c_int, AT_FDCWD},
+  libc::{self, c_int, SYS_execve, SYS_execveat, AT_FDCWD},
   sys::{
     signal::{kill, raise, Signal},
     wait::{waitpid, WaitPidFlag, WaitStatus},
@@ -51,7 +51,7 @@ use crate::{
   cmdbuilder::CommandBuilder,
   event::OutputMsg,
   printer::{Printer, PrinterArgs},
-  proc::{parse_failiable_envp, BaselineInfo, FileDescriptorInfo},
+  proc::{cached_string, parse_failiable_envp, BaselineInfo, FileDescriptorInfo},
   pty,
   tracer::state::ExecData,
 };
@@ -238,10 +238,35 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
             let mut storage = storage.remove(&header.eid).unwrap();
             let envp = storage.strings.split_off(event.count[0] as usize);
             let argv = storage.strings;
+            let cwd: OutputMsg = storage.paths.remove(&AT_FDCWD).unwrap().into();
+            let filename = if event.syscall_nr == SYS_execve as i32 {
+              cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.base_filename)).into()
+            } else if event.syscall_nr == SYS_execveat as i32 {
+              let base_filename = utf8_lossy_cow_from_bytes_with_nul(&event.base_filename);
+              if base_filename.starts_with('/') {
+                cached_cow(base_filename).into()
+              } else {
+                match event.fd  {
+                  AT_FDCWD => {
+                    cwd.join(base_filename)
+                  },
+                  fd => {
+                    // Check if it is a valid fd
+                    if let Some(fdinfo) = storage.fdinfo_map.get(fd) {
+                      fdinfo.path.clone().join(base_filename)
+                    } else {
+                      OutputMsg::PartialOk(cached_string(format!("[err: invalid fd: {fd}]/{base_filename}")))
+                    }
+                  }
+                }
+              }
+            } else {
+              unreachable!()
+            };
             let exec_data = ExecData::new(
-              cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.base_filename)).into(),
+              filename,
               Ok(argv), Ok(parse_failiable_envp(envp)),
-              storage.paths.remove(&AT_FDCWD).unwrap().into(), None, storage.fdinfo_map);
+              cwd, None, storage.fdinfo_map);
             printer.print_exec_trace(Pid::from_raw(header.pid), cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.comm)), event.ret, &exec_data, &baseline.env, &baseline.cwd).unwrap();
           }
           event_type::STRING_EVENT => {
