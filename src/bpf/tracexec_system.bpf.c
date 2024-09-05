@@ -1,9 +1,9 @@
 #include "common.h"
 #include "interface.h"
+#include <asm-generic/errno.h>
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
-#include <asm-generic/errno.h>
 
 char LICENSE[] SEC("license") = "GPL";
 
@@ -116,7 +116,8 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event);
 static int add_tgid_to_closure(pid_t tgid);
 static int read_send_path(const struct path *path,
-                          const struct tracexec_event_header *base_header, s32 path_id);
+                          const struct tracexec_event_header *base_header,
+                          s32 path_id);
 
 #ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
@@ -175,7 +176,8 @@ bool should_trace(pid_t old_tgid) {
     goto err_unlock;
   }
   bpf_rcu_read_unlock();
-  if (pid_in_ns == tracexec_config.tracee_pid && ns_inum == tracexec_config.tracee_pidns_inum) {
+  if (pid_in_ns == tracexec_config.tracee_pid &&
+      ns_inum == tracexec_config.tracee_pidns_inum) {
     debug("TASK %d (%d in pidns %u) is tracee", old_tgid, pid_in_ns, ns_inum);
     // Add it to the closure to avoid hitting this slow path in the future
     add_tgid_to_closure(old_tgid);
@@ -286,7 +288,7 @@ int trace_fork(u64 *ctx) {
     debug("Failed to read child pid of fork: %d", ret);
     return -EFAULT;
   }
-  ret = bpf_core_read(&parent_tgid, sizeof(pid), &parent->tgid);
+  ret = bpf_core_read(&parent_tgid, sizeof(parent_tgid), &parent->tgid);
   if (ret < 0) {
     debug("Failed to read parent tgid of fork: %d", ret);
     return -EFAULT;
@@ -294,6 +296,26 @@ int trace_fork(u64 *ctx) {
   if (should_trace(parent_tgid)) {
     add_tgid_to_closure(pid);
   }
+  return 0;
+}
+
+SEC("tp/sched/sched_process_exit")
+int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
+  pid_t pid, tgid;
+  u64 tmp = bpf_get_current_pid_tgid();
+  pid = (pid_t)tmp;
+  tgid = tmp >> 32;
+  // thread exit
+  if (pid != tgid)
+    return 0;
+  // Not traced
+  void *ptr = bpf_map_lookup_elem(&tgid_closure, &tgid);
+  if (ptr == NULL)
+    return 0;
+  // remove tgid from closure
+  int ret = bpf_map_delete_elem(&tgid_closure, &tgid);
+  if (ret < 0)
+    debug("Failed to remove %d from closure: %d", tgid, ret);
   return 0;
 }
 
@@ -638,8 +660,8 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   } else if (bytes_read == sizeof(entry->data)) {
     entry->header.flags |= POSSIBLE_TRUNCATION;
   }
-  ret = bpf_ringbuf_output(&events, entry,
-                           sizeof(struct tracexec_event_header) + bytes_read, 0);
+  ret = bpf_ringbuf_output(
+      &events, entry, sizeof(struct tracexec_event_header) + bytes_read, 0);
   if (ret < 0) {
     event->header.flags |= OUTPUT_FAILURE;
   }
@@ -845,7 +867,8 @@ err_out:
 // Arguments:
 //   path: a pointer to a path struct, this is not a kernel pointer
 static int read_send_path(const struct path *path,
-                          const struct tracexec_event_header *base_header, s32 path_id) {
+                          const struct tracexec_event_header *base_header,
+                          s32 path_id) {
   int ret = -1, zero = 0;
   // Initialize
   struct path_event *event = bpf_map_lookup_elem(&path_event_cache, &zero);
