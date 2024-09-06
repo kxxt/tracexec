@@ -12,6 +12,8 @@ extern void bpf_rcu_read_unlock(void) __ksym;
 // Macros
 
 #define AT_FDCWD -100
+// https://elixir.bootlin.com/linux/v6.10.3/source/include/uapi/asm-generic/fcntl.h#L63
+#define O_CLOEXEC 02000000
 
  #define max(a,b) \
    ({ __typeof__ (a) _a = (a); \

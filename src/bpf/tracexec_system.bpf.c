@@ -102,14 +102,15 @@ struct reader_context {
 struct fdset_reader_context {
   struct exec_event *event;
   struct file **fd_array;
-  long *fdset;
+  long unsigned int *fdset;
+  long unsigned int *cloexec_set;
   unsigned int size;
 };
 
 struct fdset_word_reader_context {
   struct exec_event *event;
   struct file **fd_array;
-  long fdset;
+  long unsigned int fdset, cloexec;
   unsigned int next_bit;
   unsigned int word_index;
 };
@@ -119,7 +120,7 @@ static int read_fds(struct exec_event *event);
 static int read_fds_impl(u32 index, struct fdset_reader_context *ctx);
 static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx);
 static int _read_fd(unsigned int fd_num, struct file **fd_array,
-                    struct exec_event *event);
+                    struct exec_event *event, bool cloexec);
 static int add_tgid_to_closure(pid_t tgid);
 static int send_exit_event();
 static int read_send_path(const struct path *path,
@@ -453,10 +454,18 @@ static int read_fds(struct exec_event *event) {
     debug("Failed to read fdt->fd! err: %d", ret);
     goto probe_failure_locked_rcu;
   }
-  long *fdset;
-  ret = bpf_core_read(&fdset, sizeof(void *), &fdt->open_fds);
+  struct fdset_reader_context ctx = {
+      .event = event,
+      .fd_array = fd_array,
+  };
+  ret = bpf_core_read(&ctx.fdset, sizeof(void *), &fdt->open_fds);
   if (ret < 0) {
     debug("Failed to read fdt->open_fds! err: %d", ret);
+    goto probe_failure_locked_rcu;
+  }
+  ret = bpf_core_read(&ctx.cloexec_set, sizeof(void *), &fdt->close_on_exec);
+  if (ret < 0) {
+    debug("Failed to read fdt->close_on_exec! err: %d", ret);
     goto probe_failure_locked_rcu;
   }
   unsigned int max_fds;
@@ -473,15 +482,9 @@ static int read_fds(struct exec_event *event) {
   // Copy it into cache first
   // Ref:
   // https://github.com/torvalds/linux/blob/5189dafa4cf950e675f02ee04b577dfbbad0d9b1/fs/file.c#L279-L291
-  unsigned int fdset_size = max_fds / BITS_PER_LONG;
-  fdset_size = min(fdset_size, FDSET_SIZE_MAX_IN_LONG);
-  struct fdset_reader_context ctx = {
-      .event = event,
-      .fdset = fdset,
-      .fd_array = fd_array,
-      .size = fdset_size,
-  };
-  bpf_loop(fdset_size, read_fds_impl, &ctx, 0);
+  ctx.size = max_fds / BITS_PER_LONG;
+  ctx.size = min(ctx.size, FDSET_SIZE_MAX_IN_LONG);
+  bpf_loop(ctx.size, read_fds_impl, &ctx, 0);
   return 0;
 probe_failure_locked_rcu:
   bpf_rcu_read_unlock();
@@ -542,7 +545,7 @@ static int read_fds_impl(u32 index, struct fdset_reader_context *ctx) {
   if (ctx == NULL || (event = ctx->event) == NULL)
     return 1; // unreachable
   // 64 bits of a larger fdset.
-  long *pfdset = &ctx->fdset[index];
+  long unsigned int *pfdset = &ctx->fdset[index];
   struct fdset_word_reader_context subctx = {
       .event = event,
       .fd_array = ctx->fd_array,
@@ -556,7 +559,16 @@ static int read_fds_impl(u32 index, struct fdset_reader_context *ctx) {
     event->header.flags |= FDS_PROBE_FAILURE;
     return 1;
   }
-  debug("fdset %u/%u = %lx", index, ctx->size, subctx.fdset);
+  long unsigned int *pcloexec_set = &ctx->cloexec_set[index];
+  // Read a 64bits part of close_on_exec set from kernel
+  ret = bpf_core_read(&subctx.cloexec, sizeof(subctx.cloexec), pcloexec_set);
+  if (ret < 0) {
+    debug("Failed to read %u/%u member of close_on_exec", index, ctx->size);
+    event->header.flags |= FLAGS_READ_FAILURE;
+    // fallthrough
+  }
+  debug("cloexec %u/%u = %lx", index, ctx->size, // subctx.fdset,
+  subctx.cloexec);
   // if it's all zeros, let's skip it:
   if (subctx.fdset == 0)
     return 0;
@@ -571,14 +583,17 @@ static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx) {
   if (ctx->next_bit == BITS_PER_LONG)
     return 1;
   unsigned int fdnum = ctx->next_bit + BITS_PER_LONG * ctx->word_index;
-  _read_fd(fdnum, ctx->fd_array, ctx->event);
+  bool cloexec = false;
+  if (ctx->cloexec & (1UL << ctx->next_bit))
+    cloexec = true;
+  _read_fd(fdnum, ctx->fd_array, ctx->event, cloexec);
   ctx->next_bit = find_next_bit(ctx->fdset, ctx->next_bit + 1);
   return 0;
 }
 
 // Gather information about a single fd and send it back to userspace
 static int _read_fd(unsigned int fd_num, struct file **fd_array,
-                    struct exec_event *event) {
+                    struct exec_event *event, bool cloexec) {
   if (event == NULL)
     return 1;
   event->fd_count++;
@@ -616,6 +631,9 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
   if (ret < 0) {
     debug("failed to read file->f_flags: %d", ret);
     entry->flags |= FLAGS_READ_FAILURE;
+  }
+  if (cloexec) {
+    entry->flags |= O_CLOEXEC;
   }
   debug("open fd: %u -> %u with flags %u", fd_num, entry->path_id,
         entry->flags);
@@ -716,7 +734,8 @@ static int send_exit_event() {
   }
   // Other fields doesn't matter for exit event
   entry->type = EXIT_EVENT;
-  int ret = bpf_ringbuf_output(&events, entry, sizeof(*entry), BPF_RB_FORCE_WAKEUP);
+  int ret =
+      bpf_ringbuf_output(&events, entry, sizeof(*entry), BPF_RB_FORCE_WAKEUP);
   if (ret < 0) {
     // TODO: find a better way to ensure userspace receives exit event
     debug("Failed to send exit event!");
