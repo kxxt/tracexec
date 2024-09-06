@@ -541,29 +541,26 @@ static int read_fds_impl(u32 index, struct fdset_reader_context *ctx) {
   struct exec_event *event;
   if (ctx == NULL || (event = ctx->event) == NULL)
     return 1; // unreachable
-  struct file **fd_array = ctx->fd_array;
   // 64 bits of a larger fdset.
   long *pfdset = &ctx->fdset[index];
-  long fdset;
+  struct fdset_word_reader_context subctx = {
+      .event = event,
+      .fd_array = ctx->fd_array,
+      .next_bit = BITS_PER_LONG,
+      .word_index = index,
+  };
   // Read a 64bits part of fdset from kernel
-  int ret = bpf_core_read(&fdset, sizeof(fdset), pfdset);
+  int ret = bpf_core_read(&subctx.fdset, sizeof(subctx.fdset), pfdset);
   if (ret < 0) {
     debug("Failed to read %u/%u member of fdset", index, ctx->size);
     event->header.flags |= FDS_PROBE_FAILURE;
     return 1;
   }
-  debug("fdset %u/%u = %lx", index, ctx->size, fdset);
+  debug("fdset %u/%u = %lx", index, ctx->size, subctx.fdset);
   // if it's all zeros, let's skip it:
-  if (fdset == 0)
+  if (subctx.fdset == 0)
     return 0;
-  struct fdset_word_reader_context subctx = {
-      .fdset = fdset,
-      .event = event,
-      .fd_array = fd_array,
-      .next_bit = BITS_PER_LONG,
-      .word_index = index,
-  };
-  subctx.next_bit = find_next_bit(fdset, 0);
+  subctx.next_bit = find_next_bit(subctx.fdset, 0);
   bpf_loop(BITS_PER_LONG, read_fdset_word, &subctx, 0);
   return 0;
 }
