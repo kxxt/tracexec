@@ -114,7 +114,7 @@ pub struct FileDescriptorInfo {
   #[serde(serialize_with = "serialize_oflags")]
   pub flags: OFlag,
   pub mnt_id: c_int,
-  pub ino: c_int,
+  pub ino: u64,
   pub mnt: ArcStr,
   pub extra: Vec<ArcStr>,
 }

@@ -296,8 +296,8 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
               path,
               pos: 0, // TODO
               flags: OFlag::from_bits_retain(event.flags as c_int),
-              mnt_id: 0,                                    // TODO
-              ino: 0,                                       // TODO
+              mnt_id: event.mnt_id,
+              ino: event.ino,
               mnt: arcstr::literal!("[tracexec: unknown]"), // TODO
               extra: vec![arcstr::literal!("")],            // TODO
             };

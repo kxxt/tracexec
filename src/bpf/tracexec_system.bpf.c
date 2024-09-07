@@ -124,8 +124,8 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
 static int add_tgid_to_closure(pid_t tgid);
 static int send_exit_event();
 static int read_send_path(const struct path *path,
-                          const struct tracexec_event_header *base_header,
-                          s32 path_id);
+                          struct tracexec_event_header *base_header,
+                          s32 path_id, struct fd_event *fd_event);
 
 #ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
@@ -281,7 +281,7 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   }
   // spin_unlock(&fs->lock);
   debug("Reading pwd...");
-  read_send_path(&pwd, &event->header, AT_FDCWD);
+  read_send_path(&pwd, &event->header, AT_FDCWD, NULL);
   return 0;
 }
 
@@ -568,7 +568,7 @@ static int read_fds_impl(u32 index, struct fdset_reader_context *ctx) {
     // fallthrough
   }
   debug("cloexec %u/%u = %lx", index, ctx->size, // subctx.fdset,
-  subctx.cloexec);
+        subctx.cloexec);
   // if it's all zeros, let's skip it:
   if (subctx.fdset == 0)
     return 0;
@@ -618,18 +618,30 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
     debug("failed to read file struct: %d", ret);
     goto ptr_err;
   }
+  // read ino
+  struct inode *inode;
+  ret = bpf_core_read(&inode, sizeof(void *), &file->f_inode);
+  if (ret < 0) {
+    entry->header.flags |= INO_READ_ERR;
+  } else {
+    ret = bpf_core_read(&entry->ino, sizeof(entry->ino), &inode->i_ino);
+    if (ret < 0)
+      entry->header.flags |= INO_READ_ERR;
+  }
   struct path path;
   ret = bpf_core_read(&path, sizeof(path), &file->f_path);
+  if (ret < 0)
+    goto ptr_err;
   // read name
   entry->path_id = event->path_count++;
-  ret = read_send_path(&path, &entry->header, entry->path_id);
+  ret = read_send_path(&path, &entry->header, entry->path_id, entry);
   if (ret < 0) {
     event->header.flags |= PATH_READ_ERR;
   }
   entry->flags = 0;
   ret = bpf_core_read(&entry->flags, sizeof(entry->flags), &file->f_flags);
   if (ret < 0) {
-    debug("failed to read file->f_flags: %d", ret);
+    debug("failed to read file->f_flags");
     entry->flags |= FLAGS_READ_FAILURE;
   }
   if (cloexec) {
@@ -684,7 +696,6 @@ static int read_strings(u32 index, struct reader_context *ctx) {
     entry->data[0] = '\0';
     bytes_read = 1;
   } else if (bytes_read == 0) {
-    debug("read arg %d(addr:%x) = %ld", index, argp, bytes_read);
     entry->data[0] = '\0';
     bytes_read = 1;
   } else if (bytes_read == sizeof(entry->data)) {
@@ -784,8 +795,8 @@ static int read_send_dentry_segment(u32 index, struct path_segment_ctx *ctx) {
     return ret;
   // Check if we reached mount point or root
   if (ctx->dentry == ctx->mnt_root || ctx->dentry == ctx->root) {
-    debug("skipping: dentry=%p, root = %p, mnt_root = %p", ctx->dentry,
-          ctx->root, ctx->mnt_root);
+    // debug("skipping: dentry=%p, root = %p, mnt_root = %p", ctx->dentry,
+    //       ctx->root, ctx->mnt_root);
     ctx->base_index += index;
     return 1;
   }
@@ -829,8 +840,8 @@ send:;
     // break
     return 1;
   }
-  debug("got segment: index:%d, %s, dentry = %p, mnt_root = %p, parent = %p",
-        event->index, event->segment, ctx->dentry, ctx->mnt_root, parent);
+  // debug("got segment: index:%d, %s, dentry = %p, mnt_root = %p, parent = %p",
+  //       event->index, event->segment, ctx->dentry, ctx->mnt_root, parent);
   if (parent == ctx->dentry) {
     // Reached top
     ctx->base_index += index + 1;
@@ -920,9 +931,10 @@ err_out:
 //
 // Arguments:
 //   path: a pointer to a path struct, this is not a kernel pointer
+//   fd_event: If not NULL, read mnt_id and set it in fd_event
 static int read_send_path(const struct path *path,
-                          const struct tracexec_event_header *base_header,
-                          s32 path_id) {
+                          struct tracexec_event_header *base_header,
+                          s32 path_id, struct fd_event *fd_event) {
   int ret = -1, zero = 0;
   // Initialize
   struct path_event *event = bpf_map_lookup_elem(&path_event_cache, &zero);
@@ -973,15 +985,22 @@ static int read_send_path(const struct path *path,
   if (ret < 0) {
     goto loop_err;
   }
+  struct mount *mount = container_of(vfsmnt, struct mount, mnt);
   // Iterate over all ancestor mounts and send segments to userspace
   struct mount_ctx ctx = {
       .base_index = segment_ctx.base_index,
-      .mnt = container_of(vfsmnt, struct mount, mnt),
+      .mnt = mount,
       .path_event = event,
       .path_id = path_id,
       // Reuse the above segment_ctx to save stack space
       .segment_ctx = &segment_ctx,
   };
+  if (fd_event != NULL) {
+    ret = bpf_core_read(&fd_event->mnt_id, sizeof(fd_event->mnt_id),
+                        &mount->mnt_id);
+    if (ret < 0)
+      fd_event->header.flags |= MNTID_READ_ERR;
+  }
   ret = bpf_loop(PATH_DEPTH_MAX, read_send_mount_segments, &ctx, 0);
   if (ret < 0) {
     goto loop_err;

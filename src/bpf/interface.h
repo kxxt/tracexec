@@ -66,6 +66,10 @@ enum exec_event_flags {
   LOOP_FAIL = 4096,
   // Failed to read whole path
   PATH_READ_ERR = 8192,
+  // inode read failure
+  INO_READ_ERR = 16384,
+  // inode read failure
+  MNTID_READ_ERR = 32768
 };
 
 enum event_type {
@@ -115,6 +119,8 @@ struct fd_event {
   struct tracexec_event_header header;
   unsigned int flags;
   unsigned int fd;
+  long unsigned int ino;
+  int mnt_id;
   s32 path_id;
 };
 
