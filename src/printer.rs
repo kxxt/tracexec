@@ -462,7 +462,18 @@ impl Printer {
       // CWD
 
       if self.args.trace_cwd {
-        write!(out, " {} {:?}", "at".purple(), exec_data.cwd)?;
+        write!(
+          out,
+          " {} {}",
+          "at".purple(),
+          exec_data
+            .cwd
+            .cli_escaped_styled(if self.args.color >= ColorLevel::Normal {
+              THEME.cwd
+            } else {
+              THEME.plain
+            })
+        )?;
       }
 
       // Interpreter

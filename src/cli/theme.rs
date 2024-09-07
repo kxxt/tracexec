@@ -4,6 +4,7 @@ use owo_colors::Style;
 
 pub struct Theme {
   pub inline_error: Style,
+  pub plain: Style,
   // Env
   pub removed_env_var: Style,
   pub removed_env_key: Style,
@@ -23,6 +24,7 @@ impl Default for Theme {
   fn default() -> Self {
     Self {
       inline_error: Style::new().bright_red().bold().blink(),
+      plain: Style::new(),
       removed_env_var: Style::new().bright_red().strikethrough(),
       removed_env_key: Style::new().bright_red(),
       added_env_var: Style::new().green(),
