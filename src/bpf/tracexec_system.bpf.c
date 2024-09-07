@@ -198,6 +198,30 @@ err_unlock:
   return false;
 }
 
+int __always_inline fill_field_with_unknown(u8 *buf) {
+  buf[0] = '[';
+  buf[1] = 't';
+  buf[2] = 'r';
+  buf[3] = 'a';
+  buf[4] = 'c';
+  buf[5] = 'e';
+  buf[6] = 'x';
+  buf[7] = 'e';
+  buf[8] = 'c';
+  buf[9] = ':';
+  buf[10] = ' ';
+  buf[11] = 'u';
+  buf[12] = 'n';
+  buf[13] = 'k';
+  buf[14] = 'n';
+  buf[15] = 'o';
+  buf[16] = 'w';
+  buf[17] = 'n';
+  buf[18] = ']';
+  buf[19] = '\0';
+  return 0;
+}
+
 int trace_exec_common(struct sys_enter_exec_args *ctx) {
   // Collect UID/GID information
   uid_t uid, gid;
@@ -205,10 +229,9 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   uid = (uid_t)tmp;
   gid = tmp >> 32;
   // Collect pid/tgid information
-  pid_t pid, tgid;
+  pid_t pid;
   tmp = bpf_get_current_pid_tgid();
   pid = (pid_t)tmp;
-  tgid = tmp >> 32;
   // debug("sysenter: pid=%d, tgid=%d, tracee=%d", pid, tgid,
   // config.tracee_pid); Create event
   if (bpf_map_update_elem(&execs, &pid, &empty_event, BPF_NOEXIST)) {
@@ -222,11 +245,11 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
     return 0;
   // Initialize event
   event->header.pid = pid;
-  event->tgid = tgid;
+  event->tgid = tmp >> 32;
   // Initialize the event even if we don't really trace it.
   // This way we have access to old tgid on exec sysexit so that
   // we are also able to check it on exec sysexit
-  if (!should_trace(tgid))
+  if (!should_trace(event->tgid))
     return 0;
   event->header.type = SYSEXIT_EVENT;
   event->header.eid = __sync_fetch_and_add(&event_counter, 1);
@@ -567,8 +590,8 @@ static int read_fds_impl(u32 index, struct fdset_reader_context *ctx) {
     event->header.flags |= FLAGS_READ_FAILURE;
     // fallthrough
   }
-  debug("cloexec %u/%u = %lx", index, ctx->size, // subctx.fdset,
-        subctx.cloexec);
+  // debug("cloexec %u/%u = %lx", index, ctx->size, // subctx.fdset,
+  //       subctx.cloexec);
   // if it's all zeros, let's skip it:
   if (subctx.fdset == 0)
     return 0;
@@ -647,8 +670,8 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
   if (cloexec) {
     entry->flags |= O_CLOEXEC;
   }
-  debug("open fd: %u -> %u with flags %u", fd_num, entry->path_id,
-        entry->flags);
+  // debug("open fd: %u -> %u with flags %u", fd_num, entry->path_id,
+  //       entry->flags);
   bpf_ringbuf_output(&events, entry, sizeof(struct fd_event), 0);
   return 0;
 ptr_err:
@@ -825,26 +848,7 @@ static int read_send_dentry_segment(u32 index, struct path_segment_ctx *ctx) {
     event->segment[0] = '\0';
   } else if (ret == 1) {
     // Only a NUL char
-    event->segment[0] = '[';
-    event->segment[1] = 't';
-    event->segment[2] = 'r';
-    event->segment[3] = 'a';
-    event->segment[4] = 'c';
-    event->segment[5] = 'e';
-    event->segment[6] = 'x';
-    event->segment[7] = 'e';
-    event->segment[8] = 'c';
-    event->segment[9] = ':';
-    event->segment[10] = ' ';
-    event->segment[11] = 'u';
-    event->segment[12] = 'n';
-    event->segment[13] = 'k';
-    event->segment[14] = 'n';
-    event->segment[15] = 'o';
-    event->segment[16] = 'w';
-    event->segment[17] = 'n';
-    event->segment[18] = ']';
-    event->segment[19] = '\0';
+    fill_field_with_unknown(event->segment);
   }
 send:;
   // Send this segment to user space
@@ -921,7 +925,7 @@ static int read_send_mount_segments(u32 index, struct mount_ctx *ctx) {
     debug("should break");
     return 1;
   }
-  debug("iter mount %p %d", mnt, mnt_id);
+  // debug("iter mount %p %d", mnt, mnt_id);
   *ctx->segment_ctx = (struct path_segment_ctx){
       .path_event = ctx->path_event,
       .dentry = mnt_mountpoint,
@@ -953,7 +957,7 @@ err_out:
 //
 // Arguments:
 //   path: a pointer to a path struct, this is not a kernel pointer
-//   fd_event: If not NULL, read mnt_id and set it in fd_event
+//   fd_event: If not NULL, read mnt_id and fstype and set it in fd_event
 static int read_send_path(const struct path *path,
                           struct tracexec_event_header *base_header,
                           s32 path_id, struct fd_event *fd_event) {
@@ -991,14 +995,14 @@ static int read_send_path(const struct path *path,
   }
   ret = bpf_core_read(&segment_ctx.root, sizeof(void *), &fs->root.dentry);
   if (ret < 0) {
-    debug("failed to read fs->root.dentry: %d", ret);
+    debug("failed to read fs->root.dentry");
     goto ptr_err;
   }
   // Get vfsmount and mnt_root
   struct vfsmount *vfsmnt = path->mnt;
   ret = bpf_core_read(&segment_ctx.mnt_root, sizeof(void *), &vfsmnt->mnt_root);
   if (ret < 0) {
-    debug("failed to read vfsmnt->mnt_root: %d", ret);
+    debug("failed to read vfsmnt->mnt_root");
     goto ptr_err;
   }
 
@@ -1022,6 +1026,24 @@ static int read_send_path(const struct path *path,
                         &mount->mnt_id);
     if (ret < 0)
       fd_event->header.flags |= MNTID_READ_ERR;
+    struct super_block *mnt_sb;
+    struct file_system_type *fstype;
+    char *fstype_name;
+    ret = bpf_core_read(&mnt_sb, sizeof(void *), &vfsmnt->mnt_sb);
+    if (!ret)
+      ret = bpf_core_read(&fstype, sizeof(void *), &mnt_sb->s_type);
+    if (!ret)
+      ret = bpf_core_read(&fstype_name, sizeof(void *), &fstype->name);
+    if (ret < 0)
+      goto fstype_err_out;
+    ret = bpf_probe_read_kernel_str(&fd_event->fstype, sizeof(fd_event->fstype),
+                                    fstype_name);
+    if (ret < 0)
+      goto fstype_err_out;
+    goto fstype_out;
+  fstype_err_out:
+    fill_field_with_unknown(fd_event->fstype);
+  fstype_out:;
   }
   ret = bpf_loop(PATH_DEPTH_MAX, read_send_mount_segments, &ctx, 0);
   if (ret < 0) {

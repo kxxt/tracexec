@@ -290,7 +290,12 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
             let event: &fd_event = unsafe { &*(data.as_ptr() as *const _) };
             let mut guard = event_storage.borrow_mut();
             let storage = guard.get_mut(&header.eid).unwrap();
-            let path = storage.paths.get(&event.path_id).unwrap().to_owned().into();
+            let fs = utf8_lossy_cow_from_bytes_with_nul(&event.fstype);
+            let path = match fs.as_ref() {
+               "pipefs" =>OutputMsg::Ok(cached_string(format!("pipe:[{}]", event.ino))),
+               "sockfs" =>OutputMsg::Ok(cached_string(format!("socket:[{}]", event.ino))),
+               _ => storage.paths.get(&event.path_id).unwrap().to_owned().into()
+            };
             let fdinfo = FileDescriptorInfo {
               fd: event.fd as RawFd,
               path,
