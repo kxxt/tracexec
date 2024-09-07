@@ -32,6 +32,8 @@
 // The maximum length of a single segment in the path
 // aka NAME_MAX in limits.h
 #define PATH_SEGMENT_MAX 255
+// Linux doesn't seem to have a limit on fstype name length
+#define FSTYPE_NAME_MAX 255
 
 #define BITS_PER_LONG 64
 #define NOFILE_MAX 2147483584
@@ -68,7 +70,7 @@ enum exec_event_flags {
   PATH_READ_ERR = 8192,
   // inode read failure
   INO_READ_ERR = 16384,
-  // inode read failure
+  // mount id read failure
   MNTID_READ_ERR = 32768
 };
 
@@ -122,6 +124,7 @@ struct fd_event {
   long unsigned int ino;
   int mnt_id;
   s32 path_id;
+  u8 fstype[FSTYPE_NAME_MAX];
 };
 
 struct path_event {
