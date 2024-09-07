@@ -119,6 +119,16 @@ pub struct FileDescriptorInfo {
   pub extra: Vec<ArcStr>,
 }
 
+impl FileDescriptorInfo {
+  pub fn not_same_file_as(&self, other: &FileDescriptorInfo) -> bool {
+    !self.same_file_as(other)
+  }
+
+  pub fn same_file_as(&self, other: &FileDescriptorInfo) -> bool {
+    self.ino == other.ino && self.mnt_id == other.mnt_id
+  }
+}
+
 fn serialize_oflags<S>(oflag: &OFlag, serializer: S) -> Result<S::Ok, S::Error>
 where
   S: Serializer,
