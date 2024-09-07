@@ -823,6 +823,28 @@ static int read_send_dentry_segment(u32 index, struct path_segment_ctx *ctx) {
     debug("failed to read name string: %d", ret);
     event->header.flags |= STR_READ_FAILURE;
     event->segment[0] = '\0';
+  } else if (ret == 1) {
+    // Only a NUL char
+    event->segment[0] = '[';
+    event->segment[1] = 't';
+    event->segment[2] = 'r';
+    event->segment[3] = 'a';
+    event->segment[4] = 'c';
+    event->segment[5] = 'e';
+    event->segment[6] = 'x';
+    event->segment[7] = 'e';
+    event->segment[8] = 'c';
+    event->segment[9] = ':';
+    event->segment[10] = ' ';
+    event->segment[11] = 'u';
+    event->segment[12] = 'n';
+    event->segment[13] = 'k';
+    event->segment[14] = 'n';
+    event->segment[15] = 'o';
+    event->segment[16] = 'w';
+    event->segment[17] = 'n';
+    event->segment[18] = ']';
+    event->segment[19] = '\0';
   }
 send:;
   // Send this segment to user space
