@@ -44,6 +44,7 @@
 #define FDSET_SIZE_MAX_BYTES 2097152
 #define FDSET_SIZE_MAX_IN_LONG ((2097152) / sizeof(long))
 
+// Copy the content to interface.rs after modification!
 enum exec_event_flags {
   // This flag is set if any other error occurs
   ERROR = 1,
@@ -71,7 +72,9 @@ enum exec_event_flags {
   // inode read failure
   INO_READ_ERR = 16384,
   // mount id read failure
-  MNTID_READ_ERR = 32768
+  MNTID_READ_ERR = 32768,
+  // filename read failure
+  FILENAME_READ_ERR = 65536
 };
 
 enum event_type {

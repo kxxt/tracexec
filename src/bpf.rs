@@ -19,7 +19,9 @@ use std::{
 
 use arcstr::ArcStr;
 use color_eyre::Section;
+use enumflags2::BitFlag;
 use event::EventStorage;
+use interface::BpfEventFlags;
 use libbpf_rs::{
   num_possible_cpus,
   skel::{OpenSkel, Skel, SkelBuilder},
@@ -49,7 +51,7 @@ use crate::{
   cache::StringCache,
   cli::{options::Color, Cli, EbpfCommand},
   cmdbuilder::CommandBuilder,
-  event::OutputMsg,
+  event::{FriendlyError, OutputMsg},
   printer::{Printer, PrinterArgs},
   proc::{cached_string, parse_failiable_envp, BaselineInfo, FileDescriptorInfo},
   pty,
@@ -234,17 +236,22 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
               return 0;
             }
             let mut storage = event_storage.borrow_mut();
-            // TODO: Properly handle execveat
             let mut storage = storage.remove(&header.eid).unwrap();
             let envp = storage.strings.split_off(event.count[0] as usize);
             let argv = storage.strings;
             let cwd: OutputMsg = storage.paths.remove(&AT_FDCWD).unwrap().into();
-            let filename = if event.syscall_nr == SYS_execve as i32 {
+            let eflags = BpfEventFlags::from_bits_truncate(header.flags);
+            // TODO: How should we handle possible truncation?
+            let base_filename = if eflags.contains(BpfEventFlags::FILENAME_READ_ERR) {
+              OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags))
+            } else {
               cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.base_filename)).into()
+            };
+            let filename = if event.syscall_nr == SYS_execve as i32 {
+              base_filename
             } else if event.syscall_nr == SYS_execveat as i32 {
-              let base_filename = utf8_lossy_cow_from_bytes_with_nul(&event.base_filename);
-              if base_filename.starts_with('/') {
-                cached_cow(base_filename).into()
+              if base_filename.is_ok_and(|s| s.starts_with('/')) {
+                base_filename
               } else {
                 match event.fd  {
                   AT_FDCWD => {
@@ -271,8 +278,12 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
           }
           event_type::STRING_EVENT => {
             let header_len = size_of::<tracexec_event_header>();
-            let string = utf8_lossy_cow_from_bytes_with_nul(&data[header_len..]);
-            let cached = cached_cow(string);
+            let flags = BpfEventFlags::from_bits_truncate(header.flags);
+            let msg = if flags.is_empty() {
+              cached_cow(utf8_lossy_cow_from_bytes_with_nul(&data[header_len..])).into()
+            } else {
+              OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags))
+            };
             let mut storage = event_storage.borrow_mut();
             let strings = &mut storage.entry(header.eid).or_default().strings;
             // Catch event drop
@@ -283,7 +294,7 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
               debug_assert_eq!(strings.len(), header.id as usize);
             }
             // TODO: check flags in header
-            strings.push(OutputMsg::Ok(cached));
+            strings.push(msg);
           }
           event_type::FD_EVENT => {
             assert_eq!(data.len(), size_of::<fd_event>());

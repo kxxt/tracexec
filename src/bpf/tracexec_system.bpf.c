@@ -232,6 +232,7 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   pid_t pid;
   tmp = bpf_get_current_pid_tgid();
   pid = (pid_t)tmp;
+  int ret;
   // debug("sysenter: pid=%d, tgid=%d, tracee=%d", pid, tgid,
   // config.tracee_pid); Create event
   if (bpf_map_update_elem(&execs, &pid, &empty_event, BPF_NOEXIST)) {
@@ -265,11 +266,15 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   if (ctx->base_filename == NULL) {
     debug("filename is NULL");
     event->base_filename[0] = '\0';
-  } else if (bpf_probe_read_user_str(
-                 event->base_filename, sizeof(event->base_filename),
-                 ctx->base_filename) == sizeof(event->base_filename)) {
-    // The filename is possibly truncated, we cannot determine
-    event->header.flags |= POSSIBLE_TRUNCATION;
+  } else {
+    ret = bpf_probe_read_user_str(
+        event->base_filename, sizeof(event->base_filename), ctx->base_filename);
+    if (ret < 0) {
+      event->header.flags |= FILENAME_READ_ERR;
+    } else if (ret == sizeof(event->base_filename)) {
+      // The filename is possibly truncated, we cannot determine
+      event->header.flags |= POSSIBLE_TRUNCATION;
+    }
   }
   debug("%ld %s execve %s UID: %d GID: %d PID: %d\n", event->header.eid,
         event->comm, event->base_filename, uid, gid, pid);
@@ -291,7 +296,7 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   struct task_struct *current = (void *)bpf_get_current_task();
   struct path pwd;
   struct fs_struct *fs;
-  int ret = bpf_core_read(&fs, sizeof(void *), &current->fs);
+  ret = bpf_core_read(&fs, sizeof(void *), &current->fs);
   if (ret < 0) {
     debug("failed to read current->fs: %d", ret);
     return 0;

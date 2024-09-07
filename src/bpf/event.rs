@@ -60,4 +60,5 @@ impl From<Path> for OutputMsg {
 #[repr(u8)]
 pub enum BpfError {
   Dropped,
+  Flags,
 }
