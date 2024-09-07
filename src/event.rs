@@ -138,15 +138,15 @@ impl Display for OutputMsg {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
       OutputMsg::Ok(msg) => write!(f, "{msg:?}"),
-      OutputMsg::PartialOk(msg) => write!(f, "{msg:?}"),
-      OutputMsg::Err(e) => Display::fmt(&e, f),
+      OutputMsg::PartialOk(msg) => write!(f, "{:?}", cli::theme::THEME.inline_error.style(msg)),
+      OutputMsg::Err(e) => Display::fmt(&cli::theme::THEME.inline_error.style(&e), f),
     }
   }
 }
 
 impl Display for FriendlyError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{:?}", self)
+    write!(f, "{}", <&'static str>::from(self))
   }
 }
 
