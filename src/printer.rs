@@ -294,7 +294,7 @@ impl Printer {
             if printed < last {
               list_printer.comma(out)?;
             }
-          } else if fdinfo.path != fdinfo_orig.path {
+          } else if fdinfo.not_same_file_as(fdinfo_orig) {
             write!(out, "{}", "stdin".bright_yellow().bold())?;
             write!(out, "={}", fdinfo.path.bright_yellow())?;
             if printed < last {
@@ -317,7 +317,7 @@ impl Printer {
             if printed < last {
               list_printer.comma(out)?;
             }
-          } else if fdinfo.path != fdinfo_orig.path {
+          } else if fdinfo.not_same_file_as(fdinfo_orig) {
             write!(out, "{}", "stdout".bright_yellow().bold())?;
             write!(out, "={}", fdinfo.path.bright_yellow())?;
             if printed < last {
@@ -340,7 +340,7 @@ impl Printer {
             if printed < last {
               list_printer.comma(out)?;
             }
-          } else if fdinfo.path != fdinfo_orig.path {
+          } else if fdinfo.not_same_file_as(fdinfo_orig) {
             write!(out, "{}", "stderr".bright_yellow().bold())?;
             write!(out, "={}", fdinfo.path.bright_yellow())?;
             if printed < last {
@@ -603,7 +603,7 @@ impl Printer {
             if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
               // stdin will be closed
               write!(out, " {}", "0>&-".bright_red().bold().italic())?;
-            } else if fdinfo.path != fdinfo_orig.path {
+            } else if fdinfo.not_same_file_as(fdinfo_orig) {
               write!(
                 out,
                 " {}{}",
@@ -620,7 +620,7 @@ impl Printer {
             if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
               // stdout will be closed
               write!(out, " {}", "1>&-".bright_red().bold().italic())?;
-            } else if fdinfo.path != fdinfo_orig.path {
+            } else if fdinfo.not_same_file_as(fdinfo_orig) {
               write!(
                 out,
                 " {}{}",
@@ -637,7 +637,7 @@ impl Printer {
             if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
               // stderr will be closed
               write!(out, " {}", "2>&-".bright_red().bold().italic())?;
-            } else if fdinfo.path != fdinfo_orig.path {
+            } else if fdinfo.not_same_file_as(fdinfo_orig) {
               write!(
                 out,
                 " {}{}",

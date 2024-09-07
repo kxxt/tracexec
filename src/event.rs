@@ -574,7 +574,7 @@ impl TracerEventDetails {
               // stdin will be closed
               spans.push(space.clone());
               spans.push("0>&-".set_style(THEME.cloexec_fd_in_cmdline));
-            } else if fdinfo.path != fdinfo_orig.path {
+            } else if fdinfo.not_same_file_as(fdinfo_orig) {
               spans.push(space.clone());
               spans.push("<".set_style(THEME.modified_fd_in_cmdline));
               spans.push(
@@ -594,7 +594,7 @@ impl TracerEventDetails {
               // stdout will be closed
               spans.push(space.clone());
               spans.push("1>&-".set_style(THEME.cloexec_fd_in_cmdline));
-            } else if fdinfo.path != fdinfo_orig.path {
+            } else if fdinfo.not_same_file_as(fdinfo_orig) {
               spans.push(space.clone());
               spans.push(">".set_style(THEME.modified_fd_in_cmdline));
               spans.push(
@@ -614,7 +614,7 @@ impl TracerEventDetails {
               // stderr will be closed
               spans.push(space.clone());
               spans.push("2>&-".set_style(THEME.cloexec_fd_in_cmdline));
-            } else if fdinfo.path != fdinfo_orig.path {
+            } else if fdinfo.not_same_file_as(fdinfo_orig) {
               spans.push(space.clone());
               spans.push("2>".set_style(THEME.modified_fd_in_cmdline));
               spans.push(
