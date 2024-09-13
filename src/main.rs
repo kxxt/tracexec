@@ -33,6 +33,7 @@ use export::{JsonExecEvent, JsonMetaData};
 use nix::unistd::{Uid, User};
 use serde::Serialize;
 use tokio::sync::mpsc;
+use tui::app::PTracer;
 
 use crate::{
   cli::{args::LogModeArgs, options::Color, CliCommand},
@@ -141,6 +142,7 @@ async fn main() -> color_eyre::Result<()> {
       ptrace_args,
       tracer_event_args,
       tui_args,
+      debugger_args,
     } => {
       let modifier_args = modifier_args.processed();
       // Disable owo-colors when running TUI
@@ -189,7 +191,10 @@ async fn main() -> color_eyre::Result<()> {
       )?);
       let frame_rate = tui_args.frame_rate.unwrap_or(60.);
       let mut app = App::new(
-        Some(tracer.clone()),
+        Some(PTracer {
+          tracer: tracer.clone(),
+          debugger_args,
+        }),
         &tracing_args,
         &modifier_args,
         tui_args,

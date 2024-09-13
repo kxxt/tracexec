@@ -15,6 +15,7 @@ pub struct Config {
   pub tui: Option<TuiModeConfig>,
   pub modifier: Option<ModifierConfig>,
   pub ptrace: Option<PtraceConfig>,
+  pub debugger: Option<DebuggerConfig>,
 }
 
 #[derive(Debug, Error)]
@@ -73,6 +74,10 @@ pub struct TuiModeConfig {
   pub layout: Option<AppLayout>,
   #[serde(default, deserialize_with = "deserialize_frame_rate")]
   pub frame_rate: Option<f64>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct DebuggerConfig {
   pub default_external_command: Option<String>,
 }
 

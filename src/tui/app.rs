@@ -40,7 +40,7 @@ use tui_popup::Popup;
 use crate::{
   action::{Action, ActivePopup},
   cli::{
-    args::{LogModeArgs, ModifierArgs, TuiModeArgs},
+    args::{DebuggerArgs, LogModeArgs, ModifierArgs, TuiModeArgs},
     config::ExitHandling,
     options::ActivePane,
   },
@@ -93,10 +93,15 @@ pub struct App {
   exit_handling: ExitHandling,
 }
 
+pub struct PTracer {
+  pub tracer: Arc<Tracer>,
+  pub debugger_args: DebuggerArgs,
+}
+
 impl App {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    tracer: Option<Arc<Tracer>>,
+    mut tracer: Option<PTracer>,
     tracing_args: &LogModeArgs,
     modifier_args: &ModifierArgs,
     tui_args: TuiModeArgs,
@@ -108,9 +113,9 @@ impl App {
     } else {
       ActivePane::Events
     };
-    if let Some(tracer) = tracer.as_ref() {
-      for bp in tui_args.breakpoints {
-        tracer.add_breakpoint(bp);
+    if let Some(tracer) = tracer.as_mut() {
+      for bp in tracer.debugger_args.breakpoints.drain(..) {
+        tracer.tracer.add_breakpoint(bp);
       }
     }
     Ok(Self {
@@ -142,11 +147,10 @@ impl App {
       popup: None,
       query_builder: None,
       breakpoint_manager: None,
+      tracer: tracer.as_ref().map(|t| t.tracer.clone()),
       hit_manager_state: tracer
-        .clone()
-        .map(|t| HitManagerState::new(t, tui_args.default_external_command))
+        .map(|t| HitManagerState::new(t.tracer, t.debugger_args.default_external_command))
         .transpose()?,
-      tracer,
       exit_handling: {
         if tui_args.kill_on_exit {
           ExitHandling::Kill
