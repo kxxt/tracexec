@@ -189,7 +189,7 @@ async fn main() -> color_eyre::Result<()> {
       )?);
       let frame_rate = tui_args.frame_rate.unwrap_or(60.);
       let mut app = App::new(
-        tracer.clone(),
+        Some(tracer.clone()),
         &tracing_args,
         &modifier_args,
         tui_args,
