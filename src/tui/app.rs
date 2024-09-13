@@ -86,17 +86,17 @@ pub struct App {
   pub layout: AppLayout,
   pub should_handle_internal_resize: bool,
   pub popup: Option<ActivePopup>,
-  tracer: Arc<Tracer>,
+  tracer: Option<Arc<Tracer>>,
   query_builder: Option<QueryBuilder>,
   breakpoint_manager: Option<BreakPointManagerState>,
-  hit_manager_state: HitManagerState,
+  hit_manager_state: Option<HitManagerState>,
   exit_handling: ExitHandling,
 }
 
 impl App {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    tracer: Arc<Tracer>,
+    tracer: Option<Arc<Tracer>>,
     tracing_args: &LogModeArgs,
     modifier_args: &ModifierArgs,
     tui_args: TuiModeArgs,
@@ -108,8 +108,10 @@ impl App {
     } else {
       ActivePane::Events
     };
-    for bp in tui_args.breakpoints {
-      tracer.add_breakpoint(bp);
+    if let Some(tracer) = tracer.as_ref() {
+      for bp in tui_args.breakpoints {
+        tracer.add_breakpoint(bp);
+      }
     }
     Ok(Self {
       event_list: EventList::new(baseline, tui_args.follow, modifier_args.to_owned()),
@@ -140,7 +142,10 @@ impl App {
       popup: None,
       query_builder: None,
       breakpoint_manager: None,
-      hit_manager_state: HitManagerState::new(tracer.clone(), tui_args.default_external_command)?,
+      hit_manager_state: tracer
+        .clone()
+        .map(|t| HitManagerState::new(t, tui_args.default_external_command))
+        .transpose()?,
       tracer,
       exit_handling: {
         if tui_args.kill_on_exit {
@@ -194,8 +199,10 @@ impl App {
                 self.breakpoint_manager = None;
               }
               // Cancel hit manager
-              if self.hit_manager_state.visible {
-                self.hit_manager_state.hide();
+              if let Some(h) = self.hit_manager_state.as_mut() {
+                if h.visible {
+                  h.hide();
+                }
               }
               // action_tx.send(Action::Render)?;
             } else {
@@ -230,11 +237,13 @@ impl App {
                 }
 
                 // Handle hit manager
-                if self.hit_manager_state.visible {
-                  if let Some(action) = self.hit_manager_state.handle_key_event(ke) {
-                    action_tx.send(action)?;
+                if let Some(h) = self.hit_manager_state.as_mut() {
+                  if h.visible {
+                    if let Some(action) = h.handle_key_event(ke) {
+                      action_tx.send(action)?;
+                    }
+                    continue;
                   }
-                  continue;
                 }
 
                 // Handle breakpoint manager
@@ -428,7 +437,9 @@ impl App {
                     update: ProcessStateUpdate::BreakPointHit(hit),
                     ..
                   } => {
-                    self.hit_manager_state.add_hit(*hit);
+                    self
+                      .hit_manager_state
+                      .access_some_mut(|h| _ = h.add_hit(*hit));
                     // Warn: This grants CAP_SYS_ADMIN to not only the tracer but also the tracees
                     // sudo -E env RUST_LOG=debug setpriv --reuid=$(id -u) --regid=$(id -g) --init-groups --inh-caps=+sys_admin --ambient-caps +sys_admin -- target/debug/tracexec tui -t --
                   }
@@ -437,7 +448,11 @@ impl App {
                     pid,
                     ..
                   } => {
-                    if let Err(e) = self.hit_manager_state.react_on_process_detach(*hid, *pid) {
+                    if let Some(Err(e)) = self
+                      .hit_manager_state
+                      .as_mut()
+                      .map(|h| h.react_on_process_detach(*hid, *pid))
+                    {
                       action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
                         InfoPopupState::error(
                           "Detach Error".to_owned(),
@@ -458,7 +473,9 @@ impl App {
                     ..
                   } => {
                     if *error != Errno::ESRCH {
-                      self.hit_manager_state.add_hit(*hit);
+                      self
+                        .hit_manager_state
+                        .access_some_mut(|h| _ = h.add_hit(*hit));
                     }
                     action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
                       InfoPopupState::error(
@@ -480,7 +497,9 @@ impl App {
                     ..
                   } => {
                     if *error != Errno::ESRCH {
-                      self.hit_manager_state.add_hit(*hit);
+                      self
+                        .hit_manager_state
+                        .access_some_mut(|h| _ = h.add_hit(*hit));
                     }
                     action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
                       InfoPopupState::error(
@@ -560,7 +579,7 @@ impl App {
               {
                 f.set_cursor(x, y);
               }
-              if let Some((x, y)) = self.hit_manager_state.cursor() {
+              if let Some((x, y)) = self.hit_manager_state.as_ref().and_then(|x| x.cursor()) {
                 f.set_cursor(x, y);
               }
             })?;
@@ -709,17 +728,25 @@ impl App {
           }
           Action::ShowBreakpointManager => {
             if self.breakpoint_manager.is_none() {
-              self.breakpoint_manager = Some(BreakPointManagerState::new(self.tracer.clone()));
+              self.breakpoint_manager = Some(BreakPointManagerState::new(
+                self
+                  .tracer
+                  .as_ref()
+                  .expect("BreakPointManager doesn't work without tracer!")
+                  .clone(),
+              ));
             }
           }
           Action::CloseBreakpointManager => {
             self.breakpoint_manager = None;
           }
           Action::ShowHitManager => {
-            self.hit_manager_state.visible = true;
+            self.hit_manager_state.access_some_mut(|h| h.visible = true);
           }
           Action::HideHitManager => {
-            self.hit_manager_state.visible = false;
+            self
+              .hit_manager_state
+              .access_some_mut(|h| h.visible = false);
           }
         }
       }
@@ -837,8 +864,10 @@ impl Widget for &mut App {
       BreakPointManager.render_ref(rest_area, buf, breakpoint_mgr_state);
     }
 
-    if self.hit_manager_state.visible {
-      HitManager.render(rest_area, buf, &mut self.hit_manager_state);
+    if let Some(h) = self.hit_manager_state.as_mut() {
+      if h.visible {
+        HitManager.render(rest_area, buf, h);
+      }
     }
 
     // popups
@@ -902,8 +931,8 @@ impl App {
       }
     } else if let Some(breakpoint_manager) = self.breakpoint_manager.as_ref() {
       items.extend(breakpoint_manager.help());
-    } else if self.hit_manager_state.visible {
-      items.extend(self.hit_manager_state.help());
+    } else if self.hit_manager_state.as_ref().is_some_and(|x| x.visible) {
+      items.extend(self.hit_manager_state.as_ref().unwrap().help());
     } else if let Some(query_builder) = self.query_builder.as_ref().filter(|q| q.editing()) {
       items.extend(query_builder.help());
     } else if self.active_pane == ActivePane::Events {
@@ -938,16 +967,18 @@ impl App {
         help_item!("V", "View"),
         help_item!("Ctrl+F", "Search"),
         help_item!("B", "Breakpoints"),
-        if self.hit_manager_state.count() > 0 {
-          [
-            help_key("Z"),
-            fancy_help_desc(format!("Hits({})", self.hit_manager_state.count())),
-            "\u{200b}".into(),
-          ]
-        } else {
-          help_item!("Z", "Hits")
-        },
       ));
+      if let Some(h) = self.hit_manager_state.as_ref() {
+        if h.count() > 0 {
+          items.extend([
+            help_key("Z"),
+            fancy_help_desc(format!("Hits({})", h.count())),
+            "\u{200b}".into(),
+          ])
+        } else {
+          items.extend(help_item!("Z", "Hits"));
+        }
+      }
       if self.clipboard.is_some() {
         items.extend(help_item!("C", "Copy"));
       }
@@ -957,12 +988,14 @@ impl App {
       items.extend(help_item!("Q", "Quit"));
     } else {
       // Terminal
-      if self.hit_manager_state.count() > 0 {
-        items.extend([
-          help_key("Ctrl+S,\u{00a0}Z"),
-          fancy_help_desc(format!("Hits({})", self.hit_manager_state.count())),
-          "\u{200b}".into(),
-        ]);
+      if let Some(h) = self.hit_manager_state.as_ref() {
+        if h.count() > 0 {
+          items.extend([
+            help_key("Ctrl+S,\u{00a0}Z"),
+            fancy_help_desc(format!("Hits({})", h.count())),
+            "\u{200b}".into(),
+          ]);
+        }
       }
     };
 
@@ -971,5 +1004,17 @@ impl App {
       .wrap(Wrap { trim: false })
       .centered()
       .render(area, buf);
+  }
+}
+
+trait OptionalAccessMut<T> {
+  fn access_some_mut(self: &mut Self, f: impl FnOnce(&mut T) -> ());
+}
+
+impl<T> OptionalAccessMut<T> for Option<T> {
+  fn access_some_mut(self: &mut Self, f: impl FnOnce(&mut T) -> ()) {
+    if let Some(v) = self.as_mut() {
+      f(v)
+    }
   }
 }
