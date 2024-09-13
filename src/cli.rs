@@ -3,7 +3,7 @@ use std::{
   path::PathBuf,
 };
 
-use args::{PtraceArgs, TuiModeArgs};
+use args::{DebuggerArgs, PtraceArgs, TuiModeArgs};
 use clap::{CommandFactory, Parser, Subcommand};
 use config::Config;
 use options::ExportFormat;
@@ -86,6 +86,8 @@ pub enum CliCommand {
     tracer_event_args: TracerEventArgs,
     #[clap(flatten)]
     tui_args: TuiModeArgs,
+    #[clap(flatten)]
+    debugger_args: DebuggerArgs,
   },
   #[clap(about = "Generate shell completions for tracexec")]
   GenerateCompletions {
@@ -206,6 +208,7 @@ impl Cli {
         modifier_args,
         ptrace_args,
         tui_args,
+        debugger_args,
         ..
       } => {
         if let Some(c) = config.ptrace {
@@ -216,6 +219,9 @@ impl Cli {
         }
         if let Some(c) = config.tui {
           tui_args.merge_config(c);
+        }
+        if let Some(c) = config.debugger {
+          debugger_args.merge_config(c);
         }
       }
       CliCommand::Collect {

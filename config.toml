@@ -12,6 +12,16 @@
 # seccomp_bpf = "Auto"
 
 #
+# Debugger config
+# Options about breakpoint feature.
+#
+[debugger]
+# Set the default external command to run when using "Detach, Stop and Run Command" feature in Hit Manager
+# {{PID}} will be replaced with the PID of the tracee
+# default_external_command = "konsole -e gdb -ex cont -ex cont -p {{PID}}"
+
+
+#
 # Modifier config applies to both TUI and Log mode
 #
 [modifier]
@@ -19,11 +29,11 @@
 # Only show successful exec events
 # successful_only = false
 
-# Experimental: Try to reproduce stdio in commandline. 
+# Experimental: Try to reproduce stdio in commandline.
 #               This might result in a broken cmdline if pipes, sockets, etc. are involved.
 # stdio_in_cmdline = false
 
-# Experimental: Try to reproduce file descriptors in commandline. 
+# Experimental: Try to reproduce file descriptors in commandline.
 #               This might result in a broken cmdline if pipes, sockets, etc. are involved.
 # fd_in_cmdline = false
 
@@ -49,11 +59,6 @@
 
 # Target frame rate. A positive floating-point number
 # frame_rate = 60.0
-
-# Set the default external command to run when using "Detach, Stop and Run Command" feature in Hit Manager
-# {{PID}} will be replaced with the PID of the tracee
-# default_external_command = "konsole -e gdb -ex cont -ex cont -p {{PID}}"
-
 
 #
 # Config for Log mode

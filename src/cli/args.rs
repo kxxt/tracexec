@@ -14,7 +14,9 @@ use crate::{
 #[cfg(feature = "seccomp-bpf")]
 use super::options::SeccompBpf;
 use super::{
-  config::{ExitHandling, LogModeConfig, ModifierConfig, PtraceConfig, TuiModeConfig},
+  config::{
+    DebuggerConfig, ExitHandling, LogModeConfig, ModifierConfig, PtraceConfig, TuiModeConfig,
+  },
   options::ActivePane,
 };
 
@@ -266,11 +268,7 @@ pub struct LogModeArgs {
   pub show_argv: bool,
   #[clap(long, help = "Do not show argv", conflicts_with = "show_argv")]
   pub no_show_argv: bool,
-  #[clap(
-    long,
-    help = "Show filename",
-    conflicts_with = "no_show_filename"
-  )]
+  #[clap(long, help = "Show filename", conflicts_with = "no_show_filename")]
   pub show_filename: bool,
   #[clap(long, help = "Do not show filename", conflicts_with = "show_filename")]
   pub no_show_filename: bool,
@@ -414,6 +412,10 @@ pub struct TuiModeArgs {
     value_parser = frame_rate_parser
   )]
   pub frame_rate: Option<f64>,
+}
+
+#[derive(Args, Debug, Default, Clone)]
+pub struct DebuggerArgs {
   #[clap(
     long,
     short = 'D',
@@ -433,9 +435,6 @@ impl TuiModeArgs {
   pub fn merge_config(&mut self, config: TuiModeConfig) {
     self.active_pane = self.active_pane.or(config.active_pane);
     self.layout = self.layout.or(config.layout);
-    if self.default_external_command.is_none() {
-      self.default_external_command = config.default_external_command;
-    }
     self.frame_rate = self.frame_rate.or(config.frame_rate);
     self.follow |= config.follow.unwrap_or_default();
     if (!self.terminate_on_exit) && (!self.kill_on_exit) {
@@ -444,6 +443,14 @@ impl TuiModeArgs {
         Some(ExitHandling::Terminate) => self.terminate_on_exit = true,
         _ => (),
       }
+    }
+  }
+}
+
+impl DebuggerArgs {
+  pub fn merge_config(&mut self, config: DebuggerConfig) {
+    if self.default_external_command.is_none() {
+      self.default_external_command = config.default_external_command;
     }
   }
 }
