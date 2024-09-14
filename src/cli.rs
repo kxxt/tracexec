@@ -155,7 +155,16 @@ pub enum EbpfCommand {
     log_args: LogModeArgs,
   },
   #[clap(about = "Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default")]
-  Tui {},
+  Tui {
+    #[arg(last = true, required = true, help = "command to be executed")]
+    cmd: Vec<String>,
+    #[clap(flatten)]
+    modifier_args: ModifierArgs,
+    #[clap(flatten)]
+    tracer_event_args: TracerEventArgs,
+    #[clap(flatten)]
+    tui_args: TuiModeArgs,
+  },
   #[clap(about = "Collect exec events and export them")]
   Collect {},
 }
