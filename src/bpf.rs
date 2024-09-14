@@ -25,7 +25,7 @@ use interface::BpfEventFlags;
 use libbpf_rs::{
   num_possible_cpus,
   skel::{OpenSkel, Skel, SkelBuilder},
-  ErrorKind, OpenObject, RingBufferBuilder,
+  ErrorKind, OpenObject, RingBuffer, RingBufferBuilder,
 };
 use nix::{
   errno::Errno,
@@ -49,10 +49,10 @@ use skel::{
 
 use crate::{
   cache::StringCache,
-  cli::{options::Color, Cli, EbpfCommand},
+  cli::{args::ModifierArgs, options::Color, Cli, EbpfCommand},
   cmdbuilder::CommandBuilder,
   event::{FriendlyError, OutputMsg},
-  printer::{Printer, PrinterArgs},
+  printer::{Printer, PrinterArgs, PrinterOut},
   proc::{cached_string, parse_failiable_envp, BaselineInfo, FileDescriptorInfo},
   pty,
   tracer::state::ExecData,
@@ -175,8 +175,234 @@ fn spawn<'obj>(
   Ok((skel, child))
 }
 
+pub struct EbpfTracer {
+  cmd: Vec<String>,
+  user: Option<User>,
+  modifier: ModifierArgs,
+  printer: Arc<Printer>,
+  baseline: Arc<BaselineInfo>,
+}
+
+impl EbpfTracer {
+  pub fn new(
+    cmd: Vec<String>,
+    user: Option<User>,
+    modifier: ModifierArgs,
+    printer: Arc<Printer>,
+    baseline: Arc<BaselineInfo>,
+  ) -> Self {
+    Self {
+      cmd,
+      user,
+      modifier,
+      printer,
+      baseline,
+    }
+  }
+
+  pub fn spawn<'obj>(
+    self,
+    obj: &'obj mut MaybeUninit<OpenObject>,
+    output: Option<Box<PrinterOut>>,
+  ) -> color_eyre::Result<RunningEbpfTracer<'obj>> {
+    let (skel, _child) = spawn(&self.cmd, self.user, obj)?;
+    let mut builder = RingBufferBuilder::new();
+    let event_storage: RefCell<HashMap<u64, EventStorage>> = RefCell::new(HashMap::new());
+    let lost_events: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
+    let mut eid = 0;
+    let printer_clone = self.printer.clone();
+    let should_exit = Arc::new(AtomicBool::new(false));
+    builder.add(&skel.maps.events, {
+      let should_exit = should_exit.clone();
+      move |data| {
+      assert!(
+        data.len() >= size_of::<tracexec_event_header>(),
+        "data too short: {data:?}"
+      );
+      let header: &tracexec_event_header = unsafe { &*(data.as_ptr() as *const _) };
+      match unsafe { header.r#type.assume_init() } {
+        event_type::SYSENTER_EVENT => unreachable!(),
+        event_type::SYSEXIT_EVENT => {
+          if header.eid > eid {
+            // There are some lost events
+            // In some cases the events are not really lost but sent out of order because of parallism
+            eprintln!(
+              "warning: inconsistent event id counter: local = {eid}, kernel = {}. Possible event loss!",
+              header.eid
+            );
+            lost_events.borrow_mut().extend(eid..header.eid);
+            // reset local counter
+            eid = header.eid + 1;
+          } else if header.eid < eid {
+            // This should only happen for lost events
+            if lost_events.borrow_mut().remove(&header.eid) {
+              // do nothing
+            } else {
+              panic!("inconsistent event id counter: local = {}, kernel = {}.", eid, header.eid);
+            }
+          } else {
+            // increase local counter for next event
+            eid += 1;
+          }
+          assert_eq!(data.len(), size_of::<exec_event>());
+          let event: exec_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+          if event.ret != 0 && self.modifier.successful_only {
+            return 0;
+          }
+          let mut storage = event_storage.borrow_mut();
+          let mut storage = storage.remove(&header.eid).unwrap();
+          let envp = storage.strings.split_off(event.count[0] as usize);
+          let argv = storage.strings;
+          let cwd: OutputMsg = storage.paths.remove(&AT_FDCWD).unwrap().into();
+          let eflags = BpfEventFlags::from_bits_truncate(header.flags);
+          // TODO: How should we handle possible truncation?
+          let base_filename = if eflags.contains(BpfEventFlags::FILENAME_READ_ERR) {
+            OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags))
+          } else {
+            cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.base_filename)).into()
+          };
+          let filename = if event.syscall_nr == SYS_execve as i32 {
+            base_filename
+          } else if event.syscall_nr == SYS_execveat as i32 {
+            if base_filename.is_ok_and(|s| s.starts_with('/')) {
+              base_filename
+            } else {
+              match event.fd  {
+                AT_FDCWD => {
+                  cwd.join(base_filename)
+                },
+                fd => {
+                  // Check if it is a valid fd
+                  if let Some(fdinfo) = storage.fdinfo_map.get(fd) {
+                    fdinfo.path.clone().join(base_filename)
+                  } else {
+                    OutputMsg::PartialOk(cached_string(format!("[err: invalid fd: {fd}]/{base_filename}")))
+                  }
+                }
+              }
+            }
+          } else {
+            unreachable!()
+          };
+          let exec_data = ExecData::new(
+            filename,
+            Ok(argv), Ok(parse_failiable_envp(envp)),
+            cwd, None, storage.fdinfo_map);
+          self.printer.print_exec_trace(Pid::from_raw(header.pid), cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.comm)), event.ret, &exec_data, &self.baseline.env, &self.baseline.cwd).unwrap();
+        }
+        event_type::STRING_EVENT => {
+          let header_len = size_of::<tracexec_event_header>();
+          let flags = BpfEventFlags::from_bits_truncate(header.flags);
+          let msg = if flags.is_empty() {
+            cached_cow(utf8_lossy_cow_from_bytes_with_nul(&data[header_len..])).into()
+          } else {
+            OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags))
+          };
+          let mut storage = event_storage.borrow_mut();
+          let strings = &mut storage.entry(header.eid).or_default().strings;
+          // Catch event drop
+          if strings.len() != header.id as usize {
+            // Insert placeholders for dropped events
+            let dropped_event = OutputMsg::Err(BpfError::Dropped.into());
+            strings.extend(repeat(dropped_event).take(header.id as usize - strings.len()));
+            debug_assert_eq!(strings.len(), header.id as usize);
+          }
+          // TODO: check flags in header
+          strings.push(msg);
+        }
+        event_type::FD_EVENT => {
+          assert_eq!(data.len(), size_of::<fd_event>());
+          let event: &fd_event = unsafe { &*(data.as_ptr() as *const _) };
+          let mut guard = event_storage.borrow_mut();
+          let storage = guard.get_mut(&header.eid).unwrap();
+          let fs = utf8_lossy_cow_from_bytes_with_nul(&event.fstype);
+          let path = match fs.as_ref() {
+              "pipefs" =>OutputMsg::Ok(cached_string(format!("pipe:[{}]", event.ino))),
+              "sockfs" =>OutputMsg::Ok(cached_string(format!("socket:[{}]", event.ino))),
+              _ => storage.paths.get(&event.path_id).unwrap().to_owned().into()
+          };
+          let fdinfo = FileDescriptorInfo {
+            fd: event.fd as RawFd,
+            path,
+            pos: 0, // TODO
+            flags: OFlag::from_bits_retain(event.flags as c_int),
+            mnt_id: event.mnt_id,
+            ino: event.ino,
+            mnt: arcstr::literal!("[tracexec: unknown]"), // TODO
+            extra: vec![arcstr::literal!("")],            // TODO
+          };
+          let fdc = &mut storage.fdinfo_map;
+          fdc.fdinfo.insert(event.fd as RawFd, fdinfo);
+        }
+        event_type::PATH_EVENT => {
+          assert_eq!(data.len(), size_of::<path_event>());
+          let event: &path_event = unsafe { &*(data.as_ptr() as *const _) };
+          let mut storage = event_storage.borrow_mut();
+          let paths = &mut storage.entry(header.eid).or_default().paths;
+          let path = paths.entry(header.id as i32).or_default();
+          // FIXME
+          path.is_absolute = true;
+          assert_eq!(path.segments.len(), event.segment_count as usize);
+          // eprintln!("Received path {} = {:?}", event.header.id, path);
+        }
+        event_type::PATH_SEGMENT_EVENT => {
+          assert_eq!(data.len(), size_of::<path_segment_event>());
+          let event: &path_segment_event = unsafe { &*(data.as_ptr() as *const _) };
+          let mut storage = event_storage.borrow_mut();
+          let paths = &mut storage.entry(header.eid).or_default().paths;
+          let path = paths.entry(header.id as i32).or_default();
+          // The segments must arrive in order.
+          assert_eq!(path.segments.len(), event.index as usize);
+          // TODO: check for errors
+          path.segments.push(OutputMsg::Ok(cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.segment))));
+        }
+        event_type::EXIT_EVENT => {
+          should_exit.store(true, Ordering::Relaxed);
+        }
+      }
+      0
+    }})?;
+    printer_clone.init_thread_local(output);
+    let rb = builder.build()?;
+    Ok(RunningEbpfTracer {
+      rb,
+      should_exit,
+      skel,
+    })
+  }
+}
+
+// TODO: we should start polling the ringbuffer before program load
+
+pub struct RunningEbpfTracer<'obj> {
+  rb: RingBuffer<'obj>,
+  should_exit: Arc<AtomicBool>,
+  // The eBPF program gets unloaded on skel drop
+  skel: TracexecSystemSkel<'obj>,
+}
+
+impl<'rb> RunningEbpfTracer<'rb> {
+  pub fn run_until_exit(&self) {
+    loop {
+      if self.should_exit.load(Ordering::Relaxed) {
+        break;
+      }
+      match self.rb.poll(Duration::from_millis(100)) {
+        Ok(_) => continue,
+        Err(e) => {
+          if e.kind() == ErrorKind::Interrupted {
+            continue;
+          } else {
+            panic!("Failed to poll ringbuf: {e}");
+          }
+        }
+      }
+    }
+  }
+}
+
 pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre::Result<()> {
-  let mut obj = MaybeUninit::uninit();
+  let mut obj = Box::leak(Box::new(MaybeUninit::uninit()));
   match command {
     EbpfCommand::Log {
       cmd,
@@ -184,190 +410,24 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
       modifier_args,
       log_args,
     } => {
-      let output = Cli::get_output(output, color)?;
+      let modifier_args = modifier_args.processed();
       let baseline = Arc::new(BaselineInfo::new()?);
+      let output = Cli::get_output(output, color)?;
       let printer = Arc::new(Printer::new(
         PrinterArgs::from_cli(&log_args, &modifier_args),
         baseline.clone(),
       ));
-      let printer_clone = printer.clone();
-      let (skel, _child) = spawn(&cmd, user, &mut obj)?;
-      let events = skel.maps.events;
-      let mut builder = RingBufferBuilder::new();
-      let event_storage: RefCell<HashMap<u64, EventStorage>> = RefCell::new(HashMap::new());
-      let lost_events: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
-      let mut eid = 0;
-      let should_exit = Arc::new(AtomicBool::new(false));
-      builder.add(&events, {
-        let should_exit = should_exit.clone();
-        move |data| {
-        assert!(
-          data.len() >= size_of::<tracexec_event_header>(),
-          "data too short: {data:?}"
-        );
-        let header: &tracexec_event_header = unsafe { &*(data.as_ptr() as *const _) };
-        match unsafe { header.r#type.assume_init() } {
-          event_type::SYSENTER_EVENT => unreachable!(),
-          event_type::SYSEXIT_EVENT => {
-            if header.eid > eid {
-              // There are some lost events
-              // In some cases the events are not really lost but sent out of order because of parallism
-              eprintln!(
-                "warning: inconsistent event id counter: local = {eid}, kernel = {}. Possible event loss!",
-                header.eid
-              );
-              lost_events.borrow_mut().extend(eid..header.eid);
-              // reset local counter
-              eid = header.eid + 1;
-            } else if header.eid < eid {
-              // This should only happen for lost events
-              if lost_events.borrow_mut().remove(&header.eid) {
-                // do nothing
-              } else {
-                panic!("inconsistent event id counter: local = {}, kernel = {}.", eid, header.eid);
-              }
-            } else {
-              // increase local counter for next event
-              eid += 1;
-            }
-            assert_eq!(data.len(), size_of::<exec_event>());
-            let event: exec_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
-            if event.ret != 0 && modifier_args.successful_only {
-              return 0;
-            }
-            let mut storage = event_storage.borrow_mut();
-            let mut storage = storage.remove(&header.eid).unwrap();
-            let envp = storage.strings.split_off(event.count[0] as usize);
-            let argv = storage.strings;
-            let cwd: OutputMsg = storage.paths.remove(&AT_FDCWD).unwrap().into();
-            let eflags = BpfEventFlags::from_bits_truncate(header.flags);
-            // TODO: How should we handle possible truncation?
-            let base_filename = if eflags.contains(BpfEventFlags::FILENAME_READ_ERR) {
-              OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags))
-            } else {
-              cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.base_filename)).into()
-            };
-            let filename = if event.syscall_nr == SYS_execve as i32 {
-              base_filename
-            } else if event.syscall_nr == SYS_execveat as i32 {
-              if base_filename.is_ok_and(|s| s.starts_with('/')) {
-                base_filename
-              } else {
-                match event.fd  {
-                  AT_FDCWD => {
-                    cwd.join(base_filename)
-                  },
-                  fd => {
-                    // Check if it is a valid fd
-                    if let Some(fdinfo) = storage.fdinfo_map.get(fd) {
-                      fdinfo.path.clone().join(base_filename)
-                    } else {
-                      OutputMsg::PartialOk(cached_string(format!("[err: invalid fd: {fd}]/{base_filename}")))
-                    }
-                  }
-                }
-              }
-            } else {
-              unreachable!()
-            };
-            let exec_data = ExecData::new(
-              filename,
-              Ok(argv), Ok(parse_failiable_envp(envp)),
-              cwd, None, storage.fdinfo_map);
-            printer.print_exec_trace(Pid::from_raw(header.pid), cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.comm)), event.ret, &exec_data, &baseline.env, &baseline.cwd).unwrap();
-          }
-          event_type::STRING_EVENT => {
-            let header_len = size_of::<tracexec_event_header>();
-            let flags = BpfEventFlags::from_bits_truncate(header.flags);
-            let msg = if flags.is_empty() {
-              cached_cow(utf8_lossy_cow_from_bytes_with_nul(&data[header_len..])).into()
-            } else {
-              OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags))
-            };
-            let mut storage = event_storage.borrow_mut();
-            let strings = &mut storage.entry(header.eid).or_default().strings;
-            // Catch event drop
-            if strings.len() != header.id as usize {
-              // Insert placeholders for dropped events
-              let dropped_event = OutputMsg::Err(BpfError::Dropped.into());
-              strings.extend(repeat(dropped_event).take(header.id as usize - strings.len()));
-              debug_assert_eq!(strings.len(), header.id as usize);
-            }
-            // TODO: check flags in header
-            strings.push(msg);
-          }
-          event_type::FD_EVENT => {
-            assert_eq!(data.len(), size_of::<fd_event>());
-            let event: &fd_event = unsafe { &*(data.as_ptr() as *const _) };
-            let mut guard = event_storage.borrow_mut();
-            let storage = guard.get_mut(&header.eid).unwrap();
-            let fs = utf8_lossy_cow_from_bytes_with_nul(&event.fstype);
-            let path = match fs.as_ref() {
-               "pipefs" =>OutputMsg::Ok(cached_string(format!("pipe:[{}]", event.ino))),
-               "sockfs" =>OutputMsg::Ok(cached_string(format!("socket:[{}]", event.ino))),
-               _ => storage.paths.get(&event.path_id).unwrap().to_owned().into()
-            };
-            let fdinfo = FileDescriptorInfo {
-              fd: event.fd as RawFd,
-              path,
-              pos: 0, // TODO
-              flags: OFlag::from_bits_retain(event.flags as c_int),
-              mnt_id: event.mnt_id,
-              ino: event.ino,
-              mnt: arcstr::literal!("[tracexec: unknown]"), // TODO
-              extra: vec![arcstr::literal!("")],            // TODO
-            };
-            let fdc = &mut storage.fdinfo_map;
-            fdc.fdinfo.insert(event.fd as RawFd, fdinfo);
-          }
-          event_type::PATH_EVENT => {
-            assert_eq!(data.len(), size_of::<path_event>());
-            let event: &path_event = unsafe { &*(data.as_ptr() as *const _) };
-            let mut storage = event_storage.borrow_mut();
-            let paths = &mut storage.entry(header.eid).or_default().paths;
-            let path = paths.entry(header.id as i32).or_default();
-            // FIXME
-            path.is_absolute = true;
-            assert_eq!(path.segments.len(), event.segment_count as usize);
-            // eprintln!("Received path {} = {:?}", event.header.id, path);
-          }
-          event_type::PATH_SEGMENT_EVENT => {
-            assert_eq!(data.len(), size_of::<path_segment_event>());
-            let event: &path_segment_event = unsafe { &*(data.as_ptr() as *const _) };
-            let mut storage = event_storage.borrow_mut();
-            let paths = &mut storage.entry(header.eid).or_default().paths;
-            let path = paths.entry(header.id as i32).or_default();
-            // The segments must arrive in order.
-            assert_eq!(path.segments.len(), event.index as usize);
-            // TODO: check for errors
-            path.segments.push(OutputMsg::Ok(cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.segment))));
-          }
-          event_type::EXIT_EVENT => {
-            should_exit.store(true, Ordering::Relaxed);
-          }
-        }
-        0
-      }})?;
-      let rb = builder.build()?;
-      printer_clone.init_thread_local(Some(output));
-      loop {
-        if should_exit.load(Ordering::Relaxed) {
-          break;
-        }
-        match rb.poll(Duration::from_millis(100)) {
-          Ok(_) => continue,
-          Err(e) => {
-            if e.kind() == ErrorKind::Interrupted {
-              continue;
-            } else {
-              panic!("Failed to poll ringbuf: {e}");
-            }
-          }
-        }
-      }
+      let tracer = EbpfTracer::new(cmd, user, modifier_args, printer, baseline);
+      let running_tracer = tracer.spawn(&mut obj, Some(output))?;
+      running_tracer.run_until_exit();
       Ok(())
     }
-    EbpfCommand::Tui {} => todo!(),
+    EbpfCommand::Tui {
+      cmd,
+      modifier_args,
+      tracer_event_args,
+      tui_args,
+    } => Ok(()),
     EbpfCommand::Collect {} => todo!(),
   }
 }
