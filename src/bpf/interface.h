@@ -31,9 +31,9 @@
 #define PATH_DEPTH_MAX 65536
 // The maximum length of a single segment in the path
 // aka NAME_MAX in limits.h
-#define PATH_SEGMENT_MAX 255
+#define PATH_SEGMENT_MAX 256
 // Linux doesn't seem to have a limit on fstype name length
-#define FSTYPE_NAME_MAX 255
+#define FSTYPE_NAME_MAX 256
 
 #define BITS_PER_LONG 64
 #define NOFILE_MAX 2147483584
