@@ -122,7 +122,6 @@ static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx);
 static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event, bool cloexec);
 static int add_tgid_to_closure(pid_t tgid);
-static int send_exit_event();
 static int read_send_path(const struct path *path,
                           struct tracexec_event_header *base_header,
                           s32 path_id, struct fd_event *fd_event);
@@ -349,16 +348,48 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
   void *ptr = bpf_map_lookup_elem(&tgid_closure, &tgid);
   if (ptr == NULL)
     return 0;
+  struct task_struct *current = (void *)bpf_get_current_task();
   // remove tgid from closure
   int ret = bpf_map_delete_elem(&tgid_closure, &tgid);
   if (ret < 0)
     debug("Failed to remove %d from closure: %d", tgid, ret);
+  u32 entry_index = bpf_get_smp_processor_id();
+  if (entry_index > tracexec_config.max_num_cpus) {
+    debug("Too many cores!");
+    return 1;
+  }
+  struct exit_event *entry = bpf_map_lookup_elem(&cache, &entry_index);
+  if (entry == NULL) {
+    debug("This should not happen!");
+    return 1;
+  }
+  // Other fields doesn't matter for exit event
+  entry->header.type = EXIT_EVENT;
+  entry->header.pid = pid;
+  entry->header.flags = 0;
   // FIXME: In theory, if the userspace program fails after fork before exec,
   //        then we won't have the tracee_tgid here and thus hang forever.
   //        Though it is unlikely to happen in practice.
   if (tgid == tracee_tgid) {
     // We should exit now!
-    send_exit_event();
+    entry->is_root_tracee = true;
+  } else {
+    entry->is_root_tracee = false;
+  }
+  // ref: https://elixir.bootlin.com/linux/v6.10.3/source/kernel/exit.c#L992
+  int exit_code;
+  ret = bpf_core_read(&exit_code, sizeof(exit_code), &current->exit_code);
+  if (ret < 0) {
+    debug("Failed to read exit code!");
+    return 0;
+  }
+  entry->code = exit_code >> 8;
+  entry->sig = exit_code & 0xFF;
+  ret = bpf_ringbuf_output(&events, entry, sizeof(*entry), BPF_RB_FORCE_WAKEUP);
+  if (ret < 0) {
+    // TODO: find a better way to ensure userspace receives exit event
+    debug("Failed to send exit event!");
+    return 0;
   }
   return 0;
 }
@@ -759,29 +790,6 @@ static int add_tgid_to_closure(pid_t tgid) {
   return 0;
 }
 
-static int send_exit_event() {
-  u32 entry_index = bpf_get_smp_processor_id();
-  if (entry_index > tracexec_config.max_num_cpus) {
-    debug("Too many cores!");
-    return 1;
-  }
-  struct tracexec_event_header *entry =
-      bpf_map_lookup_elem(&cache, &entry_index);
-  if (entry == NULL) {
-    debug("This should not happen!");
-    return 1;
-  }
-  // Other fields doesn't matter for exit event
-  entry->type = EXIT_EVENT;
-  int ret =
-      bpf_ringbuf_output(&events, entry, sizeof(*entry), BPF_RB_FORCE_WAKEUP);
-  if (ret < 0) {
-    // TODO: find a better way to ensure userspace receives exit event
-    debug("Failed to send exit event!");
-    return 1;
-  }
-  return 0;
-}
 
 struct path_segment_ctx {
   struct dentry *dentry;

@@ -85,6 +85,7 @@ enum event_type {
   PATH_SEGMENT_EVENT,
   PATH_EVENT,
   EXIT_EVENT,
+  FORK_EVENT,
 };
 
 struct tracexec_event_header {
@@ -143,11 +144,25 @@ struct path_segment_event {
   u8 segment[PATH_SEGMENT_MAX];
 };
 
+struct fork_event {
+  struct tracexec_event_header header;
+  pid_t parent_tgid;
+  // pid_t new_tgid; stored in header->pid
+};
+
+struct exit_event {
+  struct tracexec_event_header header;
+  int code;
+  u32 sig;
+  bool is_root_tracee;
+};
+
 union cache_item {
-  struct tracexec_event_header exit;
   struct string_event string;
   struct fd_event fd;
   struct path_event path;
   struct path_segment_event segment;
+  struct fork_event fork;
+  struct exit_event exit;
 };
 #endif
