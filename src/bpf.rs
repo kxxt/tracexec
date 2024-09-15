@@ -40,6 +40,7 @@ use nix::{
     Pid, Uid, User,
   },
 };
+use process_tracker::ProcessTracker;
 use skel::{
   types::{
     event_type, exec_event, exit_event, fd_event, fork_event, path_event, path_segment_event,
@@ -62,13 +63,17 @@ use crate::{
   },
   cmdbuilder::CommandBuilder,
   event::{
-    filterable_event, ExecEvent, FriendlyError, OutputMsg, TracerEvent, TracerEventDetails,
-    TracerEventDetailsKind, TracerMessage,
+    filterable_event, ExecEvent, FriendlyError, OutputMsg, ProcessStateUpdate,
+    ProcessStateUpdateEvent, TracerEvent, TracerEventDetails, TracerEventDetailsKind,
+    TracerMessage,
   },
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{cached_string, diff_env, parse_failiable_envp, BaselineInfo, FileDescriptorInfo},
   pty::{self, native_pty_system, PtySize, PtySystem},
-  tracer::{state::ExecData, TracerMode},
+  tracer::{
+    state::{ExecData, ProcessExit},
+    TracerMode,
+  },
   tui::{self, app::App},
 };
 
@@ -84,6 +89,7 @@ pub mod interface {
 }
 
 mod event;
+mod process_tracker;
 pub use event::BpfError;
 
 fn bump_memlock_rlimit() -> color_eyre::Result<()> {
@@ -119,7 +125,10 @@ impl EbpfTracer {
     obj: &'obj mut MaybeUninit<OpenObject>,
     output: Option<Box<PrinterOut>>,
   ) -> color_eyre::Result<RunningEbpfTracer<'obj>> {
-    let (skel, _child) = self.spawn_command(obj)?;
+    let (skel, child) = self.spawn_command(obj)?;
+    let follow_forks = !self.cmd.is_empty();
+    let mut tracker = ProcessTracker::default();
+    child.inspect(|p| tracker.add(*p));
     let mut builder = RingBufferBuilder::new();
     let event_storage: RefCell<HashMap<u64, EventStorage>> = RefCell::new(HashMap::new());
     let lost_events: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
@@ -245,6 +254,11 @@ impl EbpfTracer {
                 result: event.ret,
                 fdinfo: exec_data.fdinfo.clone(),
               })));
+              if follow_forks {
+                tracker.associate_events(pid, [event.id])
+              } else {
+                tracker.force_associate_events(pid, [event.id])
+              }
               self
                 .tx
                 .as_ref()
@@ -331,10 +345,43 @@ impl EbpfTracer {
               "{} exited with code {}, signal {}",
               header.pid, event.code, event.sig
             );
+            let pid = Pid::from_raw(header.pid);
+            if let Some(associated) = tracker.maybe_associated_events(pid) {
+              if !associated.is_empty() {
+                self
+                  .tx
+                  .as_ref()
+                  .map(|tx| {
+                    tx.send(
+                      ProcessStateUpdateEvent {
+                        update: ProcessStateUpdate::Exit(match (event.sig, event.code) {
+                          (0, code) => ProcessExit::Code(code),
+                          (sig, _) => {
+                            // 0x80 bit indicates coredump
+                            ProcessExit::Signal(Signal::try_from(sig as i32 & 0x7f).unwrap())
+                          }
+                        }),
+                        pid,
+                        ids: associated.to_owned(),
+                      }
+                      .into(),
+                    )
+                  })
+                  .transpose()
+                  .unwrap();
+              }
+            }
+            if follow_forks {
+              tracker.remove(pid);
+            } else {
+              tracker.maybe_remove(pid);
+            }
           }
           event_type::FORK_EVENT => {
             assert_eq!(data.len(), size_of::<fork_event>());
             let event: &fork_event = unsafe { &*(data.as_ptr() as *const _) };
+            // FORK_EVENT is only sent if follow_forks
+            tracker.add(Pid::from_raw(header.pid));
             warn!("{} forked {}", event.parent_tgid, header.pid);
           }
         }

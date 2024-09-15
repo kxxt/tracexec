@@ -373,7 +373,7 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
     return 0;
   // Not traced
   void *ptr = bpf_map_lookup_elem(&tgid_closure, &tgid);
-  if (ptr == NULL)
+  if (ptr == NULL && tracexec_config.follow_fork)
     return 0;
   struct task_struct *current = (void *)bpf_get_current_task();
   // remove tgid from closure
