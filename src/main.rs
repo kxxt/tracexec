@@ -189,6 +189,7 @@ async fn main() -> color_eyre::Result<()> {
         user,
         req_tx,
       )?);
+      let baseline = Arc::new(baseline);
       let frame_rate = tui_args.frame_rate.unwrap_or(60.);
       let mut app = App::new(
         Some(PTracer {
@@ -326,7 +327,7 @@ async fn main() -> color_eyre::Result<()> {
     #[cfg(feature = "ebpf")]
     CliCommand::Ebpf { command } => {
       // TODO: warn if --user is set when not follow-forks
-      bpf::run(command, user, cli.color)?;
+      bpf::run(command, user, cli.color).await?;
     }
   }
   Ok(())

@@ -3,11 +3,11 @@ use std::{
   cell::RefCell,
   collections::{HashMap, HashSet},
   ffi::{CStr, CString},
-  io::stdin,
+  io::{self, stdin},
   iter::repeat,
   mem::MaybeUninit,
   os::{
-    fd::RawFd,
+    fd::{AsRawFd, RawFd},
     unix::{fs::MetadataExt, process::CommandExt},
   },
   sync::{
@@ -19,7 +19,7 @@ use std::{
 
 use arcstr::ArcStr;
 use color_eyre::Section;
-use enumflags2::BitFlag;
+use enumflags2::{BitFlag, BitFlags};
 use event::EventStorage;
 use interface::BpfEventFlags;
 use libbpf_rs::{
@@ -30,14 +30,14 @@ use libbpf_rs::{
 use nix::{
   errno::Errno,
   fcntl::OFlag,
-  libc::{self, c_int, SYS_execve, SYS_execveat, AT_FDCWD},
+  libc::{self, c_int, dup2, SYS_execve, SYS_execveat, AT_FDCWD},
   sys::{
     signal::{kill, raise, Signal},
     wait::{waitpid, WaitPidFlag, WaitStatus},
   },
   unistd::{
-    fork, getpid, initgroups, setpgid, setresgid, setresuid, tcsetpgrp, ForkResult, Gid, Pid, Uid,
-    User,
+    fork, getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, ForkResult, Gid,
+    Pid, Uid, User,
   },
 };
 use skel::{
@@ -46,16 +46,28 @@ use skel::{
   },
   TracexecSystemSkel,
 };
+use tokio::{
+  sync::mpsc::{self, UnboundedSender},
+  task::spawn_blocking,
+};
 
 use crate::{
   cache::StringCache,
-  cli::{args::ModifierArgs, options::Color, Cli, EbpfCommand},
+  cli::{
+    args::{LogModeArgs, ModifierArgs},
+    options::Color,
+    Cli, EbpfCommand,
+  },
   cmdbuilder::CommandBuilder,
-  event::{FriendlyError, OutputMsg},
+  event::{
+    filterable_event, ExecEvent, FriendlyError, OutputMsg, TracerEvent, TracerEventDetails,
+    TracerEventDetailsKind, TracerMessage,
+  },
   printer::{Printer, PrinterArgs, PrinterOut},
-  proc::{cached_string, parse_failiable_envp, BaselineInfo, FileDescriptorInfo},
-  pty,
-  tracer::state::ExecData,
+  proc::{cached_string, diff_env, parse_failiable_envp, BaselineInfo, FileDescriptorInfo},
+  pty::{self, native_pty_system, PtySize, PtySystem},
+  tracer::{state::ExecData, TracerMode},
+  tui::{self, app::App},
 };
 
 pub mod skel {
@@ -88,124 +100,24 @@ fn bump_memlock_rlimit() -> color_eyre::Result<()> {
   Ok(())
 }
 
-fn spawn<'obj>(
-  args: &[String],
-  user: Option<User>,
-  object: &'obj mut MaybeUninit<OpenObject>,
-) -> color_eyre::Result<(TracexecSystemSkel<'obj>, Option<Pid>)> {
-  let skel_builder = skel::TracexecSystemSkelBuilder::default();
-  bump_memlock_rlimit()?;
-  let mut open_skel = skel_builder.open(object)?;
-  let ncpu = num_possible_cpus()?.try_into().expect("Too many cores!");
-  open_skel.maps.rodata_data.tracexec_config.max_num_cpus = ncpu;
-  open_skel.maps.cache.set_max_entries(ncpu)?;
-  // tracexec runs in the same pid namespace with the tracee
-  let pid_ns_ino = std::fs::metadata("/proc/self/ns/pid")?.ino();
-  let (skel, child) = if !args.is_empty() {
-    let mut cmd = CommandBuilder::new(&args[0]);
-    cmd.args(args.iter().skip(1));
-    cmd.cwd(std::env::current_dir()?);
-    let mut cmd = cmd.as_command()?;
-    match unsafe { fork()? } {
-      ForkResult::Parent { child } => {
-        match tcsetpgrp(stdin(), child) {
-          Ok(_) => {}
-          Err(Errno::ENOTTY) => {
-            eprintln!("tcsetpgrp failed: ENOTTY");
-          }
-          r => r?,
-        }
-        open_skel.maps.rodata_data.tracexec_config.follow_fork = MaybeUninit::new(true);
-        open_skel.maps.rodata_data.tracexec_config.tracee_pid = child.as_raw();
-        open_skel.maps.rodata_data.tracexec_config.tracee_pidns_inum = pid_ns_ino as u32;
-        let mut skel = open_skel.load()?;
-        skel.attach()?;
-        match waitpid(child, Some(WaitPidFlag::WSTOPPED))? {
-          terminated @ WaitStatus::Exited(_, _) | terminated @ WaitStatus::Signaled(_, _, _) => {
-            panic!("Child exited abnormally before tracing is started: status: {terminated:?}");
-          }
-          WaitStatus::Stopped(_, _) => kill(child, Signal::SIGCONT)?,
-          _ => unreachable!("Invalid wait status!"),
-        }
-        (skel, Some(child))
-      }
-      ForkResult::Child => {
-        let me = getpid();
-        setpgid(me, me)?;
-
-        // Wait for eBPF program to load
-        raise(Signal::SIGSTOP)?;
-
-        if let Some(user) = &user {
-          initgroups(&CString::new(user.name.as_str())?[..], user.gid)?;
-          setresgid(user.gid, user.gid, Gid::from_raw(u32::MAX))?;
-          setresuid(user.uid, user.uid, Uid::from_raw(u32::MAX))?;
-        }
-
-        // Clean up a few things before we exec the program
-        // Clear out any potentially problematic signal
-        // dispositions that we might have inherited
-        for signo in &[
-          libc::SIGCHLD,
-          libc::SIGHUP,
-          libc::SIGINT,
-          libc::SIGQUIT,
-          libc::SIGTERM,
-          libc::SIGALRM,
-        ] {
-          unsafe {
-            libc::signal(*signo, libc::SIG_DFL);
-          }
-        }
-        unsafe {
-          let empty_set: libc::sigset_t = std::mem::zeroed();
-          libc::sigprocmask(libc::SIG_SETMASK, &empty_set, std::ptr::null_mut());
-        }
-
-        pty::close_random_fds();
-
-        return Err(cmd.exec().into());
-      }
-    }
-  } else {
-    let mut skel = open_skel.load()?;
-    skel.attach()?;
-    (skel, None)
-  };
-  Ok((skel, child))
-}
-
 pub struct EbpfTracer {
   cmd: Vec<String>,
   user: Option<User>,
   modifier: ModifierArgs,
   printer: Arc<Printer>,
   baseline: Arc<BaselineInfo>,
+  tx: Option<UnboundedSender<TracerMessage>>,
+  filter: BitFlags<TracerEventDetailsKind>,
+  mode: TracerMode,
 }
 
 impl EbpfTracer {
-  pub fn new(
-    cmd: Vec<String>,
-    user: Option<User>,
-    modifier: ModifierArgs,
-    printer: Arc<Printer>,
-    baseline: Arc<BaselineInfo>,
-  ) -> Self {
-    Self {
-      cmd,
-      user,
-      modifier,
-      printer,
-      baseline,
-    }
-  }
-
   pub fn spawn<'obj>(
     self,
     obj: &'obj mut MaybeUninit<OpenObject>,
     output: Option<Box<PrinterOut>>,
   ) -> color_eyre::Result<RunningEbpfTracer<'obj>> {
-    let (skel, _child) = spawn(&self.cmd, self.user, obj)?;
+    let (skel, _child) = self.spawn_command(obj)?;
     let mut builder = RingBufferBuilder::new();
     let event_storage: RefCell<HashMap<u64, EventStorage>> = RefCell::new(HashMap::new());
     let lost_events: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
@@ -226,8 +138,8 @@ impl EbpfTracer {
           if header.eid > eid {
             // There are some lost events
             // In some cases the events are not really lost but sent out of order because of parallism
-            eprintln!(
-              "warning: inconsistent event id counter: local = {eid}, kernel = {}. Possible event loss!",
+            tracing::warn!(
+              "inconsistent event id counter: local = {eid}, kernel = {}. Possible event loss!",
               header.eid
             );
             lost_events.borrow_mut().extend(eid..header.eid);
@@ -237,6 +149,7 @@ impl EbpfTracer {
             // This should only happen for lost events
             if lost_events.borrow_mut().remove(&header.eid) {
               // do nothing
+              tracing::warn!("event {} is received out of order", header.eid);
             } else {
               panic!("inconsistent event id counter: local = {}, kernel = {}.", eid, header.eid);
             }
@@ -288,7 +201,34 @@ impl EbpfTracer {
             filename,
             Ok(argv), Ok(parse_failiable_envp(envp)),
             cwd, None, storage.fdinfo_map);
-          self.printer.print_exec_trace(Pid::from_raw(header.pid), cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.comm)), event.ret, &exec_data, &self.baseline.env, &self.baseline.cwd).unwrap();
+          let pid = Pid::from_raw(header.pid);
+          let comm = cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.comm));
+          self.printer.print_exec_trace(pid, comm.clone(), event.ret, &exec_data, &self.baseline.env, &self.baseline.cwd).unwrap();
+          if self.filter.intersects(TracerEventDetailsKind::Exec) {
+            let event = TracerEvent::from(TracerEventDetails::Exec(
+              Box::new(
+                ExecEvent {
+                  pid,
+                  cwd: exec_data.cwd.clone(),
+                  comm,
+                  filename: exec_data.filename.clone(),
+                  argv: exec_data.argv.clone(),
+                  envp: exec_data.envp.clone(),
+                  interpreter: exec_data.interpreters.clone(),
+                  env_diff: exec_data
+                    .envp
+                    .as_ref()
+                    .as_ref()
+                    .map(|envp| diff_env(&self.baseline.env, envp))
+                    .map_err(|e| *e),
+                  result: event.ret,
+                  fdinfo: exec_data.fdinfo.clone(),
+                })
+            ));
+            self.tx.as_ref().map(|tx| tx.send(
+              event.into()
+            )).transpose().unwrap();
+          }
         }
         event_type::STRING_EVENT => {
           let header_len = size_of::<tracexec_event_header>();
@@ -370,6 +310,123 @@ impl EbpfTracer {
       skel,
     })
   }
+
+  fn spawn_command<'obj>(
+    &self,
+    object: &'obj mut MaybeUninit<OpenObject>,
+  ) -> color_eyre::Result<(TracexecSystemSkel<'obj>, Option<Pid>)> {
+    let skel_builder = skel::TracexecSystemSkelBuilder::default();
+    bump_memlock_rlimit()?;
+    let mut open_skel = skel_builder.open(object)?;
+    let ncpu = num_possible_cpus()?.try_into().expect("Too many cores!");
+    open_skel.maps.rodata_data.tracexec_config.max_num_cpus = ncpu;
+    open_skel.maps.cache.set_max_entries(ncpu)?;
+    // tracexec runs in the same pid namespace with the tracee
+    let pid_ns_ino = std::fs::metadata("/proc/self/ns/pid")?.ino();
+    let (skel, child) = if !self.cmd.is_empty() {
+      let mut cmd = CommandBuilder::new(&self.cmd[0]);
+      cmd.args(self.cmd.iter().skip(1));
+      cmd.cwd(std::env::current_dir()?);
+      let mut cmd = cmd.as_command()?;
+      match unsafe { fork()? } {
+        ForkResult::Parent { child } => {
+          self
+            .tx
+            .as_ref()
+            .map(|tx| filterable_event!(TraceeSpawn(child)).send_if_match(tx, self.filter))
+            .transpose()?;
+          if let TracerMode::Log | TracerMode::None = &self.mode {
+            match tcsetpgrp(stdin(), child) {
+              Ok(_) => {}
+              Err(Errno::ENOTTY) => {
+                eprintln!("tcsetpgrp failed: ENOTTY");
+              }
+              r => r?,
+            }
+          }
+          open_skel.maps.rodata_data.tracexec_config.follow_fork = MaybeUninit::new(true);
+          open_skel.maps.rodata_data.tracexec_config.tracee_pid = child.as_raw();
+          open_skel.maps.rodata_data.tracexec_config.tracee_pidns_inum = pid_ns_ino as u32;
+          let mut skel = open_skel.load()?;
+          skel.attach()?;
+          match waitpid(child, Some(WaitPidFlag::WSTOPPED))? {
+            terminated @ WaitStatus::Exited(_, _) | terminated @ WaitStatus::Signaled(_, _, _) => {
+              panic!("Child exited abnormally before tracing is started: status: {terminated:?}");
+            }
+            WaitStatus::Stopped(_, _) => kill(child, Signal::SIGCONT)?,
+            _ => unreachable!("Invalid wait status!"),
+          }
+          (skel, Some(child))
+        }
+        ForkResult::Child => {
+          let slave_pty = match &self.mode {
+            TracerMode::Tui(tty) => tty.as_ref(),
+            TracerMode::Log | TracerMode::None => None,
+          };
+
+          if let Some(pts) = slave_pty {
+            unsafe {
+              dup2(pts.fd.as_raw_fd(), 0);
+              dup2(pts.fd.as_raw_fd(), 1);
+              dup2(pts.fd.as_raw_fd(), 2);
+            }
+            setsid()?;
+            if unsafe { libc::ioctl(0, libc::TIOCSCTTY as _, 0) } == -1 {
+              Err(io::Error::last_os_error())?;
+            }
+          } else if matches!(self.mode, TracerMode::Tui(_)) {
+            unsafe {
+              let dev_null = std::fs::File::open("/dev/null")?;
+              dup2(dev_null.as_raw_fd(), 0);
+              dup2(dev_null.as_raw_fd(), 1);
+              dup2(dev_null.as_raw_fd(), 2);
+            }
+          } else {
+            let me = getpid();
+            setpgid(me, me)?;
+          }
+
+          // Wait for eBPF program to load
+          raise(Signal::SIGSTOP)?;
+
+          if let Some(user) = &self.user {
+            initgroups(&CString::new(user.name.as_str())?[..], user.gid)?;
+            setresgid(user.gid, user.gid, Gid::from_raw(u32::MAX))?;
+            setresuid(user.uid, user.uid, Uid::from_raw(u32::MAX))?;
+          }
+
+          // Clean up a few things before we exec the program
+          // Clear out any potentially problematic signal
+          // dispositions that we might have inherited
+          for signo in &[
+            libc::SIGCHLD,
+            libc::SIGHUP,
+            libc::SIGINT,
+            libc::SIGQUIT,
+            libc::SIGTERM,
+            libc::SIGALRM,
+          ] {
+            unsafe {
+              libc::signal(*signo, libc::SIG_DFL);
+            }
+          }
+          unsafe {
+            let empty_set: libc::sigset_t = std::mem::zeroed();
+            libc::sigprocmask(libc::SIG_SETMASK, &empty_set, std::ptr::null_mut());
+          }
+
+          pty::close_random_fds();
+
+          return Err(cmd.exec().into());
+        }
+      }
+    } else {
+      let mut skel = open_skel.load()?;
+      skel.attach()?;
+      (skel, None)
+    };
+    Ok((skel, child))
+  }
 }
 
 // TODO: we should start polling the ringbuffer before program load
@@ -378,6 +435,7 @@ pub struct RunningEbpfTracer<'obj> {
   rb: RingBuffer<'obj>,
   should_exit: Arc<AtomicBool>,
   // The eBPF program gets unloaded on skel drop
+  #[allow(unused)]
   skel: TracexecSystemSkel<'obj>,
 }
 
@@ -401,7 +459,7 @@ impl<'rb> RunningEbpfTracer<'rb> {
   }
 }
 
-pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre::Result<()> {
+pub async fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre::Result<()> {
   let mut obj = Box::leak(Box::new(MaybeUninit::uninit()));
   match command {
     EbpfCommand::Log {
@@ -417,7 +475,16 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
         PrinterArgs::from_cli(&log_args, &modifier_args),
         baseline.clone(),
       ));
-      let tracer = EbpfTracer::new(cmd, user, modifier_args, printer, baseline);
+      let tracer = EbpfTracer {
+        cmd,
+        user,
+        modifier: modifier_args,
+        printer,
+        baseline,
+        tx: None,
+        filter: TracerEventDetailsKind::empty(), // FIXME
+        mode: TracerMode::Log,
+      };
       let running_tracer = tracer.spawn(&mut obj, Some(output))?;
       running_tracer.run_until_exit();
       Ok(())
@@ -427,7 +494,78 @@ pub fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre
       modifier_args,
       tracer_event_args,
       tui_args,
-    } => Ok(()),
+    } => {
+      let modifier_args = modifier_args.processed();
+      // Disable owo-colors when running TUI
+      owo_colors::control::set_should_colorize(false);
+      let (baseline, tracer_mode, pty_master) = if tui_args.tty {
+        let pty_system = native_pty_system();
+        let pair = pty_system.openpty(PtySize {
+          rows: 24,
+          cols: 80,
+          pixel_width: 0,
+          pixel_height: 0,
+        })?;
+        (
+          BaselineInfo::with_pts(&pair.slave)?,
+          TracerMode::Tui(Some(pair.slave)),
+          Some(pair.master),
+        )
+      } else {
+        (BaselineInfo::new()?, TracerMode::Tui(None), None)
+      };
+      let baseline = Arc::new(baseline);
+      let frame_rate = tui_args.frame_rate.unwrap_or(60.);
+      let log_args = LogModeArgs {
+        show_cmdline: false, // We handle cmdline in TUI
+        show_argv: true,
+        show_interpreter: true,
+        more_colors: false,
+        less_colors: false,
+        diff_env: true,
+        ..Default::default()
+      };
+      let mut app = App::new(
+        None,
+        &log_args,
+        &modifier_args,
+        tui_args,
+        baseline.clone(),
+        pty_master,
+      )?;
+      let printer = Arc::new(Printer::new(
+        PrinterArgs::from_cli(&log_args, &modifier_args),
+        baseline.clone(),
+      ));
+      let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
+      // let (req_tx, req_rx) = mpsc::unbounded_channel();
+      let tracer = EbpfTracer {
+        cmd,
+        user,
+        modifier: modifier_args,
+        printer,
+        baseline,
+        filter: tracer_event_args.filter()?,
+        tx: Some(tracer_tx),
+        mode: tracer_mode,
+      };
+      let running_tracer = tracer.spawn(obj, None)?;
+      let tracer_thread = spawn_blocking(move || {
+        running_tracer.run_until_exit();
+      });
+      let mut tui = tui::Tui::new()?.frame_rate(frame_rate);
+      tui.enter(tracer_rx)?;
+      app.run(&mut tui).await?;
+      // Now when TUI exits, the tracer thread is still running.
+      // options:
+      // 1. Wait for the tracer thread to exit.
+      // 2. Terminate the root process so that the tracer thread exits.
+      // 3. Kill the root process so that the tracer thread exits.
+      app.exit()?;
+      tui::restore_tui()?;
+      tracer_thread.await?;
+      Ok(())
+    }
     EbpfCommand::Collect {} => todo!(),
   }
 }

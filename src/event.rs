@@ -1,11 +1,9 @@
 use std::{
   borrow::Cow,
   collections::BTreeMap,
-  ffi::OsStr,
   fmt::{Debug, Display},
   hash::Hash,
   io::Write,
-  path::PathBuf,
   sync::{atomic::AtomicU64, Arc},
 };
 
@@ -31,10 +29,8 @@ use tokio::sync::mpsc;
 use crate::{
   action::CopyTarget,
   cli::{self, args::ModifierArgs},
-  printer::{escape_str_for_bash, ListPrinter},
-  proc::{
-    cached_str, cached_string, BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter,
-  },
+  printer::ListPrinter,
+  proc::{cached_string, BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter},
   tracer::{state::ProcessExit, BreakPointHit, InspectError},
   tui::{
     event_line::{EventLine, Mask},
@@ -322,12 +318,18 @@ lazy_static! {
   static ref ID: AtomicU64 = 0.into();
 }
 
+impl TracerEvent {
+  pub fn allocate_id() -> u64 {
+    ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+  }
+}
+
 impl From<TracerEventDetails> for TracerEvent {
   fn from(details: TracerEventDetails) -> Self {
     Self {
       details,
       // TODO: Maybe we can use a weaker ordering here
-      id: ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+      id: Self::allocate_id(),
     }
   }
 }

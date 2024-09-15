@@ -927,7 +927,7 @@ static int read_send_mount_segments(u32 index, struct mount_ctx *ctx) {
   // Break if we reached top mount
   if (parent == mnt) {
     // break
-    debug("should break");
+    // debug("should break");
     return 1;
   }
   // debug("iter mount %p %d", mnt, mnt_id);

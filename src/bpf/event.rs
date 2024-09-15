@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use arcstr::ArcStr;
-
 use crate::{
   event::OutputMsg,
   proc::{cached_string, FileDescriptorInfoCollection},
