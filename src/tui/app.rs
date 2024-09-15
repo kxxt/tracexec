@@ -105,7 +105,7 @@ impl App {
     tracing_args: &LogModeArgs,
     modifier_args: &ModifierArgs,
     tui_args: TuiModeArgs,
-    baseline: BaselineInfo,
+    baseline: Arc<BaselineInfo>,
     pty_master: Option<UnixMasterPty>,
   ) -> color_eyre::Result<Self> {
     let active_pane = if pty_master.is_some() {
@@ -407,10 +407,14 @@ impl App {
                       )))?;
                     }
                   }
-                  KeyCode::Char('b') if ke.modifiers == KeyModifiers::NONE => {
+                  KeyCode::Char('b')
+                    if ke.modifiers == KeyModifiers::NONE && self.tracer.is_some() =>
+                  {
                     action_tx.send(Action::ShowBreakpointManager)?;
                   }
-                  KeyCode::Char('z') if ke.modifiers == KeyModifiers::NONE => {
+                  KeyCode::Char('z')
+                    if ke.modifiers == KeyModifiers::NONE && self.tracer.is_some() =>
+                  {
                     action_tx.send(Action::ShowHitManager)?;
                   }
                   _ => {}
@@ -425,6 +429,8 @@ impl App {
             match msg {
               TracerMessage::Event(e) => {
                 if let TracerEventDetails::TraceeSpawn(pid) = &e.details {
+                  // FIXME: we should not rely on TracerMessage, which might be filtered.
+                  debug!("Received tracee spawn event: {pid}");
                   self.root_pid = Some(*pid);
                 }
                 debug_assert_eq!(e.id, self.event_list.len() as u64);
@@ -736,7 +742,7 @@ impl App {
                 self
                   .tracer
                   .as_ref()
-                  .expect("BreakPointManager doesn't work without tracer!")
+                  .expect("BreakPointManager doesn't work without PTracer!")
                   .clone(),
               ));
             }
@@ -970,10 +976,10 @@ impl App {
         ),
         help_item!("V", "View"),
         help_item!("Ctrl+F", "Search"),
-        help_item!("B", "Breakpoints"),
       ));
       if let Some(h) = self.hit_manager_state.as_ref() {
         if h.count() > 0 {
+          items.extend(help_item!("B", "Breakpoints"));
           items.extend([
             help_key("Z"),
             fancy_help_desc(format!("Hits({})", h.count())),

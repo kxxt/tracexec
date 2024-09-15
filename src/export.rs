@@ -1,5 +1,5 @@
 //! Data structures for export command
-use std::{error::Error, path::PathBuf, sync::Arc};
+use std::{error::Error, sync::Arc};
 
 use arcstr::ArcStr;
 use nix::libc::pid_t;

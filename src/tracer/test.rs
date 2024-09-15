@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
 use rstest::{fixture, rstest};
 use serial_test::file_serial;
@@ -117,7 +117,9 @@ async fn tracer_decodes_proc_self_exe(
           OutputMsg::Ok("--help".into())
         ]
       );
-      let OutputMsg::Ok(filename) = exec.filename else { panic!("Failed to inspect filename") };
+      let OutputMsg::Ok(filename) = exec.filename else {
+        panic!("Failed to inspect filename")
+      };
       if !resolve_proc_self_exe {
         assert_eq!(filename, "/proc/self/exe");
       } else {

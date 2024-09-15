@@ -91,7 +91,7 @@ pub struct EventList {
 }
 
 impl EventList {
-  pub fn new(baseline: BaselineInfo, follow: bool, modifier_args: ModifierArgs) -> Self {
+  pub fn new(baseline: Arc<BaselineInfo>, follow: bool, modifier_args: ModifierArgs) -> Self {
     Self {
       state: ListState::default(),
       events: vec![],
@@ -102,7 +102,7 @@ impl EventList {
       inner_width: 0,
       max_width: 0,
       max_window_len: 0,
-      baseline: Arc::new(baseline),
+      baseline,
       follow,
       should_refresh_list_cache: true,
       list_cache: List::default(),
