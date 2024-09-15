@@ -305,8 +305,8 @@ impl EbpfTracer {
               flags: OFlag::from_bits_retain(event.flags as c_int),
               mnt_id: event.mnt_id,
               ino: event.ino,
-              mnt: arcstr::literal!("[tracexec: unknown]"), // TODO
-              extra: vec![arcstr::literal!("")],            // TODO
+              mnt: cached_cow(fs),
+              extra: vec![],
             };
             let fdc = &mut storage.fdinfo_map;
             fdc.fdinfo.insert(event.fd as RawFd, fdinfo);
