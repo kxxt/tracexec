@@ -42,7 +42,7 @@ use nix::{
 };
 use skel::{
   types::{
-    event_type, exec_event, exit_event, fd_event, path_event, path_segment_event,
+    event_type, exec_event, exit_event, fd_event, fork_event, path_event, path_segment_event,
     tracexec_event_header,
   },
   TracexecSystemSkel,
@@ -327,9 +327,16 @@ impl EbpfTracer {
             if unsafe { event.is_root_tracee.assume_init() } {
               should_exit.store(true, Ordering::Relaxed);
             }
-            warn!("{} exited with code {}, signal {}", header.pid, event.code, event.sig);
+            warn!(
+              "{} exited with code {}, signal {}",
+              header.pid, event.code, event.sig
+            );
           }
-          event_type::FORK_EVENT => {}
+          event_type::FORK_EVENT => {
+            assert_eq!(data.len(), size_of::<fork_event>());
+            let event: &fork_event = unsafe { &*(data.as_ptr() as *const _) };
+            warn!("{} forked {}", event.parent_tgid, header.pid);
+          }
         }
         0
       }

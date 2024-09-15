@@ -318,12 +318,19 @@ int trace_fork(u64 *ctx) {
     return 0;
   struct task_struct *parent = (struct task_struct *)ctx[0];
   struct task_struct *child = (struct task_struct *)ctx[1];
-  pid_t pid, parent_tgid;
+  pid_t pid, tgid, parent_tgid;
   int ret = bpf_core_read(&pid, sizeof(pid), &child->pid);
   if (ret < 0) {
     debug("Failed to read child pid of fork: %d", ret);
     return -EFAULT;
   }
+  ret = bpf_core_read(&tgid, sizeof(tgid), &child->tgid);
+  if (ret < 0) {
+    debug("Failed to read child tgid of fork: %d", ret);
+    return -EFAULT;
+  }
+  if (pid != tgid)
+    return 0;
   ret = bpf_core_read(&parent_tgid, sizeof(parent_tgid), &parent->tgid);
   if (ret < 0) {
     debug("Failed to read parent tgid of fork: %d", ret);
@@ -331,6 +338,26 @@ int trace_fork(u64 *ctx) {
   }
   if (should_trace(parent_tgid)) {
     add_tgid_to_closure(pid);
+    u32 entry_index = bpf_get_smp_processor_id();
+    if (entry_index > tracexec_config.max_num_cpus) {
+      debug("Too many cores!");
+      return 1;
+    }
+    struct fork_event *entry = bpf_map_lookup_elem(&cache, &entry_index);
+    if (entry == NULL) {
+      debug("This should not happen!");
+      return 1;
+    }
+    entry->header.type = FORK_EVENT;
+    entry->header.flags = 0;
+    entry->header.pid = pid;
+    entry->parent_tgid = parent_tgid;
+    ret = bpf_ringbuf_output(&events, entry, sizeof(*entry), BPF_RB_FORCE_WAKEUP);
+    if (ret < 0) {
+      // TODO: find a better way to ensure userspace receives fork event
+      debug("Failed to send fork event!");
+      return 0;
+    }
   }
   return 0;
 }
