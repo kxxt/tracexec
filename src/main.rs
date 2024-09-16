@@ -105,7 +105,9 @@ async fn main() -> color_eyre::Result<()> {
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
       let (req_tx, req_rx) = mpsc::unbounded_channel();
       let tracer = Arc::new(tracer::Tracer::new(
-        TracerMode::Log,
+        TracerMode::Log {
+          foreground: tracing_args.foreground(),
+        },
         tracing_args,
         modifier_args,
         ptrace_args,
@@ -242,7 +244,9 @@ async fn main() -> color_eyre::Result<()> {
       let (req_tx, req_rx) = mpsc::unbounded_channel();
       let baseline = BaselineInfo::new()?;
       let tracer = Arc::new(tracer::Tracer::new(
-        TracerMode::None,
+        TracerMode::Log {
+          foreground: tracing_args.foreground(),
+        },
         tracing_args.clone(),
         modifier_args.clone(),
         ptrace_args,

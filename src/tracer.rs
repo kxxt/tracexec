@@ -78,8 +78,6 @@ cfg_if! {
 
 pub struct Tracer {
   with_tty: bool,
-  /// Sets the terminal foreground process group to the tracee
-  foreground: bool,
   mode: TracerMode,
   pub store: RwLock<ProcessStateStore>,
   printer: Printer,
@@ -97,8 +95,7 @@ pub struct Tracer {
 
 pub enum TracerMode {
   Tui(Option<UnixSlavePty>),
-  Log,
-  None,
+  Log { foreground: bool },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -124,7 +121,7 @@ impl PartialEq for TracerMode {
     // I think a plain match is more readable here
     #[allow(clippy::match_like_matches_macro)]
     match (self, other) {
-      (Self::Log, Self::Log) => true,
+      (Self::Log { foreground: a }, Self::Log { foreground: b }) => a == b,
       _ => false,
     }
   }
@@ -162,8 +159,7 @@ impl Tracer {
     Ok(Self {
       with_tty: match &mode {
         TracerMode::Tui(tty) => tty.is_some(),
-        TracerMode::Log => true,
-        TracerMode::None => true,
+        TracerMode::Log { .. } => true,
       },
       store: RwLock::new(ProcessStateStore::new()),
       #[cfg(feature = "seccomp-bpf")]
@@ -173,7 +169,7 @@ impl Tracer {
       filter: {
         let mut filter = tracer_event_args.filter()?;
         trace!("Event filter: {:?}", filter);
-        if mode == TracerMode::Log {
+        if let TracerMode::Log { .. } = mode {
           // FIXME: In logging mode, we rely on root child exit event to exit the process
           //        with the same exit code as the root child. It is not printed in logging mode.
           //        Ideally we should use another channel to send the exit code to the main thread.
@@ -199,7 +195,6 @@ impl Tracer {
       modifier_args,
       baseline,
       mode,
-      foreground: tracing_args.foreground(),
       breakpoints: RwLock::new(BTreeMap::new()),
       req_tx,
     })
@@ -245,7 +240,7 @@ impl Tracer {
     let seccomp_bpf = self.seccomp_bpf;
     let slave_pty = match &self.mode {
       TracerMode::Tui(tty) => tty.as_ref(),
-      TracerMode::Log | TracerMode::None => None,
+      TracerMode::Log { .. } => None,
     };
     let with_tty = self.with_tty;
     let use_pseudo_term = slave_pty.is_some();
@@ -338,15 +333,13 @@ impl Tracer {
       self.store.write().unwrap().insert(root_child_state);
     }
     // Set foreground process group of the terminal
-    if let TracerMode::Log | TracerMode::None = &self.mode {
-      if self.foreground {
-        match tcsetpgrp(stdin(), root_child) {
-          Ok(_) => {}
-          Err(Errno::ENOTTY) => {
-            warn!("tcsetpgrp failed: ENOTTY");
-          }
-          r => r?,
+    if let TracerMode::Log { foreground: true } = &self.mode {
+      match tcsetpgrp(stdin(), root_child) {
+        Ok(_) => {}
+        Err(Errno::ENOTTY) => {
+          warn!("tcsetpgrp failed: ENOTTY");
         }
+        r => r?,
       }
     }
     let mut ptrace_opts = {
