@@ -288,6 +288,18 @@ pub struct LogModeArgs {
 }
 
 impl LogModeArgs {
+  pub fn foreground(&self) -> bool {
+    match (self.foreground, self.no_foreground) {
+      (true, false) => true,
+      (false, true) => false,
+      // Disable foreground mode in test by default
+      #[cfg(not(test))]
+      _ => true,
+      #[cfg(test)]
+      _ => false,
+    }
+  }
+
   pub fn merge_config(&mut self, config: LogModeConfig) {
     /// fallback to config value if both --x and --no-x are not set
     macro_rules! fallback {
