@@ -52,7 +52,7 @@ use tokio::{
   sync::mpsc::{self, UnboundedSender},
   task::spawn_blocking,
 };
-use tracing::warn;
+use tracing::{debug, warn};
 
 use crate::{
   cache::StringCache,
@@ -153,7 +153,7 @@ impl EbpfTracer {
             if header.eid > eid {
               // There are some lost events
               // In some cases the events are not really lost but sent out of order because of parallism
-              tracing::warn!(
+              warn!(
                 "inconsistent event id counter: local = {eid}, kernel = {}. Possible event loss!",
                 header.eid
               );
@@ -164,7 +164,7 @@ impl EbpfTracer {
               // This should only happen for lost events
               if lost_events.borrow_mut().remove(&header.eid) {
                 // do nothing
-                tracing::warn!("event {} is received out of order", header.eid);
+                warn!("event {} is received out of order", header.eid);
               } else {
                 panic!(
                   "inconsistent event id counter: local = {}, kernel = {}.",
@@ -345,7 +345,7 @@ impl EbpfTracer {
             if unsafe { event.is_root_tracee.assume_init() } {
               should_exit.store(true, Ordering::Relaxed);
             }
-            warn!(
+            debug!(
               "{} exited with code {}, signal {}",
               header.pid, event.code, event.sig
             );
@@ -386,7 +386,7 @@ impl EbpfTracer {
             let event: &fork_event = unsafe { &*(data.as_ptr() as *const _) };
             // FORK_EVENT is only sent if follow_forks
             tracker.add(Pid::from_raw(header.pid));
-            warn!("{} forked {}", event.parent_tgid, header.pid);
+            debug!("{} forked {}", event.parent_tgid, header.pid);
           }
         }
         0
