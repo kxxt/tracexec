@@ -537,15 +537,7 @@ impl StatefulWidgetRef for DetailsPopup {
         .unwrap_or(u16::MAX),
     };
     let mut scrollview = ScrollView::new(size);
-    scrollview.render_widget(
-      paragraph,
-      Rect {
-        x: 0,
-        y: 0,
-        width: size.width,
-        height: size.height,
-      },
-    );
+    scrollview.render_widget(paragraph, Rect::new(0, 0, size.width, size.height));
     scrollview.render(inner, buf, &mut state.scroll);
   }
 
