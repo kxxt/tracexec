@@ -10,6 +10,7 @@ use std::{
     fd::{AsRawFd, RawFd},
     unix::{fs::MetadataExt, process::CommandExt},
   },
+  process,
   sync::{
     atomic::{AtomicBool, Ordering},
     Arc, OnceLock, RwLock,
@@ -58,7 +59,7 @@ use crate::{
   cache::StringCache,
   cli::{
     args::{LogModeArgs, ModifierArgs},
-    options::Color,
+    options::{Color, ExportFormat},
     Cli, EbpfCommand,
   },
   cmdbuilder::CommandBuilder,
@@ -67,9 +68,11 @@ use crate::{
     ProcessStateUpdate, ProcessStateUpdateEvent, TracerEvent, TracerEventDetails,
     TracerEventDetailsKind, TracerMessage,
   },
+  export::{self, JsonExecEvent, JsonMetaData},
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{cached_string, diff_env, parse_failiable_envp, BaselineInfo, FileDescriptorInfo},
   pty::{self, native_pty_system, PtySize, PtySystem},
+  serialize_json_to_output,
   tracer::{
     state::{ExecData, ProcessExit},
     TracerMode,
@@ -681,7 +684,122 @@ pub async fn run(command: EbpfCommand, user: Option<User>, color: Color) -> colo
       tracer_thread.await?;
       Ok(())
     }
-    EbpfCommand::Collect {} => todo!(),
+    EbpfCommand::Collect {
+      cmd,
+      modifier_args,
+      format,
+      pretty,
+      output,
+      foreground,
+      no_foreground,
+    } => {
+      let modifier_args = modifier_args.processed();
+      let baseline = Arc::new(BaselineInfo::new()?);
+      let mut output = Cli::get_output(output, color)?;
+      let log_args = LogModeArgs {
+        show_cmdline: false,
+        show_argv: true,
+        show_interpreter: true,
+        more_colors: false,
+        less_colors: false,
+        diff_env: false,
+        foreground,
+        no_foreground,
+        ..Default::default()
+      };
+      let printer = Arc::new(Printer::new(
+        PrinterArgs::from_cli(&log_args, &modifier_args),
+        baseline.clone(),
+      ));
+      let (tx, mut rx) = mpsc::unbounded_channel();
+      let tracer = EbpfTracer {
+        cmd,
+        user,
+        modifier: modifier_args,
+        printer,
+        baseline: baseline.clone(),
+        tx: Some(tx),
+        filter: TracerEventDetailsKind::all(),
+        mode: TracerMode::Log {
+          foreground: log_args.foreground(),
+        },
+      };
+      let running_tracer = tracer.spawn(obj, None)?;
+      let tracer_thread = spawn_blocking(move || {
+        running_tracer.run_until_exit();
+      });
+      match format {
+        ExportFormat::Json => {
+          let mut json = export::Json {
+            meta: JsonMetaData::new(baseline.as_ref().to_owned()),
+            events: Vec::new(),
+          };
+          loop {
+            match rx.recv().await {
+              Some(TracerMessage::Event(TracerEvent {
+                details: TracerEventDetails::TraceeExit { exit_code, .. },
+                ..
+              })) => {
+                tracing::debug!("Waiting for tracer thread to exit");
+                tracer_thread.await?;
+                serialize_json_to_output(&mut output, &json, pretty)?;
+                output.write_all(&[b'\n'])?;
+                output.flush()?;
+                process::exit(exit_code);
+              }
+              Some(TracerMessage::Event(TracerEvent {
+                details: TracerEventDetails::Exec(exec),
+                id,
+              })) => {
+                json.events.push(JsonExecEvent::new(id, *exec));
+              }
+              // channel closed abnormally.
+              None | Some(TracerMessage::FatalError(_)) => {
+                tracing::debug!("Waiting for tracer thread to exit");
+                tracer_thread.await?;
+                process::exit(1);
+              }
+              _ => (),
+            }
+          }
+        }
+        ExportFormat::JsonStream => {
+          serialize_json_to_output(
+            &mut output,
+            &JsonMetaData::new(baseline.as_ref().to_owned()),
+            pretty,
+          )?;
+          loop {
+            match rx.recv().await {
+              Some(TracerMessage::Event(TracerEvent {
+                details: TracerEventDetails::TraceeExit { exit_code, .. },
+                ..
+              })) => {
+                tracing::debug!("Waiting for tracer thread to exit");
+                tracer_thread.await?;
+                process::exit(exit_code);
+              }
+              Some(TracerMessage::Event(TracerEvent {
+                details: TracerEventDetails::Exec(exec),
+                id,
+              })) => {
+                let json_event = JsonExecEvent::new(id, *exec);
+                serialize_json_to_output(&mut output, &json_event, pretty)?;
+                output.write_all(&[b'\n'])?;
+                output.flush()?;
+              }
+              // channel closed abnormally.
+              None | Some(TracerMessage::FatalError(_)) => {
+                tracing::debug!("Waiting for tracer thread to exit");
+                tracer_thread.await?;
+                process::exit(1);
+              }
+              _ => (),
+            }
+          }
+        }
+      }
+    }
   }
 }
 
