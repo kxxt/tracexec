@@ -199,15 +199,7 @@ impl Tracer {
       modifier_args,
       baseline,
       mode,
-      foreground: match (tracing_args.foreground, tracing_args.no_foreground) {
-        (true, false) => true,
-        (false, true) => false,
-        // Disable foreground mode in test by default
-        #[cfg(not(test))]
-        _ => true,
-        #[cfg(test)]
-        _ => false,
-      },
+      foreground: tracing_args.foreground(),
       breakpoints: RwLock::new(BTreeMap::new()),
       req_tx,
     })
