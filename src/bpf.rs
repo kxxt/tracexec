@@ -296,6 +296,10 @@ impl EbpfTracer {
             let path = match fs.as_ref() {
               "pipefs" => OutputMsg::Ok(cached_string(format!("pipe:[{}]", event.ino))),
               "sockfs" => OutputMsg::Ok(cached_string(format!("socket:[{}]", event.ino))),
+              "anon_inodefs" => OutputMsg::Ok(cached_string(format!(
+                "anon_inode:{}",
+                storage.paths.get(&event.path_id).unwrap().segments[0].as_ref()
+              ))),
               _ => storage.paths.get(&event.path_id).unwrap().to_owned().into(),
             };
             let fdinfo = FileDescriptorInfo {
