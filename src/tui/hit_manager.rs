@@ -18,7 +18,7 @@ use ratatui::{
 };
 use tracing::{debug, trace};
 use tui_prompts::{State, TextPrompt, TextState};
-use tui_widget_list::PreRender;
+use tui_widget_list::{ListBuilder, ListView};
 
 use crate::{
   action::Action,
@@ -36,12 +36,11 @@ struct BreakPointHitEntry {
   bid: u32,
   pid: Pid,
   stop: BreakPointStop,
-  selected: bool,
   breakpoint_pattern: Option<String>,
 }
 
 impl BreakPointHitEntry {
-  fn paragraph(&self) -> Paragraph {
+  fn paragraph(&self, selected: bool) -> Paragraph<'static> {
     let space = Span::from(" ");
     let line = Line::default()
       .spans(vec![
@@ -68,7 +67,7 @@ impl BreakPointHitEntry {
           THEME.hit_entry_breakpoint_stop,
         ),
       ])
-      .style(if self.selected {
+      .style(if selected {
         Style::default().add_modifier(Modifier::REVERSED)
       } else {
         Style::default()
@@ -82,23 +81,6 @@ impl BreakPointHitEntry {
       pid: self.pid,
       stop: self.stop,
     }
-  }
-}
-
-impl Widget for BreakPointHitEntry {
-  fn render(self, area: Rect, buf: &mut Buffer) {
-    self.paragraph().render(area, buf);
-  }
-}
-
-impl PreRender for BreakPointHitEntry {
-  fn pre_render(&mut self, context: &tui_widget_list::PreRenderContext) -> u16 {
-    self.selected = context.is_selected;
-    self
-      .paragraph()
-      .line_count(context.cross_axis_size)
-      .try_into()
-      .unwrap_or(u16::MAX)
   }
 }
 
@@ -319,7 +301,6 @@ impl HitManagerState {
         bid,
         pid,
         stop,
-        selected: false,
         breakpoint_pattern: self.tracer.get_breakpoint_pattern_string(bid),
       },
     );
@@ -476,7 +457,17 @@ impl StatefulWidget for HitManager {
       .title(" Hit Manager ")
       .borders(Borders::ALL)
       .title_alignment(Alignment::Center);
-    let list = tui_widget_list::List::new(state.hits.values().cloned().collect_vec());
+    let items = state.hits.values().cloned().collect_vec();
+    let builder = ListBuilder::new(move |ctx| {
+      let item = &items[ctx.index];
+      let paragraph = item.paragraph(ctx.is_selected);
+      let line_count = paragraph
+        .line_count(ctx.cross_axis_size)
+        .try_into()
+        .unwrap_or(u16::MAX);
+      (paragraph, line_count)
+    });
+    let list = ListView::new(builder, state.hits.len());
 
     if !state.hits.is_empty() && state.list_state.selected.is_none() {
       state.list_state.select(Some(0));

@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use itertools::chain;
+use itertools::{chain, Itertools};
 use ratatui::{
   layout::{Alignment, Constraint, Layout},
   prelude::{Buffer, Rect},
@@ -10,7 +10,7 @@ use ratatui::{
   widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, StatefulWidgetRef, Widget, Wrap},
 };
 use tui_prompts::{State, TextPrompt, TextState};
-use tui_widget_list::PreRender;
+use tui_widget_list::{ListBuilder, ListView};
 
 use crate::{
   action::{Action, ActivePopup},
@@ -29,11 +29,10 @@ use super::{
 struct BreakPointEntry {
   id: u32,
   breakpoint: BreakPoint,
-  selected: bool,
 }
 
 impl BreakPointEntry {
-  fn paragraph(&self) -> Paragraph {
+  fn paragraph(&self, selected: bool) -> Paragraph<'static> {
     let space = Span::raw(" ");
     let pattern_ty = Span::styled(
       match self.breakpoint.pattern {
@@ -43,7 +42,10 @@ impl BreakPointEntry {
       },
       THEME.breakpoint_pattern_type_label,
     );
-    let pattern = Span::styled(self.breakpoint.pattern.pattern(), THEME.breakpoint_pattern);
+    let pattern = Span::styled(
+      self.breakpoint.pattern.pattern().to_owned(),
+      THEME.breakpoint_pattern,
+    );
     let line2 = Line::default().spans(vec![
       Span::styled(
         "\u{00a0}Condition\u{00a0}\u{200b}",
@@ -56,7 +58,7 @@ impl BreakPointEntry {
     let line1 = Line::default().spans(vec![
       Span::styled(
         format!("\u{00a0}Breakpoint\u{00a0}#{}\u{00a0}\u{200b}", self.id),
-        if self.selected {
+        if selected {
           THEME.breakpoint_title_selected
         } else {
           THEME.breakpoint_title
@@ -88,23 +90,6 @@ impl BreakPointEntry {
       },
     ]);
     Paragraph::new(vec![line1, line2]).wrap(Wrap { trim: false })
-  }
-}
-
-impl Widget for BreakPointEntry {
-  fn render(self, area: Rect, buf: &mut Buffer) {
-    self.paragraph().render(area, buf);
-  }
-}
-
-impl PreRender for BreakPointEntry {
-  fn pre_render(&mut self, context: &tui_widget_list::PreRenderContext) -> u16 {
-    self.selected = context.is_selected;
-    self
-      .paragraph()
-      .line_count(context.cross_axis_size)
-      .try_into()
-      .unwrap_or(u16::MAX)
   }
 }
 
@@ -194,7 +179,7 @@ impl BreakPointManagerState {
     let breakpoints = tracer.get_breakpoints();
     Self {
       breakpoints,
-      list_state: tui_widget_list::ListState::default().circular(true),
+      list_state: tui_widget_list::ListState::default(),
       tracer,
       editor: None,
       stop: BreakPointStop::SyscallExit,
@@ -403,17 +388,24 @@ impl StatefulWidgetRef for BreakPointManager {
       .title_alignment(Alignment::Center);
     let inner = block.inner(area);
     block.render(area, buf);
-    let list = tui_widget_list::List::new(
-      state
-        .breakpoints
-        .iter()
-        .map(|(id, breakpoint)| BreakPointEntry {
-          id: *id,
-          breakpoint: breakpoint.clone(),
-          selected: false,
-        })
-        .collect(),
-    );
+    let items = state
+      .breakpoints
+      .iter()
+      .map(|(id, breakpoint)| BreakPointEntry {
+        id: *id,
+        breakpoint: breakpoint.clone(),
+      })
+      .collect_vec();
+    let builder = ListBuilder::new(move |ctx| {
+      let item = &items[ctx.index];
+      let paragraph = item.paragraph(ctx.is_selected);
+      let line_count = paragraph
+        .line_count(ctx.cross_axis_size)
+        .try_into()
+        .unwrap_or(u16::MAX);
+      (paragraph, line_count)
+    });
+    let list = ListView::new(builder, state.breakpoints.len());
     if !state.breakpoints.is_empty() && state.list_state.selected.is_none() {
       state.list_state.select(Some(0));
     }
