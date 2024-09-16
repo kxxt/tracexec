@@ -26,7 +26,7 @@ use itertools::chain;
 use nix::{errno::Errno, sys::signal::Signal, unistd::Pid};
 use ratatui::{
   buffer::Buffer,
-  layout::{Constraint, Layout, Rect},
+  layout::{Constraint, Layout, Position, Rect},
   style::Stylize,
   text::Line,
   widgets::{Block, Paragraph, StatefulWidget, StatefulWidgetRef, Widget, Wrap},
@@ -555,7 +555,7 @@ impl App {
           }
           Event::Init => {
             // Fix the size of the terminal
-            action_tx.send(Action::Resize(tui.size()?.into()))?;
+            action_tx.send(Action::Resize(tui.size()?))?;
             // action_tx.send(Action::Render)?;
           }
           Event::Error => {}
@@ -573,24 +573,24 @@ impl App {
           }
           Action::Render => {
             tui.draw(|f| {
-              self.render(f.size(), f.buffer_mut());
+              self.render(f.area(), f.buffer_mut());
               self
                 .query_builder
                 .as_ref()
                 .filter(|q| q.editing())
                 .inspect(|q| {
                   let (x, y) = q.cursor();
-                  f.set_cursor(x, y);
+                  f.set_cursor_position(Position::new(x, y));
                 });
               if let Some((x, y)) = self
                 .breakpoint_manager
                 .as_ref()
                 .and_then(|mgr| mgr.cursor())
               {
-                f.set_cursor(x, y);
+                f.set_cursor_position(Position::new(x, y));
               }
               if let Some((x, y)) = self.hit_manager_state.as_ref().and_then(|x| x.cursor()) {
-                f.set_cursor(x, y);
+                f.set_cursor_position(Position::new(x, y));
               }
             })?;
           }
