@@ -526,7 +526,11 @@ impl StatefulWidgetRef for DetailsPopup {
     };
 
     let size = Size {
-      width: area.width - 1,
+      width: paragraph
+        .line_width()
+        .try_into()
+        .unwrap_or(u16::MAX)
+        .min(area.width - 1),
       height: paragraph
         .line_count(area.width - 1)
         .try_into()
