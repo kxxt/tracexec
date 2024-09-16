@@ -63,9 +63,9 @@ use crate::{
   },
   cmdbuilder::CommandBuilder,
   event::{
-    filterable_event, ExecEvent, FriendlyError, OutputMsg, ProcessStateUpdate,
-    ProcessStateUpdateEvent, TracerEvent, TracerEventDetails, TracerEventDetailsKind,
-    TracerMessage,
+    filterable_event, ExecEvent, FilterableTracerEventDetails, FriendlyError, OutputMsg,
+    ProcessStateUpdate, ProcessStateUpdateEvent, TracerEvent, TracerEventDetails,
+    TracerEventDetailsKind, TracerMessage,
   },
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{cached_string, diff_env, parse_failiable_envp, BaselineInfo, FileDescriptorInfo},
@@ -344,9 +344,6 @@ impl EbpfTracer {
           event_type::EXIT_EVENT => {
             assert_eq!(data.len(), size_of::<exit_event>());
             let event: &exit_event = unsafe { &*(data.as_ptr() as *const _) };
-            if unsafe { event.is_root_tracee.assume_init() } {
-              should_exit.store(true, Ordering::Relaxed);
-            }
             debug!(
               "{} exited with code {}, signal {}",
               header.pid, event.code, event.sig
@@ -376,6 +373,30 @@ impl EbpfTracer {
                   .transpose()
                   .unwrap();
               }
+            }
+            if unsafe { event.is_root_tracee.assume_init() } {
+              self
+                .tx
+                .as_ref()
+                .map(|tx| {
+                  FilterableTracerEventDetails::from(match (event.sig, event.code) {
+                    (0, exit_code) => TracerEventDetails::TraceeExit {
+                      signal: None,
+                      exit_code,
+                    },
+                    (sig, _) => {
+                      // 0x80 bit indicates coredump
+                      TracerEventDetails::TraceeExit {
+                        signal: Some(Signal::try_from(sig as i32 & 0x7f).unwrap()),
+                        exit_code: 128 + (sig as i32 & 0x7f),
+                      }
+                    }
+                  })
+                  .send_if_match(tx, self.filter)
+                })
+                .transpose()
+                .unwrap();
+              should_exit.store(true, Ordering::Relaxed);
             }
             if follow_forks {
               tracker.remove(pid);
