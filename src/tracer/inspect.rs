@@ -89,6 +89,7 @@ pub fn read_string_array(pid: Pid, address: AddressType) -> Result<Vec<String>, 
   read_null_ended_array(pid, address, read_string)
 }
 
+#[allow(unused)]
 pub fn read_arcstr_array(pid: Pid, address: AddressType) -> Result<Vec<ArcStr>, InspectError> {
   read_null_ended_array(pid, address, |pid, address| {
     read_string(pid, address).map(cached_string)

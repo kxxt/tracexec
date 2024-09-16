@@ -120,6 +120,7 @@ pub struct EbpfTracer {
 }
 
 impl EbpfTracer {
+  #[allow(clippy::needless_lifetimes)]
   pub fn spawn<'obj>(
     self,
     obj: &'obj mut MaybeUninit<OpenObject>,
@@ -150,6 +151,7 @@ impl EbpfTracer {
         match unsafe { header.r#type.assume_init() } {
           event_type::SYSENTER_EVENT => unreachable!(),
           event_type::SYSEXIT_EVENT => {
+            #[allow(clippy::comparison_chain)]
             if header.eid > eid {
               // There are some lost events
               // In some cases the events are not really lost but sent out of order because of parallism
@@ -550,7 +552,7 @@ impl<'rb> RunningEbpfTracer<'rb> {
 }
 
 pub async fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre::Result<()> {
-  let mut obj = Box::leak(Box::new(MaybeUninit::uninit()));
+  let obj = Box::leak(Box::new(MaybeUninit::uninit()));
   match command {
     EbpfCommand::Log {
       cmd,
@@ -577,7 +579,7 @@ pub async fn run(command: EbpfCommand, user: Option<User>, color: Color) -> colo
           foreground: log_args.foreground(),
         },
       };
-      let running_tracer = tracer.spawn(&mut obj, Some(output))?;
+      let running_tracer = tracer.spawn(obj, Some(output))?;
       running_tracer.run_until_exit();
       Ok(())
     }

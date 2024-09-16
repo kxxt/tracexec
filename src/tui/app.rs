@@ -1018,11 +1018,11 @@ impl App {
 }
 
 trait OptionalAccessMut<T> {
-  fn access_some_mut(self: &mut Self, f: impl FnOnce(&mut T) -> ());
+  fn access_some_mut(&mut self, f: impl FnOnce(&mut T));
 }
 
 impl<T> OptionalAccessMut<T> for Option<T> {
-  fn access_some_mut(self: &mut Self, f: impl FnOnce(&mut T) -> ()) {
+  fn access_some_mut(&mut self, f: impl FnOnce(&mut T)) {
     if let Some(v) = self.as_mut() {
       f(v)
     }

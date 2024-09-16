@@ -4,6 +4,7 @@ use enumflags2::bitflags;
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[allow(non_camel_case_types)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum BpfEventFlags {
   // This flag is set if any other error occurs
   ERROR = 1,

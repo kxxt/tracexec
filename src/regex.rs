@@ -1,6 +1,4 @@
 /// Regex and regex-cursor related code
-use arcstr::ArcStr;
-
 use regex_cursor::Cursor;
 
 use crate::event::OutputMsg;
@@ -382,6 +380,7 @@ where
 #[cfg(test)]
 mod cursor_tests {
   use super::*;
+  use arcstr::ArcStr;
 
   pub const SPACE: ArcStr = arcstr::literal!(" ");
 

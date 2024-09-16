@@ -156,7 +156,10 @@ pub enum EbpfCommand {
   },
   #[clap(about = "Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default")]
   Tui {
-    #[arg(last = true, help = "command to be executed. Leave it empty to trace all exec on system")]
+    #[arg(
+      last = true,
+      help = "command to be executed. Leave it empty to trace all exec on system"
+    )]
     cmd: Vec<String>,
     #[clap(flatten)]
     modifier_args: ModifierArgs,

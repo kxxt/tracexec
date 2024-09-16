@@ -51,7 +51,13 @@ pub enum FriendlyError {
 
 impl PartialOrd for FriendlyError {
   fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-    Some(match (self, other) {
+    Some(Ord::cmp(self, other))
+  }
+}
+
+impl Ord for FriendlyError {
+  fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    match (self, other) {
       (Self::InspectError(a), Self::InspectError(b)) => (*a as i32).cmp(&(*b as i32)),
       #[cfg(feature = "ebpf")]
       (Self::Bpf(a), Self::Bpf(b)) => a.cmp(b),
@@ -59,14 +65,7 @@ impl PartialOrd for FriendlyError {
       (Self::InspectError(_), Self::Bpf(_)) => std::cmp::Ordering::Less,
       #[cfg(feature = "ebpf")]
       (Self::Bpf(_), Self::InspectError(_)) => std::cmp::Ordering::Greater,
-    })
-  }
-}
-
-impl Ord for FriendlyError {
-  fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-    // SAFETY: partial_cmp always returns Some
-    self.partial_cmp(other).unwrap()
+    }
   }
 }
 
@@ -159,7 +158,7 @@ impl OutputMsg {
 
   pub fn is_ok_and(&self, predicate: impl FnOnce(&str) -> bool) -> bool {
     match self {
-      OutputMsg::Ok(s) => predicate(&s),
+      OutputMsg::Ok(s) => predicate(s),
       OutputMsg::PartialOk(_) => false,
       OutputMsg::Err(_) => false,
     }
@@ -167,7 +166,7 @@ impl OutputMsg {
 
   pub fn is_err_or(&self, predicate: impl FnOnce(&str) -> bool) -> bool {
     match self {
-      OutputMsg::Ok(s) => predicate(&s),
+      OutputMsg::Ok(s) => predicate(s),
       OutputMsg::PartialOk(_) => true,
       OutputMsg::Err(_) => true,
     }
