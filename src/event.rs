@@ -517,10 +517,11 @@ impl TracerEventDetails {
         });
         // Handle cwd
         if cwd != &baseline.cwd && rt_modifier_effective.show_cwd {
-          cwd_range = Some(spans.len()..(spans.len() + 2));
+          let range_start = spans.len();
           spans.push(space.clone());
           spans.push("-C ".set_style(THEME.cwd));
           spans.push(cwd.tui_bash_escaped_with_style(THEME.cwd));
+          cwd_range = Some(range_start..(spans.len()))
         }
         if rt_modifier_effective.show_env {
           env_range = Some((spans.len(), 0));
