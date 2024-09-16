@@ -425,7 +425,7 @@ impl EbpfTracer {
             .as_ref()
             .map(|tx| filterable_event!(TraceeSpawn(child)).send_if_match(tx, self.filter))
             .transpose()?;
-          if let TracerMode::Log | TracerMode::None = &self.mode {
+          if let TracerMode::Log { foreground: true } = &self.mode {
             match tcsetpgrp(stdin(), child) {
               Ok(_) => {}
               Err(Errno::ENOTTY) => {
@@ -451,7 +451,7 @@ impl EbpfTracer {
         ForkResult::Child => {
           let slave_pty = match &self.mode {
             TracerMode::Tui(tty) => tty.as_ref(),
-            TracerMode::Log | TracerMode::None => None,
+            _ => None,
           };
 
           if let Some(pts) = slave_pty {
@@ -573,7 +573,9 @@ pub async fn run(command: EbpfCommand, user: Option<User>, color: Color) -> colo
         baseline,
         tx: None,
         filter: TracerEventDetailsKind::empty(), // FIXME
-        mode: TracerMode::Log,
+        mode: TracerMode::Log {
+          foreground: log_args.foreground(),
+        },
       };
       let running_tracer = tracer.spawn(&mut obj, Some(output))?;
       running_tracer.run_until_exit();

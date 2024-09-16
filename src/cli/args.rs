@@ -290,13 +290,9 @@ pub struct LogModeArgs {
 impl LogModeArgs {
   pub fn foreground(&self) -> bool {
     match (self.foreground, self.no_foreground) {
-      (true, false) => true,
       (false, true) => false,
-      // Disable foreground mode in test by default
-      #[cfg(not(test))]
+      (true, false) => true,
       _ => true,
-      #[cfg(test)]
-      _ => false,
     }
   }
 

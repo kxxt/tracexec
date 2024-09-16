@@ -23,7 +23,7 @@ fn tracer(
   UnboundedReceiver<TracerMessage>,
   UnboundedReceiver<PendingRequest>,
 ) {
-  let tracer_mod = TracerMode::Log;
+  let tracer_mod = TracerMode::Log { foreground: false };
   let tracing_args = LogModeArgs::default();
   let tracer_event_args = TracerEventArgs::all();
   let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
