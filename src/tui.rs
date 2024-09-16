@@ -36,7 +36,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{error, trace};
 
-use crate::event::{Event, TracerEvent, TracerEventDetails, TracerEventMessage, TracerMessage};
+use crate::event::{Event, TracerMessage};
 
 pub mod app;
 mod breakpoint_manager;

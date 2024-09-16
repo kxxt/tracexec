@@ -169,7 +169,34 @@ pub enum EbpfCommand {
     tui_args: TuiModeArgs,
   },
   #[clap(about = "Collect exec events and export them")]
-  Collect {},
+  Collect {
+    #[arg(last = true, help = "command to be executed. Leave it empty to trace all exec on system")]
+    cmd: Vec<String>,
+    #[clap(flatten)]
+    modifier_args: ModifierArgs,
+    #[clap(short = 'F', long, help = "the format for exported exec events")]
+    format: ExportFormat,
+    #[clap(short, long, help = "prettify the output if supported")]
+    pretty: bool,
+    #[clap(
+      short,
+      long,
+      help = "Output, stderr by default. A single hyphen '-' represents stdout."
+    )]
+    output: Option<PathBuf>,
+    #[clap(
+      long,
+      help = "Set the terminal foreground process group to tracee. This option is useful when tracexec is used interactively. [default]",
+      conflicts_with = "no_foreground"
+    )]
+    foreground: bool,
+    #[clap(
+      long,
+      help = "Do not set the terminal foreground process group to tracee",
+      conflicts_with = "foreground"
+    )]
+    no_foreground: bool,
+  },
 }
 
 impl Cli {
