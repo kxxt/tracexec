@@ -103,7 +103,6 @@ impl Tui {
     self.cancellation_token = CancellationToken::new();
     let _cancellation_token = self.cancellation_token.clone();
     let _event_tx = self.event_tx.clone();
-    let mut fatal_error_sent = false;
     self.task = tokio::spawn(async move {
       let mut reader = crossterm::event::EventStream::new();
       let mut render_interval = tokio::time::interval(render_delay);
@@ -116,21 +115,9 @@ impl Tui {
           _ = _cancellation_token.cancelled() => {
               break;
           }
-          tracer_event = tracer_event => {
+          Some(tracer_event) = tracer_event => {
             trace!("TUI event: tracer message!");
-            if let Some(tracer_event) = tracer_event {
-              _event_tx.send(Event::Tracer(tracer_event)).unwrap();
-            } else {
-              // channel closed abnormally
-              if !fatal_error_sent {
-                fatal_error_sent = true;
-                _event_tx.send(Event::Tracer(TracerMessage::Event(TracerEvent {
-                  details: TracerEventDetails::Error(TracerEventMessage {
-                    pid: None,
-                    msg: "The connection between TUI and tracer shutdown abnormally. Tracer is probably died.".to_string()
-                  }), id: TracerEvent::allocate_id() }))).unwrap();
-              }
-            }
+            _event_tx.send(Event::Tracer(tracer_event)).unwrap();
           }
           Some(event) = crossterm_event => {
             #[cfg(debug_assertions)]
