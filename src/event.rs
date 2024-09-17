@@ -643,7 +643,7 @@ impl TracerEventDetails {
             }
             spans.push(space.clone());
             spans.push(fd.to_string().set_style(THEME.added_fd_in_cmdline));
-            spans.push(">".set_style(THEME.added_fd_in_cmdline));
+            spans.push("<>".set_style(THEME.added_fd_in_cmdline));
             spans.push(
               fdinfo
                 .path

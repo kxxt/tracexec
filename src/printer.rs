@@ -675,7 +675,7 @@ impl Printer {
               out,
               " {}{}{}",
               fd.bright_green().bold(),
-              ">".bright_green().bold(),
+              "<>".bright_green().bold(),
               fdinfo.path.cli_bash_escaped_with_style(THEME.added_fd)
             )?;
           }
