@@ -613,7 +613,8 @@ pub async fn run(command: EbpfCommand, user: Option<User>, color: Color) -> colo
       tracer_event_args,
       tui_args,
     } => {
-      if tui_args.tty && cmd.is_empty() {
+      let follow_forks = !cmd.is_empty();
+      if tui_args.tty && !follow_forks {
         return Err(
           eyre!("--tty is not supported for eBPF system-wide tracing.").with_suggestion(|| {
             "Did you mean to use follow-fork mode? e.g. tracexec ebpf tui -t -- bash"
@@ -675,6 +676,7 @@ pub async fn run(command: EbpfCommand, user: Option<User>, color: Color) -> colo
         mode: tracer_mode,
       };
       let running_tracer = tracer.spawn(obj, None)?;
+      let should_exit = running_tracer.should_exit.clone();
       let tracer_thread = spawn_blocking(move || {
         running_tracer.run_until_exit();
       });
@@ -688,6 +690,9 @@ pub async fn run(command: EbpfCommand, user: Option<User>, color: Color) -> colo
       // 3. Kill the root process so that the tracer thread exits.
       app.exit()?;
       tui::restore_tui()?;
+      if !follow_forks {
+        should_exit.store(true, Ordering::Relaxed);
+      }
       tracer_thread.await?;
       Ok(())
     }
