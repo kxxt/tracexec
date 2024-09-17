@@ -103,6 +103,8 @@ jobs:
         uses: katyo/publish-crates@v2
         with:
           registry-token: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          # FIXME: build.rs regenerates skel
+          no-verify: true
       - name: Generate third-party licenses
         run: cargo about generate -o THIRD_PARTY_LICENSES.HTML about.hbs
       - uses: taiki-e/upload-rust-binary-action@v1
