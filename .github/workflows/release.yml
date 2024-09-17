@@ -76,7 +76,7 @@ jobs:
           prefix-key: ${{ matrix.os }}-${{ matrix.target }}-rust
           cache-targets: true
           cache-on-failure: false
-      
+
       - name: Add apt sources for ${{ matrix.os-arch }}
         if: matrix.os-arch != 'amd64'
         run: |
@@ -112,6 +112,7 @@ jobs:
         #   LIBBPF_SYS_EXTRA_CFLAGS: -I ${{ github.workspace }}/3rdparty/${{ matrix.arch }}/usr/include
         with:
           bin: tracexec
+          build-tool: cargo
           token: ${{ secrets.GITHUB_TOKEN }}
           archive: $bin-$target${{ matrix.artifact-suffix }}
           target: ${{ matrix.target }}
