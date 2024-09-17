@@ -310,7 +310,7 @@ impl EbpfTracer {
             let fdinfo = FileDescriptorInfo {
               fd: event.fd as RawFd,
               path,
-              pos: 0, // TODO
+              pos: event.pos as usize, // TODO: Handle error
               flags: OFlag::from_bits_retain(event.flags as c_int),
               mnt_id: event.mnt_id,
               ino: event.ino,

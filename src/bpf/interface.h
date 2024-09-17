@@ -74,7 +74,9 @@ enum exec_event_flags {
   // mount id read failure
   MNTID_READ_ERR = 32768,
   // filename read failure
-  FILENAME_READ_ERR = 65536
+  FILENAME_READ_ERR = 65536,
+  // file->pos read failure
+  POS_READ_ERR = 131072
 };
 
 enum event_type {
@@ -125,9 +127,10 @@ struct fd_event {
   struct tracexec_event_header header;
   unsigned int flags;
   unsigned int fd;
-  long unsigned int ino;
   int mnt_id;
   s32 path_id;
+  long unsigned int ino;
+  loff_t pos;
   u8 fstype[FSTYPE_NAME_MAX];
 };
 

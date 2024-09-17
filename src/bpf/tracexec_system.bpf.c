@@ -352,7 +352,8 @@ int trace_fork(u64 *ctx) {
     entry->header.flags = 0;
     entry->header.pid = pid;
     entry->parent_tgid = parent_tgid;
-    ret = bpf_ringbuf_output(&events, entry, sizeof(*entry), BPF_RB_FORCE_WAKEUP);
+    ret =
+        bpf_ringbuf_output(&events, entry, sizeof(*entry), BPF_RB_FORCE_WAKEUP);
     if (ret < 0) {
       // TODO: find a better way to ensure userspace receives fork event
       debug("Failed to send fork event!");
@@ -704,6 +705,12 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
     debug("failed to read file struct: %d", ret);
     goto ptr_err;
   }
+  // read pos
+  ret = bpf_core_read(&entry->pos, sizeof(entry->pos), &file->f_pos);
+  if (ret < 0) {
+    entry->header.flags |= POS_READ_ERR;
+    entry->pos = 0;
+  }
   // read ino
   struct inode *inode;
   ret = bpf_core_read(&inode, sizeof(void *), &file->f_inode);
@@ -816,7 +823,6 @@ static int add_tgid_to_closure(pid_t tgid) {
   }
   return 0;
 }
-
 
 struct path_segment_ctx {
   struct dentry *dentry;
