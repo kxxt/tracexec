@@ -946,10 +946,12 @@ impl App {
     } else if let Some(query_builder) = self.query_builder.as_ref().filter(|q| q.editing()) {
       items.extend(query_builder.help());
     } else if self.active_pane == ActivePane::Events {
+      items.extend(help_item!("F1", "Help"));
+      if self.term.is_some() {
+        items.extend(help_item!("G/S", "Grow/Shrink\u{00a0}Pane"));
+        items.extend(help_item!("Alt+L", "Layout"));
+      }
       items.extend(chain!(
-        help_item!("F1", "Help"),
-        help_item!("G/S", "Grow/Shrink\u{00a0}Pane"),
-        help_item!("Alt+L", "Layout"),
         help_item!(
           "F",
           if self.event_list.is_following() {
