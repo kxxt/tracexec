@@ -1,5 +1,59 @@
 # Changelog
 
+## v0.6.0-beta.2
+
+I am happy to announce that v0.6 brings the exciting eBPF backend🎉🎉🎉!
+
+The eBPF backend supports system-wide exec tracing as well as good old follow-forks behavior.
+It is still considered experimental but feel free to try it out! It should work on 6.x kernels.
+
+Changes since v0.5.2:
+
+### Installation
+
+- The installation doc has been moved to `INSTALL.md`.
+- Statically linked musl builds are no longer available due to `libbpf-sys` fails to compile with musl.
+  - As an alternative, statically linked glibc builds are now available.
+- New feature flags:
+  - `recommended`: This enables the recommended functionalities of tracexec
+  - `ebpf`: eBPF backend that doesn't use ptrace and could be used for system wide tracing
+  - `ebpf-debug`: Not meant for end users. This flag enables debug logging to `/sys/kernel/debug/tracing/trace_pipe` and some debug checks.
+  - `static`: Statically link libelf, zlib and libbpf.
+  - `vendored`: Vendoring libelf, zlib and libbpf, implies `static`.
+  - `vendored-libbpf`: Vendoring libbpf and statically link to it.
+
+By default, we enable the `recommended` and `vendored-libbpf` features. This means that we are dynamically linking zlib and libelf but statically linking libbpf. This choice is made because zlib and libelf are usually installed on most systems but libbpf is usually not.
+
+To dynamically link to libbpf, turn off default features and enable `recommended` feature:
+
+### Breaking Changes
+
+- Build with musl is no longer supported.
+- Additional dependencies are required to build tracexec.
+- The config file format should be updated.
+  - `default_external_command` is moved to `debugger` section.
+  - `seccomp_bpf` is moved to `ptrace` section.
+  - `modifier` config section now also applies to eBPF backend.
+  - `tui`, `log` config section now also apply to corresponding commands of eBPF backend.
+
+### Added
+
+- Add riscv64 support to seccomp feature (Note: `seccompiler` still doesn't support riscv64 yet. This would require using a fork)
+- Add experimental eBPF backend with `log`, `tui` and `collect` commands.
+
+### Changed
+
+- Update dependencies
+- Interal refactor
+- TUI: Performance improvement for details popup.
+
+### Fixed
+
+- For experimental fd in cmdline feature, use `<>` instead of `>` for added fds.
+- TUI: don't show layout help item when there's only one pane
+- TUI: fix crash caused by Rect mismatch, joshka/tui-widgets#33
+- When comparing fds, we now compare the mount id and inode number instead of naively comparing the path.
+
 ## v0.5.2
 
 Changes since v0.5.1:
