@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.6.0-beta.5
+## v0.6.0
 
 I am happy to announce that v0.6 brings the exciting eBPF backend🎉🎉🎉!
 
