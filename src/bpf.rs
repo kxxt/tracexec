@@ -19,7 +19,7 @@ use std::{
 };
 
 use arcstr::ArcStr;
-use color_eyre::Section;
+use color_eyre::{eyre::eyre, Section};
 use enumflags2::{BitFlag, BitFlags};
 use event::EventStorage;
 use interface::BpfEventFlags;
@@ -613,6 +613,13 @@ pub async fn run(command: EbpfCommand, user: Option<User>, color: Color) -> colo
       tracer_event_args,
       tui_args,
     } => {
+      if tui_args.tty && cmd.is_empty() {
+        return Err(
+          eyre!("--tty is not supported for eBPF system-wide tracing.").with_suggestion(|| {
+            "Did you mean to use follow-fork mode? e.g. tracexec ebpf tui -t -- bash"
+          }),
+        );
+      }
       let modifier_args = modifier_args.processed();
       // Disable owo-colors when running TUI
       owo_colors::control::set_should_colorize(false);
