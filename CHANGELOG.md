@@ -44,7 +44,7 @@ To dynamically link to libbpf, turn off default features and enable `recommended
 ### Changed
 
 - Update dependencies
-- Interal refactor
+- Internal refactor
 - TUI: Performance improvement for details popup.
 
 ### Fixed
