@@ -20,6 +20,7 @@ within the pseudo terminal at ease.
 
 With root privileges, you can also trace setuid binaries and see how they work.
 But do note that this is not compatible with seccomp-bpf optimization so it is much less performant.
+You can use eBPF mode which is more performant in such scenarios.
 
 ```
 sudo tracexec --user $(whoami) tui -t -- sudo ls
@@ -42,6 +43,31 @@ use tracexec to launch gdb to detach two simple programs piped together by a she
 https://github.com/kxxt/tracexec/assets/18085551/72c755a5-0f2f-4bf9-beb9-98c8d6b5e5fd
 
 Please [read the gdb-launcher example](https://github.com/kxxt/tracexec/blob/main/demonstration/gdb-launcher/README.md) for more details.
+
+### eBPF mode
+
+The eBPF mode is currently experimental.
+It is known to work on Linux 6.6 lts and 6.10 and probably works on all 6.x kernels.
+It won't work on kernel version < 5.17.
+
+The following examples shows how to use eBPF in TUI mode.
+The `eBPF` command also supports regular `log` and `collect` subcommands.
+
+#### System-wide Exec Tracing
+
+```bash
+sudo -E tracexec ebpf tui
+```
+
+TODO: Video
+
+#### Follow Fork mode with eBPF
+
+```bash
+sudo -E tracexec --user $(whoami) ebpf tui -t -- bash
+```
+
+TODO: Video
 
 ### Log mode
 
@@ -127,6 +153,12 @@ Collect and export data:
 %{collect}
 ```
 
+eBPF backend supports similar commands:
+
+```
+%{ebpf}
+```
+
 ## Profile
 
 `tracexec` can be configured with a profile file. The profile file is a toml file that can be used to set fallback options.
@@ -140,6 +172,7 @@ As a warning, the profile format is not stable yet and may change in the future.
 ## Known issues
 
 - Non UTF-8 strings are converted to UTF-8 in a lossy way, which means that the output may be inaccurate.
+- For eBPF backend, it might be impossible to show some details of the tracee, See https://mozillazg.com/2024/03/ebpf-tracepoint-syscalls-sys-enter-execve-can-not-get-filename-argv-values-case-en.html
 - The output is not stable yet, which means that the output may change in the future.
 - Test coverage is not good enough.
 - The pseudo terminal can't pass through certain key combinations and terminal features.

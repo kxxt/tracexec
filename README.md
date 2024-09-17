@@ -7,8 +7,6 @@ tracexec helps you to figure out what and how programs get executed when you exe
 It's useful for debugging build systems, understanding what shell scripts actually do, figuring out what programs
 does a proprietary software run, etc.
 
-- [Installation Guide](./INSTALL.md)
-
 ## Showcases
 
 ### TUI mode with pseudo terminal
@@ -22,6 +20,7 @@ within the pseudo terminal at ease.
 
 With root privileges, you can also trace setuid binaries and see how they work.
 But do note that this is not compatible with seccomp-bpf optimization so it is much less performant.
+You can use eBPF mode which is more performant in such scenarios.
 
 ```
 sudo tracexec --user $(whoami) tui -t -- sudo ls
@@ -44,6 +43,31 @@ use tracexec to launch gdb to detach two simple programs piped together by a she
 https://github.com/kxxt/tracexec/assets/18085551/72c755a5-0f2f-4bf9-beb9-98c8d6b5e5fd
 
 Please [read the gdb-launcher example](https://github.com/kxxt/tracexec/blob/main/demonstration/gdb-launcher/README.md) for more details.
+
+### eBPF mode
+
+The eBPF mode is currently experimental.
+It is known to work on Linux 6.6 lts and 6.10 and probably works on all 6.x kernels.
+It won't work on kernel version < 5.17.
+
+The following examples shows how to use eBPF in TUI mode.
+The `eBPF` command also supports regular `log` and `collect` subcommands.
+
+#### System-wide Exec Tracing
+
+```bash
+sudo -E tracexec ebpf tui
+```
+
+TODO: Video
+
+#### Follow Fork mode with eBPF
+
+```bash
+sudo -E tracexec --user $(whoami) ebpf tui -t -- bash
+```
+
+TODO: Video
 
 ### Log mode
 
@@ -87,6 +111,22 @@ $ tracexec log --show-interpreter --show-cwd -- makepkg -f
 
 [![asciicast](https://asciinema.org/a/7jDtrlNRx5XUnDXeDBsMRj09p.svg)](https://asciinema.org/a/7jDtrlNRx5XUnDXeDBsMRj09p)
 
+## Installation
+
+### From source
+
+Via cargo:
+
+```bash
+cargo install tracexec --bin tracexec
+```
+
+Arch Linux users can also install from the official repositories via `pacman -S tracexec`.
+
+### Binary
+
+You can download the binary from the [release page](https://github.com/kxxt/tracexec/releases)
+
 ## Usage
 
 General CLI help:
@@ -101,6 +141,7 @@ Commands:
   tui                   Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default
   generate-completions  Generate shell completions for tracexec
   collect               Collect exec events and export them
+  ebpf                  Experimental ebpf mode
   help                  Print this message or the help of the given subcommand(s)
 
 Options:
@@ -125,8 +166,6 @@ Arguments:
   <CMD>...  command to be executed
 
 Options:
-      --seccomp-bpf <SECCOMP_BPF>
-          Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
       --successful-only
           Only show successful calls
       --fd-in-cmdline
@@ -137,6 +176,8 @@ Options:
           Resolve /proc/self/exe symlink
       --no-resolve-proc-self-exe
           Do not resolve /proc/self/exe symlink
+      --seccomp-bpf <SECCOMP_BPF>
+          Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
       --tracer-delay <TRACER_DELAY>
           Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1.
       --show-all-events
@@ -233,8 +274,6 @@ Options:
           Decode errno values
       --no-decode-errno
           Do not decode errno values
-      --seccomp-bpf <SECCOMP_BPF>
-          Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
       --successful-only
           Only show successful calls
       --fd-in-cmdline
@@ -245,6 +284,8 @@ Options:
           Resolve /proc/self/exe symlink
       --no-resolve-proc-self-exe
           Do not resolve /proc/self/exe symlink
+      --seccomp-bpf <SECCOMP_BPF>
+          Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
       --tracer-delay <TRACER_DELAY>
           Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1.
       --show-all-events
@@ -273,12 +314,12 @@ Arguments:
   <CMD>...  command to be executed
 
 Options:
-      --seccomp-bpf <SECCOMP_BPF>    Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
       --successful-only              Only show successful calls
       --fd-in-cmdline                [Experimental] Try to reproduce file descriptors in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
       --stdio-in-cmdline             [Experimental] Try to reproduce stdio in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
       --resolve-proc-self-exe        Resolve /proc/self/exe symlink
       --no-resolve-proc-self-exe     Do not resolve /proc/self/exe symlink
+      --seccomp-bpf <SECCOMP_BPF>    Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
       --tracer-delay <TRACER_DELAY>  Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1.
   -F, --format <FORMAT>              the format for exported exec events [possible values: json-stream, json]
   -p, --pretty                       prettify the output if supported
@@ -286,6 +327,24 @@ Options:
       --foreground                   Set the terminal foreground process group to tracee. This option is useful when tracexec is used interactively. [default]
       --no-foreground                Do not set the terminal foreground process group to tracee
   -h, --help                         Print help
+
+```
+
+eBPF backend supports similar commands:
+
+```
+Experimental ebpf mode
+
+Usage: tracexec ebpf <COMMAND>
+
+Commands:
+  log      Run tracexec in logging mode
+  tui      Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default
+  collect  Collect exec events and export them
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
 
 ```
 
@@ -297,11 +356,12 @@ The profile file should be placed at `$XDG_CONFIG_HOME/tracexec/` or `$HOME/.con
 
 A template profile file can be found at https://github.com/kxxt/tracexec/blob/main/config.toml
 
-Note that the profile format is not stable yet and may change in the future. You may need to update your profile file when upgrading tracexec.
+As a warning, the profile format is not stable yet and may change in the future. You may need to update your profile file when upgrading tracexec.
 
 ## Known issues
 
 - Non UTF-8 strings are converted to UTF-8 in a lossy way, which means that the output may be inaccurate.
+- For eBPF backend, it might be impossible to show some details of the tracee, See https://mozillazg.com/2024/03/ebpf-tracepoint-syscalls-sys-enter-execve-can-not-get-filename-argv-values-case-en.html
 - The output is not stable yet, which means that the output may change in the future.
 - Test coverage is not good enough.
 - The pseudo terminal can't pass through certain key combinations and terminal features.
