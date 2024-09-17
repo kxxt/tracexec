@@ -58,8 +58,7 @@ The `eBPF` command also supports regular `log` and `collect` subcommands.
 ```bash
 sudo -E tracexec ebpf tui
 ```
-
-TODO: Video
+[ebpf-system-wide-tui.webm](https://github.com/user-attachments/assets/12cec4ef-8884-4580-a93a-c9144ec7102b)
 
 #### Follow Fork mode with eBPF
 
@@ -67,7 +66,7 @@ TODO: Video
 sudo -E tracexec --user $(whoami) ebpf tui -t -- bash
 ```
 
-TODO: Video
+[ebpf-follow-forks.webm](https://github.com/user-attachments/assets/997e1992-df85-4d45-ae68-faf693c6b99b)
 
 ### Log mode
 
