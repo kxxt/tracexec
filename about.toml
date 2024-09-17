@@ -8,6 +8,9 @@ accepted = [
     "Apache-2.0",
     "MIT",
     "ISC",
+    "BSL-1.0",
+    "LGPL-2.1",
+    "BSD-2-Clause"
 ]
 
 targets = [
