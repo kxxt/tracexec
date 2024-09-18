@@ -1,1 +1,2 @@
-/include/*/vmlinux.h linguist-generated=true
+/include/** linguist-generated=true
+/include/** linguist-vendored=true
