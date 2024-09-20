@@ -89,7 +89,7 @@ rstest = "0.22.0"
 tracing-test = "0.2.4"
 
 [build-dependencies]
-libbpf-cargo = "0.24.1"
+libbpf-cargo = { version = "0.24.1", default-features = false }
 
 
 [features]
@@ -106,7 +106,7 @@ ebpf = ["dep:libbpf-rs", "dep:libbpf-sys"]
 ebpf-debug = ["ebpf"]
 static = ["libbpf-sys/static"]
 vendored = ["libbpf-sys/vendored"]
-vendored-libbpf = ["libbpf-sys/vendored-libbpf"]
+vendored-libbpf = ["libbpf-sys/vendored-libbpf", "libbpf-cargo/default"]
 
 [profile.dev]
 opt-level = 1
