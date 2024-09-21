@@ -980,8 +980,8 @@ impl App {
         help_item!("Ctrl+F", "Search"),
       ));
       if let Some(h) = self.hit_manager_state.as_ref() {
+        items.extend(help_item!("B", "Breakpoints"));
         if h.count() > 0 {
-          items.extend(help_item!("B", "Breakpoints"));
           items.extend([
             help_key("Z"),
             fancy_help_desc(format!("Hits({})", h.count())),
