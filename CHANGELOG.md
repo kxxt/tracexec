@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.1-beta.1
+
+- Previously, when building tracexec, even if `--no-default-feaures` is specified,
+libbpf still gets vendored once because it is also depended in `libbpf-cargo` build dependency.
+This release fixes it.
+- Fix the help entry of breakpoint manager.
+- Fix: eBPF: only remove pgid from closure if follow-forks
+- Fix: eBPF: simplify program to make it load on kernel >= 6.8
+
 ## v0.6.0
 
 I am happy to announce that v0.6 brings the exciting eBPF backend🎉🎉🎉!
