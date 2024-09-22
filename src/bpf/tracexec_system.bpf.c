@@ -377,10 +377,13 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
   if (ptr == NULL && tracexec_config.follow_fork)
     return 0;
   struct task_struct *current = (void *)bpf_get_current_task();
-  // remove tgid from closure
-  int ret = bpf_map_delete_elem(&tgid_closure, &tgid);
-  if (ret < 0)
-    debug("Failed to remove %d from closure: %d", tgid, ret);
+  int ret = -1;
+  if (tracexec_config.follow_fork) {
+    // remove tgid from closure
+    ret = bpf_map_delete_elem(&tgid_closure, &tgid);
+    if (ret < 0)
+      debug("Failed to remove %d from closure: %d", tgid, ret);
+  }
   u32 entry_index = bpf_get_smp_processor_id();
   if (entry_index > tracexec_config.max_num_cpus) {
     debug("Too many cores!");
