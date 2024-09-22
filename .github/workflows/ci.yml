@@ -146,7 +146,7 @@ jobs:
           dpkg --add-architecture ${{ matrix.os-arch }}
 
           release=$(. /etc/os-release && echo "$UBUNTU_CODENAME")
-          sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
+          sed -i '/Types: deb/aArchitectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
           printf 'deb [arch=${{ matrix.os-arch }}] http://ports.ubuntu.com/ %s main restricted\n' \
               $release $release-updates $release-security \
               >> /etc/apt/sources.list
