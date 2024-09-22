@@ -15,6 +15,17 @@ Arch Linux users can also install from the official repositories via `pacman -S 
 
 ## Install From Source
 
+To install from source, the following dependencies are needed:
+
+- A working rust compiler and `cargo`.
+- `libbpf`: if not using `vendored-libbpf`
+- `zlib`: if not using `vendored-zlib`
+- `libelf`: if not using `vendored-libelf`
+- If any library vendoring feature is enabled:
+  - `build-essential` `autopoint` `gettext` for Debian based distros
+  - `base-devel` for Arch Linux
+- `clang` for compiling eBPF program.
+
 ### Feature Flags
 
 - `recommended`: This enables the recommended functionalities of tracexec
