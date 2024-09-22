@@ -1,7 +1,9 @@
 # Changelog
 
-## v0.6.1-beta.1
+## v0.6.1-beta.2
 
+- Docs: document dependencies for building in INSTALL.md.
+- CI: Bump ubuntu to 24.04, with clang 18 as default clang.
 - Previously, when building tracexec, even if `--no-default-feaures` is specified,
 libbpf still gets vendored once because it is also depended in `libbpf-cargo` build dependency.
 This release fixes it.
