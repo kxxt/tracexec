@@ -293,17 +293,11 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   // Read CWD
   event->cwd_path_id = -1;
   struct task_struct *current = (void *)bpf_get_current_task();
-  struct path pwd;
-  struct fs_struct *fs;
-  ret = bpf_core_read(&fs, sizeof(void *), &current->fs);
-  if (ret < 0) {
-    debug("failed to read current->fs: %d", ret);
-    return 0;
-  }
   // spin_lock(&fs->lock);
-  ret = bpf_core_read(&pwd, sizeof(pwd), &fs->pwd);
+  struct path pwd;
+  ret = BPF_CORE_READ_INTO(&pwd, current, fs, pwd);
   if (ret < 0) {
-    debug("failed to read fs->pwd: %d", ret);
+    debug("failed to read current->fs->pwd: %d", ret);
     return 0;
   }
   // spin_unlock(&fs->lock);
@@ -716,13 +710,9 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
   }
   // read ino
   struct inode *inode;
-  ret = bpf_core_read(&inode, sizeof(void *), &file->f_inode);
+  ret = BPF_CORE_READ_INTO(&entry->ino, file, f_inode, i_ino);
   if (ret < 0) {
     entry->header.flags |= INO_READ_ERR;
-  } else {
-    ret = bpf_core_read(&entry->ino, sizeof(entry->ino), &inode->i_ino);
-    if (ret < 0)
-      entry->header.flags |= INO_READ_ERR;
   }
   struct path path;
   ret = bpf_core_read(&path, sizeof(path), &file->f_path);
@@ -949,23 +939,23 @@ static int read_send_mount_segments(u32 index, struct mount_ctx *ctx) {
   // struct vfsmount *vfsmnt;
   ret = bpf_core_read(&mnt_mountpoint, sizeof(void *), &mnt->mnt_mountpoint);
   if (ret < 0) {
-    debug("failed to read mnt->mnt_mountpoint: %d", ret);
+    debug("failed to read mnt->mnt_mountpoint");
     goto err_out;
   }
   ret = bpf_core_read(&parent, sizeof(void *), &mnt->mnt_parent);
   if (ret < 0) {
-    debug("failed to read mnt->mnt_parent: %d", ret);
+    debug("failed to read mnt->mnt_parent");
     goto err_out;
   }
   ret = bpf_core_read(&mnt_root, sizeof(void *), &parent->mnt.mnt_root);
   if (ret < 0) {
-    debug("failed to read mnt->mnt.mnt_root: %d", ret);
+    debug("failed to read mnt->mnt.mnt_root");
     goto err_out;
   }
   int mnt_id;
   ret = bpf_core_read(&mnt_id, sizeof(int), &mnt->mnt_id);
   if (ret < 0) {
-    debug("failed to read mnt->mnt_id: %d", ret);
+    debug("failed to read mnt->mnt_id");
     goto err_out;
   }
   // Break if we reached top mount
@@ -1029,7 +1019,6 @@ static int read_send_path(const struct path *path,
   event->header.flags = 0;
   // Get root dentry
   struct task_struct *current = (void *)bpf_get_current_task();
-  struct fs_struct *fs;
   struct path_segment_ctx segment_ctx = {
       .path_event = event,
       .dentry = path->dentry,
@@ -1037,14 +1026,9 @@ static int read_send_path(const struct path *path,
       .root = NULL,
       .base_index = 0,
   };
-  ret = bpf_core_read(&fs, sizeof(void *), &current->fs);
-  if (ret < 0) {
-    debug("failed to read current->fs: %d", ret);
-    goto ptr_err;
-  }
-  ret = bpf_core_read(&segment_ctx.root, sizeof(void *), &fs->root.dentry);
-  if (ret < 0) {
-    debug("failed to read fs->root.dentry");
+  segment_ctx.root = BPF_CORE_READ(current, fs, root.dentry);
+  if (segment_ctx.root == NULL) {
+    debug("failed to read current->fs->root.dentry");
     goto ptr_err;
   }
   // Get vfsmount and mnt_root
@@ -1075,15 +1059,8 @@ static int read_send_path(const struct path *path,
                         &mount->mnt_id);
     if (ret < 0)
       fd_event->header.flags |= MNTID_READ_ERR;
-    struct super_block *mnt_sb;
-    struct file_system_type *fstype;
-    char *fstype_name;
-    ret = bpf_core_read(&mnt_sb, sizeof(void *), &vfsmnt->mnt_sb);
-    if (!ret)
-      ret = bpf_core_read(&fstype, sizeof(void *), &mnt_sb->s_type);
-    if (!ret)
-      ret = bpf_core_read(&fstype_name, sizeof(void *), &fstype->name);
-    if (ret < 0)
+    const char *fstype_name = BPF_CORE_READ(vfsmnt, mnt_sb, s_type, name);
+    if (fstype_name == NULL)
       goto fstype_err_out;
     ret = bpf_probe_read_kernel_str(&fd_event->fstype, sizeof(fd_event->fstype),
                                     fstype_name);
