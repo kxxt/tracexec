@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.6.1-beta.2
+## v0.6.1-rc.1
 
 - Docs: document dependencies for building in INSTALL.md.
 - CI: Bump ubuntu to 24.04, with clang 18 as default clang.
@@ -10,6 +10,8 @@ This release fixes it.
 - Fix the help entry of breakpoint manager.
 - Fix: eBPF: only remove pgid from closure if follow-forks
 - Fix: eBPF: simplify program to make it load on kernel >= 6.8
+- Fix: eBPF: add a temporary workaround(d7f23b4b66f9846cb3ae4d73ee60b30741092516) to make it load in release mode on new kernels.
+A side effect is some empty printk output in `/sys/kernel/debug/tracing/trace_pipe`. See the commit for more details.
 
 ## v0.6.0
 
