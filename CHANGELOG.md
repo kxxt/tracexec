@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.6.1-rc.1
+## v0.6.1
 
 - Docs: document dependencies for building in INSTALL.md.
 - CI: Bump ubuntu to 24.04, with clang 18 as default clang.
