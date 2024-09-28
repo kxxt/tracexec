@@ -124,7 +124,7 @@ jobs:
             no-default-features: true
     runs-on: ${{ matrix.os }}
     env:
-      RUST_FLAGS: ${{ matrix.rust_flags }}
+      RUSTFLAGS: ${{ matrix.rust_flags }}
     #   LIBBPF_SYS_LIBRARY_PATH: ${{ github.workspace }}/3rdparty/${{ matrix.arch }}/${{ matrix.libpath }}
     #   LIBBPF_SYS_EXTRA_CFLAGS: -I ${{ github.workspace }}/3rdparty/${{ matrix.arch }}/usr/include
     steps:
