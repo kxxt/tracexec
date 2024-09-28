@@ -121,7 +121,16 @@ jobs:
             target: riscv64gc-unknown-linux-gnu
             arch: riscv64
             libpath: usr/lib/riscv64-linux-gnu
+            args: '-F ebpf'
             no-default-features: true
+          - os: ubuntu-24.04
+            os-arch: riscv64
+            target: riscv64gc-unknown-linux-gnu
+            arch: riscv64
+            libpath: usr/lib/riscv64-linux-gnu
+            args: '-F ebpf,static,vendored'
+            no-default-features: true
+            rust_flags: -C target-feature=+crt-static
     runs-on: ${{ matrix.os }}
     env:
       RUSTFLAGS: ${{ matrix.rust_flags }}

@@ -61,6 +61,16 @@ jobs:
             arch: riscv64
             libpath: usr/lib/riscv64-linux-gnu
             no-default-features: true
+            features: ebpf
+          - os: ubuntu-24.04
+            os-arch: riscv64
+            target: riscv64gc-unknown-linux-gnu
+            arch: riscv64
+            libpath: usr/lib/riscv64-linux-gnu
+            no-default-features: true
+            features: ebpf,static,vendored
+            artifact-suffix: -static
+            rust_flags: -C target-feature=+crt-static
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
