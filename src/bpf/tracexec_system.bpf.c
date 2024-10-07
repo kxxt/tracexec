@@ -254,7 +254,8 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   event->header.type = SYSEXIT_EVENT;
   event->header.eid = __sync_fetch_and_add(&event_counter, 1);
   event->count[0] = event->count[1] = event->fd_count = event->path_count = 0;
-  event->syscall_nr = ctx->syscall_nr;
+  event->is_compat = ctx->is_compat;
+  event->is_execveat = ctx->is_execveat;
   // Read comm
   if (0 != bpf_get_current_comm(event->comm, sizeof(event->comm))) {
     // Failed to read comm
@@ -419,25 +420,28 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
   return 0;
 }
 
-SEC("tracepoint/syscalls/sys_enter_execve")
-int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
+SEC("fentry/__" SYSCALL_PREFIX "_sys_execve")
+int BPF_PROG(sys_execve, struct pt_regs *regs) {
+  //  int tp_sys_enter_execve(struct sys_enter_execve_args *ctx)
   int key = 0;
   struct sys_enter_exec_args *common_ctx =
       bpf_map_lookup_elem(&exec_args_alloc, &key);
   if (common_ctx == NULL)
     return 0;
   *common_ctx = (struct sys_enter_exec_args){
-      .syscall_nr = ctx->__syscall_nr,
-      .argv = ctx->argv,
-      .envp = ctx->envp,
-      .base_filename = ctx->filename,
+      .is_execveat = false,
+      .is_compat = false,
+      .argv = (u8 const *const *)PT_REGS_PARM2_CORE(regs),
+      .envp = (u8 const *const *)PT_REGS_PARM3_CORE(regs),
+      .base_filename = (u8 *)PT_REGS_PARM1_CORE(regs),
   };
   trace_exec_common(common_ctx);
   return 0;
 }
 
-SEC("tracepoint/syscalls/sys_enter_execveat")
-int tp_sys_enter_execveat(struct sys_enter_execveat_args *ctx) {
+SEC("fentry/__" SYSCALL_PREFIX "_sys_execveat")
+int BPF_PROG(sys_execveat, struct pt_regs *regs, int ret) {
+  // int tp_sys_enter_execveat(struct sys_enter_execveat_args *ctx)
   int key = 0;
   struct sys_enter_exec_args *common_ctx =
       bpf_map_lookup_elem(&exec_args_alloc, &key);
@@ -445,10 +449,11 @@ int tp_sys_enter_execveat(struct sys_enter_execveat_args *ctx) {
     return 0;
 
   *common_ctx = (struct sys_enter_exec_args){
-      .syscall_nr = ctx->__syscall_nr,
-      .argv = ctx->argv,
-      .envp = ctx->envp,
-      .base_filename = ctx->filename,
+      .is_execveat = true,
+      .is_compat = false,
+      .argv = (u8 const *const *)PT_REGS_PARM3_CORE(regs),
+      .envp = (u8 const *const *)PT_REGS_PARM4_CORE(regs),
+      .base_filename = (u8 *)PT_REGS_PARM2_CORE(regs),
   };
   trace_exec_common(common_ctx);
   pid_t pid = (pid_t)bpf_get_current_pid_tgid();
@@ -456,8 +461,8 @@ int tp_sys_enter_execveat(struct sys_enter_execveat_args *ctx) {
   if (!event || !ctx)
     return 0;
 
-  event->fd = ctx->fd;
-  event->flags = ctx->flags;
+  event->fd = PT_REGS_PARM1_CORE(regs);
+  event->flags = PT_REGS_PARM5_CORE(regs);
   return 0;
 }
 
