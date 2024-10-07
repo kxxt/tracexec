@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.6.2-rc.2
+## v0.6.2
 
 - Fix: Update dependencies to get rid of yanked futures-util 0.3.30
 - Fix: Ensure build-script is built with the same vendoring feature as the main binary

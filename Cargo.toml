@@ -1,6 +1,6 @@
 [package]
 name = "tracexec"
-version = "0.6.2-rc.2"
+version = "0.6.2"
 edition = "2021"
 authors = ["Levi Zim <rsworktech@outlook.com>"]
 description = "Tracer for execve{,at} and pre-exec behavior, launcher for debuggers."

@@ -2001,7 +2001,7 @@ dependencies = [
 
 [[package]]
 name = "tracexec"
-version = "0.6.2-rc.2"
+version = "0.6.2"
 dependencies = [
  "arboard",
  "arcstr",
