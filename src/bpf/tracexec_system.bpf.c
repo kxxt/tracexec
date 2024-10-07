@@ -466,7 +466,7 @@ int BPF_PROG(sys_execveat, struct pt_regs *regs, int ret) {
   return 0;
 }
 
-int __always_inline tp_sys_exit_exec(struct sys_exit_exec_args *ctx) {
+int __always_inline tp_sys_exit_exec(int sysret) {
   pid_t pid, tgid;
   u64 tmp = bpf_get_current_pid_tgid();
   pid = (pid_t)tmp;
@@ -486,9 +486,9 @@ int __always_inline tp_sys_exit_exec(struct sys_exit_exec_args *ctx) {
     }
     return 0;
   }
-  event->ret = ctx->ret;
+  event->ret = sysret;
   event->header.type = SYSEXIT_EVENT;
-  debug("execve result: %d PID %d\n", ctx->ret, pid);
+  debug("execve result: %d PID %d\n", sysret, pid);
   long ret = bpf_ringbuf_output(&events, event, sizeof(struct exec_event), 0);
   if (ret != 0) {
 #ifdef EBPF_DEBUG
@@ -502,14 +502,14 @@ int __always_inline tp_sys_exit_exec(struct sys_exit_exec_args *ctx) {
   return 0;
 }
 
-SEC("tracepoint/syscalls/sys_exit_execve")
-int tp_sys_exit_execve(struct sys_exit_exec_args *ctx) {
-  return tp_sys_exit_exec(ctx);
+SEC("fexit/__" SYSCALL_PREFIX "_sys_execve")
+int BPF_PROG(sys_exit_execve, struct pt_regs *regs, int ret) {
+  return tp_sys_exit_exec(ret);
 }
 
-SEC("tracepoint/syscalls/sys_exit_execveat")
-int tp_sys_exit_execveat(struct sys_exit_exec_args *ctx) {
-  return tp_sys_exit_exec(ctx);
+SEC("fexit/__" SYSCALL_PREFIX "_sys_execveat")
+int BPF_PROG(sys_exit_execveat, struct pt_regs *regs, int ret) {
+  return tp_sys_exit_exec(ret);
 }
 
 // Collect information about file descriptors of the process on sysenter of exec
