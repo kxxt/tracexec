@@ -31,7 +31,7 @@ use libbpf_rs::{
 use nix::{
   errno::Errno,
   fcntl::OFlag,
-  libc::{self, c_int, dup2, SYS_execve, SYS_execveat, AT_FDCWD},
+  libc::{self, c_int, dup2, AT_FDCWD},
   sys::{
     signal::{kill, raise, Signal},
     wait::{waitpid, WaitPidFlag, WaitStatus},
