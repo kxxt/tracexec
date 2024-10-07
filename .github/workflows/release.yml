@@ -61,7 +61,7 @@ jobs:
             arch: riscv64
             libpath: usr/lib/riscv64-linux-gnu
             no-default-features: true
-            features: ebpf
+            features: ebpf,vendored-libbpf
           - os: ubuntu-24.04
             os-arch: riscv64
             target: riscv64gc-unknown-linux-gnu
