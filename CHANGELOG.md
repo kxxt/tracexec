@@ -1,10 +1,9 @@
 # Changelog
 
-## v0.6.2-rc.1
+## v0.6.2-rc.2
 
 - Fix: Update dependencies to get rid of yanked futures-util 0.3.30
 - Fix: Ensure build-script is built with the same vendoring feature as the main binary
-- eBPF: Use a better workaround in eBPF code(empty printk workaround is removed).
 - CI: Fix a typo in CI yaml that caused the released static binaries to be non static.
 - CI: Enable eBPF for riscv64.
 - CI: Enable static builds for riscv64.
