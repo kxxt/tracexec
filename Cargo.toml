@@ -105,7 +105,7 @@ ebpf = ["dep:libbpf-rs", "dep:libbpf-sys"]
 # or some logic is wrong in build.rs
 ebpf-debug = ["ebpf"]
 static = ["libbpf-sys/static"]
-vendored = ["libbpf-sys/vendored"]
+vendored = ["libbpf-sys/vendored", "vendored-libbpf"]
 vendored-libbpf = ["libbpf-sys/vendored-libbpf", "libbpf-cargo/default"]
 
 [profile.dev]
