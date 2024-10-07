@@ -94,7 +94,8 @@ struct reader_context {
   // index:
   // 0: arg
   // 1: envp
-  u32 index;
+  u8 index;
+  bool is_compat;
   // ptr is a userspace pointer to an array of cstring pointers
   const u8 *const *ptr;
 };
@@ -283,6 +284,7 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   reader_ctx.event = event;
   reader_ctx.ptr = ctx->argv;
   reader_ctx.index = 0;
+  reader_ctx.is_compat = ctx->is_compat;
   // bpf_loop allows 1 << 23 (~8 million) loops, otherwise we cannot achieve it
   bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
   // Read envp
@@ -422,7 +424,6 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
 
 SEC("fentry/__" SYSCALL_PREFIX "_sys_execve")
 int BPF_PROG(sys_execve, struct pt_regs *regs) {
-  //  int tp_sys_enter_execve(struct sys_enter_execve_args *ctx)
   int key = 0;
   struct sys_enter_exec_args *common_ctx =
       bpf_map_lookup_elem(&exec_args_alloc, &key);
@@ -441,7 +442,6 @@ int BPF_PROG(sys_execve, struct pt_regs *regs) {
 
 SEC("fentry/__" SYSCALL_PREFIX "_sys_execveat")
 int BPF_PROG(sys_execveat, struct pt_regs *regs, int ret) {
-  // int tp_sys_enter_execveat(struct sys_enter_execveat_args *ctx)
   int key = 0;
   struct sys_enter_exec_args *common_ctx =
       bpf_map_lookup_elem(&exec_args_alloc, &key);
@@ -511,6 +511,65 @@ SEC("fexit/__" SYSCALL_PREFIX "_sys_execveat")
 int BPF_PROG(sys_exit_execveat, struct pt_regs *regs, int ret) {
   return tp_sys_exit_exec(ret);
 }
+
+#ifdef SYSCALL_COMPAT_PREFIX
+
+SEC("fexit/__" SYSCALL_COMPAT_PREFIX "_sys_execveat")
+int BPF_PROG(compat_sys_exit_execveat, struct pt_regs *regs, int ret) {
+  return tp_sys_exit_exec(ret);
+}
+
+SEC("fentry/__" SYSCALL_COMPAT_PREFIX "_sys_execveat")
+int BPF_PROG(compat_sys_execveat, struct pt_regs *regs, int ret) {
+  int key = 0;
+  struct sys_enter_exec_args *common_ctx =
+      bpf_map_lookup_elem(&exec_args_alloc, &key);
+  if (common_ctx == NULL)
+    return 0;
+
+  *common_ctx = (struct sys_enter_exec_args){
+      .is_execveat = true,
+      .is_compat = true,
+      .argv = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM3_CORE(regs),
+      .envp = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM4_CORE(regs),
+      .base_filename = (u8 *)(u64)COMPAT_PT_REGS_PARM2_CORE(regs),
+  };
+  trace_exec_common(common_ctx);
+  pid_t pid = (pid_t)bpf_get_current_pid_tgid();
+  struct exec_event *event = bpf_map_lookup_elem(&execs, &pid);
+  if (!event || !ctx)
+    return 0;
+
+  event->fd = COMPAT_PT_REGS_PARM1_CORE(regs);
+  event->flags = COMPAT_PT_REGS_PARM5_CORE(regs);
+  return 0;
+}
+
+SEC("fexit/__" SYSCALL_COMPAT_PREFIX "_sys_execve")
+int BPF_PROG(compat_sys_exit_execve, struct pt_regs *regs, int ret) {
+  return tp_sys_exit_exec(ret);
+}
+
+SEC("fentry/__" SYSCALL_COMPAT_PREFIX "_sys_execve")
+int BPF_PROG(compat_sys_execve, struct pt_regs *regs) {
+  //  int tp_sys_enter_execve(struct sys_enter_execve_args *ctx)
+  int key = 0;
+  struct sys_enter_exec_args *common_ctx =
+      bpf_map_lookup_elem(&exec_args_alloc, &key);
+  if (common_ctx == NULL)
+    return 0;
+  *common_ctx = (struct sys_enter_exec_args){
+      .is_execveat = false,
+      .is_compat = true,
+      .argv = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM2_CORE(regs),
+      .envp = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM3_CORE(regs),
+      .base_filename = (u8 *)(u64)COMPAT_PT_REGS_PARM1_CORE(regs),
+  };
+  trace_exec_common(common_ctx);
+  return 0;
+}
+
+#endif
 
 // Collect information about file descriptors of the process on sysenter of exec
 static int read_fds(struct exec_event *event) {
@@ -752,7 +811,12 @@ ptr_err:
 static int read_strings(u32 index, struct reader_context *ctx) {
   struct exec_event *event = ctx->event;
   const u8 *argp = NULL;
-  int ret = bpf_probe_read_user(&argp, sizeof(argp), &ctx->ptr[index]);
+  int ret;
+  if (!ctx->is_compat)
+    ret = bpf_probe_read_user(&argp, sizeof(argp), &ctx->ptr[index]);
+  else
+    ret =
+        bpf_probe_read_user(&argp, sizeof(u32), (void*)ctx->ptr + index * sizeof(u32));
   if (ret < 0) {
     event->header.flags |= PTR_READ_FAILURE;
     debug("Failed to read pointer to arg");
