@@ -32,6 +32,17 @@ extern void bpf_rcu_read_unlock(void) __ksym;
         (((~_UL(0)) - (_UL(1) << (l)) + 1) & \
          (~_UL(0) >> (BITS_PER_LONG - 1 - (h))))
 
+// Architecture Specific Definitions
+
+#ifdef __x86_64__
+#define SYSCALL_PREFIX "x64"
+#define SYSCALL_COMPAT_PREFIX "ia32"
+#elif __aarch64__
+#define SYSCALL_PREFIX "arm64"
+#elif __riscv64__
+#define SYSCALL_PREFIX "riscv"
+#endif
+
 /* BPF cannot access this struct */
 struct forbidden_common_args {
   u16 type;
@@ -60,7 +71,8 @@ struct sys_enter_execveat_args {
 };
 
 struct sys_enter_exec_args {
-  s32 syscall_nr;
+  bool is_execveat;
+  bool is_compat;
   const u8 *base_filename;
   const u8 *const *argv;
   const u8 *const *envp;
