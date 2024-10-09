@@ -575,11 +575,15 @@ impl<'rb> RunningEbpfTracer<'rb> {
   }
 }
 
-pub async fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre::Result<()> {
+pub async fn run(
+  command: EbpfCommand,
+  user: Option<User>,
+  cmd: Vec<String>,
+  color: Color,
+) -> color_eyre::Result<()> {
   let obj = Box::leak(Box::new(MaybeUninit::uninit()));
   match command {
     EbpfCommand::Log {
-      cmd,
       output,
       modifier_args,
       log_args,
@@ -608,7 +612,6 @@ pub async fn run(command: EbpfCommand, user: Option<User>, color: Color) -> colo
       Ok(())
     }
     EbpfCommand::Tui {
-      cmd,
       modifier_args,
       tracer_event_args,
       tui_args,
@@ -697,7 +700,6 @@ pub async fn run(command: EbpfCommand, user: Option<User>, color: Color) -> colo
       Ok(())
     }
     EbpfCommand::Collect {
-      cmd,
       modifier_args,
       format,
       pretty,

@@ -329,9 +329,9 @@ async fn main() -> color_eyre::Result<()> {
       Cli::generate_completions(shell);
     }
     #[cfg(feature = "ebpf")]
-    CliCommand::Ebpf { command } => {
+    CliCommand::Ebpf { command, cmd } => {
       // TODO: warn if --user is set when not follow-forks
-      bpf::run(command, user, cli.color).await?;
+      bpf::run(command, user, cmd, cli.color).await?;
     }
   }
   Ok(())
