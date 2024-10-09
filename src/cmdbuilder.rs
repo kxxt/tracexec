@@ -66,7 +66,7 @@ fn get_shell() -> String {
 
 /// `CommandBuilder` is used to prepare a command to be spawned into a pty.
 /// The interface is intentionally similar to that of `std::process::Command`.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommandBuilder {
   args: Vec<OsString>,
   cwd: Option<OsString>,

@@ -3,17 +3,17 @@ use regex_cursor::Cursor;
 
 use crate::event::OutputMsg;
 
-pub(crate) trait BidirectionalIterator: Iterator {
+pub trait BidirectionalIterator: Iterator {
   fn prev(&mut self) -> Option<Self::Item>;
 }
 
-pub(crate) trait IntoBidirectionalIterator {
+pub trait IntoBidirectionalIterator {
   type Iter: BidirectionalIterator;
 
   fn into_bidirectional_iter(self) -> Self::Iter;
 }
 
-pub(crate) struct BidirectionalIter<'a, T> {
+pub struct BidirectionalIter<'a, T> {
   slice: &'a [T],
   index: BidirectionalIterIndex,
 }
@@ -113,7 +113,7 @@ enum BidirectionalInterspersedIterIndex {
   End,
 }
 
-pub(crate) struct BidirectionalInterspersedIter<'a, T> {
+pub struct BidirectionalInterspersedIter<'a, T> {
   slice: &'a [T],
   index: BidirectionalInterspersedIterIndex,
   separator: &'a T,

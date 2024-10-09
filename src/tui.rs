@@ -102,22 +102,22 @@ impl Tui {
     self.cancel();
     self.cancellation_token = CancellationToken::new();
     let _cancellation_token = self.cancellation_token.clone();
-    let _event_tx = self.event_tx.clone();
+    let event_tx = self.event_tx.clone();
     self.task = tokio::spawn(async move {
       let mut reader = crossterm::event::EventStream::new();
       let mut render_interval = tokio::time::interval(render_delay);
-      _event_tx.send(Event::Init).unwrap();
+      event_tx.send(Event::Init).unwrap();
       loop {
         let render_delay = render_interval.tick();
         let crossterm_event = reader.next().fuse();
         let tracer_event = tracer_rx.recv();
         tokio::select! {
-          _ = _cancellation_token.cancelled() => {
+          () = _cancellation_token.cancelled() => {
               break;
           }
           Some(tracer_event) = tracer_event => {
             trace!("TUI event: tracer message!");
-            _event_tx.send(Event::Tracer(tracer_event)).unwrap();
+            event_tx.send(Event::Tracer(tracer_event)).unwrap();
           }
           Some(event) = crossterm_event => {
             #[cfg(debug_assertions)]
@@ -127,11 +127,11 @@ impl Tui {
                 match evt {
                   CrosstermEvent::Key(key) => {
                       if key.kind == KeyEventKind::Press {
-                          _event_tx.send(Event::Key(key)).unwrap();
+                          event_tx.send(Event::Key(key)).unwrap();
                       }
                   },
                   CrosstermEvent::Resize(cols, rows) => {
-                      _event_tx.send(Event::Resize(Size {
+                      event_tx.send(Event::Resize(Size {
                           width: cols,
                           height: rows,
                       })).unwrap();
@@ -140,13 +140,13 @@ impl Tui {
                 }
               }
               Err(_) => {
-                _event_tx.send(Event::Error).unwrap();
+                event_tx.send(Event::Error).unwrap();
               }
             }
           },
           _ = render_delay => {
             // log::trace!("TUI event: Render!");
-            _event_tx.send(Event::Render).unwrap();
+            event_tx.send(Event::Render).unwrap();
           },
         }
       }

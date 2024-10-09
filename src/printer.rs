@@ -43,7 +43,7 @@ pub enum FdPrintFormat {
   None,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd)]
 pub enum ColorLevel {
   Less,
   Normal,
@@ -69,7 +69,7 @@ pub struct PrinterArgs {
 
 impl PrinterArgs {
   pub fn from_cli(tracing_args: &LogModeArgs, modifier_args: &ModifierArgs) -> Self {
-    PrinterArgs {
+    Self {
       trace_comm: !tracing_args.no_show_comm,
       trace_argv: !tracing_args.no_show_argv && !tracing_args.show_cmdline,
       trace_env: match (
@@ -176,11 +176,11 @@ pub struct ListPrinter {
 impl ListPrinter {
   pub fn new(color: ColorLevel) -> Self {
     if color > ColorLevel::Normal {
-      ListPrinter {
+      Self {
         style: Style::new().bright_white().bold(),
       }
     } else {
-      ListPrinter {
+      Self {
         style: Style::new(),
       }
     }
@@ -245,7 +245,7 @@ pub struct Printer {
 
 impl Printer {
   pub fn new(args: PrinterArgs, baseline: Arc<BaselineInfo>) -> Self {
-    Printer { args, baseline }
+    Self { args, baseline }
   }
 
   thread_local! {
@@ -253,7 +253,7 @@ impl Printer {
   }
 
   pub fn init_thread_local(&self, output: Option<Box<PrinterOut>>) {
-    Printer::OUT.with(|out| {
+    Self::OUT.with(|out| {
       *out.borrow_mut() = output;
     });
   }
@@ -411,6 +411,7 @@ impl Printer {
     // 2. state.exec_data is Some
 
     // Defer the warnings so that they are printed after the main message
+    #[allow(clippy::collection_is_never_read)]
     let mut _deferred_warnings = vec![];
 
     Self::OUT.with_borrow_mut(|out| {

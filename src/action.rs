@@ -76,7 +76,7 @@ impl Action {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CopyTarget {
   Line,
   Commandline(SupportedShell),
@@ -89,7 +89,7 @@ pub enum CopyTarget {
   EnvDiff,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SupportedShell {
   Bash,
   Sh,

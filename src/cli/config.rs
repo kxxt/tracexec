@@ -29,7 +29,7 @@ pub enum ConfigLoadError {
 }
 
 impl Config {
-  pub fn load(path: Option<PathBuf>) -> Result<Config, ConfigLoadError> {
+  pub fn load(path: Option<PathBuf>) -> Result<Self, ConfigLoadError> {
     let config_text = match path {
       Some(path) => std::fs::read_to_string(path)?, // if manually specified config doesn't exist, return a hard error
       None => {
@@ -47,7 +47,7 @@ impl Config {
       }
     };
 
-    let config: Config = toml::from_str(&config_text)?;
+    let config: Self = toml::from_str(&config_text)?;
     Ok(config)
   }
 }

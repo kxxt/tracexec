@@ -98,7 +98,7 @@ pub enum TracerMode {
   Log { foreground: bool },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BreakPointHit {
   pub bid: u32,
   pub pid: Pid,
@@ -182,8 +182,10 @@ impl Tracer {
         baseline.clone(),
       ),
       delay: {
+        #[allow(clippy::useless_let_if_seq)]
         let mut default = Duration::from_micros(1);
         #[cfg(feature = "seccomp-bpf")]
+        #[allow(clippy::useless_let_if_seq)]
         if seccomp_bpf == SeccompBpf::On {
           default = Duration::from_micros(500);
         }
@@ -333,7 +335,7 @@ impl Tracer {
       self.store.write().unwrap().insert(root_child_state);
     }
     // Set foreground process group of the terminal
-    if let TracerMode::Log { foreground: true } = &self.mode {
+    if matches!(&self.mode, TracerMode::Log { foreground: true }) {
       match tcsetpgrp(stdin(), root_child) {
         Ok(_) => {}
         Err(Errno::ENOTTY) => {
@@ -485,15 +487,16 @@ impl Tracer {
           let mut store = self.store.write().unwrap();
           if let Some(state) = store.get_current_mut(pid) {
             state.status = ProcessStatus::Exited(ProcessExit::Code(code));
-            let mut should_exit = false;
-            if pid == root_child {
+            let should_exit = if pid == root_child {
               filterable_event!(TraceeExit {
                 signal: None,
                 exit_code: code,
               })
               .send_if_match(&self.msg_tx, self.filter)?;
-              should_exit = true;
-            }
+              true
+            } else {
+              false
+            };
             let associated_events = state.associated_events.clone();
             if !associated_events.is_empty() {
               self.msg_tx.send(
@@ -558,6 +561,7 @@ impl Tracer {
                   state.status = ProcessStatus::PtraceForkEventReceived;
                   state.ppid = Some(pid);
                   store.insert(state);
+                  drop(store);
                 }
                 // Resume parent
                 self.seccomp_aware_cont(pid)?;
@@ -798,7 +802,6 @@ impl Tracer {
     let mut store = self.store.write().unwrap();
     let p = store.get_current_mut(pid).unwrap();
     p.presyscall = !p.presyscall;
-
     let regs = match ptrace_getregs(pid) {
       Ok(regs) => regs,
       Err(Errno::ESRCH) => {
@@ -820,7 +823,7 @@ impl Tracer {
         }
         if self.filter.intersects(TracerEventDetailsKind::Exec) {
           // TODO: optimize, we don't need to collect exec event for log mode
-          let event = TracerEvent::from(TracerEventDetails::Exec(Tracer::collect_exec_event(
+          let event = TracerEvent::from(TracerEventDetails::Exec(Self::collect_exec_event(
             &self.baseline.env,
             p,
             exec_result,
@@ -1228,7 +1231,7 @@ impl Tracer {
           error!("Failed to suspend {pid}'s seccomp filter: {errno}");
           return Err(errno);
         } else {
-          trace!("suspended {pid}'s seccomp filter successfully")
+          trace!("suspended {pid}'s seccomp filter successfully");
         }
       }
     }

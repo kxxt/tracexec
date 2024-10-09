@@ -12,7 +12,7 @@ use crate::{
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "result", content = "value", rename_all = "kebab-case")]
-pub enum JsonResult<T: Serialize + Clone> {
+pub enum JsonResult<T: Clone> {
   Success(T),
   Error(String),
 }

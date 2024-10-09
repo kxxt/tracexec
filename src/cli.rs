@@ -213,7 +213,7 @@ impl Cli {
   }
 
   pub fn generate_completions(shell: clap_complete::Shell) {
-    let mut cmd = Cli::command();
+    let mut cmd = Self::command();
     clap_complete::generate(shell, &mut cmd, env!("CARGO_CRATE_NAME"), &mut stdout())
   }
 

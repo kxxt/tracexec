@@ -1,3 +1,19 @@
+#![warn(
+  clippy::all,
+  // clippy::pedantic,
+  clippy::nursery,
+)]
+#![allow(
+  clippy::option_if_let_else,
+  clippy::missing_const_for_fn,
+  clippy::significant_drop_tightening,
+  clippy::cognitive_complexity, // FIXME
+  clippy::large_stack_frames, // In generated bpf skel, not really used to store on stack.
+  clippy::future_not_send, // We are not a library for now.
+  clippy::branches_sharing_code,
+  clippy::non_send_fields_in_send_ty, // In bpf skel, maybe open an issue in libbpf-rs?
+)]
+
 mod action;
 mod arch;
 #[cfg(feature = "ebpf")]
@@ -341,12 +357,7 @@ fn is_current_kernel_greater_than(min_support: (u32, u32)) -> color_eyre::Result
   let utsname = nix::sys::utsname::uname()?;
   let kstr = utsname.release().as_bytes();
   let pos = kstr.iter().position(|&c| c != b'.' && !c.is_ascii_digit());
-  let kver = if let Some(pos) = pos {
-    let (s, _) = kstr.split_at(pos);
-    s
-  } else {
-    kstr
-  };
+  let kver = pos.map_or(kstr, |pos| kstr.split_at(pos).0);
   let mut kvers = kver.split(|&c| c == b'.');
   let Some(major) = kvers.next().and_then(atoi::<u32>) else {
     bail!("Failed to parse kernel major ver!")

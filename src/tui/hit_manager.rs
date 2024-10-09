@@ -53,11 +53,10 @@ impl BreakPointHitEntry {
           THEME.hit_entry_plain_text,
         ),
         Span::raw("("),
-        if let Some(pattern) = &self.breakpoint_pattern {
-          Span::styled(pattern.clone(), THEME.hit_entry_breakpoint_pattern)
-        } else {
-          Span::styled("deleted", THEME.hit_entry_no_breakpoint_pattern)
-        },
+        self.breakpoint_pattern.as_ref().map_or_else(
+          || Span::styled("deleted", THEME.hit_entry_no_breakpoint_pattern),
+          |pattern| Span::styled(pattern.clone(), THEME.hit_entry_breakpoint_pattern),
+        ),
         Span::raw(")"),
         space.clone(),
         Span::styled("at", THEME.hit_entry_plain_text),

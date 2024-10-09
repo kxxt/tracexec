@@ -20,7 +20,7 @@ pub struct InfoPopupState {
 }
 
 impl InfoPopupState {
-  pub fn handle_key_event(&mut self, _key: KeyEvent) -> Option<Action> {
+  pub fn handle_key_event(&self, _key: KeyEvent) -> Option<Action> {
     Some(Action::CancelCurrentPopup)
   }
 

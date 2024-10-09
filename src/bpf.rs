@@ -451,7 +451,7 @@ impl EbpfTracer {
             .as_ref()
             .map(|tx| filterable_event!(TraceeSpawn(child)).send_if_match(tx, self.filter))
             .transpose()?;
-          if let TracerMode::Log { foreground: true } = &self.mode {
+          if matches!(&self.mode, TracerMode::Log { foreground: true }) {
             match tcsetpgrp(stdin(), child) {
               Ok(_) => {}
               Err(Errno::ENOTTY) => {

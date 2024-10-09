@@ -73,9 +73,9 @@ impl Hash for FriendlyError {
   fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
     core::mem::discriminant(self).hash(state);
     match self {
-      FriendlyError::InspectError(e) => (*e as i32).hash(state),
+      Self::InspectError(e) => (*e as i32).hash(state),
       #[cfg(feature = "ebpf")]
-      FriendlyError::Bpf(e) => e.hash(state),
+      Self::Bpf(e) => e.hash(state),
     }
   }
 }
@@ -109,9 +109,9 @@ pub enum OutputMsg {
 impl AsRef<str> for OutputMsg {
   fn as_ref(&self) -> &str {
     match self {
-      OutputMsg::Ok(s) => s.as_ref(),
-      OutputMsg::PartialOk(s) => s.as_ref(),
-      OutputMsg::Err(e) => <&'static str>::from(e),
+      Self::Ok(s) => s.as_ref(),
+      Self::PartialOk(s) => s.as_ref(),
+      Self::Err(e) => <&'static str>::from(e),
     }
   }
 }
@@ -122,9 +122,9 @@ impl Serialize for OutputMsg {
     S: serde::Serializer,
   {
     match self {
-      OutputMsg::Ok(s) => s.serialize(serializer),
-      OutputMsg::PartialOk(s) => s.serialize(serializer),
-      OutputMsg::Err(e) => <&'static str>::from(e).serialize(serializer),
+      Self::Ok(s) => s.serialize(serializer),
+      Self::PartialOk(s) => s.serialize(serializer),
+      Self::Err(e) => <&'static str>::from(e).serialize(serializer),
     }
   }
 }
@@ -132,9 +132,9 @@ impl Serialize for OutputMsg {
 impl Display for OutputMsg {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      OutputMsg::Ok(msg) => write!(f, "{msg:?}"),
-      OutputMsg::PartialOk(msg) => write!(f, "{:?}", cli::theme::THEME.inline_error.style(msg)),
-      OutputMsg::Err(e) => Display::fmt(&cli::theme::THEME.inline_error.style(&e), f),
+      Self::Ok(msg) => write!(f, "{msg:?}"),
+      Self::PartialOk(msg) => write!(f, "{:?}", cli::theme::THEME.inline_error.style(msg)),
+      Self::Err(e) => Display::fmt(&cli::theme::THEME.inline_error.style(&e), f),
     }
   }
 }
@@ -153,22 +153,22 @@ impl From<ArcStr> for OutputMsg {
 
 impl OutputMsg {
   pub fn not_ok(&self) -> bool {
-    !matches!(self, OutputMsg::Ok(_))
+    !matches!(self, Self::Ok(_))
   }
 
   pub fn is_ok_and(&self, predicate: impl FnOnce(&str) -> bool) -> bool {
     match self {
-      OutputMsg::Ok(s) => predicate(s),
-      OutputMsg::PartialOk(_) => false,
-      OutputMsg::Err(_) => false,
+      Self::Ok(s) => predicate(s),
+      Self::PartialOk(_) => false,
+      Self::Err(_) => false,
     }
   }
 
   pub fn is_err_or(&self, predicate: impl FnOnce(&str) -> bool) -> bool {
     match self {
-      OutputMsg::Ok(s) => predicate(s),
-      OutputMsg::PartialOk(_) => true,
-      OutputMsg::Err(_) => true,
+      Self::Ok(s) => predicate(s),
+      Self::PartialOk(_) => true,
+      Self::Err(_) => true,
     }
   }
 
@@ -176,26 +176,24 @@ impl OutputMsg {
   pub fn join(&self, path: impl AsRef<str>) -> Self {
     let path = path.as_ref();
     match self {
-      OutputMsg::Ok(s) => OutputMsg::Ok(cached_string(format!("{s}/{path}"))),
-      OutputMsg::PartialOk(s) => OutputMsg::PartialOk(cached_string(format!("{s}/{path}"))),
-      OutputMsg::Err(s) => {
-        OutputMsg::PartialOk(cached_string(format!("{}/{path}", <&'static str>::from(s))))
-      }
+      Self::Ok(s) => Self::Ok(cached_string(format!("{s}/{path}"))),
+      Self::PartialOk(s) => Self::PartialOk(cached_string(format!("{s}/{path}"))),
+      Self::Err(s) => Self::PartialOk(cached_string(format!("{}/{path}", <&'static str>::from(s)))),
     }
   }
 
   /// Escape the content for bash shell if it is not error
   pub fn tui_bash_escaped_with_style(&self, style: Style) -> Span<'static> {
     match self {
-      OutputMsg::Ok(s) => {
+      Self::Ok(s) => {
         shell_quote::QuoteRefExt::<String>::quoted(s.as_str(), shell_quote::Bash).set_style(style)
       }
-      OutputMsg::PartialOk(s) => {
+      Self::PartialOk(s) => {
         shell_quote::QuoteRefExt::<String>::quoted(s.as_str(), shell_quote::Bash)
           .set_style(style)
           .patch_style(THEME.inline_tracer_error)
       }
-      OutputMsg::Err(e) => <&'static str>::from(e).set_style(THEME.inline_tracer_error),
+      Self::Err(e) => <&'static str>::from(e).set_style(THEME.inline_tracer_error),
     }
   }
 
@@ -205,14 +203,14 @@ impl OutputMsg {
     style: owo_colors::Style,
   ) -> Either<impl Display, impl Display> {
     match self {
-      OutputMsg::Ok(s) => Either::Left(style.style(shell_quote::QuoteRefExt::<String>::quoted(
+      Self::Ok(s) => Either::Left(style.style(shell_quote::QuoteRefExt::<String>::quoted(
         s.as_str(),
         shell_quote::Bash,
       ))),
-      OutputMsg::PartialOk(s) => Either::Left(cli::theme::THEME.inline_error.style(
+      Self::PartialOk(s) => Either::Left(cli::theme::THEME.inline_error.style(
         shell_quote::QuoteRefExt::<String>::quoted(s.as_str(), shell_quote::Bash),
       )),
-      OutputMsg::Err(e) => Either::Right(
+      Self::Err(e) => Either::Right(
         cli::theme::THEME
           .inline_error
           .style(<&'static str>::from(e)),
@@ -223,27 +221,27 @@ impl OutputMsg {
   /// Escape the content for bash shell if it is not error
   pub fn bash_escaped(&self) -> Cow<'static, str> {
     match self {
-      OutputMsg::Ok(s) | OutputMsg::PartialOk(s) => Cow::Owned(shell_quote::QuoteRefExt::quoted(
+      Self::Ok(s) | Self::PartialOk(s) => Cow::Owned(shell_quote::QuoteRefExt::quoted(
         s.as_str(),
         shell_quote::Bash,
       )),
-      OutputMsg::Err(e) => Cow::Borrowed(<&'static str>::from(e)),
+      Self::Err(e) => Cow::Borrowed(<&'static str>::from(e)),
     }
   }
 
   pub fn tui_styled(&self, style: Style) -> Span {
     match self {
-      OutputMsg::Ok(s) => (*s).set_style(style),
-      OutputMsg::PartialOk(s) => (*s).set_style(THEME.inline_tracer_error),
-      OutputMsg::Err(e) => <&'static str>::from(e).set_style(THEME.inline_tracer_error),
+      Self::Ok(s) => (*s).set_style(style),
+      Self::PartialOk(s) => (*s).set_style(THEME.inline_tracer_error),
+      Self::Err(e) => <&'static str>::from(e).set_style(THEME.inline_tracer_error),
     }
   }
 
   pub fn cli_styled(&self, style: owo_colors::Style) -> Either<impl Display + '_, impl Display> {
     match self {
-      OutputMsg::Ok(s) => Either::Left(s.style(style)),
-      OutputMsg::PartialOk(s) => Either::Left(s.style(cli::theme::THEME.inline_error)),
-      OutputMsg::Err(e) => Either::Right(
+      Self::Ok(s) => Either::Left(s.style(style)),
+      Self::PartialOk(s) => Either::Left(s.style(cli::theme::THEME.inline_error)),
+      Self::Err(e) => Either::Right(
         cli::theme::THEME
           .inline_error
           .style(<&'static str>::from(e)),
@@ -263,11 +261,9 @@ impl OutputMsg {
       }
     }
     match self {
-      OutputMsg::Ok(s) => Either::Left(style.style(DebugAsDisplay(s))),
-      OutputMsg::PartialOk(s) => {
-        Either::Left(cli::theme::THEME.inline_error.style(DebugAsDisplay(s)))
-      }
-      OutputMsg::Err(e) => Either::Right(
+      Self::Ok(s) => Either::Left(style.style(DebugAsDisplay(s))),
+      Self::PartialOk(s) => Either::Left(cli::theme::THEME.inline_error.style(DebugAsDisplay(s))),
+      Self::Err(e) => Either::Right(
         cli::theme::THEME
           .inline_error
           .style(<&'static str>::from(e)),
@@ -296,17 +292,17 @@ pub enum TracerMessage {
 
 impl From<TracerEvent> for TracerMessage {
   fn from(event: TracerEvent) -> Self {
-    TracerMessage::Event(event)
+    Self::Event(event)
   }
 }
 
 impl From<ProcessStateUpdateEvent> for TracerMessage {
   fn from(update: ProcessStateUpdateEvent) -> Self {
-    TracerMessage::StateUpdate(update)
+    Self::StateUpdate(update)
   }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TracerEvent {
   pub details: TracerEventDetails,
   pub id: u64,
@@ -333,7 +329,7 @@ impl From<TracerEventDetails> for TracerEvent {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, FilterableEnum)]
+#[derive(Debug, Clone, PartialEq, Eq, FilterableEnum)]
 #[filterable_enum(kind_extra_derive=ValueEnum, kind_extra_derive=Display, kind_extra_attrs="strum(serialize_all = \"kebab-case\")")]
 pub enum TracerEventDetails {
   Info(TracerEventMessage),
@@ -352,13 +348,13 @@ pub enum TracerEventDetails {
   },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TracerEventMessage {
   pub pid: Option<Pid>,
   pub msg: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecEvent {
   pub pid: Pid,
   pub cwd: OutputMsg,
@@ -372,7 +368,7 @@ pub struct ExecEvent {
   pub result: i64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RuntimeModifier {
   pub show_env: bool,
   pub show_cwd: bool,
@@ -435,7 +431,7 @@ impl TracerEventDetails {
     };
 
     let mut line = match self {
-      TracerEventDetails::Info(TracerEventMessage { ref msg, pid }) => chain!(
+      Self::Info(TracerEventMessage { ref msg, pid }) => chain!(
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
@@ -443,7 +439,7 @@ impl TracerEventDetails {
         [": ".into(), msg.clone().set_style(THEME.tracer_info)]
       )
       .collect(),
-      TracerEventDetails::Warning(TracerEventMessage { ref msg, pid }) => chain!(
+      Self::Warning(TracerEventMessage { ref msg, pid }) => chain!(
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
@@ -451,7 +447,7 @@ impl TracerEventDetails {
         [": ".into(), msg.clone().set_style(THEME.tracer_warning)]
       )
       .collect(),
-      TracerEventDetails::Error(TracerEventMessage { ref msg, pid }) => chain!(
+      Self::Error(TracerEventMessage { ref msg, pid }) => chain!(
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
@@ -459,7 +455,7 @@ impl TracerEventDetails {
         [": ".into(), msg.clone().set_style(THEME.tracer_error)]
       )
       .collect(),
-      TracerEventDetails::NewChild { ppid, pcomm, pid } => [
+      Self::NewChild { ppid, pcomm, pid } => [
         Some(ppid.to_string().set_style(THEME.pid_success)),
         event_status.map(|s| <&'static str>::from(s).into()),
         Some(format!("<{}>", pcomm).set_style(THEME.comm)),
@@ -470,7 +466,7 @@ impl TracerEventDetails {
       .into_iter()
       .flatten()
       .collect(),
-      TracerEventDetails::Exec(exec) => {
+      Self::Exec(exec) => {
         let ExecEvent {
           pid,
           cwd,
@@ -654,12 +650,12 @@ impl TracerEventDetails {
 
         Line::default().spans(spans)
       }
-      TracerEventDetails::TraceeExit { signal, exit_code } => format!(
+      Self::TraceeExit { signal, exit_code } => format!(
         "tracee exit: signal: {:?}, exit_code: {}",
         signal, exit_code
       )
       .into(),
-      TracerEventDetails::TraceeSpawn(pid) => format!("tracee spawned: {}", pid).into(),
+      Self::TraceeSpawn(pid) => format!("tracee spawned: {}", pid).into(),
     };
     let mut cwd_mask = None;
     let mut env_mask = None;
@@ -695,14 +691,14 @@ impl TracerEventDetails {
     modifier_args: &ModifierArgs,
     rt_modifier: RuntimeModifier,
   ) -> Cow<'a, str> {
-    if let CopyTarget::Line = target {
+    if CopyTarget::Line == target {
       return self
         .to_event_line(baseline, false, modifier_args, rt_modifier, None, false)
         .to_string()
         .into();
     }
     // Other targets are only available for Exec events
-    let TracerEventDetails::Exec(event) = self else {
+    let Self::Exec(event) = self else {
       panic!("Copy target {:?} is only available for Exec events", target);
     };
     let mut modifier_args = ModifierArgs::default();
@@ -846,7 +842,7 @@ macro_rules! filterable_event {
 
 pub(crate) use filterable_event;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProcessStateUpdate {
   Exit(ProcessExit),
   BreakPointHit(BreakPointHit),
@@ -856,14 +852,14 @@ pub enum ProcessStateUpdate {
   DetachError { hit: BreakPointHit, error: Errno },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProcessStateUpdateEvent {
   pub update: ProcessStateUpdate,
   pub pid: Pid,
   pub ids: Vec<u64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventStatus {
   // exec status
   ExecENOENT,

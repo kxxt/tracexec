@@ -2,7 +2,7 @@ use enumflags2::bitflags;
 
 #[bitflags]
 #[repr(u32)]
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum BpfEventFlags {

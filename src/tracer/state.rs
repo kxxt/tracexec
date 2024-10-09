@@ -46,13 +46,13 @@ pub struct ProcessState {
   pub pending_detach: Option<PendingDetach>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessExit {
   Code(i32),
   Signal(Signal),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProcessStatus {
   Initialized,
   SigstopReceived,
@@ -139,7 +139,7 @@ impl ProcessState {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr)]
 pub enum BreakPointStop {
   SyscallEnter,
   SyscallExit,
@@ -148,8 +148,8 @@ pub enum BreakPointStop {
 impl BreakPointStop {
   pub fn toggle(&mut self) {
     *self = match self {
-      BreakPointStop::SyscallEnter => BreakPointStop::SyscallExit,
-      BreakPointStop::SyscallExit => BreakPointStop::SyscallEnter,
+      Self::SyscallEnter => Self::SyscallExit,
+      Self::SyscallExit => Self::SyscallEnter,
     }
   }
 }
@@ -189,18 +189,18 @@ pub struct BreakPoint {
 impl BreakPointPattern {
   pub fn pattern(&self) -> &str {
     match self {
-      BreakPointPattern::ArgvRegex(regex) => regex.editable.as_str(),
-      BreakPointPattern::InFilename(filename) => filename,
+      Self::ArgvRegex(regex) => regex.editable.as_str(),
+      Self::InFilename(filename) => filename,
       // Unwrap is fine since user inputs the filename as str
-      BreakPointPattern::ExactFilename(filename) => filename,
+      Self::ExactFilename(filename) => filename,
     }
   }
 
   pub fn to_editable(&self) -> String {
     match self {
-      BreakPointPattern::ArgvRegex(regex) => format!("argv-regex:{}", regex.editable),
-      BreakPointPattern::InFilename(filename) => format!("in-filename:{}", filename),
-      BreakPointPattern::ExactFilename(filename) => {
+      Self::ArgvRegex(regex) => format!("argv-regex:{}", regex.editable),
+      Self::InFilename(filename) => format!("in-filename:{}", filename),
+      Self::ExactFilename(filename) => {
         format!("exact-filename:{}", filename)
       }
     }
@@ -224,7 +224,7 @@ impl BreakPointPattern {
 
   pub fn matches(&self, argv: Option<&[OutputMsg]>, filename: &OutputMsg) -> bool {
     match self {
-      BreakPointPattern::ArgvRegex(regex) => {
+      Self::ArgvRegex(regex) => {
         let Some(argv) = argv else {
           return false;
         };
@@ -236,13 +236,13 @@ impl BreakPointPattern {
           &mut regex_cursor::Input::new(argv),
         )
       }
-      BreakPointPattern::InFilename(pattern) => {
+      Self::InFilename(pattern) => {
         let OutputMsg::Ok(filename) = filename else {
           return false;
         };
         filename.contains(pattern)
       }
-      BreakPointPattern::ExactFilename(path) => {
+      Self::ExactFilename(path) => {
         let OutputMsg::Ok(filename) = filename else {
           return false;
         };

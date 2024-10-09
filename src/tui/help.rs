@@ -15,16 +15,14 @@ use ratatui::{style::Styled, text::Span};
 
 pub fn cli_flag<'a, T>(f: T) -> Span<'a>
 where
-  T: Into<Cow<'a, str>>,
-  T: Styled<Item = Span<'a>>,
+  T: Into<Cow<'a, str>> + Styled<Item = Span<'a>>,
 {
   f.set_style(THEME.cli_flag)
 }
 
 pub fn help_key<'a, T>(k: T) -> Span<'a>
 where
-  T: Into<Cow<'a, str>>,
-  T: Styled<Item = Span<'a>>,
+  T: Into<Cow<'a, str>> + Styled<Item = Span<'a>>,
 {
   let mut key_string = String::from("\u{00a0}");
   key_string.push_str(&k.into());
@@ -33,8 +31,7 @@ where
 }
 pub fn help_desc<'a, T>(d: T) -> Span<'a>
 where
-  T: Into<Cow<'a, str>>,
-  T: Styled<Item = Span<'a>>,
+  T: Into<Cow<'a, str>> + Styled<Item = Span<'a>>,
 {
   let mut desc_string = String::from("\u{00a0}");
   desc_string.push_str(&d.into());
@@ -44,8 +41,7 @@ where
 
 pub fn fancy_help_desc<'a, T>(d: T) -> Span<'a>
 where
-  T: Into<Cow<'a, str>>,
-  T: Styled<Item = Span<'a>>,
+  T: Into<Cow<'a, str>> + Styled<Item = Span<'a>>,
 {
   let mut desc_string = String::from("\u{00a0}");
   desc_string.push_str(&d.into());

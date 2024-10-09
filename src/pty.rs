@@ -64,7 +64,7 @@ pub struct PtySize {
 
 impl Default for PtySize {
   fn default() -> Self {
-    PtySize {
+    Self {
       rows: 24,
       cols: 80,
       pixel_width: 0,
@@ -181,7 +181,7 @@ impl ExitStatus {
 }
 
 impl From<std::process::ExitStatus> for ExitStatus {
-  fn from(status: std::process::ExitStatus) -> ExitStatus {
+  fn from(status: std::process::ExitStatus) -> Self {
     #[cfg(unix)]
     {
       use std::os::unix::process::ExitStatusExt;
@@ -195,7 +195,7 @@ impl From<std::process::ExitStatus> for ExitStatus {
           signame.to_string_lossy().to_string()
         };
 
-        return ExitStatus {
+        return Self {
           code: status.code().map(|c| c as u32).unwrap_or(1),
           signal: Some(signal),
         };
@@ -207,7 +207,7 @@ impl From<std::process::ExitStatus> for ExitStatus {
       .map(|c| c as u32)
       .unwrap_or_else(|| if status.success() { 0 } else { 1 });
 
-    ExitStatus { code, signal: None }
+    Self { code, signal: None }
   }
 }
 
@@ -243,11 +243,11 @@ pub trait PtySystem {
 
 impl Child for std::process::Child {
   fn try_wait(&mut self) -> IoResult<Option<ExitStatus>> {
-    std::process::Child::try_wait(self).map(|s| s.map(Into::into))
+    Self::try_wait(self).map(|s| s.map(Into::into))
   }
 
   fn wait(&mut self) -> IoResult<ExitStatus> {
-    std::process::Child::wait(self).map(Into::into)
+    Self::wait(self).map(Into::into)
   }
 
   fn process_id(&self) -> Pid {
@@ -308,7 +308,7 @@ impl ChildKiller for std::process::Child {
       // it's still alive after a grace period, so proceed with a kill
     }
 
-    std::process::Child::kill(self)
+    Self::kill(self)
   }
 
   fn clone_killer(&self) -> Box<dyn ChildKiller + Send + Sync> {

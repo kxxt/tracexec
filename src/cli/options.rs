@@ -2,7 +2,7 @@ use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
-#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Display)]
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq, Display)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Color {
   Auto,
@@ -10,7 +10,7 @@ pub enum Color {
   Never,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Display, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq, Display, Default, Deserialize, Serialize)]
 #[strum(serialize_all = "kebab-case")]
 pub enum SeccompBpf {
   #[default]
@@ -19,7 +19,9 @@ pub enum SeccompBpf {
   Off,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Display, Default, Deserialize, Serialize)]
+#[derive(
+  Debug, Clone, Copy, ValueEnum, PartialEq, Eq, Display, Default, Deserialize, Serialize,
+)]
 #[strum(serialize_all = "kebab-case")]
 pub enum ActivePane {
   #[default]
@@ -27,7 +29,7 @@ pub enum ActivePane {
   Events,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Display, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq, Display, Deserialize, Serialize)]
 #[strum(serialize_all = "kebab-case")]
 pub enum ExportFormat {
   // https://jsonlines.org/

@@ -67,7 +67,7 @@ use super::{
   Tui,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Default, ValueEnum, Display, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum, Display, Deserialize, Serialize)]
 #[strum(serialize_all = "kebab-case")]
 pub enum AppLayout {
   #[default]
@@ -220,8 +220,8 @@ impl App {
                       self.popup = None;
                     }
                     ActivePopup::ViewDetails(state) => {
-                      if let ControlFlow::Break(()) =
-                        state.handle_key_event(ke, self.clipboard.as_mut())?
+                      if ControlFlow::Break(())
+                        == state.handle_key_event(ke, self.clipboard.as_mut())?
                       {
                         self.popup = None;
                       }

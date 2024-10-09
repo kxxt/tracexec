@@ -10,7 +10,7 @@ pub trait PartialLine<'a> {
 
 impl<'a> PartialLine<'a> for Line<'a> {
   // Unicode is hard
-  fn substring(mut self, start: usize, len: u16) -> Line<'a> {
+  fn substring(mut self, start: usize, len: u16) -> Self {
     let len = len as usize;
     let end = start + len;
     let end = if end > self.width() {

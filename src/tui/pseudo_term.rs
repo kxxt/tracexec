@@ -76,8 +76,7 @@ impl PseudoTerminalPane {
           }
           if size > 0 {
             processed_buf.extend_from_slice(&buf[..size]);
-            let mut parser = parser.write().unwrap();
-            parser.process(&processed_buf);
+            parser.write().unwrap().process(&processed_buf);
 
             // Clear the processed portion of the buffer
             processed_buf.clear();
@@ -196,8 +195,7 @@ impl PseudoTerminalPane {
       return Ok(());
     }
     self.size = size;
-    let mut parser = self.parser.write().unwrap();
-    parser.set_size(size.rows, size.cols);
+    self.parser.write().unwrap().set_size(size.rows, size.cols);
     self.pty_master.resize(size)?;
     Ok(())
   }

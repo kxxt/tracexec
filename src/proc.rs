@@ -60,7 +60,7 @@ pub fn read_exe(pid: Pid) -> std::io::Result<ArcStr> {
   Ok(cached_str(&buf.to_string_lossy()))
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct FileDescriptorInfoCollection {
   #[serde(flatten)]
   pub fdinfo: BTreeMap<c_int, FileDescriptorInfo>,
@@ -106,7 +106,7 @@ impl FileDescriptorInfoCollection {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FileDescriptorInfo {
   pub fd: c_int,
   pub path: OutputMsg,
@@ -120,11 +120,11 @@ pub struct FileDescriptorInfo {
 }
 
 impl FileDescriptorInfo {
-  pub fn not_same_file_as(&self, other: &FileDescriptorInfo) -> bool {
+  pub fn not_same_file_as(&self, other: &Self) -> bool {
     !self.same_file_as(other)
   }
 
-  pub fn same_file_as(&self, other: &FileDescriptorInfo) -> bool {
+  pub fn same_file_as(&self, other: &Self) -> bool {
     self.ino == other.ino && self.mnt_id == other.mnt_id
   }
 }
@@ -221,7 +221,7 @@ fn get_mountinfo_by_mnt_id(pid: Pid, mnt_id: c_int) -> color_eyre::Result<ArcStr
   Ok(cache.get_or_insert("Not found. This is probably a pipe or something else."))
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "what", content = "value", rename_all = "kebab-case")]
 pub enum Interpreter {
   None,
@@ -233,12 +233,12 @@ pub enum Interpreter {
 impl Display for Interpreter {
   fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
     match self {
-      Interpreter::None => write!(f, "{}", "none".bold()),
-      Interpreter::Shebang(s) => write!(f, "{:?}", s),
-      Interpreter::ExecutableUnaccessible => {
+      Self::None => write!(f, "{}", "none".bold()),
+      Self::Shebang(s) => write!(f, "{:?}", s),
+      Self::ExecutableUnaccessible => {
         write!(f, "{}", "executable unaccessible".red().bold())
       }
-      Interpreter::Error(e) => write!(f, "({}: {})", "err".red().bold(), e.red().bold()),
+      Self::Error(e) => write!(f, "({}: {})", "err".red().bold(), e.red().bold()),
     }
   }
 }
@@ -385,7 +385,7 @@ pub fn cached_string(s: String) -> ArcStr {
   cache.get_or_insert_owned(s)
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EnvDiff {
   pub added: BTreeMap<OutputMsg, OutputMsg>,
   pub removed: BTreeSet<OutputMsg>,
@@ -420,7 +420,7 @@ pub fn diff_env(
   }
   EnvDiff {
     added,
-    removed: removed.into_iter().map(|x| x.to_owned()).collect(),
+    removed: removed.into_iter().collect(),
     modified,
   }
 }
