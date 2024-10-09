@@ -211,7 +211,7 @@ fn get_mountinfo_by_mnt_id(pid: Pid, mnt_id: c_int) -> color_eyre::Result<ArcStr
   let reader = BufReader::new(file);
   for line in reader.lines() {
     let line = line?;
-    let parts = line.split_once(|x| x == ' ');
+    let parts = line.split_once(' ');
     if parts.map(|(mount_id, _)| mount_id.parse()) == Some(Ok(mnt_id)) {
       let mut cache = CACHE.write().unwrap();
       return Ok(cache.get_or_insert_owned(line));

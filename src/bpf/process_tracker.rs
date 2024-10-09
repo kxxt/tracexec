@@ -45,6 +45,7 @@ impl ProcessTracker {
       .extend(ids);
   }
 
+  #[allow(unused)]
   pub fn associated_events(&mut self, pid: Pid) -> &[u64] {
     &self.processes.get(&pid).unwrap().associated_events
   }

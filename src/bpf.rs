@@ -757,7 +757,7 @@ pub async fn run(
                 tracing::debug!("Waiting for tracer thread to exit");
                 tracer_thread.await?;
                 serialize_json_to_output(&mut output, &json, pretty)?;
-                output.write_all(&[b'\n'])?;
+                output.write_all(b"\n")?;
                 output.flush()?;
                 process::exit(exit_code);
               }
@@ -799,7 +799,7 @@ pub async fn run(
               })) => {
                 let json_event = JsonExecEvent::new(id, *exec);
                 serialize_json_to_output(&mut output, &json_event, pretty)?;
-                output.write_all(&[b'\n'])?;
+                output.write_all(b"\n")?;
                 output.flush()?;
               }
               // channel closed abnormally.
