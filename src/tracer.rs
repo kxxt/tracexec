@@ -428,6 +428,7 @@ impl Tracer {
                 let mut pid_reuse = false;
                 let mut handled = false;
                 if let Some(state) = store.get_current_mut(pid) {
+                  // This pid is already tracked.
                   if state.status == ProcessStatus::PtraceForkEventReceived {
                     trace!("sigstop event received after ptrace fork event, pid: {pid}");
                     state.status = ProcessStatus::Running;
@@ -436,19 +437,28 @@ impl Tracer {
                   } else if state.status == ProcessStatus::Initialized {
                     // Manually inserted process state. (root child)
                     handled = true;
+                  } else if let Some(detach) = state.pending_detach.take() {
+                    // This is a sentinel signal
+                    self.proprgate_operation_error(
+                      detach.hit,
+                      false,
+                      self.detach_process_internal(state, Some(detach.signal), detach.hid),
+                    )?;
+                    continue;
                   } else {
                     // Pid reuse
                     pid_reuse = true;
                   }
                 }
+                // Either this is an untracked new progress, or pid_reuse happened
                 if !handled || pid_reuse {
                   trace!("sigstop event received before ptrace fork event, pid: {pid}, pid_reuse: {pid_reuse}");
                   let mut state = ProcessState::new(pid, 0)?;
                   state.status = ProcessStatus::SigstopReceived;
                   store.insert(state);
+                  // https://stackoverflow.com/questions/29997244/occasionally-missing-ptrace-event-vfork-when-running-ptrace
+                  // DO NOT send PTRACE_SYSCALL until we receive the PTRACE_EVENT_FORK, etc.
                 }
-                // https://stackoverflow.com/questions/29997244/occasionally-missing-ptrace-event-vfork-when-running-ptrace
-                // DO NOT send PTRACE_SYSCALL until we receive the PTRACE_EVENT_FORK, etc.
               }
             }
             Signal::SIGCHLD => {
@@ -464,19 +474,6 @@ impl Tracer {
             }
             _ => {
               trace!("other signal: {pid}, sig {:?}", sig);
-              if sig == Signal::SIGALRM {
-                // Check for pending detach requests
-                let mut store = self.store.write().unwrap();
-                let state = store.get_current_mut(pid).unwrap();
-                if let Some(detach) = state.pending_detach.take() {
-                  self.proprgate_operation_error(
-                    detach.hit,
-                    false,
-                    self.detach_process_internal(state, Some(detach.signal), detach.hid),
-                  )?;
-                  continue;
-                }
-              }
               // Just deliver the signal to tracee
               self.seccomp_aware_cont_with_signal(pid, sig)?;
             }
@@ -576,7 +573,7 @@ impl Tracer {
               // So we need to determine whether exec is successful here.
               // PTRACE_EVENT_EXEC only happens for successful exec.
               p.is_exec_successful = true;
-              // Exec event comes first before our special SIGALRM is sent to tracee! (usually happens on syscall-enter)
+              // Exec event comes first before our special SENTINEL_SIGNAL is sent to tracee! (usually happens on syscall-enter)
               if p.pending_detach.is_none() {
                 // Don't use seccomp_aware_cont here because that will skip the next syscall exit stop
                 self.syscall_enter_cont(pid)?;
@@ -1163,7 +1160,7 @@ impl Tracer {
     // Don't use *cont_with_signal because that causes
     // the loss of signal when we do it on syscall-enter.
     // Is this a kernel bug?
-    kill(state.pid, Signal::SIGALRM)?;
+    kill(state.pid, SENTINEL_SIGNAL)?;
     if hit.stop == BreakPointStop::SyscallEnter {
       self.raw_syscall_enter_cont(state.pid)?;
     } else {
@@ -1255,3 +1252,5 @@ impl Tracer {
     }
   }
 }
+
+const SENTINEL_SIGNAL: Signal = Signal::SIGSTOP;
