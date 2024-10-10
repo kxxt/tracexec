@@ -28,7 +28,7 @@ use ratatui::{
   buffer::Buffer,
   layout::{Constraint, Layout, Position, Rect},
   style::Stylize,
-  text::Line,
+  text::{Line, Span},
   widgets::{Block, Paragraph, StatefulWidget, StatefulWidgetRef, Widget, Wrap},
 };
 use serde::{Deserialize, Serialize};
@@ -67,7 +67,9 @@ use super::{
   Tui,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum, Display, Deserialize, Serialize)]
+#[derive(
+  Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum, Display, Deserialize, Serialize,
+)]
 #[strum(serialize_all = "kebab-case")]
 pub enum AppLayout {
   #[default]
@@ -86,6 +88,7 @@ pub struct App {
   pub layout: AppLayout,
   pub should_handle_internal_resize: bool,
   pub popup: Option<ActivePopup>,
+  pub active_experiments: Vec<&'static str>,
   tracer: Option<Arc<Tracer>>,
   query_builder: Option<QueryBuilder>,
   breakpoint_manager: Option<BreakPointManagerState>,
@@ -147,6 +150,7 @@ impl App {
       popup: None,
       query_builder: None,
       breakpoint_manager: None,
+      active_experiments: vec![],
       tracer: tracer.as_ref().map(|t| t.tracer.clone()),
       hit_manager_state: tracer
         .map(|t| HitManagerState::new(t.tracer, t.debugger_args.default_external_command))
@@ -161,6 +165,10 @@ impl App {
         }
       },
     })
+  }
+
+  pub fn activate_experiment(&mut self, experiment: &'static str) {
+    self.active_experiments.push(experiment);
   }
 
   pub fn shrink_pane(&mut self) {
@@ -803,11 +811,19 @@ impl Widget for &mut App {
       Layout::vertical
     })(horizontal_constraints)
     .areas(rest_area);
-    render_title(
-      header_area,
-      buf,
-      format!(" tracexec {}", env!("CARGO_PKG_VERSION")),
-    );
+    let mut title = vec![Span::from(" tracexec "), env!("CARGO_PKG_VERSION").into()];
+    if !self.active_experiments.is_empty() {
+      title.push(Span::from(" with "));
+      title.push(Span::from("experimental ").yellow());
+      for (i, &f) in self.active_experiments.iter().enumerate() {
+        title.push(Span::from(f).yellow());
+        if i != self.active_experiments.len() - 1 {
+          title.push(Span::from(", "));
+        }
+      }
+      title.push(Span::from(" feature(s) active"));
+    }
+    render_title(header_area, buf, Line::from(title));
     if let Some(query_builder) = self.query_builder.as_mut() {
       query_builder.render(search_bar_area, buf);
     }

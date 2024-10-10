@@ -69,13 +69,13 @@ impl DetailsPopupState {
       event.details.as_ref()
     {
       details.extend([
-        (" Cmdline with stdio ", {
+        (" (Experimental) Cmdline with stdio ", {
           modifier_args.stdio_in_cmdline = true;
           event
             .details
             .to_tui_line(&baseline, true, &modifier_args, rt_modifier, None)
         }),
-        (" Cmdline with file descriptors ", {
+        (" (Experimental) Cmdline with fds ", {
           modifier_args.fd_in_cmdline = true;
           event
             .details

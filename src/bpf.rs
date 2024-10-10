@@ -662,6 +662,7 @@ pub async fn run(
         baseline.clone(),
         pty_master,
       )?;
+      app.activate_experiment("eBPF");
       let printer = Arc::new(Printer::new(
         PrinterArgs::from_cli(&log_args, &modifier_args),
         baseline.clone(),
