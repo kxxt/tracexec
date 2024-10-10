@@ -644,9 +644,9 @@ dependencies = [
 
 [[package]]
 name = "filterable-enum"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38c13cce8223a2d6a05135f0b3893b146feb31cf757a6333a83d1bc2124da4c7"
+checksum = "8e5a0a0c134dbdeb53df06d055114c3ffa9be67e9d078c9cd508f78c916febc8"
 dependencies = [
  "enumflags2",
  "filterable-enum-derive",
