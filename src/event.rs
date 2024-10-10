@@ -272,7 +272,7 @@ impl OutputMsg {
   }
 }
 
-#[derive(Debug, Clone, Display, PartialEq)]
+#[derive(Debug, Clone, Display, PartialEq, Eq)]
 pub enum Event {
   ShouldQuit,
   Key(KeyEvent),
@@ -283,7 +283,7 @@ pub enum Event {
   Error,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TracerMessage {
   Event(TracerEvent),
   StateUpdate(ProcessStateUpdateEvent),
