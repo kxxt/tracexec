@@ -128,11 +128,6 @@ pub enum CliCommand {
   #[cfg(feature = "ebpf")]
   #[clap(about = "Experimental ebpf mode")]
   Ebpf {
-    #[arg(
-      last = true,
-      help = "command to be executed. Leave it empty to trace all exec on system"
-    )]
-    cmd: Vec<String>,
     #[clap(subcommand)]
     command: EbpfCommand,
   },
@@ -143,6 +138,11 @@ pub enum CliCommand {
 pub enum EbpfCommand {
   #[clap(about = "Run tracexec in logging mode")]
   Log {
+    #[arg(
+      last = true,
+      help = "command to be executed. Leave it empty to trace all exec on system"
+    )]
+    cmd: Vec<String>,
     #[clap(
       short,
       long,
@@ -156,6 +156,11 @@ pub enum EbpfCommand {
   },
   #[clap(about = "Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default")]
   Tui {
+    #[arg(
+      last = true,
+      help = "command to be executed. Leave it empty to trace all exec on system"
+    )]
+    cmd: Vec<String>,
     #[clap(flatten)]
     modifier_args: ModifierArgs,
     #[clap(flatten)]
@@ -165,6 +170,11 @@ pub enum EbpfCommand {
   },
   #[clap(about = "Collect exec events and export them")]
   Collect {
+    #[arg(
+      last = true,
+      help = "command to be executed. Leave it empty to trace all exec on system"
+    )]
+    cmd: Vec<String>,
     #[clap(flatten)]
     modifier_args: ModifierArgs,
     #[clap(short = 'F', long, help = "the format for exported exec events")]
