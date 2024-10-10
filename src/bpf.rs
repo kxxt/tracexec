@@ -31,7 +31,7 @@ use libbpf_rs::{
 use nix::{
   errno::Errno,
   fcntl::OFlag,
-  libc::{self, c_int, dup2, SYS_execve, SYS_execveat, AT_FDCWD},
+  libc::{self, c_int, dup2, AT_FDCWD},
   sys::{
     signal::{kill, raise, Signal},
     wait::{waitpid, WaitPidFlag, WaitStatus},
@@ -197,9 +197,9 @@ impl EbpfTracer {
             } else {
               cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.base_filename)).into()
             };
-            let filename = if event.syscall_nr == SYS_execve as i32 {
+            let filename = if !unsafe { event.is_execveat.assume_init() } {
               base_filename
-            } else if event.syscall_nr == SYS_execveat as i32 {
+            } else {
               if base_filename.is_ok_and(|s| s.starts_with('/')) {
                 base_filename
               } else {
@@ -217,8 +217,6 @@ impl EbpfTracer {
                   }
                 }
               }
-            } else {
-              unreachable!()
             };
             let exec_data = ExecData::new(
               filename,

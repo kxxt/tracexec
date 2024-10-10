@@ -105,7 +105,8 @@ struct exec_event {
   pid_t tgid;
   uid_t uid;
   uid_t gid;
-  s32 syscall_nr;
+  bool is_execveat;
+  bool is_compat;
   s64 ret;
   // argc and env count
   u32 count[2];

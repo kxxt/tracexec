@@ -32,44 +32,35 @@ extern void bpf_rcu_read_unlock(void) __ksym;
         (((~_UL(0)) - (_UL(1) << (l)) + 1) & \
          (~_UL(0) >> (BITS_PER_LONG - 1 - (h))))
 
-/* BPF cannot access this struct */
-struct forbidden_common_args {
-  u16 type;
-  u8 flags;
-  u8 preempt_count;
-  s32 pid;
-};
+// Architecture Specific Definitions
 
-struct sys_enter_execve_args {
-  struct forbidden_common_args common;
-  s32 __syscall_nr;
-  u32 pad;
-  const u8 *filename;
-  const u8 *const *argv;
-  const u8 *const *envp;
-};
+#ifdef __x86_64__
+#define SYSCALL_PREFIX "x64"
+#define SYSCALL_COMPAT_PREFIX "ia32_compat"
+#elif __aarch64__
+#define SYSCALL_PREFIX "arm64"
+#elif __riscv64__
+#define SYSCALL_PREFIX "riscv"
+#endif
 
-struct sys_enter_execveat_args {
-  struct forbidden_common_args common;
-  s32 __syscall_nr;
-  u64 fd;
-  const u8 *filename;
-  const u8 *const *argv;
-  const u8 *const *envp;
-  u64 flags;
-};
+#ifdef __x86_64__
+
+#define COMPAT_PT_REGS_PARM1_CORE(x) ((u32)(BPF_CORE_READ(__PT_REGS_CAST(x), bx)))
+#define COMPAT_PT_REGS_PARM2_CORE(x) ((u32)(BPF_CORE_READ(__PT_REGS_CAST(x), cx)))
+#define COMPAT_PT_REGS_PARM3_CORE(x) ((u32)(BPF_CORE_READ(__PT_REGS_CAST(x), dx)))
+#define COMPAT_PT_REGS_PARM4_CORE(x) ((u32)(BPF_CORE_READ(__PT_REGS_CAST(x), si)))
+#define COMPAT_PT_REGS_PARM5_CORE(x) ((u32)(BPF_CORE_READ(__PT_REGS_CAST(x), di)))
+
+#endif
+
+// Internal structs
 
 struct sys_enter_exec_args {
-  s32 syscall_nr;
+  bool is_execveat;
+  bool is_compat;
   const u8 *base_filename;
   const u8 *const *argv;
   const u8 *const *envp;
-};
-
-struct sys_exit_exec_args {
-  struct forbidden_common_args common;
-  s32 __syscall_nr;
-  s64 ret;
 };
 
 #endif

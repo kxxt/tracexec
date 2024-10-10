@@ -94,7 +94,8 @@ struct reader_context {
   // index:
   // 0: arg
   // 1: envp
-  u32 index;
+  u8 index;
+  bool is_compat;
   // ptr is a userspace pointer to an array of cstring pointers
   const u8 *const *ptr;
 };
@@ -254,7 +255,8 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   event->header.type = SYSEXIT_EVENT;
   event->header.eid = __sync_fetch_and_add(&event_counter, 1);
   event->count[0] = event->count[1] = event->fd_count = event->path_count = 0;
-  event->syscall_nr = ctx->syscall_nr;
+  event->is_compat = ctx->is_compat;
+  event->is_execveat = ctx->is_execveat;
   // Read comm
   if (0 != bpf_get_current_comm(event->comm, sizeof(event->comm))) {
     // Failed to read comm
@@ -282,6 +284,7 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   reader_ctx.event = event;
   reader_ctx.ptr = ctx->argv;
   reader_ctx.index = 0;
+  reader_ctx.is_compat = ctx->is_compat;
   // bpf_loop allows 1 << 23 (~8 million) loops, otherwise we cannot achieve it
   bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
   // Read envp
@@ -419,25 +422,26 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
   return 0;
 }
 
-SEC("tracepoint/syscalls/sys_enter_execve")
-int tp_sys_enter_execve(struct sys_enter_execve_args *ctx) {
+SEC("fentry/__" SYSCALL_PREFIX "_sys_execve")
+int BPF_PROG(sys_execve, struct pt_regs *regs) {
   int key = 0;
   struct sys_enter_exec_args *common_ctx =
       bpf_map_lookup_elem(&exec_args_alloc, &key);
   if (common_ctx == NULL)
     return 0;
   *common_ctx = (struct sys_enter_exec_args){
-      .syscall_nr = ctx->__syscall_nr,
-      .argv = ctx->argv,
-      .envp = ctx->envp,
-      .base_filename = ctx->filename,
+      .is_execveat = false,
+      .is_compat = false,
+      .argv = (u8 const *const *)PT_REGS_PARM2_CORE(regs),
+      .envp = (u8 const *const *)PT_REGS_PARM3_CORE(regs),
+      .base_filename = (u8 *)PT_REGS_PARM1_CORE(regs),
   };
   trace_exec_common(common_ctx);
   return 0;
 }
 
-SEC("tracepoint/syscalls/sys_enter_execveat")
-int tp_sys_enter_execveat(struct sys_enter_execveat_args *ctx) {
+SEC("fentry/__" SYSCALL_PREFIX "_sys_execveat")
+int BPF_PROG(sys_execveat, struct pt_regs *regs, int ret) {
   int key = 0;
   struct sys_enter_exec_args *common_ctx =
       bpf_map_lookup_elem(&exec_args_alloc, &key);
@@ -445,10 +449,11 @@ int tp_sys_enter_execveat(struct sys_enter_execveat_args *ctx) {
     return 0;
 
   *common_ctx = (struct sys_enter_exec_args){
-      .syscall_nr = ctx->__syscall_nr,
-      .argv = ctx->argv,
-      .envp = ctx->envp,
-      .base_filename = ctx->filename,
+      .is_execveat = true,
+      .is_compat = false,
+      .argv = (u8 const *const *)PT_REGS_PARM3_CORE(regs),
+      .envp = (u8 const *const *)PT_REGS_PARM4_CORE(regs),
+      .base_filename = (u8 *)PT_REGS_PARM2_CORE(regs),
   };
   trace_exec_common(common_ctx);
   pid_t pid = (pid_t)bpf_get_current_pid_tgid();
@@ -456,12 +461,12 @@ int tp_sys_enter_execveat(struct sys_enter_execveat_args *ctx) {
   if (!event || !ctx)
     return 0;
 
-  event->fd = ctx->fd;
-  event->flags = ctx->flags;
+  event->fd = PT_REGS_PARM1_CORE(regs);
+  event->flags = PT_REGS_PARM5_CORE(regs);
   return 0;
 }
 
-int __always_inline tp_sys_exit_exec(struct sys_exit_exec_args *ctx) {
+int __always_inline tp_sys_exit_exec(int sysret) {
   pid_t pid, tgid;
   u64 tmp = bpf_get_current_pid_tgid();
   pid = (pid_t)tmp;
@@ -481,9 +486,9 @@ int __always_inline tp_sys_exit_exec(struct sys_exit_exec_args *ctx) {
     }
     return 0;
   }
-  event->ret = ctx->ret;
+  event->ret = sysret;
   event->header.type = SYSEXIT_EVENT;
-  debug("execve result: %d PID %d\n", ctx->ret, pid);
+  debug("execve result: %d PID %d\n", sysret, pid);
   long ret = bpf_ringbuf_output(&events, event, sizeof(struct exec_event), 0);
   if (ret != 0) {
 #ifdef EBPF_DEBUG
@@ -497,15 +502,74 @@ int __always_inline tp_sys_exit_exec(struct sys_exit_exec_args *ctx) {
   return 0;
 }
 
-SEC("tracepoint/syscalls/sys_exit_execve")
-int tp_sys_exit_execve(struct sys_exit_exec_args *ctx) {
-  return tp_sys_exit_exec(ctx);
+SEC("fexit/__" SYSCALL_PREFIX "_sys_execve")
+int BPF_PROG(sys_exit_execve, struct pt_regs *regs, int ret) {
+  return tp_sys_exit_exec(ret);
 }
 
-SEC("tracepoint/syscalls/sys_exit_execveat")
-int tp_sys_exit_execveat(struct sys_exit_exec_args *ctx) {
-  return tp_sys_exit_exec(ctx);
+SEC("fexit/__" SYSCALL_PREFIX "_sys_execveat")
+int BPF_PROG(sys_exit_execveat, struct pt_regs *regs, int ret) {
+  return tp_sys_exit_exec(ret);
 }
+
+#ifdef SYSCALL_COMPAT_PREFIX
+
+SEC("fexit/__" SYSCALL_COMPAT_PREFIX "_sys_execveat")
+int BPF_PROG(compat_sys_exit_execveat, struct pt_regs *regs, int ret) {
+  return tp_sys_exit_exec(ret);
+}
+
+SEC("fentry/__" SYSCALL_COMPAT_PREFIX "_sys_execveat")
+int BPF_PROG(compat_sys_execveat, struct pt_regs *regs, int ret) {
+  int key = 0;
+  struct sys_enter_exec_args *common_ctx =
+      bpf_map_lookup_elem(&exec_args_alloc, &key);
+  if (common_ctx == NULL)
+    return 0;
+
+  *common_ctx = (struct sys_enter_exec_args){
+      .is_execveat = true,
+      .is_compat = true,
+      .argv = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM3_CORE(regs),
+      .envp = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM4_CORE(regs),
+      .base_filename = (u8 *)(u64)COMPAT_PT_REGS_PARM2_CORE(regs),
+  };
+  trace_exec_common(common_ctx);
+  pid_t pid = (pid_t)bpf_get_current_pid_tgid();
+  struct exec_event *event = bpf_map_lookup_elem(&execs, &pid);
+  if (!event || !ctx)
+    return 0;
+
+  event->fd = COMPAT_PT_REGS_PARM1_CORE(regs);
+  event->flags = COMPAT_PT_REGS_PARM5_CORE(regs);
+  return 0;
+}
+
+SEC("fexit/__" SYSCALL_COMPAT_PREFIX "_sys_execve")
+int BPF_PROG(compat_sys_exit_execve, struct pt_regs *regs, int ret) {
+  return tp_sys_exit_exec(ret);
+}
+
+SEC("fentry/__" SYSCALL_COMPAT_PREFIX "_sys_execve")
+int BPF_PROG(compat_sys_execve, struct pt_regs *regs) {
+  //  int tp_sys_enter_execve(struct sys_enter_execve_args *ctx)
+  int key = 0;
+  struct sys_enter_exec_args *common_ctx =
+      bpf_map_lookup_elem(&exec_args_alloc, &key);
+  if (common_ctx == NULL)
+    return 0;
+  *common_ctx = (struct sys_enter_exec_args){
+      .is_execveat = false,
+      .is_compat = true,
+      .argv = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM2_CORE(regs),
+      .envp = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM3_CORE(regs),
+      .base_filename = (u8 *)(u64)COMPAT_PT_REGS_PARM1_CORE(regs),
+  };
+  trace_exec_common(common_ctx);
+  return 0;
+}
+
+#endif
 
 // Collect information about file descriptors of the process on sysenter of exec
 static int read_fds(struct exec_event *event) {
@@ -747,7 +811,12 @@ ptr_err:
 static int read_strings(u32 index, struct reader_context *ctx) {
   struct exec_event *event = ctx->event;
   const u8 *argp = NULL;
-  int ret = bpf_probe_read_user(&argp, sizeof(argp), &ctx->ptr[index]);
+  int ret;
+  if (!ctx->is_compat)
+    ret = bpf_probe_read_user(&argp, sizeof(argp), &ctx->ptr[index]);
+  else
+    ret =
+        bpf_probe_read_user(&argp, sizeof(u32), (void*)ctx->ptr + index * sizeof(u32));
   if (ret < 0) {
     event->header.flags |= PTR_READ_FAILURE;
     debug("Failed to read pointer to arg");
