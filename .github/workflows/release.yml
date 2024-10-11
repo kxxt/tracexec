@@ -40,6 +40,7 @@ jobs:
             features: static,vendored
             artifact-suffix: -static
             rust_flags: -C target-feature=+crt-static
+            static_libseccomp: true
           - os: ubuntu-24.04
             os-arch: arm64
             target: aarch64-unknown-linux-gnu
@@ -55,6 +56,7 @@ jobs:
             features: static,vendored
             artifact-suffix: -static
             rust_flags: -C target-feature=+crt-static
+            static_libseccomp: true
           - os: ubuntu-24.04
             os-arch: riscv64
             target: riscv64gc-unknown-linux-gnu
@@ -71,6 +73,7 @@ jobs:
             features: ebpf,static,vendored
             artifact-suffix: -static
             rust_flags: -C target-feature=+crt-static
+            static_libseccomp: true
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
@@ -104,7 +107,8 @@ jobs:
           sudo apt update -y
           sudo apt install -y {binutils,gcc}-{aarch64,riscv64}-linux-gnu \
             build-essential autopoint gettext libelf-dev zlib1g-dev \
-            libelf-dev:${{ matrix.os-arch }} zlib1g-dev:${{ matrix.os-arch }}
+            libelf-dev:${{ matrix.os-arch }} zlib1g-dev:${{ matrix.os-arch }} \
+            libseccomp2:${{ matrix.os-arch }} libseccomp-dev:${{ matrix.os-arch }}
       # - name: Prepare libelf and zlib
       #   run: 3rdparty/prepare-native-dependencies.sh ${{ matrix.arch }}
       - name: Publish to crates.io
@@ -120,6 +124,8 @@ jobs:
       - uses: taiki-e/upload-rust-binary-action@v1
         env:
           RUSTFLAGS: ${{ matrix.rust_flags }}
+          LIBSECCOMP_LINK_TYPE: ${{ matrix.static_libseccomp && 'static' || 'dylib' }}
+          LIBSECCOMP_LIB_PATH: ${{ matrix.static_libseccomp && format('/{0}', matrix.libpath) || '/this/path/does/not/exist' }}
         #   LIBBPF_SYS_LIBRARY_PATH: ${{ github.workspace }}/3rdparty/${{ matrix.arch }}/${{ matrix.libpath }}
         #   LIBBPF_SYS_EXTRA_CFLAGS: -I ${{ github.workspace }}/3rdparty/${{ matrix.arch }}/usr/include
         with:
