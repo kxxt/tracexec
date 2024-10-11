@@ -1,21 +1,8 @@
-use seccompiler::{SeccompAction, SeccompFilter, TargetArch};
+use libseccomp::{ScmpAction, ScmpFilterContext};
 
-pub fn create_seccomp_filter() -> SeccompFilter {
-  SeccompFilter::new(
-    vec![
-      (nix::libc::SYS_execve, vec![]),
-      (nix::libc::SYS_execveat, vec![]),
-    ]
-    .into_iter()
-    .collect(),
-    SeccompAction::Allow,
-    SeccompAction::Trace(0),
-    #[cfg(target_arch = "x86_64")]
-    TargetArch::x86_64,
-    #[cfg(target_arch = "aarch64")]
-    TargetArch::aarch64,
-    #[cfg(target_arch = "riscv64")]
-    TargetArch::riscv64,
-  )
-  .expect("failed to create seccomp filter!")
+pub fn create_seccomp_filters() -> color_eyre::Result<ScmpFilterContext> {
+  let mut filter = ScmpFilterContext::new_filter(ScmpAction::Allow)?;
+  filter.add_rule(ScmpAction::Trace(0), nix::libc::SYS_execve as i32)?;
+  filter.add_rule(ScmpAction::Trace(0), nix::libc::SYS_execveat as i32)?;
+  Ok(filter)
 }
