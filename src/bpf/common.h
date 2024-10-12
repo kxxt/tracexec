@@ -34,16 +34,16 @@ extern void bpf_rcu_read_unlock(void) __ksym;
 
 // Architecture Specific Definitions
 
-#ifdef __x86_64__
+#ifdef TRACEXEC_TARGET_X86_64
 #define SYSCALL_PREFIX "x64"
 #define SYSCALL_COMPAT_PREFIX "ia32_compat"
-#elif __aarch64__
+#elif TRACEXEC_TARGET_AARCH64
 #define SYSCALL_PREFIX "arm64"
-#elif __riscv64__
+#elif TRACEXEC_TARGET_RISCV64
 #define SYSCALL_PREFIX "riscv"
 #endif
 
-#ifdef __x86_64__
+#ifdef TRACEXEC_TARGET_X86_64
 
 #define COMPAT_PT_REGS_PARM1_CORE(x) ((u32)(BPF_CORE_READ(__PT_REGS_CAST(x), bx)))
 #define COMPAT_PT_REGS_PARM2_CORE(x) ((u32)(BPF_CORE_READ(__PT_REGS_CAST(x), cx)))
