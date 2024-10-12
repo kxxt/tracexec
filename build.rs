@@ -19,9 +19,9 @@ fn main() {
       .join("tracexec_system.skel.rs");
     let arch = env::var("CARGO_CFG_TARGET_ARCH").expect("CARGO_CFG_TARGET_ARCH not set");
     let arch_define = OsStr::new(match arch.as_str() {
-      "x86_64" => "__x86_64__",
-      "riscv64" => "__riscv64__",
-      "aarch64" => "__aarch64__",
+      "x86_64" => "TRACEXEC_TARGET_X86_64",
+      "riscv64" => "TRACEXEC_TARGET_RISCV64",
+      "aarch64" => "TRACEXEC_TARGET_AARCH64",
       _ => panic!("Arch {arch} is not supported for now"),
     });
     let max_cpus = 64;
