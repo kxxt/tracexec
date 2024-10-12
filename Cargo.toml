@@ -76,7 +76,7 @@ serde = { version = "1.0.204", features = ["derive"] }
 toml = "0.8.14"
 paste = "1.0.15"
 serde_json = "1.0.120"
-libbpf-rs = { version = "0.24.1", optional = true, default-features = false }
+libbpf-rs = { version = "0.24.6", optional = true, default-features = false }
 # libbpf-sys exists here because we want to control its features
 libbpf-sys = { version = "1", optional = true, default-features = false }
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
@@ -89,7 +89,7 @@ rstest = "0.22.0"
 tracing-test = "0.2.4"
 
 [build-dependencies]
-libbpf-cargo = { version = "0.24.1", default-features = false }
+libbpf-cargo = { version = "0.24.6", default-features = false }
 
 
 [features]
