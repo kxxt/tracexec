@@ -51,13 +51,6 @@ struct {
 struct {
   __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
   __type(key, u32);
-  __type(value, struct path_segment_event);
-  __uint(max_entries, 1);
-} path_segment_cache SEC(".maps");
-
-struct {
-  __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-  __type(key, u32);
   __type(value, struct path_event);
   __uint(max_entries, 1);
 } path_event_cache SEC(".maps");
@@ -815,8 +808,8 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   if (!ctx->is_compat)
     ret = bpf_probe_read_user(&argp, sizeof(argp), &ctx->ptr[index]);
   else
-    ret =
-        bpf_probe_read_user(&argp, sizeof(u32), (void*)ctx->ptr + index * sizeof(u32));
+    ret = bpf_probe_read_user(&argp, sizeof(u32),
+                              (void *)ctx->ptr + index * sizeof(u32));
   if (ret < 0) {
     event->header.flags |= PTR_READ_FAILURE;
     debug("Failed to read pointer to arg");
@@ -921,14 +914,17 @@ static int read_send_dentry_segment(u32 index, struct path_segment_ctx *ctx) {
   // Read this segment
   long key = 0;
   struct path_segment_event *event =
-      bpf_map_lookup_elem(&path_segment_cache, &key);
-  if (event == NULL)
+      bpf_ringbuf_reserve(&events, sizeof(struct path_segment_event), 0);
+  if (event == NULL) {
+    ctx->path_event->header.flags |= OUTPUT_FAILURE;
     return ret;
+  }
   // Check if we reached mount point or root
   if (ctx->dentry == ctx->mnt_root || ctx->dentry == ctx->root) {
     // debug("skipping: dentry=%p, root = %p, mnt_root = %p", ctx->dentry,
     //       ctx->root, ctx->mnt_root);
     ctx->base_index += index;
+    bpf_ringbuf_discard(event, 0);
     return 1;
   }
   event->header = (struct tracexec_event_header){
@@ -960,10 +956,7 @@ static int read_send_dentry_segment(u32 index, struct path_segment_ctx *ctx) {
   }
 send:;
   // Send this segment to user space
-  ret = bpf_ringbuf_output(&events, event, sizeof(*event), 0);
-  if (ret < 0) {
-    ctx->path_event->header.flags |= OUTPUT_FAILURE;
-  }
+  bpf_ringbuf_submit(event, 0);
   struct dentry *parent;
   ret = bpf_core_read(&parent, sizeof(void *), &dentry->d_parent);
   if (ret < 0) {
