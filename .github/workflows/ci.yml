@@ -169,8 +169,11 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y build-essential autopoint gettext libelf-dev zlib1g-dev \
-            libelf-dev:${{ matrix.os-arch }} zlib1g-dev:${{ matrix.os-arch }} \
-            libseccomp2:${{ matrix.os-arch }} libseccomp-dev:${{ matrix.os-arch }}
+            libelf-dev:${{ matrix.os-arch }} zlib1g-dev:${{ matrix.os-arch }}
+          sudo apt-get install -y libseccomp-dev:${{ matrix.os-arch }}
+          if ! [ "${{ matrix.static_libseccomp }}" = "true" ]; then
+            sudo apt-get install -y libseccomp2:${{ matrix.os-arch }}
+          fi
       # - name: Prepare libelf and zlib
       #   run: 3rdparty/prepare-native-dependencies.sh ${{ matrix.arch }}
       - name: Cache Cargo dependencies
