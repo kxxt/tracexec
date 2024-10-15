@@ -10,7 +10,8 @@ accepted = [
     "ISC",
     "BSL-1.0",
     "LGPL-2.1",
-    "BSD-2-Clause"
+    "BSD-2-Clause",
+    "Zlib"
 ]
 
 targets = [
