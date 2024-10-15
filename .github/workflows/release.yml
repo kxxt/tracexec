@@ -106,7 +106,8 @@ jobs:
         run: |
           sudo apt update -y
           sudo apt install -y {binutils,gcc}-{aarch64,riscv64}-linux-gnu \
-            build-essential autopoint gettext libelf-dev zlib1g-dev
+          build-essential autopoint gettext libelf-dev zlib1g-dev \
+          libelf-dev:${{ matrix.os-arch }} zlib1g-dev:${{ matrix.os-arch }}
           sudo apt-get install -y libseccomp-dev:${{ matrix.os-arch }}
           if ! [ "${{ matrix.static_libseccomp }}" = "true" ]; then
             sudo apt-get install -y libseccomp2:${{ matrix.os-arch }}
