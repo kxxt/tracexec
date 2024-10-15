@@ -1,5 +1,43 @@
 # Changelog
 
+## v0.7.0-rc.1
+
+### New Features
+
+- The experimental eBPF backend is updated to also monitor 32bit exec on x64 systems.
+  - I plan to support tracing 32bit exec in ptrace backend as well in 0.8.0 release.
+- Previously, all experimental features are only labeled in the help text of CLI.
+Now the experimental features are also labeled in TUI:
+
+![experimental features](https://github.com/user-attachments/assets/dddf07ee-3d94-4519-b435-886c0e6b6976)
+
+### Deprecation
+
+The support for kernel version < 5.3 is deprecated and will be removed in the future.
+It is likely that it will happen in the upcoming 0.8.0 release.
+
+### Breaking Changes
+
+Building tracexec with `seccomp-bpf` feature now requires `libseccomp` dependency.
+By default, we dynamically link to libseccomp. In order to statically link to libseccomp,
+please set `LIBSECCOMP_LINK_TYPE` to `static` and set `LIBSECCOMP_LIB_PATH` to the path of
+the directory containing `libseccomp.a`.
+
+### Fixes
+
+- ptracer: use `SIGSTOP` as sentinel signal.
+- eBPF: `__TARGET_ARCH_xx` define gets fixed for arm64 and riscv64(in libbpf-rs: libbpf/libbpf-rs#958 and libbpf/libbpf-rs#959).
+- Switch `seccomp-bpf` dependency crate from `seccompiler` to `libseccomp`.
+  - This unblocks 32bit exec tracing for ptrace backend that I plan to implement in 0.8.0.
+  - And `seccomp-bpf` feature can now be enabled on riscv64.
+
+### Internal Changes
+
+- Bump dependencies
+- Make clippy more annoying
+- eBPF: convert from syscall tracepoint to fentry/fexit
+- eBPF: minor refactors
+
 ## v0.6.2
 
 - Fix: Update dependencies to get rid of yanked futures-util 0.3.30
