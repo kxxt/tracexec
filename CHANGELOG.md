@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.7.0-rc.3
+## v0.7.0
 
 ### New Features
 
