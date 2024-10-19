@@ -1,5 +1,8 @@
 use nix::libc::user_regs_struct;
 
+pub const SYS_EXECVE_32: i32 = 11;
+pub const SYS_EXECVEAT_32: i32 = 358;
+
 pub type PtraceRegisters = user_regs_struct;
 
 macro_rules! syscall_no_from_regs {

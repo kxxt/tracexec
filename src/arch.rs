@@ -14,3 +14,10 @@ cfg_if! {
         compile_error!("unsupported architecture");
     }
 }
+
+#[allow(unused)]
+mod audit {
+  include!("arch/audit.rs");
+}
+
+pub use audit::*;
