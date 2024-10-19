@@ -255,8 +255,7 @@ impl Tracer {
       move |program_path| {
         #[cfg(feature = "seccomp-bpf")]
         if seccomp_bpf == SeccompBpf::On {
-          let filter = seccomp::create_seccomp_filters()?;
-          filter.load()?;
+          seccomp::load_seccomp_filters()?;
         }
 
         if !with_tty {
