@@ -23,8 +23,4 @@ impl RegsExt for Regs {
       _ => unimplemented!(),
     } as usize)
   }
-
-  fn syscall_ret(&self) -> isize {
-    self.a0 as isize
-  }
 }

@@ -817,17 +817,17 @@ impl Tracer {
     let mut store = self.store.write().unwrap();
     let p = store.get_current_mut(pid).unwrap();
     p.presyscall = !p.presyscall;
-    let regs = match ptrace_getregs(pid) {
-      Ok(regs) => regs,
+    let result = match ptrace::syscall_exit_result(pid) {
+      Ok(r) => r,
       Err(Errno::ESRCH) => {
-        info!("ptrace getregs failed: {pid}, ESRCH, child probably gone!");
+        info!("ptrace get_syscall_info failed: {pid}, ESRCH, child probably gone!");
         return Ok(());
       }
       e => e?,
     };
-    let result = regs.syscall_ret() as i64;
     // If exec is successful, the register value might be clobbered.
-    let exec_result = if p.is_exec_successful { 0 } else { result };
+    // TODO: would the value in ptrace_syscall_info be clobbered?
+    let exec_result = if p.is_exec_successful { 0 } else { result } as i64;
     match p.syscall {
       Syscall::Execve | Syscall::Execveat => {
         trace!("post execve(at) in exec");

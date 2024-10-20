@@ -5,7 +5,7 @@ use nix::{
   errno::Errno,
   libc::{
     ptrace_syscall_info, SYS_execve, SYS_execveat, PTRACE_GET_SYSCALL_INFO,
-    PTRACE_SYSCALL_INFO_ENTRY, PTRACE_SYSCALL_INFO_SECCOMP,
+    PTRACE_SYSCALL_INFO_ENTRY, PTRACE_SYSCALL_INFO_EXIT, PTRACE_SYSCALL_INFO_SECCOMP,
   },
   sys::{ptrace, signal::Signal},
   unistd::Pid,
@@ -81,6 +81,11 @@ impl SyscallInfo {
   }
 }
 
+/// Get [`SyscallInfo`] on ptrace syscall entry/seccomp stop
+///
+/// # Precondition
+///
+/// The caller is the tracer thread and at the syscall entry/seccomp stop.
 pub fn syscall_entry_info(pid: Pid) -> Result<SyscallInfo, Errno> {
   let mut info = MaybeUninit::<ptrace_syscall_info>::uninit();
   let info = unsafe {
@@ -106,6 +111,33 @@ pub fn syscall_entry_info(pid: Pid) -> Result<SyscallInfo, Errno> {
     return Err(Errno::EINVAL);
   } as i64;
   Ok(SyscallInfo { arch, number })
+}
+
+/// Get syscall result on ptrace syscall exit stop
+///
+/// # Precondition
+///
+/// The caller is the tracer thread and at the syscall exit stop.
+pub fn syscall_exit_result(pid: Pid) -> Result<isize, Errno> {
+  let mut info = MaybeUninit::<ptrace_syscall_info>::uninit();
+  let info = unsafe {
+    let ret = nix::libc::ptrace(
+      PTRACE_GET_SYSCALL_INFO,
+      pid.as_raw(),
+      size_of::<ptrace_syscall_info>(),
+      info.as_mut_ptr(),
+    );
+    if ret < 0 {
+      return Err(Errno::last());
+    } else {
+      info.assume_init()
+    }
+  };
+  if info.op == PTRACE_SYSCALL_INFO_EXIT {
+    Ok(unsafe { info.u.exit.sval } as isize)
+  } else {
+    Err(Errno::EINVAL)
+  }
 }
 
 pub fn ptrace_getregs(pid: Pid) -> Result<Regs, Errno> {
