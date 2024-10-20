@@ -59,39 +59,59 @@ pub fn read_string(pid: Pid, address: AddressType) -> Result<String, InspectErro
 pub fn read_null_ended_array<TItem>(
   pid: Pid,
   mut address: AddressType,
+  is_32bit: bool,
   reader: impl Fn(Pid, AddressType) -> Result<TItem, InspectError>,
 ) -> Result<Vec<TItem>, InspectError> {
   let mut res = Vec::new();
-  const WORD_SIZE: usize = 8; // FIXME
+  // FIXME: alignment
+  let word_size = if is_32bit { 4 } else { 8 };
   loop {
     let ptr = match ptrace::read(pid, address) {
       Err(e) => {
         warn!("Cannot read tracee {pid} memory {address:?}: {e}");
         return Err(e);
       }
-      Ok(ptr) => ptr,
+      Ok(ptr) => {
+        if is_32bit {
+          ptr as u32 as i64
+        } else {
+          ptr
+        }
+      }
     };
     if ptr == 0 {
       return Ok(res);
     } else {
       res.push(reader(pid, ptr as AddressType)?);
     }
-    address = unsafe { address.add(WORD_SIZE) };
+    address = unsafe { address.add(word_size) };
   }
 }
 
 #[allow(unused)]
-pub fn read_cstring_array(pid: Pid, address: AddressType) -> Result<Vec<CString>, InspectError> {
-  read_null_ended_array(pid, address, read_cstring)
+pub fn read_cstring_array(
+  pid: Pid,
+  address: AddressType,
+  is_32bit: bool,
+) -> Result<Vec<CString>, InspectError> {
+  read_null_ended_array(pid, address, is_32bit, read_cstring)
 }
 
-pub fn read_string_array(pid: Pid, address: AddressType) -> Result<Vec<String>, InspectError> {
-  read_null_ended_array(pid, address, read_string)
+pub fn read_string_array(
+  pid: Pid,
+  address: AddressType,
+  is_32bit: bool,
+) -> Result<Vec<String>, InspectError> {
+  read_null_ended_array(pid, address, is_32bit, read_string)
 }
 
 #[allow(unused)]
-pub fn read_arcstr_array(pid: Pid, address: AddressType) -> Result<Vec<ArcStr>, InspectError> {
-  read_null_ended_array(pid, address, |pid, address| {
+pub fn read_arcstr_array(
+  pid: Pid,
+  address: AddressType,
+  is_32bit: bool,
+) -> Result<Vec<ArcStr>, InspectError> {
+  read_null_ended_array(pid, address, is_32bit, |pid, address| {
     read_string(pid, address).map(cached_string)
   })
 }
@@ -99,8 +119,9 @@ pub fn read_arcstr_array(pid: Pid, address: AddressType) -> Result<Vec<ArcStr>, 
 pub fn read_output_msg_array(
   pid: Pid,
   address: AddressType,
+  is_32bit: bool,
 ) -> Result<Vec<OutputMsg>, InspectError> {
-  read_null_ended_array(pid, address, |pid, address| {
+  read_null_ended_array(pid, address, is_32bit, |pid, address| {
     read_string(pid, address)
       .map(cached_string)
       .map(OutputMsg::Ok)
@@ -127,16 +148,24 @@ fn read_single_env_entry(pid: Pid, address: AddressType) -> (OutputMsg, OutputMs
 pub fn read_env(
   pid: Pid,
   mut address: AddressType,
+  is_32bit: bool,
 ) -> Result<BTreeMap<OutputMsg, OutputMsg>, InspectError> {
   let mut res = BTreeMap::new();
-  const WORD_SIZE: usize = 8; // FIXME
+  // FIXME: alignment
+  let word_size = if is_32bit { 4 } else { 8 };
   loop {
     let ptr = match ptrace::read(pid, address) {
       Err(e) => {
         warn!("Cannot read tracee {pid} memory {address:?}: {e}");
         return Err(e);
       }
-      Ok(ptr) => ptr,
+      Ok(ptr) => {
+        if is_32bit {
+          ptr as u32 as i64
+        } else {
+          ptr
+        }
+      }
     };
     if ptr == 0 {
       return Ok(res);
@@ -144,6 +173,6 @@ pub fn read_env(
       let (k, v) = read_single_env_entry(pid, ptr as AddressType);
       res.insert(k, v);
     }
-    address = unsafe { address.add(WORD_SIZE) };
+    address = unsafe { address.add(word_size) };
   }
 }

@@ -17,8 +17,8 @@ use inspect::{read_arcstr, read_output_msg_array};
 use nix::{
   errno::Errno,
   libc::{
-    self, dup2, pid_t, pthread_self, pthread_setname_np, raise, SYS_clone, SYS_clone3,
-    AT_EMPTY_PATH, SIGSTOP, S_ISGID, S_ISUID,
+    self, dup2, pid_t, pthread_self, pthread_setname_np, raise, AT_EMPTY_PATH, SIGSTOP, S_ISGID,
+    S_ISUID,
   },
   sys::{
     signal::{kill, Signal},
@@ -29,7 +29,7 @@ use nix::{
     getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, Gid, Pid, Uid, User,
   },
 };
-use state::PendingDetach;
+use state::{PendingDetach, Syscall};
 use tokio::{
   select,
   sync::mpsc::{error::SendError, UnboundedReceiver, UnboundedSender},
@@ -37,7 +37,7 @@ use tokio::{
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{
-  arch::{syscall_arg, syscall_no_from_regs, syscall_res_from_regs},
+  arch::RegsExt,
   cli::args::{LogModeArgs, ModifierArgs, PtraceArgs, TracerEventArgs},
   cmdbuilder::CommandBuilder,
   event::{
@@ -654,6 +654,19 @@ impl Tracer {
     let p = store.get_current_mut(pid).unwrap();
     p.presyscall = !p.presyscall;
     // SYSCALL ENTRY
+    let info = match ptrace::syscall_entry_info(pid) {
+      Ok(info) => info,
+      Err(Errno::ESRCH) => {
+        filterable_event!(Info(TracerEventMessage {
+          msg: "Failed to get syscall info: ESRCH (child probably gone!)".to_string(),
+          pid: Some(pid),
+        }))
+        .send_if_match(&self.msg_tx, self.filter)?;
+        info!("ptrace get_syscall_info failed: {pid}, ESRCH, child probably gone!");
+        return Ok(());
+      }
+      e => e?,
+    };
     let regs = match ptrace_getregs(pid) {
       Ok(regs) => regs,
       Err(Errno::ESRCH) => {
@@ -667,18 +680,19 @@ impl Tracer {
       }
       e => e?,
     };
-    let syscallno = syscall_no_from_regs!(regs);
-    p.syscall = syscallno;
+    let syscallno = info.number;
+    let is_32bit = info.is_32bit();
     // trace!("pre syscall: {syscallno}");
-    if syscallno == nix::libc::SYS_execveat {
+    if info.is_execveat() {
+      p.syscall = Syscall::Execveat;
       trace!("pre execveat {syscallno}");
       // int execveat(int dirfd, const char *pathname,
       //              char *const _Nullable argv[],
       //              char *const _Nullable envp[],
       //              int flags);
-      let dirfd = syscall_arg!(regs, 0) as i32;
-      let flags = syscall_arg!(regs, 4) as i32;
-      let filename = match read_string(pid, syscall_arg!(regs, 1) as AddressType) {
+      let dirfd = regs.syscall_arg(0, is_32bit) as i32;
+      let flags = regs.syscall_arg(4, is_32bit) as i32;
+      let filename = match read_string(pid, regs.syscall_arg(1, is_32bit) as AddressType) {
         Ok(pathname) => {
           let pathname = cached_string(pathname);
           let pathname_is_empty = pathname.is_empty();
@@ -707,9 +721,9 @@ impl Tracer {
       };
       let filename = self.get_filename_for_display(pid, filename)?;
       self.warn_for_filename(&filename, pid)?;
-      let argv = read_output_msg_array(pid, syscall_arg!(regs, 2) as AddressType);
+      let argv = read_output_msg_array(pid, regs.syscall_arg(2, is_32bit) as AddressType, is_32bit);
       self.warn_for_argv(&argv, pid)?;
-      let envp = read_env(pid, syscall_arg!(regs, 3) as AddressType);
+      let envp = read_env(pid, regs.syscall_arg(3, is_32bit) as AddressType, is_32bit);
       self.warn_for_envp(&envp, pid)?;
 
       let interpreters = if self.printer.args.trace_interpreter && filename.is_ok() {
@@ -729,14 +743,16 @@ impl Tracer {
         Some(interpreters),
         read_fds(pid)?,
       ));
-    } else if syscallno == nix::libc::SYS_execve {
+    } else if info.is_execve() {
+      p.syscall = Syscall::Execve;
       trace!("pre execve {syscallno}",);
-      let filename = read_arcstr(pid, syscall_arg!(regs, 0) as AddressType);
+      let filename = read_arcstr(pid, regs.syscall_arg(0, is_32bit) as AddressType);
       let filename = self.get_filename_for_display(pid, filename)?;
       self.warn_for_filename(&filename, pid)?;
-      let argv = read_output_msg_array(pid, syscall_arg!(regs, 1) as AddressType);
+      let argv = read_output_msg_array(pid, regs.syscall_arg(1, is_32bit) as AddressType, is_32bit);
       self.warn_for_argv(&argv, pid)?;
-      let envp = read_string_array(pid, syscall_arg!(regs, 2) as AddressType).map(parse_envp);
+      let envp = read_string_array(pid, regs.syscall_arg(2, is_32bit) as AddressType, is_32bit)
+        .map(parse_envp);
       self.warn_for_envp(&envp, pid)?;
       let interpreters = if self.printer.args.trace_interpreter && filename.is_ok() {
         read_interpreter_recursive(filename.as_deref().unwrap())
@@ -755,7 +771,8 @@ impl Tracer {
         Some(interpreters),
         read_fds(pid)?,
       ));
-    } else if syscallno == SYS_clone || syscallno == SYS_clone3 {
+    } else {
+      p.syscall = Syscall::Other;
     }
     if let Some(exec_data) = &p.exec_data {
       let mut hit = None;
@@ -808,12 +825,12 @@ impl Tracer {
       }
       e => e?,
     };
-    let result = syscall_res_from_regs!(regs);
+    let result = regs.syscall_ret() as i64;
     // If exec is successful, the register value might be clobbered.
     let exec_result = if p.is_exec_successful { 0 } else { result };
     match p.syscall {
-      nix::libc::SYS_execve | nix::libc::SYS_execveat => {
-        trace!("post execve in exec");
+      Syscall::Execve | Syscall::Execveat => {
+        trace!("post execve(at) in exec");
         if self.printer.args.successful_only && !p.is_exec_successful {
           p.exec_data = None;
           self.seccomp_aware_cont(pid)?;

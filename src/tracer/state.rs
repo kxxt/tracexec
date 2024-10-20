@@ -30,6 +30,13 @@ pub struct PendingDetach {
   pub signal: Signal,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Syscall {
+  Execve,
+  Execveat,
+  Other,
+}
+
 #[derive(Debug)]
 pub struct ProcessState {
   pub pid: Pid,
@@ -39,7 +46,7 @@ pub struct ProcessState {
   pub comm: ArcStr,
   pub presyscall: bool,
   pub is_exec_successful: bool,
-  pub syscall: i64,
+  pub syscall: Syscall,
   pub exec_data: Option<ExecData>,
   pub associated_events: Vec<u64>,
   /// A pending detach request with a signal to send to the process
@@ -127,7 +134,7 @@ impl ProcessState {
       start_time,
       presyscall: true,
       is_exec_successful: false,
-      syscall: -1,
+      syscall: Syscall::Other,
       exec_data: None,
       associated_events: Vec::new(),
       pending_detach: None,
