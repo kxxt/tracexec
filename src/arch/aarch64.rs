@@ -1,43 +1,30 @@
 use nix::libc::user_regs_struct;
+use super::RegsExt;
 
-pub const SYS_EXECVE_32: i32 = nix::libc::ENOSYS;
-pub const SYS_EXECVEAT_32: i32 = nix::libc::ENOSYS;
+pub const NATIVE_AUDIT_ARCH: u32 = super::AUDIT_ARCH_AARCH64;
+pub const HAS_32BIT: bool = false;
 
-pub type PtraceRegisters = user_regs_struct;
-
-macro_rules! syscall_no_from_regs {
-  ($regs:ident) => {
-    $regs.regs[8] as i64
-  };
+pub type Regs = user_regs_struct;
+pub type RegsPayload = Regs;
+#[repr(transparent)]
+pub struct RegsRepr {
+  pub payload: RegsPayload,
 }
 
-macro_rules! syscall_res_from_regs {
-  ($regs:ident) => {
-    $regs.regs[0] as i64
-  };
-}
+impl RegsExt for Regs {
+  fn syscall_arg(&self, idx: usize, _is_32bit: bool) -> usize {
+    (match idx {
+      0 => self.regs[0],
+      1 => self.regs[1],
+      2 => self.regs[2],
+      3 => self.regs[3],
+      4 => self.regs[4],
+      5 => self.regs[5],
+      _ => unimplemented!(),
+    } as usize)
+  }
 
-macro_rules! syscall_arg {
-  ($regs:ident, 0) => {
-    $regs.regs[0]
-  };
-  ($regs:ident, 1) => {
-    $regs.regs[1]
-  };
-  ($regs:ident, 2) => {
-    $regs.regs[2]
-  };
-  ($regs:ident, 3) => {
-    $regs.regs[3]
-  };
-  ($regs:ident, 4) => {
-    $regs.regs[4]
-  };
-  ($regs:ident, 5) => {
-    $regs.regs[5]
-  };
+  fn syscall_ret(&self) -> isize {
+    self.regs[0] as isize
+  }
 }
-
-pub(crate) use syscall_arg;
-pub(crate) use syscall_no_from_regs;
-pub(crate) use syscall_res_from_regs;

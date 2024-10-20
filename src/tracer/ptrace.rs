@@ -1,8 +1,18 @@
+use std::{mem::MaybeUninit, ptr::addr_of_mut};
+
 use cfg_if::cfg_if;
-use nix::{errno::Errno, sys::ptrace, sys::signal::Signal, unistd::Pid};
+use nix::{
+  errno::Errno,
+  libc::{
+    ptrace_syscall_info, SYS_execve, SYS_execveat, PTRACE_GET_SYSCALL_INFO,
+    PTRACE_SYSCALL_INFO_ENTRY, PTRACE_SYSCALL_INFO_SECCOMP,
+  },
+  sys::{ptrace, signal::Signal},
+  unistd::Pid,
+};
 use tracing::info;
 
-use crate::arch::PtraceRegisters;
+use crate::arch::{Regs, RegsPayload, RegsRepr, HAS_32BIT, NATIVE_AUDIT_ARCH};
 
 pub use nix::sys::ptrace::*;
 
@@ -27,41 +37,118 @@ pub fn ptrace_cont(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
   }
 }
 
-pub fn ptrace_getregs(pid: Pid) -> Result<PtraceRegisters, Errno> {
-  // Don't use GETREGSET on x86_64.
-  // In some cases(it usually happens several times at and after exec syscall exit),
-  // we only got 68/216 bytes into `regs`, which seems unreasonable. Not sure why.
-  cfg_if! {
-      if #[cfg(target_arch = "x86_64")] {
-          ptrace::getregs(pid)
-      } else {
-          // https://github.com/torvalds/linux/blob/v6.9/include/uapi/linux/elf.h#L378
-          // libc crate doesn't provide this constant when using musl libc.
-          const NT_PRSTATUS: std::ffi::c_int	= 1;
+pub struct SyscallInfo {
+  pub arch: u32,
+  pub number: i64,
+}
 
-          use nix::sys::ptrace::AddressType;
-
-          let mut regs = std::mem::MaybeUninit::<PtraceRegisters>::uninit();
-          let iovec = nix::libc::iovec {
-              iov_base: regs.as_mut_ptr() as AddressType,
-              iov_len: std::mem::size_of::<PtraceRegisters>(),
-          };
-          let ptrace_result = unsafe {
-              nix::libc::ptrace(
-                  nix::libc::PTRACE_GETREGSET,
-                  pid.as_raw(),
-                  NT_PRSTATUS,
-                  &iovec as *const _ as *const nix::libc::c_void,
-              )
-          };
-          let regs = if -1 == ptrace_result {
-              let errno = nix::errno::Errno::last();
-              return Err(errno);
-          } else {
-              assert_eq!(iovec.iov_len, std::mem::size_of::<PtraceRegisters>());
-              unsafe { regs.assume_init() }
-          };
-          Ok(regs)
-      }
+impl SyscallInfo {
+  /// Returns true if this syscall is 32bit.
+  ///
+  /// It is possible for a 64bit process to make a 32bit syscall,
+  /// resulting in X64 ptregs but with 32bit semantics
+  pub fn is_32bit(&self) -> bool {
+    if HAS_32BIT {
+      // FIXME: x32 ABI
+      NATIVE_AUDIT_ARCH != self.arch
+    } else {
+      false
+    }
   }
+
+  pub fn is_execve(&self) -> bool {
+    cfg_if! {
+      if #[cfg(target_arch = "x86_64")] {
+        use crate::arch;
+        (self.arch == arch::AUDIT_ARCH_X86_64 && self.number == SYS_execve) ||
+        (self.arch == arch::AUDIT_ARCH_I386 && self.number == arch::SYS_EXECVE_32 as i64)
+      } else {
+        self.arch == NATIVE_AUDIT_ARCH && self.number == SYS_execve
+      }
+    }
+  }
+
+  pub fn is_execveat(&self) -> bool {
+    cfg_if! {
+      if #[cfg(target_arch = "x86_64")] {
+        use crate::arch;
+        (self.arch == arch::AUDIT_ARCH_X86_64 && self.number == SYS_execveat) ||
+        (self.arch == arch::AUDIT_ARCH_I386 && self.number == arch::SYS_EXECVEAT_32 as i64)
+      } else {
+        self.arch == NATIVE_AUDIT_ARCH && self.number == SYS_execveat
+      }
+    }
+  }
+}
+
+pub fn syscall_entry_info(pid: Pid) -> Result<SyscallInfo, Errno> {
+  let mut info = MaybeUninit::<ptrace_syscall_info>::uninit();
+  let info = unsafe {
+    let ret = nix::libc::ptrace(
+      PTRACE_GET_SYSCALL_INFO,
+      pid.as_raw(),
+      size_of::<ptrace_syscall_info>(),
+      info.as_mut_ptr(),
+    );
+    if ret < 0 {
+      return Err(Errno::last());
+    } else {
+      info.assume_init()
+    }
+  };
+  let arch = info.arch;
+  let number = if info.op == PTRACE_SYSCALL_INFO_ENTRY {
+    unsafe { info.u.entry.nr }
+  } else if info.op == PTRACE_SYSCALL_INFO_SECCOMP {
+    unsafe { info.u.seccomp.nr }
+  } else {
+    // Not syscall entry/seccomp stop
+    return Err(Errno::EINVAL);
+  } as i64;
+  Ok(SyscallInfo { arch, number })
+}
+
+pub fn ptrace_getregs(pid: Pid) -> Result<Regs, Errno> {
+  // https://github.com/torvalds/linux/blob/v6.9/include/uapi/linux/elf.h#L378
+  // libc crate doesn't provide this constant when using musl libc.
+  const NT_PRSTATUS: std::ffi::c_int = 1;
+
+  use nix::sys::ptrace::AddressType;
+
+  let mut regs = std::mem::MaybeUninit::<Regs>::uninit();
+  let dest: *mut RegsRepr = unsafe { std::mem::transmute(regs.as_mut_ptr()) };
+  let mut iovec = nix::libc::iovec {
+    iov_base: unsafe { addr_of_mut!((*dest).payload) } as AddressType,
+    iov_len: std::mem::size_of::<RegsPayload>(),
+  };
+  let ptrace_result = unsafe {
+    nix::libc::ptrace(
+      nix::libc::PTRACE_GETREGSET,
+      pid.as_raw(),
+      NT_PRSTATUS,
+      &mut iovec,
+    )
+  };
+  let regs = if ptrace_result < 0 {
+    let errno = nix::errno::Errno::last();
+    return Err(errno);
+  } else {
+    cfg_if! {
+      if #[cfg(target_arch = "x86_64")] {
+        const SIZE_OF_REGS64: usize = size_of::<crate::arch::PtraceRegisters64>();
+        const SIZE_OF_REGS32: usize = size_of::<crate::arch::PtraceRegisters32>();
+        match iovec.iov_len {
+          SIZE_OF_REGS32 => unsafe { addr_of_mut!((*dest).tag).write(crate::arch::RegsTag::X86); }
+          SIZE_OF_REGS64 => unsafe { addr_of_mut!((*dest).tag).write(crate::arch::RegsTag::X64); }
+          size => panic!("Invalid length {size} of user_regs_struct!")
+        }
+      } else if #[cfg(any(target_arch = "riscv64", target_arch = "aarch64"))] {
+        assert_eq!(iovec.iov_len, std::mem::size_of::<RegsPayload>());
+      } else {
+        compile_error!("Please update the code for your architecture!");
+      }
+    }
+    unsafe { regs.assume_init() }
+  };
+  Ok(regs)
 }

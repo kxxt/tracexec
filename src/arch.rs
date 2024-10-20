@@ -21,3 +21,8 @@ mod audit {
 }
 
 pub use audit::*;
+
+pub trait RegsExt {
+  fn syscall_arg(&self, idx: usize, is_32bit: bool) -> usize;
+  fn syscall_ret(&self) -> isize;
+}
