@@ -90,10 +90,15 @@ async fn main() -> color_eyre::Result<()> {
   } else {
     None
   };
-  // Seccomp-bpf ptrace behavior is changed on 4.8. I haven't tested on older kernels.
-  let min_support_kver = (4, 8);
-  if !is_current_kernel_greater_than(min_support_kver)? {
+  // PTRACE_GET_SYSCALL_INFO requires at least linux 5.3.
+  let min_support_kver = (5, 3);
+  if !is_current_kernel_ge(min_support_kver)? {
     log::warn!(
+      "Current kernel version is not supported! Minimum supported kernel version is {}.{}.",
+      min_support_kver.0,
+      min_support_kver.1
+    );
+    eprintln!(
       "Current kernel version is not supported! Minimum supported kernel version is {}.{}.",
       min_support_kver.0,
       min_support_kver.1
@@ -353,7 +358,7 @@ async fn main() -> color_eyre::Result<()> {
   Ok(())
 }
 
-fn is_current_kernel_greater_than(min_support: (u32, u32)) -> color_eyre::Result<bool> {
+fn is_current_kernel_ge(min_support: (u32, u32)) -> color_eyre::Result<bool> {
   let utsname = nix::sys::utsname::uname()?;
   let kstr = utsname.release().as_bytes();
   let pos = kstr.iter().position(|&c| c != b'.' && !c.is_ascii_digit());
