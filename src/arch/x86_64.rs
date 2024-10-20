@@ -61,7 +61,7 @@ use super::RegsExt;
 impl RegsExt for Regs {
   fn syscall_arg(&self, idx: usize, is_32bit: bool) -> usize {
     match self {
-      Regs::X86(regs) => {
+      Self::X86(regs) => {
         debug_assert!(is_32bit);
         (match idx {
           0 => regs.ebx,
@@ -73,7 +73,7 @@ impl RegsExt for Regs {
           _ => unreachable!(),
         } as usize)
       }
-      Regs::X64(regs) => {
+      Self::X64(regs) => {
         if is_32bit {
           (match idx {
             0 => regs.rbx,
@@ -96,13 +96,6 @@ impl RegsExt for Regs {
           } as usize)
         }
       }
-    }
-  }
-
-  fn syscall_ret(&self) -> isize {
-    match self {
-      Regs::X86(regs) => regs.eax as isize,
-      Regs::X64(regs) => regs.rax as isize,
     }
   }
 }
