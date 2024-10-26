@@ -12,6 +12,7 @@ fn main() {
     const BPF_SRC: &str = "src/bpf/tracexec_system.bpf.c";
     let manifest_dir =
       PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
+    let bpf_src = manifest_dir.join(BPF_SRC);
     let skel_out = manifest_dir
       .clone()
       .join("src")
@@ -40,7 +41,7 @@ fn main() {
       clang_args.push(OsStr::new("-DEBPF_DEBUG"));
     }
     SkeletonBuilder::new()
-      .source(BPF_SRC)
+      .source(bpf_src)
       .clang_args(clang_args)
       .build_and_generate(&skel_out)
       .unwrap();
