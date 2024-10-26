@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{env, path::PathBuf, sync::Arc};
 
 use rstest::{fixture, rstest};
 use serial_test::file_serial;
@@ -14,6 +14,24 @@ use crate::{
 };
 
 use super::{PendingRequest, TracerMode};
+
+#[fixture]
+fn true_executable() -> PathBuf {
+  env::var_os("PATH")
+    .and_then(|paths| {
+      env::split_paths(&paths)
+        .filter_map(|dir| {
+          let full_path = dir.join("true");
+          if full_path.is_file() {
+            Some(full_path)
+          } else {
+            None
+          }
+        })
+        .next()
+    })
+    .expect("executable `true` not found")
+}
 
 #[fixture]
 fn tracer(
@@ -135,10 +153,11 @@ async fn tracer_decodes_proc_self_exe(
 #[rstest]
 #[file_serial]
 #[tokio::test]
-async fn tracer_emits_exec_event(tracer: TracerFixture) {
+async fn tracer_emits_exec_event(tracer: TracerFixture, true_executable: PathBuf) {
   // TODO: don't assume FHS
   let (tracer, rx, req_rx) = tracer;
-  let events = run_exe_and_collect_msgs(tracer, rx, req_rx, vec!["/bin/true".to_string()]).await;
+  let true_executable = true_executable.to_string_lossy().to_string();
+  let events = run_exe_and_collect_msgs(tracer, rx, req_rx, vec![true_executable.clone()]).await;
   for event in events {
     if let TracerMessage::Event(TracerEvent {
       details: TracerEventDetails::Exec(exec),
@@ -146,11 +165,11 @@ async fn tracer_emits_exec_event(tracer: TracerFixture) {
     }) = event
     {
       let argv = exec.argv.as_deref().unwrap();
-      assert_eq!(argv, &[OutputMsg::Ok("/bin/true".into())]);
+      assert_eq!(argv, &[OutputMsg::Ok(true_executable.as_str().into())]);
       let OutputMsg::Ok(filename) = exec.filename else {
         panic!("Failed to inspect filename")
       };
-      assert_eq!(filename, "/bin/true");
+      assert_eq!(filename, true_executable);
       // The environment is not modified
       let env_diff = exec.env_diff.as_ref().unwrap();
       assert!(env_diff.added.is_empty(), "added env: {:?}", env_diff.added);
