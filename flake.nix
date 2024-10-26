@@ -5,15 +5,17 @@
     crane.url = "github:ipetkov/crane";
   };
 
-  outputs = inputs@{ flake-parts, crane, ... }:
+  outputs = inputs@{ flake-parts, crane, nixpkgs, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } (
       { withSystem, flake-parts-lib, ... }:
       let inherit (flake-parts-lib) importApply;
         tracexec.default = importApply ./nix/tracexec.nix { inherit crane; };
+        ukci.default = importApply ./nix/ukci.nix { inherit nixpkgs; };
       in
       {
         imports = [
           tracexec.default
+          ukci.default
         ];
         flake = {
         };
