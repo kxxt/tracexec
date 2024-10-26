@@ -6,50 +6,24 @@
   };
 
   outputs = inputs@{ flake-parts, crane, ... }:
-    flake-parts.lib.mkFlake { inherit inputs; } {
-      flake = {
-
-      };
-      systems = [
-        "x86_64-linux"
-        "aarch64-linux"
-        "riscv64-linux"
-      ];
-      perSystem = { config, lib, pkgs, ... }:
-        let
-          cargoToml = lib.importTOML ./Cargo.toml;
-          craneLib = crane.mkLib pkgs;
-        in
-        {
-          packages.default =
-            let
-              cFilter = path: _type: builtins.match ".*\.[ch]$" path != null;
-              symlinkFilter = _path: type: type == "symlink";
-              sourceFilter = path: type:
-                (cFilter path type) || (symlinkFilter path type) || (craneLib.filterCargoSources path type);
-            in
-            craneLib.buildPackage {
-              src = lib.cleanSourceWith {
-                src =  ./.;
-                filter = sourceFilter;
-                name = "source";
-              };
-              buildInputs = with pkgs; [
-                elfutils
-                zlib
-                libseccomp
-              ];
-              nativeBuildInputs = with pkgs; [
-                pkg-config
-                clang # For building eBPF
-              ];
-              hardeningDisable = [
-                "zerocallusedregs"
-              ];
-              # Don't store logs
-              TRACEXEC_DATA = "/tmp";
-            };
-
+    flake-parts.lib.mkFlake { inherit inputs; } (
+      { withSystem, flake-parts-lib, ... }:
+      let inherit (flake-parts-lib) importApply;
+        tracexec.default = importApply ./nix/tracexec.nix { inherit crane; };
+      in
+      {
+        imports = [
+          tracexec.default
+        ];
+        flake = {
+        };
+        systems = [
+          "x86_64-linux"
+          "aarch64-linux"
+          "riscv64-linux"
+        ];
+        perSystem = { self', config, lib, pkgs, ... }: {
+          packages.default = self'.packages.tracexec;
           devShells.default = pkgs.mkShell {
             name = "Development Shell";
             packages = with pkgs; [
@@ -58,5 +32,6 @@
             shellHook = ''export TRACEXEC_LOGLEVEL=debug'';
           };
         };
-  };
+      }
+    );
 }
