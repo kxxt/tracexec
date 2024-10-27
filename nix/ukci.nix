@@ -12,8 +12,9 @@ localFlake:
         kernel = self'.packages.kernel;
         extraBin = {
           tracexec = "${self'.packages.tracexec}/bin/tracexec";
+          strace = "${pkgs.strace}/bin/strace";
         };
-        storePaths = [pkgs.foot.terminfo];
+        storePaths = [ pkgs.foot.terminfo ];
       };
 
     packages.kernel =
@@ -46,5 +47,18 @@ localFlake:
         };
       in
       kernel;
+
+    packages.run-qemu = pkgs.writeScriptBin "run-qemu" ''
+      #!/usr/bin/env sh
+      sudo qemu-system-x86_64 \
+        -enable-kvm \
+        -m 2G \
+        -smp cores=4 \
+        -kernel ${self'.packages.kernel}/bzImage \
+        -initrd ${self'.packages.initramfs}/initrd.gz \
+        -device e1000,netdev=net0 \
+        -netdev user,id=net0,hostfwd=::10022-:22 \
+        -nographic -append "console=ttyS0"
+    '';
   };
 }
