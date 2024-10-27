@@ -60,5 +60,20 @@ localFlake:
         -netdev user,id=net0,hostfwd=::10022-:22 \
         -nographic -append "console=ttyS0"
     '';
+
+    packages.test-qemu = pkgs.writeScriptBin "test-qemu" ''
+      #!/usr/bin/env sh
+      ssh="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 -p 10022"
+
+      # Wait for the qemu virtual machine to start...
+      for i in $(seq 1 12); do
+        [ $i -gt 1 ] && sleep 5;
+        $ssh true && break;
+      done;
+
+      # Try to load eBPF module:
+      $ssh tracexec ebpf log -- ls
+      exit $?
+    '';
   };
 }
