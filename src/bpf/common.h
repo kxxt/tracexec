@@ -4,10 +4,6 @@
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 
-// KFuncs
-
-extern void bpf_rcu_read_lock(void) __ksym;
-extern void bpf_rcu_read_unlock(void) __ksym;
 
 // Macros
 
@@ -62,5 +58,26 @@ struct sys_enter_exec_args {
   const u8 *const *argv;
   const u8 *const *envp;
 };
+
+// Compatibility Shims
+
+#ifndef NO_RCU_KFUNCS
+extern void bpf_rcu_read_lock(void) __ksym;
+extern void bpf_rcu_read_unlock(void) __ksym;
+#endif
+
+int __always_inline rcu_read_lock() {
+#ifndef NO_RCU_KFUNCS
+  bpf_rcu_read_lock();
+#endif
+  return 0;
+}
+
+int __always_inline rcu_read_unlock() {
+#ifndef NO_RCU_KFUNCS
+  bpf_rcu_read_unlock();
+#endif
+  return 0;
+}
 
 #endif

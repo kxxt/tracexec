@@ -104,6 +104,7 @@ ebpf = ["dep:libbpf-rs", "dep:libbpf-sys"]
 # Either cargo doesn't rebuild and run build.rs on feature flag change,
 # or some logic is wrong in build.rs
 ebpf-debug = ["ebpf"]
+ebpf-no-rcu-kfuncs = ["ebpf"] # Avoid using rcu helpers. Necessary for kernel version < 6.2
 static = ["libbpf-sys/static"]
 vendored = ["libbpf-sys/vendored", "vendored-libbpf"]
 vendored-libbpf = ["libbpf-sys/vendored-libbpf", "libbpf-cargo/default"]

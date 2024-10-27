@@ -147,7 +147,7 @@ bool should_trace(pid_t old_tgid) {
   }
   // RCU read lock when accessing the active pid ns,
   // ref: https://elixir.bootlin.com/linux/v6.11-rc4/source/kernel/pid.c#L505
-  bpf_rcu_read_lock();
+  rcu_read_lock();
   ret = bpf_core_read(&pid_struct, sizeof(void *), &task->thread_pid);
   if (ret < 0) {
     debug("failed to read task->thread_pid: %d", ret);
@@ -176,7 +176,7 @@ bool should_trace(pid_t old_tgid) {
     debug("failed to read pid_ns->ns.inum: %d", ret);
     goto err_unlock;
   }
-  bpf_rcu_read_unlock();
+  rcu_read_unlock();
   if (pid_in_ns == tracexec_config.tracee_pid &&
       ns_inum == tracexec_config.tracee_pidns_inum) {
     debug("TASK %d (%d in pidns %u) is tracee", old_tgid, pid_in_ns, ns_inum);
@@ -187,7 +187,7 @@ bool should_trace(pid_t old_tgid) {
   }
   return false;
 err_unlock:
-  bpf_rcu_read_unlock();
+  rcu_read_unlock();
   return false;
 }
 
@@ -577,13 +577,13 @@ static int read_fds(struct exec_event *event) {
     goto probe_failure;
   }
   // Accessing fdt usually requires RCU. Is it okay to access without it in BPF?
-  // bpf_rcu_read_lock is a kfunc anyway.
+  // rcu_read_lock is a kfunc anyway.
   // https://docs.kernel.org/filesystems/files.html
   // files_fdtable() uses rcu_dereference() macro which takes care of the memory
   // barrier requirements for lock-free dereference. The fdtable pointer must be
   // read within the read-side critical section.
   struct fdtable *fdt;
-  bpf_rcu_read_lock();
+  rcu_read_lock();
   ret = bpf_core_read(&fdt, sizeof(void *), &files->fdt);
   if (ret < 0) {
     debug("Failed to read files->fdt! err: %d", ret);
@@ -618,7 +618,7 @@ static int read_fds(struct exec_event *event) {
     debug("Failed to read fdt->max_fds! err: %d", ret);
     goto probe_failure_locked_rcu;
   }
-  bpf_rcu_read_unlock();
+  rcu_read_unlock();
   // open_fds is a fd set, which is a bitmap
   // Copy it into cache first
   // Ref:
@@ -628,7 +628,7 @@ static int read_fds(struct exec_event *event) {
   bpf_loop(ctx.size, read_fds_impl, &ctx, 0);
   return 0;
 probe_failure_locked_rcu:
-  bpf_rcu_read_unlock();
+  rcu_read_unlock();
 probe_failure:
   event->header.flags |= FDS_PROBE_FAILURE;
   return -EFAULT;
