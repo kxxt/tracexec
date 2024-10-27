@@ -24,8 +24,9 @@ use ratatui::{
   layout::Alignment::Right,
   prelude::{Buffer, Rect},
   style::{Color, Modifier, Style},
+  text::Line,
   widgets::{
-    block::Title, HighlightSpacing, List, ListItem, ListState, Scrollbar, ScrollbarOrientation,
+    HighlightSpacing, List, ListItem, ListState, Scrollbar, ScrollbarOrientation,
     ScrollbarState, StatefulWidget, StatefulWidgetRef, Widget,
   },
 };
@@ -184,15 +185,14 @@ impl EventList {
     &items[window.0..window.1.min(items.len())]
   }
 
-  pub fn statistics(&self) -> Title {
+  pub fn statistics(&self) -> Line {
     let id = self.selection_index().unwrap_or(0);
-    Title::default()
-      .content(format!(
-        "{}/{}──",
-        (id + 1).min(self.events.len()),
-        self.events.len()
-      ))
-      .alignment(Right)
+    Line::raw(format!(
+      "{}/{}──",
+      (id + 1).min(self.events.len()),
+      self.events.len()
+    ))
+    .alignment(Right)
   }
 
   pub fn len(&self) -> usize {

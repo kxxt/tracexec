@@ -39,7 +39,7 @@ tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 directories = "5.0.1"
 lazy_static = "1.4.0"
-ratatui = { version = "0.28.1", features = ["unstable-rendered-line-info"] }
+ratatui = { version = "0.29", features = ["unstable-rendered-line-info"] }
 crossterm = { version = "0.28.1", features = ["event-stream"] }
 tokio = { version = "1.37.0", features = ["full"] }
 tokio-util = "0.7.10"
@@ -47,7 +47,7 @@ futures = "0.3.30"
 signal-hook = "0.3.17"
 better-panic = "0.3.0"
 itertools = "0.13.0"
-tui-term = "=0.1.13"
+tui-term = "0.2.0"
 filedescriptor = "0.8.2"
 vt100 = "0.15.2"
 bytes = "1.6.0"
@@ -56,12 +56,12 @@ enumflags2 = "0.7.9"
 arboard = { version = "3.3.2", default-features = false, features = [
     "wayland-data-control",
 ] }
-tui-popup = "0.5.0"
+tui-popup = "0.6.0"
 thiserror = "1.0.59"
-tui-scrollview = "0.4"
+tui-scrollview = "0.5.0"
 bitflags = "2.5.0"
 indexmap = "2.2.6"
-tui-prompts = "0.4"
+tui-prompts = "0.5.0"
 unicode-segmentation = "1.11.0"
 unicode-width = "0.1.12"
 serial_test = { version = "3.1.1", features = ["file_locks"] }
@@ -69,7 +69,7 @@ arcstr = { version = "1.2.0", features = ["serde"] }
 clap_complete = "4.5.2"
 regex-cursor = { version = "0.1.4", default-features = false }
 shell-words = "1.1.0"
-tui-widget-list = "0.12"
+tui-widget-list = "0.13"
 either = "1.12.0"
 serde = { version = "1.0.204", features = ["derive"] }
 toml = "0.8.14"

@@ -1455,30 +1455,30 @@ dependencies = [
 
 [[package]]
 name = "ratatui"
-version = "0.28.1"
+version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fdef7f9be5c0122f890d58bdf4d964349ba6a6161f705907526d891efabba57d"
+checksum = "eabd94c2f37801c20583fc49dd5cd6b0ba68c716787c2dd6ed18571e1e63117b"
 dependencies = [
  "bitflags 2.6.0",
  "cassowary",
  "compact_str",
  "crossterm",
+ "indoc",
  "instability",
  "itertools",
  "lru",
  "paste",
  "strum",
- "strum_macros",
  "unicode-segmentation",
  "unicode-truncate",
- "unicode-width",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]
 name = "ratatui-macros"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "142d72442aff1ba834b80f50a22a48302e665e90b3a43eaab52bf99b037df0c0"
+checksum = "6fef540f80dbe8a0773266fa6077788ceb65ef624cdbf36e131aaf90b4a52df4"
 dependencies = [
  "ratatui",
 ]
@@ -1573,7 +1573,19 @@ checksum = "7b423f0e62bdd61734b67cd21ff50871dfaeb9cc74f869dcd6af974fbcb19936"
 dependencies = [
  "futures",
  "futures-timer",
- "rstest_macros",
+ "rstest_macros 0.22.0",
+ "rustc_version",
+]
+
+[[package]]
+name = "rstest"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a2c585be59b6b5dd66a9d2084aa1d8bd52fbdb806eafdeffb52791147862035"
+dependencies = [
+ "futures",
+ "futures-timer",
+ "rstest_macros 0.23.0",
  "rustc_version",
 ]
 
@@ -1582,6 +1594,24 @@ name = "rstest_macros"
 version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c5e1711e7d14f74b12a58411c542185ef7fb7f2e7f8ee6e2940a883628522b42"
+dependencies = [
+ "cfg-if",
+ "glob",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "relative-path",
+ "rustc_version",
+ "syn",
+ "unicode-ident",
+]
+
+[[package]]
+name = "rstest_macros"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "825ea780781b15345a146be27eaefb05085e337e869bff01b4306a4fd4a9ad5a"
 dependencies = [
  "cfg-if",
  "glob",
@@ -2038,7 +2068,7 @@ dependencies = [
  "predicates",
  "ratatui",
  "regex-cursor",
- "rstest",
+ "rstest 0.22.0",
  "serde",
  "serde_json",
  "serial_test",
@@ -2060,7 +2090,7 @@ dependencies = [
  "tui-term",
  "tui-widget-list",
  "unicode-segmentation",
- "unicode-width",
+ "unicode-width 0.1.14",
  "vt100",
 ]
 
@@ -2172,9 +2202,9 @@ dependencies = [
 
 [[package]]
 name = "tui-popup"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f0125f70f5b7b1ef457452c88db3f7ecf615922ccbfac70e292b53912695b53"
+checksum = "d9ee3d08800c83ba0a2efaec44d225bcc3f885f30e2b520a17e2cd962b7da6ab"
 dependencies = [
  "derive-getters",
  "derive_setters",
@@ -2184,32 +2214,32 @@ dependencies = [
 
 [[package]]
 name = "tui-prompts"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9c05d3d800f6362400f4bca8aee25c6fcf1c03b4a9ef06297e0159354ecd4ea"
+checksum = "eb6e0d8a972545cc209b933a1c06dab8932674b54ae19947834ec854fec2364f"
 dependencies = [
  "itertools",
  "ratatui",
  "ratatui-macros",
- "rstest",
+ "rstest 0.23.0",
 ]
 
 [[package]]
 name = "tui-scrollview"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27a65189ac0c5f8af32660c453a1babae3ac7e72791b9dbeb1221073569f44ea"
+checksum = "235ee99b9af57bc0bc8cf42604f5868641690ed652001120d63ca2784a41c3d3"
 dependencies = [
  "indoc",
  "ratatui",
- "rstest",
+ "rstest 0.23.0",
 ]
 
 [[package]]
 name = "tui-term"
-version = "0.1.13"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d07f0233f0d4795d2dc6663cfc3ce56b87bebcee66d6bcc088aa6aff5c072361"
+checksum = "72af159125ce32b02ceaced6cffae6394b0e6b6dfd4dc164a6c59a2db9b3c0b0"
 dependencies = [
  "ratatui",
  "vt100",
@@ -2217,9 +2247,9 @@ dependencies = [
 
 [[package]]
 name = "tui-widget-list"
-version = "0.12.2"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d523011019b6af3065b61c56408490d473ca9656778c29bfb18c5d2c1053630"
+checksum = "dd80265ccaaad37d8e315c2ca1ba40dd30bced081ba4fbe22fa0584fd9c1ca3f"
 dependencies = [
  "ratatui",
 ]
@@ -2244,7 +2274,7 @@ checksum = "b3644627a5af5fa321c95b9b235a72fd24cd29c648c2c379431e6628655627bf"
 dependencies = [
  "itertools",
  "unicode-segmentation",
- "unicode-width",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -2252,6 +2282,12 @@ name = "unicode-width"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
+
+[[package]]
+name = "unicode-width"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
 
 [[package]]
 name = "utf8parse"
@@ -2283,7 +2319,7 @@ checksum = "84cd863bf0db7e392ba3bd04994be3473491b31e66340672af5d11943c6274de"
 dependencies = [
  "itoa",
  "log",
- "unicode-width",
+ "unicode-width 0.1.14",
  "vte",
 ]
 
