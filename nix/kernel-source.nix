@@ -26,10 +26,10 @@
 { pkgs
 , lib ? pkgs.lib
 , enableGdb
-,
+, version
+, sha256
 }:
 let
-  version = "6.6.58";
   localVersion = "-ukci";
 in
 {
@@ -40,7 +40,7 @@ in
     src =
       pkgs.fetchurl {
         url = "mirror://kernel/linux/kernel/v6.x/linux-${version}.tar.xz";
-        sha256 = "sha256-59+B5YjXD6tew+w7sErFPVHwhg/DsexF4KQWegJomds=";
+        inherit sha256;
       };
 
     # Add kernel patches here
