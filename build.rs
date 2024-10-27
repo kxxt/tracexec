@@ -40,6 +40,9 @@ fn main() {
     if cfg!(any(feature = "ebpf-debug", debug_assertions)) {
       clang_args.push(OsStr::new("-DEBPF_DEBUG"));
     }
+    if cfg!(feature = "ebpf-no-rcu-kfuncs") {
+      clang_args.push(OsStr::new("-DNO_RCU_KFUNCS"));
+    }
     SkeletonBuilder::new()
       .source(bpf_src)
       .clang_args(clang_args)
