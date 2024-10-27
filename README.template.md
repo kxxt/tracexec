@@ -50,6 +50,7 @@ Please [read the gdb-launcher example](https://github.com/kxxt/tracexec/blob/mai
 
 The eBPF mode is currently experimental.
 It is known to work on Linux 6.6 lts and 6.10 and probably works on all 6.x kernels.
+For kernel versions less than 6.2, you'll need to enable `ebpf-no-rcu-kfuncs` feature.
 It won't work on kernel version < 5.17.
 
 The following examples shows how to use eBPF in TUI mode.

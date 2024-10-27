@@ -44,6 +44,7 @@ To control whether to dynamically link to libbpf, libelf and zlib, consult the n
 - `static`: Statically link libelf, zlib and libbpf.
 - `vendored`: Vendoring libelf, zlib and libbpf, implies `static`.
 - `vendored-libbpf`: Vendoring libbpf and statically link to it.
+- `ebpf-no-rcu-kfuncs`: Enable this feature for eBPF backend to work on kernel versions less than `6.2`.
 
 By default, we enable the `recommended` and `vendored-libbpf` features. This means that we are dynamically linking zlib and libelf but statically linking libbpf. This choice is made because zlib and libelf are usually installed on most systems but libbpf is usually not.
 
