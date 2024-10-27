@@ -30,6 +30,9 @@
             name = "Development Shell";
             packages = with pkgs; [
               strace
+              nixpkgs-fmt
+              self'.packages.run-qemu
+              self'.packages.test-qemu
             ];
             shellHook = ''export TRACEXEC_LOGLEVEL=debug'';
           };
