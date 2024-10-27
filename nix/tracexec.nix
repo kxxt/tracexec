@@ -3,34 +3,39 @@ localFlake:
 { lib, config, self, inputs, ... }:
 {
   perSystem = { system, pkgs, ... }: {
-    packages.tracexec =
+    packages =
       let
         craneLib = localFlake.crane.mkLib pkgs;
         cFilter = path: _type: builtins.match ".*\.[ch]$" path != null;
         symlinkFilter = _path: type: type == "symlink";
         sourceFilter = path: type:
           (cFilter path type) || (symlinkFilter path type) || (craneLib.filterCargoSources path type);
-      in
-      craneLib.buildPackage {
-        src = lib.cleanSourceWith {
-          src = ./..;
-          filter = sourceFilter;
-          name = "source";
+        builder = { cargoExtraArgs }: craneLib.buildPackage {
+          inherit cargoExtraArgs;
+          src = lib.cleanSourceWith {
+            src = ./..;
+            filter = sourceFilter;
+            name = "source";
+          };
+          buildInputs = with pkgs; [
+            elfutils
+            zlib
+            libseccomp
+          ];
+          nativeBuildInputs = with pkgs; [
+            pkg-config
+            clang # For building eBPF
+          ];
+          hardeningDisable = [
+            "zerocallusedregs"
+          ];
+          # Don't store logs
+          TRACEXEC_DATA = "/tmp";
         };
-        buildInputs = with pkgs; [
-          elfutils
-          zlib
-          libseccomp
-        ];
-        nativeBuildInputs = with pkgs; [
-          pkg-config
-          clang # For building eBPF
-        ];
-        hardeningDisable = [
-          "zerocallusedregs"
-        ];
-        # Don't store logs
-        TRACEXEC_DATA = "/tmp";
+      in
+      {
+        tracexec = builder { cargoExtraArgs = "--locked"; };
+        tracexec_no_rcu_kfuncs = builder { cargoExtraArgs = "--locked -F ebpf-no-rcu-kfuncs"; };
       };
   };
 }
