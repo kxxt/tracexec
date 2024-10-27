@@ -457,7 +457,7 @@ pub fn close_random_fds() {
   // a directory listing the current fd numbers for the process.
   //
   // On Linux, /dev/fd is a symlink to /proc/self/fd
-  if let Ok(dir) = std::fs::read_dir("/dev/fd") {
+  if let Ok(dir) = std::fs::read_dir("/proc/self/fd").or_else(|_| std::fs::read_dir("/dev/fd")) {
     let mut fds = vec![];
     for entry in dir {
       if let Some(num) = entry
@@ -472,9 +472,7 @@ pub fn close_random_fds() {
       }
     }
     for fd in fds {
-      unsafe {
-        libc::close(fd);
-      }
+      let _ = nix::unistd::close(fd);
     }
   }
 }
