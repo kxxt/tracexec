@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.8.0
+
+### Breaking Changes
+
+The ptrace backend no longer supports kernels that don't support `PTRACE_GET_SYSCALL_INFO`.
+This means that the minimal supported kernel version is now `5.3`.
+
+### New Features
+
+The ptrace backend now allows tracees to do 32bit syscalls on x64 architecture.
+And traces for 32bit exec syscalls are now available in tracexec.
+
+A new feature `ebpf-no-rcu-kfuncs` is added and disabled by default.
+For kernel versions less than 6.2, you'll need to enable this feature to make the eBPF backend work.
+
+### Fixes
+
+- Make tests work in non-FHS environment.
+
+### Other Changes
+
+- Update dependencies, notably bumping ratatui to 0.29.
+- Add a (very rough) nix flake to test the eBPF backend on different kernel versions.
+- CI: bump rust to 1.82
+
 ## v0.7.0
 
 ### New Features
