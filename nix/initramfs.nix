@@ -99,6 +99,8 @@ let
     mount -t sysfs none /sys
     mount -t debugfs debugfs /sys/kernel/debug
 
+    ln -s /proc/self/fd /dev/fd
+
     mkdir -p /etc/dropbear
     echo /bin/bash > /etc/shells
     cat > /etc/passwd << "EOF"
