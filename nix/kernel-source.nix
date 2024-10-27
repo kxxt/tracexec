@@ -80,11 +80,11 @@ in
         # Compile with headers
         IKHEADERS = yes;
 
-        SLUB_DEBUG = yes;
-        DEBUG_MEMORY_INIT = yes;
-        KASAN = yes;
+        # SLUB_DEBUG = yes;
+        # DEBUG_MEMORY_INIT = yes;
+        # KASAN = yes;
 
-        # FRAME_WARN - warn at build time for stack frames larger tahn this.
+        # FRAME_WARN - warn at build time for stack frames larger than this.
 
         MAGIC_SYSRQ = yes;
 
