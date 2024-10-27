@@ -47,6 +47,7 @@ localFlake:
                 inherit kernel;
                 extraBin = {
                   tracexec = "${self'.packages.tracexec}/bin/tracexec";
+                  tracexec_no_rcu_kfuncs = "${self'.packages.tracexec_no_rcu_kfuncs}/bin/tracexec";
                   strace = "${pkgs.strace}/bin/strace";
                 };
                 storePaths = [ pkgs.foot.terminfo ];
