@@ -25,21 +25,25 @@
 
 { pkgs
 , lib ? pkgs.lib
-, enableGdb
-, version
+, tag
+, version ? tag
 , sha256
+, source
+, ...
 }:
 let
   localVersion = "-ukci";
+  sources = {
+    mirror = "mirror://kernel/linux/kernel/v6.x/linux-${tag}.tar.xz";
+    linus = "https://github.com/torvalds/linux/archive/refs/tags/${tag}.tar.gz";
+  };
 in
 {
   kernelArgs = {
-    inherit enableGdb;
-
     inherit version;
     src =
       pkgs.fetchurl {
-        url = "mirror://kernel/linux/kernel/v6.x/linux-${version}.tar.xz";
+        url = sources.${source};
         inherit sha256;
       };
 
@@ -159,7 +163,9 @@ in
         ACPI = yes;
 
         ## BPF
-        DEBUG_INFO_DWARF4 = yes;
+        DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT = yes;
+        DEBUG_INFO_SPLIT = no;
+        DEBUG_INFO_REDUCED = no;
         DEBUG_INFO_BTF = yes;
         BPF_SYSCALL = yes;
         BPF_JIT = yes;
@@ -168,9 +174,6 @@ in
         # Debug FS is be enabled (done above) to show registered kprobes in /sys/kernel/debug: https://www.kernel.org/doc/html/latest/trace/kprobes.html#the-kprobes-debugfs-interface
         KPROBES = yes;
         KALLSYMS_ALL = yes;
-      } // lib.optionalAttrs enableGdb {
-        DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT = yes;
-        GDB_SCRIPTS = yes;
       };
 
     # Flags that get passed to generate-config.pl

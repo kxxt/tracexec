@@ -5,13 +5,16 @@ localFlake:
   perSystem = { self', system, pkgs, ... }: {
     packages =
       let
-        sources = [{ name = "6.6lts"; version = "6.6.58"; sha256 = "sha256-59+B5YjXD6tew+w7sErFPVHwhg/DsexF4KQWegJomds="; }
-          { name = "6.1lts"; version = "6.1.113"; sha256 = "sha256-VK8QhxkvzFJQpCUUUf1hR2GFnT2WREncAjWOVYxEnjA="; }
-          { name = "6.11"; version = "6.11.5"; sha256 = "sha256-RxSFs7fy+2N72P49AJRMTBNcfY7gLzV/M2kLqrB1Kgc="; }];
+        sources = [
+          { name = "6.6lts"; tag = "6.6.58"; source = "mirror"; sha256 = "sha256-59+B5YjXD6tew+w7sErFPVHwhg/DsexF4KQWegJomds="; }
+          { name = "6.1lts"; tag = "6.1.113"; source = "mirror"; sha256 = "sha256-VK8QhxkvzFJQpCUUUf1hR2GFnT2WREncAjWOVYxEnjA="; }
+          { name = "6.11"; tag = "6.11.5"; source = "mirror"; sha256 = "sha256-RxSFs7fy+2N72P49AJRMTBNcfY7gLzV/M2kLqrB1Kgc="; }
+          { name = "6.12rc"; tag = "v6.12-rc5"; version = "6.12.0-rc5"; source = "linus"; sha256 = "sha256-AvTQCJKdjWKvKhzVhbTcWMDHpCeFVRW3gy7LNPbzhbE="; }
+        ];
         nixpkgs = localFlake.nixpkgs;
         configureKernel = pkgs.callPackage ./kernel-configure.nix { };
         buildKernel = pkgs.callPackage ./kernel-build.nix { };
-        kernelNixConfig = source: pkgs.callPackage ./kernel-source.nix { enableGdb = false; inherit (source) version sha256; };
+        kernelNixConfig = source: pkgs.callPackage ./kernel-source.nix source;
         kernels = map
           (source:
             let
@@ -33,7 +36,6 @@ localFlake:
                   src
                   modDirVersion
                   version
-                  enableGdb
                   kernelPatches
                   ;
                 inherit configfile nixpkgs;
