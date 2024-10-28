@@ -6,10 +6,35 @@ localFlake:
     packages =
       let
         sources = [
-          { name = "6.6lts"; tag = "6.6.58"; source = "mirror"; sha256 = "sha256-59+B5YjXD6tew+w7sErFPVHwhg/DsexF4KQWegJomds="; }
-          { name = "6.1lts"; tag = "6.1.113"; source = "mirror"; sha256 = "sha256-VK8QhxkvzFJQpCUUUf1hR2GFnT2WREncAjWOVYxEnjA="; }
-          { name = "6.11"; tag = "6.11.5"; source = "mirror"; sha256 = "sha256-RxSFs7fy+2N72P49AJRMTBNcfY7gLzV/M2kLqrB1Kgc="; }
-          { name = "6.12rc"; tag = "v6.12-rc5"; version = "6.12.0-rc5"; source = "linus"; sha256 = "sha256-AvTQCJKdjWKvKhzVhbTcWMDHpCeFVRW3gy7LNPbzhbE="; }
+          {
+            name = "6.1lts";
+            tag = "6.1.113";
+            source = "mirror";
+            test_exe = "tracexec_no_rcu_kfuncs";
+            sha256 = "sha256-VK8QhxkvzFJQpCUUUf1hR2GFnT2WREncAjWOVYxEnjA=";
+          }
+          {
+            name = "6.6lts";
+            tag = "6.6.58";
+            source = "mirror";
+            test_exe = "tracexec";
+            sha256 = "sha256-59+B5YjXD6tew+w7sErFPVHwhg/DsexF4KQWegJomds=";
+          }
+          {
+            name = "6.11";
+            tag = "6.11.5";
+            source = "mirror";
+            test_exe = "tracexec";
+            sha256 = "sha256-RxSFs7fy+2N72P49AJRMTBNcfY7gLzV/M2kLqrB1Kgc=";
+          }
+          {
+            name = "6.12rc";
+            tag = "v6.12-rc5";
+            version = "6.12.0-rc5";
+            source = "linus";
+            test_exe = "tracexec";
+            sha256 = "sha256-AvTQCJKdjWKvKhzVhbTcWMDHpCeFVRW3gy7LNPbzhbE=";
+          }
         ];
         nixpkgs = localFlake.nixpkgs;
         configureKernel = pkgs.callPackage ./kernel-configure.nix { };
@@ -44,7 +69,7 @@ localFlake:
             in
             {
               inherit kernel;
-              inherit (source) name;
+              inherit (source) name test_exe;
               initramfs = buildInitramfs {
                 inherit kernel;
                 extraBin = {
@@ -57,11 +82,11 @@ localFlake:
             })
           sources;
       in
-      {
+      rec {
         run-qemu =
           let
             shellCases = lib.concatMapStrings
-              ({ name, kernel, initramfs }: ''
+              ({ name, kernel, initramfs, ... }: ''
                 ${name})
                   kernel="${kernel}"
                   initrd="${initramfs}"
@@ -99,10 +124,38 @@ localFlake:
             $ssh true && break;
           done;
 
+          # Show uname
+          $ssh uname -a
           # Try to load eBPF module:
-          $ssh tracexec ebpf log -- ls
+          $ssh "$1" ebpf log -- ls
           exit $?
         '';
+
+        ukci =
+          let
+            platforms = lib.concatMapStringsSep " "
+              ({ name, test_exe, ... }: "${name}:${test_exe}")
+              kernels;
+          in
+          pkgs.writeScriptBin "ukci" ''
+            #!/usr/bin/env bash
+
+            set -e
+
+            if ! [[ "$(whoami)" == root ]]; then
+              sudo "$0"
+              exit $?
+            fi
+
+            ssh="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 -p 10022"
+            for platform in ${platforms}; do
+              IFS=: read -r kernel test_exe <<< "$platform"
+              ${run-qemu}/bin/run-qemu "$kernel" &
+              ${test-qemu}/bin/test-qemu "$test_exe"
+              $ssh poweroff -f || true
+              wait < <(jobs -p)
+            done;
+          '';
       };
   };
 }
