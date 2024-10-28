@@ -33,24 +33,17 @@
 , flex
 , pahole
 , buildPackages
-, rustPlatform
-, rustc
-, rustfmt
-, cargo
-, rust-bindgen
 ,
 }: { nixpkgs
    , kernel
    , # generate-config.pl flags. see below
      generateConfigFlags
    , structuredExtraConfig
-   , enableRust ? false
    ,
    }:
 let
   nativeBuildInputs =
-    [ perl gmp libmpc mpfr bison flex ]
-    ++ lib.optionals enableRust [ rustfmt rustc cargo rust-bindgen ];
+    [ perl gmp libmpc mpfr bison flex pahole ];
 
   passthru = rec {
     module = import "${nixpkgs}/nixos/modules/system/boot/kernel_config.nix";
@@ -136,8 +129,5 @@ stdenv.mkDerivation (
     enableParallelBuilding = true;
 
     inherit passthru;
-  }
-    // lib.optionalAttrs enableRust {
-    RUST_LIB_SRC = rustPlatform.rustLibSrc;
   }
 )

@@ -33,7 +33,6 @@
    , configfile
    , modDirVersion
    , version
-   , enableGdb ? false
    , # Install the GDB scripts
      kernelPatches ? [ ]
    , nixpkgs
@@ -87,11 +86,6 @@ let
         cp $buildRoot/{.config,Module.symvers} $dev/lib/modules/${modDirVersion}/build
 
         make modules_prepare $makeFlags "''${makeFlagsArray[@]}" O=$dev/lib/modules/${modDirVersion}/build
-
-        ${lib.optionalString enableGdb ''
-          echo "Make scripts"
-          make scripts_gdb $makeFlags "''${makeFlagsArray[@]}" O=$dev/lib/modules/${modDirVersion}/build
-        ''}
 
         # For reproducibility, removes accidental leftovers from a `cc1` call
         # from a `try-run` call from the Makefile

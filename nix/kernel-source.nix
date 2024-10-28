@@ -155,6 +155,9 @@ in
 
         SECCOMP = yes;
 
+        # Power
+        ACPI = yes;
+
         ## BPF
         DEBUG_INFO_DWARF4 = yes;
         DEBUG_INFO_BTF = yes;
