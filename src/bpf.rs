@@ -157,7 +157,7 @@ impl EbpfTracer {
             #[allow(clippy::comparison_chain)]
             if header.eid > eid {
               // There are some lost events
-              // In some cases the events are not really lost but sent out of order because of parallism
+              // In some cases the events are not really lost but sent out of order because of parallelism
               warn!(
                 "inconsistent event id counter: local = {eid}, kernel = {}. Possible event loss!",
                 header.eid
