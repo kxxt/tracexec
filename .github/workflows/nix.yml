@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - main
+      - ci
   pull_request:
   merge_group:
 
@@ -19,16 +20,22 @@ jobs:
   nix:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - run: |
-        sudo apt-get update -y
-        sudo apt-get install -y qemu-kvm
-    - uses: cachix/install-nix-action@v27
-      with:
-        nix_path: nixpkgs=channel:nixos-unstable
-    - uses: DeterminateSystems/magic-nix-cache-action@v2
-    # Build and test tracexec
-    # Also builds kernels
-    - run: nix build
-    # Run Userspace<->Kernel CI
-    - run: nix run '.#ukci'
+      - name: Get more space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -y
+          sudo apt-get install -y qemu-kvm
+      - uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+      - uses: DeterminateSystems/magic-nix-cache-action@v2
+      # Build and test tracexec
+      # Also builds kernels
+      - run: nix build
+      # Run Userspace<->Kernel CI
+      - run: nix run '.#ukci'
