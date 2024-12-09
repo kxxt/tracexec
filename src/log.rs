@@ -27,14 +27,14 @@ pub use tracing::*;
 
 use crate::{cli::config::project_directory, tui::restore_tui};
 
+const LOG_FILE: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
+
 lazy_static! {
-  pub static ref PROJECT_NAME: String = env!("CARGO_CRATE_NAME").to_uppercase();
   pub static ref DATA_FOLDER: Option<PathBuf> =
-    std::env::var(format!("{}_DATA", PROJECT_NAME.clone()))
+    std::env::var(concat!(env!("CARGO_CRATE_NAME"), "_DATA").to_uppercase())
       .ok()
       .map(PathBuf::from);
-  pub static ref LOG_ENV: String = format!("{}_LOGLEVEL", PROJECT_NAME.clone());
-  pub static ref LOG_FILE: String = format!("{}.log", env!("CARGO_PKG_NAME"));
+  pub static ref LOG_ENV: String = concat!(env!("CARGO_CRATE_NAME"), "_LOGLEVEL").to_uppercase();
 }
 
 pub fn get_data_dir() -> PathBuf {
@@ -51,7 +51,7 @@ pub fn get_data_dir() -> PathBuf {
 pub fn initialize_logging() -> Result<()> {
   let directory = get_data_dir();
   std::fs::create_dir_all(directory.clone())?;
-  let log_path = directory.join(LOG_FILE.clone());
+  let log_path = directory.join(LOG_FILE);
   let log_file = std::fs::File::create(log_path)?;
   let file_subscriber = tracing_subscriber::fmt::layer()
     .with_file(true)
@@ -69,9 +69,8 @@ pub fn initialize_logging() -> Result<()> {
   } else if std::env::var("RUST_LOG").is_ok() {
     file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::from_env("RUST_LOG"))
   } else {
-    file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::new(format!(
-      "{}=info",
-      env!("CARGO_CRATE_NAME")
+    file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::new(concat!(
+      env!("CARGO_CRATE_NAME"), "=info"
     )))
   };
 
