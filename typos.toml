@@ -6,6 +6,7 @@ extend-ignore-re = ["\\(L\\)ine", "\\(E\\)nvironment"]
 "Sur" = "Sur"
 "inh" = "inh" # abbr for inherited
 "PARM" = "PARM"
+"ommand" = "ommand" # (C)ommand
 
 [files]
 extend-exclude = [
