@@ -2072,7 +2072,6 @@ dependencies = [
  "indexmap",
  "itertools 0.14.0",
  "kxxt-owo-colors",
- "lazy_static",
  "libbpf-cargo",
  "libbpf-rs",
  "libbpf-sys",

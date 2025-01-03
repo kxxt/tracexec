@@ -1,4 +1,5 @@
-use lazy_static::lazy_static;
+use std::sync::LazyLock;
+
 use ratatui::style::{Modifier, Style, Stylize};
 
 pub struct Theme {
@@ -243,6 +244,4 @@ impl Default for Theme {
   }
 }
 
-lazy_static! {
-  pub static ref THEME: Theme = Theme::default();
-}
+pub static THEME: LazyLock<Theme> = LazyLock::new(Theme::default);

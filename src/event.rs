@@ -14,7 +14,6 @@ use either::Either;
 use enumflags2::BitFlags;
 use filterable_enum::FilterableEnum;
 use itertools::{chain, Itertools};
-use lazy_static::lazy_static;
 use nix::{errno::Errno, fcntl::OFlag, libc::c_int, sys::signal::Signal, unistd::Pid};
 use owo_colors::OwoColorize;
 use ratatui::{
@@ -308,10 +307,8 @@ pub struct TracerEvent {
   pub id: u64,
 }
 
-lazy_static! {
-  /// A global counter for events, though it should only be used by the tracer thread.
-  static ref ID: AtomicU64 = 0.into();
-}
+/// A global counter for events, though it should only be used by the tracer thread.
+static ID: AtomicU64 = AtomicU64::new(0);
 
 impl TracerEvent {
   pub fn allocate_id() -> u64 {

@@ -9,12 +9,11 @@ use std::{
   io::{self, BufRead, BufReader, Read},
   os::raw::c_int,
   path::{Path, PathBuf},
-  sync::{Arc, RwLock},
+  sync::{Arc, LazyLock, RwLock},
 };
 
 use arcstr::ArcStr;
 use filedescriptor::AsRawFileDescriptor;
-use lazy_static::lazy_static;
 use owo_colors::OwoColorize;
 
 use nix::{
@@ -464,6 +463,5 @@ impl BaselineInfo {
   }
 }
 
-lazy_static! {
-  static ref CACHE: Arc<RwLock<StringCache>> = Arc::new(RwLock::new(StringCache::new()));
-}
+static CACHE: LazyLock<Arc<RwLock<StringCache>>> =
+  LazyLock::new(|| Arc::new(RwLock::new(StringCache::new())));

@@ -38,7 +38,6 @@ tracing = { version = "0.1.40", features = ["release_max_level_info"] }
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 directories = "5.0.1"
-lazy_static = "1.4.0"
 ratatui = { version = "0.29", features = ["unstable-rendered-line-info"] }
 crossterm = { version = "0.28.1", features = ["event-stream"] }
 tokio = { version = "1.37.0", features = ["full"] }
