@@ -21,4 +21,4 @@ targets = [
 ]
 
 [unicode-ident]
-accepted = ["Unicode-DFS-2016"]
+accepted = ["Unicode-DFS-2016", "Unicode-3.0"]
