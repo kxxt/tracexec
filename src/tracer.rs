@@ -1061,9 +1061,7 @@ impl Tracer {
   }
 }
 
-lazy_static::lazy_static! {
-  static ref BREAKPOINT_ID: AtomicU32 = 0.into();
-}
+static BREAKPOINT_ID: AtomicU32 = AtomicU32::new(0);
 
 /// Breakpoint management
 impl Tracer {

@@ -16,10 +16,9 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::LazyLock};
 
 use color_eyre::eyre::Result;
-use lazy_static::lazy_static;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{self, layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
@@ -29,16 +28,15 @@ use crate::{cli::config::project_directory, tui::restore_tui};
 
 const LOG_FILE: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
 
-lazy_static! {
-  pub static ref DATA_FOLDER: Option<PathBuf> =
-    std::env::var(concat!(env!("CARGO_CRATE_NAME"), "_DATA").to_uppercase())
-      .ok()
-      .map(PathBuf::from);
-  pub static ref LOG_ENV: String = concat!(env!("CARGO_CRATE_NAME"), "_LOGLEVEL").to_uppercase();
-}
+static LOG_ENV: LazyLock<String> =
+  LazyLock::new(|| concat!(env!("CARGO_CRATE_NAME"), "_LOGLEVEL").to_uppercase());
 
 pub fn get_data_dir() -> PathBuf {
-  let directory = if let Some(s) = DATA_FOLDER.clone() {
+  let directory = if let Some(s) =
+    std::env::var(concat!(env!("CARGO_CRATE_NAME"), "_DATA").to_uppercase())
+      .ok()
+      .map(PathBuf::from)
+  {
     s
   } else if let Some(proj_dirs) = project_directory() {
     proj_dirs.data_local_dir().to_path_buf()
@@ -70,7 +68,8 @@ pub fn initialize_logging() -> Result<()> {
     file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::from_env("RUST_LOG"))
   } else {
     file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::new(concat!(
-      env!("CARGO_CRATE_NAME"), "=info"
+      env!("CARGO_CRATE_NAME"),
+      "=info"
     )))
   };
 

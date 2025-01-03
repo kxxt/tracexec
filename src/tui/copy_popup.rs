@@ -1,7 +1,10 @@
-use std::{cmp::min, collections::BTreeMap, sync::Arc};
+use std::{
+  cmp::min,
+  collections::BTreeMap,
+  sync::{Arc, LazyLock},
+};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use lazy_static::lazy_static;
 use ratatui::{
   buffer::Buffer,
   layout::{Alignment::Center, Rect},
@@ -27,13 +30,13 @@ pub struct CopyPopupState {
   pub available_targets: Vec<char>,
 }
 
-lazy_static! {
-  pub static ref KEY_MAP: BTreeMap<char, (&'static str, &'static str)> = [
+static KEY_MAP: LazyLock<BTreeMap<char, (&'static str, &'static str)>> = LazyLock::new(|| {
+  [
     ('c', ("(C)ommand line", "Cmdline")),
     ('s', ("Command line with (S)tdio", "Cmdline with stdio")),
     (
       'f',
-      ("Command line with (F)ile descriptors", "Cmdline with Fds")
+      ("Command line with (F)ile descriptors", "Cmdline with Fds"),
     ),
     ('e', ("(E)nvironment variables", "Env")),
     ('d', ("(D)iff of environment variables", "Diff of Env")),
@@ -43,8 +46,8 @@ lazy_static! {
     ('l', ("Current (L)ine", "Line")),
   ]
   .into_iter()
-  .collect();
-}
+  .collect()
+});
 
 impl CopyPopupState {
   pub fn new(event: Arc<TracerEventDetails>) -> Self {
