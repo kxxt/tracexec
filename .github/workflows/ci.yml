@@ -74,7 +74,7 @@ jobs:
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
       - name: Run clippy
-        run: cargo clippy
+        run: cargo clippy -- -D warnings
   check_and_test:
     strategy:
       fail-fast: false
