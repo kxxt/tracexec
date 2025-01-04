@@ -10,7 +10,9 @@ pub enum Color {
   Never,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq, Display, Default, Deserialize, Serialize)]
+#[derive(
+  Debug, Clone, Copy, ValueEnum, PartialEq, Eq, Display, Default, Deserialize, Serialize,
+)]
 #[strum(serialize_all = "kebab-case")]
 pub enum SeccompBpf {
   #[default]

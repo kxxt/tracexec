@@ -70,7 +70,8 @@ pub fn initialize_logging() -> Result<()> {
     file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::from_env("RUST_LOG"))
   } else {
     file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::new(concat!(
-      env!("CARGO_CRATE_NAME"), "=info"
+      env!("CARGO_CRATE_NAME"),
+      "=info"
     )))
   };
 

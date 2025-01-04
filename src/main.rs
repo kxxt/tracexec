@@ -100,8 +100,7 @@ async fn main() -> color_eyre::Result<()> {
     );
     eprintln!(
       "Current kernel version is not supported! Minimum supported kernel version is {}.{}.",
-      min_support_kver.0,
-      min_support_kver.1
+      min_support_kver.0, min_support_kver.1
     );
   }
   if !cli.no_profile {

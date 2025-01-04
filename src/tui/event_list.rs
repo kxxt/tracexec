@@ -26,8 +26,8 @@ use ratatui::{
   style::{Color, Modifier, Style},
   text::Line,
   widgets::{
-    HighlightSpacing, List, ListItem, ListState, Scrollbar, ScrollbarOrientation,
-    ScrollbarState, StatefulWidget, StatefulWidgetRef, Widget,
+    HighlightSpacing, List, ListItem, ListState, Scrollbar, ScrollbarOrientation, ScrollbarState,
+    StatefulWidget, StatefulWidgetRef, Widget,
   },
 };
 
