@@ -35,7 +35,7 @@ impl<'a> PartialLine<'a> for Line<'a> {
         break;
       }
       // The start and end defined by width
-      let start = if cur < start { start - cur } else { 0 };
+      let start =  start.saturating_sub(cur);
       let end = if cur + span_width > end {
         end - cur
       } else {

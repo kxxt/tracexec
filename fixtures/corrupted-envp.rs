@@ -12,7 +12,7 @@ fn main() {
   let arg0 = format!("{}\0", i + 1);
   unsafe {
     execve(
-      "/proc/self/exe\0".as_ptr().cast(),
+      c"/proc/self/exe".as_ptr(),
       [arg0.as_ptr() as *const nix::libc::c_char, std::ptr::null()].as_ptr(),
       b"asfdasfafadfasdfgsadfg".as_ptr().cast(),
     );
