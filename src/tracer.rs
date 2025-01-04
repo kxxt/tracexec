@@ -212,7 +212,7 @@ impl Tracer {
       move || {
         unsafe {
           let current_thread = pthread_self();
-          pthread_setname_np(current_thread, "tracer\0\0\0\0\0\0\0\0\0\0".as_ptr().cast());
+          pthread_setname_np(current_thread, c"tracer".as_ptr());
         }
         let tx = self.msg_tx.clone();
         let result = tokio::runtime::Handle::current().block_on(async move {

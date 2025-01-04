@@ -197,23 +197,21 @@ impl EbpfTracer {
             } else {
               cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.base_filename)).into()
             };
-            let filename = if !unsafe { event.is_execveat.assume_init() } {
+            let filename = if !unsafe { event.is_execveat.assume_init() }
+              || base_filename.is_ok_and(|s| s.starts_with('/'))
+            {
               base_filename
             } else {
-              if base_filename.is_ok_and(|s| s.starts_with('/')) {
-                base_filename
-              } else {
-                match event.fd {
-                  AT_FDCWD => cwd.join(base_filename),
-                  fd => {
-                    // Check if it is a valid fd
-                    if let Some(fdinfo) = storage.fdinfo_map.get(fd) {
-                      fdinfo.path.clone().join(base_filename)
-                    } else {
-                      OutputMsg::PartialOk(cached_string(format!(
-                        "[err: invalid fd: {fd}]/{base_filename}"
-                      )))
-                    }
+              match event.fd {
+                AT_FDCWD => cwd.join(base_filename),
+                fd => {
+                  // Check if it is a valid fd
+                  if let Some(fdinfo) = storage.fdinfo_map.get(fd) {
+                    fdinfo.path.clone().join(base_filename)
+                  } else {
+                    OutputMsg::PartialOk(cached_string(format!(
+                      "[err: invalid fd: {fd}]/{base_filename}"
+                    )))
                   }
                 }
               }
@@ -553,7 +551,7 @@ pub struct RunningEbpfTracer<'obj> {
   skel: TracexecSystemSkel<'obj>,
 }
 
-impl<'rb> RunningEbpfTracer<'rb> {
+impl RunningEbpfTracer<'_> {
   pub fn run_until_exit(&self) {
     loop {
       if self.should_exit.load(Ordering::Relaxed) {
@@ -573,11 +571,7 @@ impl<'rb> RunningEbpfTracer<'rb> {
   }
 }
 
-pub async fn run(
-  command: EbpfCommand,
-  user: Option<User>,
-  color: Color,
-) -> color_eyre::Result<()> {
+pub async fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre::Result<()> {
   let obj = Box::leak(Box::new(MaybeUninit::uninit()));
   match command {
     EbpfCommand::Log {

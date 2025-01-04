@@ -42,7 +42,7 @@ impl<'a, T> Iterator for BidirectionalIter<'a, T> {
   }
 }
 
-impl<'a, T> BidirectionalIterator for BidirectionalIter<'a, T> {
+impl<T> BidirectionalIterator for BidirectionalIter<'_, T> {
   fn prev(&mut self) -> Option<Self::Item> {
     self.index.prev(self.slice.len());
     self.index.get(self.slice)
@@ -189,7 +189,7 @@ impl<'a, T> Iterator for BidirectionalInterspersedIter<'a, T> {
   }
 }
 
-impl<'a, T> BidirectionalIterator for BidirectionalInterspersedIter<'a, T> {
+impl<T> BidirectionalIterator for BidirectionalInterspersedIter<'_, T> {
   fn prev(&mut self) -> Option<Self::Item> {
     self.index.prev(self.slice.len());
     self.index.get(self.slice, self.separator)
@@ -322,7 +322,7 @@ where
   }
 }
 
-impl<'a, T> Cursor for ArgvCursor<'a, T>
+impl<T> Cursor for ArgvCursor<'_, T>
 where
   T: AsRef<str>,
 {
