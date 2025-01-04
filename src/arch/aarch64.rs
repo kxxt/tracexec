@@ -1,5 +1,5 @@
-use nix::libc::user_regs_struct;
 use super::RegsExt;
+use nix::libc::user_regs_struct;
 
 pub const NATIVE_AUDIT_ARCH: u32 = super::AUDIT_ARCH_AARCH64;
 pub const HAS_32BIT: bool = false;

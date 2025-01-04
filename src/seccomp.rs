@@ -1,6 +1,5 @@
 use libseccomp::{ScmpAction, ScmpArch, ScmpFilterContext};
 
-
 pub fn load_seccomp_filters() -> color_eyre::Result<()> {
   libseccomp::reset_global_state()?;
   let mut filter = ScmpFilterContext::new_filter(ScmpAction::Allow)?;
