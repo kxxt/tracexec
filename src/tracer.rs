@@ -19,7 +19,11 @@ use nix::{
   libc::{
     self, dup2, pthread_self, pthread_setname_np, raise, AT_EMPTY_PATH, SIGSTOP, S_ISGID, S_ISUID,
   },
-  sys::{stat::fstat, wait::WaitPidFlag},
+  sys::{
+    ptrace::{self, getsiginfo, traceme, AddressType},
+    stat::fstat,
+    wait::WaitPidFlag,
+  },
   unistd::{
     getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, Gid, Pid, Uid, User,
   },
@@ -53,15 +57,14 @@ use crate::{
   tracer::{inspect::read_env, state::ProcessExit},
 };
 
+use self::state::BreakPointStop;
 use self::state::{ExecData, ProcessState, ProcessStateStore, ProcessStatus};
 use self::{
   inspect::{read_string, read_string_array},
   state::BreakPoint,
 };
-use self::{ptrace::*, state::BreakPointStop};
 
 mod inspect;
-mod ptrace;
 pub mod state;
 #[cfg(test)]
 mod test;
@@ -641,7 +644,7 @@ impl Tracer {
       }
       e => e?,
     };
-    let regs = match ptrace_getregs(pid) {
+    let regs = match guard.get_general_registers() {
       Ok(regs) => regs,
       Err(Errno::ESRCH) => {
         filterable_event!(Info(TracerEventMessage {

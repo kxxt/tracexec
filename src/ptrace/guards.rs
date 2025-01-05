@@ -7,6 +7,7 @@
 
 use std::{ffi::c_int, mem::MaybeUninit};
 
+use cfg_if::cfg_if;
 use either::Either;
 use nix::{
   errno::Errno,
@@ -18,6 +19,8 @@ use nix::{
   unistd::Pid,
 };
 use tracing::info;
+
+use crate::arch::{Regs, RegsPayload, RegsRepr};
 
 use super::{
   syscall::{AuditArch, SyscallInfo, SyscallInfoData},
@@ -39,6 +42,51 @@ pub trait PtraceStop: private::Sealed + Sized {
   #[allow(unused)]
   unsafe fn inspect<T>(&self, addr: AddressType) -> T {
     todo!()
+  }
+
+  fn get_general_registers(&self) -> Result<Regs, Errno> {
+    // https://github.com/torvalds/linux/blob/v6.9/include/uapi/linux/elf.h#L378
+    // libc crate doesn't provide this constant when using musl libc.
+    const NT_PRSTATUS: std::ffi::c_int = 1;
+
+    use nix::sys::ptrace::AddressType;
+
+    let mut regs = std::mem::MaybeUninit::<Regs>::uninit();
+    let dest: *mut RegsRepr = unsafe { std::mem::transmute(regs.as_mut_ptr()) };
+    let mut iovec = nix::libc::iovec {
+      iov_base: unsafe { &raw mut (*dest).payload } as AddressType,
+      iov_len: std::mem::size_of::<RegsPayload>(),
+    };
+    let ptrace_result = unsafe {
+      nix::libc::ptrace(
+        nix::libc::PTRACE_GETREGSET,
+        self.pid().as_raw(),
+        NT_PRSTATUS,
+        &mut iovec,
+      )
+    };
+    let regs = if ptrace_result < 0 {
+      let errno = nix::errno::Errno::last();
+      return Err(errno);
+    } else {
+      cfg_if! {
+        if #[cfg(target_arch = "x86_64")] {
+          const SIZE_OF_REGS64: usize = size_of::<crate::arch::PtraceRegisters64>();
+          const SIZE_OF_REGS32: usize = size_of::<crate::arch::PtraceRegisters32>();
+          match iovec.iov_len {
+            SIZE_OF_REGS32 => unsafe { (&raw mut (*dest).tag).write(crate::arch::RegsTag::X86); }
+            SIZE_OF_REGS64 => unsafe { (&raw mut (*dest).tag).write(crate::arch::RegsTag::X64); }
+            size => panic!("Invalid length {size} of user_regs_struct!")
+          }
+        } else if #[cfg(any(target_arch = "riscv64", target_arch = "aarch64"))] {
+          assert_eq!(iovec.iov_len, std::mem::size_of::<RegsPayload>());
+        } else {
+          compile_error!("Please update the code for your architecture!");
+        }
+      }
+      unsafe { regs.assume_init() }
+    };
+    Ok(regs)
   }
 
   fn seccomp_aware_cont_syscall(self, ignore_esrch: bool) -> Result<(), Errno> {
@@ -299,6 +347,7 @@ pub enum PtraceStopGuard<'a> {
 impl private::Sealed for PtraceStopGuard<'_> {}
 
 impl PtraceStop for PtraceStopGuard<'_> {
+  #[inline(always)]
   fn pid(&self) -> Pid {
     match self {
       PtraceStopGuard::Syscall(guard) => guard.pid(),
@@ -312,6 +361,7 @@ impl PtraceStop for PtraceStopGuard<'_> {
     }
   }
 
+  #[inline(always)]
   fn seccomp(&self) -> bool {
     match self {
       PtraceStopGuard::Syscall(guard) => guard.seccomp(),
@@ -338,6 +388,7 @@ where
   L: PtraceStop,
   R: PtraceStop,
 {
+  #[inline(always)]
   fn pid(&self) -> Pid {
     match self {
       Self::Left(l) => l.pid(),
@@ -345,6 +396,7 @@ where
     }
   }
 
+  #[inline(always)]
   fn seccomp(&self) -> bool {
     match self {
       Self::Left(l) => l.seccomp(),
