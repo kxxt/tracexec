@@ -119,52 +119,6 @@ pub struct PtraceSyscallStopGuard<'a> {
   pub(super) guard: PtraceStopInnerGuard<'a>,
 }
 
-impl PtraceSyscallStopGuard<'_> {
-  #[allow(unused)]
-  pub fn raw_syscall_info(&self) -> Result<ptrace_syscall_info, Errno> {
-    let mut info = MaybeUninit::<ptrace_syscall_info>::uninit();
-    let info = unsafe {
-      let ret = nix::libc::ptrace(
-        PTRACE_GET_SYSCALL_INFO,
-        self.pid().as_raw(),
-        size_of::<ptrace_syscall_info>(),
-        info.as_mut_ptr(),
-      );
-      if ret < 0 {
-        return Err(Errno::last());
-      } else {
-        info.assume_init()
-      }
-    };
-    Ok(info)
-  }
-
-  pub fn syscall_info(&self) -> Result<SyscallInfo, Errno> {
-    let raw = self.raw_syscall_info()?;
-    Ok(SyscallInfo {
-      arch: AuditArch::from_raw(raw.arch),
-      data: unsafe {
-        match raw.op {
-          PTRACE_SYSCALL_INFO_ENTRY => SyscallInfoData::Entry {
-            syscall_nr: raw.u.entry.nr,
-            args: raw.u.entry.args,
-          },
-          PTRACE_SYSCALL_INFO_SECCOMP => SyscallInfoData::Seccomp {
-            syscall_nr: raw.u.seccomp.nr,
-            args: raw.u.seccomp.args,
-            ret_data: raw.u.seccomp.ret_data,
-          },
-          PTRACE_SYSCALL_INFO_EXIT => SyscallInfoData::Exit {
-            retval: raw.u.exit.sval,
-            is_error: raw.u.exit.is_error != 0,
-          },
-          _ => unreachable!(),
-        }
-      },
-    })
-  }
-}
-
 #[derive(Debug)]
 pub struct PtraceSignalDeliveryStopGuard<'a> {
   pub(super) signal: Signal,
@@ -397,4 +351,59 @@ where
       Self::Right(r) => r.seccomp(),
     }
   }
+}
+
+pub trait PtraceSyscallLikeStop: PtraceStop {
+  fn raw_syscall_info(&self) -> Result<ptrace_syscall_info, Errno> {
+    let mut info = MaybeUninit::<ptrace_syscall_info>::uninit();
+    let info = unsafe {
+      let ret = nix::libc::ptrace(
+        PTRACE_GET_SYSCALL_INFO,
+        self.pid().as_raw(),
+        size_of::<ptrace_syscall_info>(),
+        info.as_mut_ptr(),
+      );
+      if ret < 0 {
+        return Err(Errno::last());
+      } else {
+        info.assume_init()
+      }
+    };
+    Ok(info)
+  }
+
+  fn syscall_info(&self) -> Result<SyscallInfo, Errno> {
+    let raw = self.raw_syscall_info()?;
+    Ok(SyscallInfo {
+      arch: AuditArch::from_raw(raw.arch),
+      data: unsafe {
+        match raw.op {
+          PTRACE_SYSCALL_INFO_ENTRY => SyscallInfoData::Entry {
+            syscall_nr: raw.u.entry.nr,
+            args: raw.u.entry.args,
+          },
+          PTRACE_SYSCALL_INFO_SECCOMP => SyscallInfoData::Seccomp {
+            syscall_nr: raw.u.seccomp.nr,
+            args: raw.u.seccomp.args,
+            ret_data: raw.u.seccomp.ret_data,
+          },
+          PTRACE_SYSCALL_INFO_EXIT => SyscallInfoData::Exit {
+            retval: raw.u.exit.sval,
+            is_error: raw.u.exit.is_error != 0,
+          },
+          _ => unreachable!(),
+        }
+      },
+    })
+  }
+}
+
+impl PtraceSyscallLikeStop for PtraceSyscallStopGuard<'_> {}
+impl PtraceSyscallLikeStop for PtraceSeccompStopGuard<'_> {}
+
+impl<L, R> PtraceSyscallLikeStop for Either<L, R>
+where
+  L: PtraceSyscallLikeStop,
+  R: PtraceSyscallLikeStop,
+{
 }

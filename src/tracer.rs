@@ -46,7 +46,8 @@ use crate::{
   },
   ptrace::{
     PtraceSeccompStopGuard, PtraceSignalDeliveryStopGuard, PtraceStop, PtraceStopGuard,
-    PtraceSyscallStopGuard, PtraceWaitPidEvent, RecursivePtraceEngine, Signal,
+    PtraceSyscallLikeStop, PtraceSyscallStopGuard, PtraceWaitPidEvent, RecursivePtraceEngine,
+    Signal,
   },
   pty::{self, Child, UnixSlavePty},
   tracer::{inspect::read_env, state::ProcessExit},
@@ -627,7 +628,7 @@ impl Tracer {
     let p = store.get_current_mut(pid).unwrap();
     p.presyscall = !p.presyscall;
     // SYSCALL ENTRY
-    let info = match ptrace::syscall_entry_info(pid) {
+    let info = match guard.syscall_info() {
       Ok(info) => info,
       Err(Errno::ESRCH) => {
         filterable_event!(Info(TracerEventMessage {
@@ -653,10 +654,10 @@ impl Tracer {
       }
       e => e?,
     };
-    let syscallno = info.number;
-    let is_32bit = info.is_32bit();
+    let syscallno = info.syscall_number().unwrap();
+    let is_32bit = info.arch().is_32bit();
     // trace!("pre syscall: {syscallno}");
-    if info.is_execveat() {
+    if info.is_execveat().unwrap() {
       p.syscall = Syscall::Execveat;
       trace!("pre execveat {syscallno}");
       // int execveat(int dirfd, const char *pathname,
@@ -716,7 +717,7 @@ impl Tracer {
         Some(interpreters),
         read_fds(pid)?,
       ));
-    } else if info.is_execve() {
+    } else if info.is_execve().unwrap() {
       p.syscall = Syscall::Execve;
       trace!("pre execve {syscallno}",);
       let filename = read_arcstr(pid, regs.syscall_arg(0, is_32bit) as AddressType);
@@ -802,13 +803,13 @@ impl Tracer {
     let mut store = self.store.write().unwrap();
     let p = store.get_current_mut(pid).unwrap();
     p.presyscall = !p.presyscall;
-    let result = match ptrace::syscall_exit_result(pid) {
-      Ok(r) => r,
+    let result = match guard.syscall_info() {
+      Ok(r) => r.syscall_result().unwrap(),
       Err(Errno::ESRCH) => {
         info!("ptrace get_syscall_info failed: {pid}, ESRCH, child probably gone!");
         return Ok(());
       }
-      e => e?,
+      Err(e) => return Err(e.into()),
     };
     // If exec is successful, the register value might be clobbered.
     // TODO: would the value in ptrace_syscall_info be clobbered?
