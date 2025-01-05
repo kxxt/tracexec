@@ -33,7 +33,7 @@ use nix::{
   fcntl::OFlag,
   libc::{self, c_int, dup2, AT_FDCWD},
   sys::{
-    signal::{kill, raise, Signal},
+    signal::{kill, raise},
     wait::{waitpid, WaitPidFlag, WaitStatus},
   },
   unistd::{
@@ -71,6 +71,7 @@ use crate::{
   export::{self, JsonExecEvent, JsonMetaData},
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{cached_string, diff_env, parse_failiable_envp, BaselineInfo, FileDescriptorInfo},
+  ptrace::Signal,
   pty::{self, native_pty_system, PtySize, PtySystem},
   serialize_json_to_output,
   tracer::{
@@ -360,7 +361,7 @@ impl EbpfTracer {
                           (0, code) => ProcessExit::Code(code),
                           (sig, _) => {
                             // 0x80 bit indicates coredump
-                            ProcessExit::Signal(Signal::try_from(sig as i32 & 0x7f).unwrap())
+                            ProcessExit::Signal(Signal::from_raw(sig as i32 & 0x7f))
                           }
                         }),
                         pid,
@@ -386,7 +387,7 @@ impl EbpfTracer {
                     (sig, _) => {
                       // 0x80 bit indicates coredump
                       TracerEventDetails::TraceeExit {
-                        signal: Some(Signal::try_from(sig as i32 & 0x7f).unwrap()),
+                        signal: Some(Signal::from_raw(sig as i32 & 0x7f)),
                         exit_code: 128 + (sig as i32 & 0x7f),
                       }
                     }
@@ -465,7 +466,7 @@ impl EbpfTracer {
             terminated @ WaitStatus::Exited(_, _) | terminated @ WaitStatus::Signaled(_, _, _) => {
               panic!("Child exited abnormally before tracing is started: status: {terminated:?}");
             }
-            WaitStatus::Stopped(_, _) => kill(child, Signal::SIGCONT)?,
+            WaitStatus::Stopped(_, _) => kill(child, nix::sys::signal::SIGCONT)?,
             _ => unreachable!("Invalid wait status!"),
           }
           (skel, Some(child))
@@ -499,7 +500,7 @@ impl EbpfTracer {
           }
 
           // Wait for eBPF program to load
-          raise(Signal::SIGSTOP)?;
+          raise(nix::sys::signal::SIGSTOP)?;
 
           if let Some(user) = &self.user {
             initgroups(&CString::new(user.name.as_str())?[..], user.gid)?;

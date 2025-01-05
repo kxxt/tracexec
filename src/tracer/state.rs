@@ -6,13 +6,14 @@ use std::{
 };
 
 use arcstr::ArcStr;
-use nix::{sys::signal::Signal, unistd::Pid};
+use nix::unistd::Pid;
 use regex_cursor::engines::pikevm::{self, PikeVM};
 use strum::IntoStaticStr;
 
 use crate::{
   event::OutputMsg,
   proc::{read_comm, FileDescriptorInfoCollection, Interpreter},
+  ptrace::Signal,
   regex::{ArgvCursor, SPACE},
   tracer::InspectError,
 };

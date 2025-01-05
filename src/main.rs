@@ -26,6 +26,7 @@ mod export;
 mod log;
 mod printer;
 mod proc;
+mod ptrace;
 mod pty;
 mod regex;
 #[cfg(feature = "seccomp-bpf")]

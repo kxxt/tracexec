@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::{mem::MaybeUninit, ptr::addr_of_mut};
 
 use cfg_if::cfg_if;
@@ -7,35 +9,12 @@ use nix::{
     ptrace_syscall_info, SYS_execve, SYS_execveat, PTRACE_GET_SYSCALL_INFO,
     PTRACE_SYSCALL_INFO_ENTRY, PTRACE_SYSCALL_INFO_EXIT, PTRACE_SYSCALL_INFO_SECCOMP,
   },
-  sys::{ptrace, signal::Signal},
   unistd::Pid,
 };
-use tracing::info;
 
 use crate::arch::{Regs, RegsPayload, RegsRepr, HAS_32BIT, NATIVE_AUDIT_ARCH};
 
 pub use nix::sys::ptrace::*;
-
-pub fn ptrace_syscall(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
-  match ptrace::syscall(pid, sig) {
-    Err(Errno::ESRCH) => {
-      info!("ptrace syscall failed: {pid}, ESRCH, child probably gone!");
-      Ok(())
-    }
-    other => other,
-  }
-}
-
-#[cfg(feature = "seccomp-bpf")]
-pub fn ptrace_cont(pid: Pid, sig: Option<Signal>) -> Result<(), Errno> {
-  match ptrace::cont(pid, sig) {
-    Err(Errno::ESRCH) => {
-      info!("ptrace cont failed: {pid}, ESRCH, child probably gone!");
-      Ok(())
-    }
-    other => other,
-  }
-}
 
 pub struct SyscallInfo {
   pub arch: u32,

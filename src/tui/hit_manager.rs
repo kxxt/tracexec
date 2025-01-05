@@ -347,7 +347,7 @@ impl HitManagerState {
         .insert(hid, DetachReaction::LaunchExternal(cmdline_template));
       self
         .tracer
-        .request_process_detach(hit.hit(), Some(Signal::SIGSTOP), hid)?;
+        .request_process_detach(hit.hit(), Some(Signal::SIGSTOP.into()), hid)?;
     }
     Ok(())
   }

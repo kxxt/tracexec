@@ -14,7 +14,7 @@ use either::Either;
 use enumflags2::BitFlags;
 use filterable_enum::FilterableEnum;
 use itertools::{chain, Itertools};
-use nix::{errno::Errno, fcntl::OFlag, libc::c_int, sys::signal::Signal, unistd::Pid};
+use nix::{errno::Errno, fcntl::OFlag, libc::c_int, unistd::Pid};
 use owo_colors::OwoColorize;
 use ratatui::{
   layout::Size,
@@ -30,6 +30,7 @@ use crate::{
   cli::{self, args::ModifierArgs},
   printer::ListPrinter,
   proc::{cached_string, BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter},
+  ptrace::Signal,
   tracer::{state::ProcessExit, BreakPointHit, InspectError},
   tui::{
     event_line::{EventLine, Mask},
