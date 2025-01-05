@@ -154,7 +154,7 @@ pub fn help<'a>(area: Rect) -> SizedParagraph<'a> {
     help_key(<&str>::from(EventStatus::ProcessAborted)),
     help_desc("Aborted"),
     ", ".into(),
-    help_key(<&str>::from(EventStatus::ProcessSignaled(nix::sys::signal::Signal::SIGURG))),
+    help_key(<&str>::from(EventStatus::ProcessSignaled(nix::sys::signal::Signal::SIGURG.into()))),
     help_desc("Signaled"),
   ]);
 

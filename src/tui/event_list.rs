@@ -19,7 +19,7 @@
 use std::sync::Arc;
 
 use indexmap::IndexMap;
-use nix::sys::signal::Signal;
+use nix::sys::signal;
 use ratatui::{
   layout::Alignment::Right,
   prelude::{Buffer, Rect},
@@ -37,6 +37,7 @@ use crate::{
     EventStatus, ProcessStateUpdate, ProcessStateUpdateEvent, RuntimeModifier, TracerEventDetails,
   },
   proc::BaselineInfo,
+  ptrace::Signal,
   tracer::state::ProcessExit,
 };
 
@@ -436,22 +437,22 @@ impl EventList {
         ProcessStateUpdate::Exit(ProcessExit::Code(c)) => {
           Some(EventStatus::ProcessExitedAbnormally(c))
         }
-        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::SIGTERM)) => {
+        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGTERM))) => {
           Some(EventStatus::ProcessTerminated)
         }
-        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::SIGKILL)) => {
+        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGKILL))) => {
           Some(EventStatus::ProcessKilled)
         }
-        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::SIGINT)) => {
+        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGINT))) => {
           Some(EventStatus::ProcessInterrupted)
         }
-        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::SIGSEGV)) => {
+        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGSEGV))) => {
           Some(EventStatus::ProcessSegfault)
         }
-        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::SIGABRT)) => {
+        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGABRT))) => {
           Some(EventStatus::ProcessAborted)
         }
-        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::SIGILL)) => {
+        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGILL))) => {
           Some(EventStatus::ProcessIllegalInstruction)
         }
         ProcessStateUpdate::Exit(ProcessExit::Signal(s)) => Some(EventStatus::ProcessSignaled(s)),
