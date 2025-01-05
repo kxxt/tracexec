@@ -40,6 +40,24 @@ impl SyscallInfo {
     self.arch
   }
 
+  pub fn syscall_result(&self) -> Option<i64> {
+    if let SyscallInfoData::Exit { retval, .. } = &self.data {
+      Some(*retval)
+    } else {
+      None
+    }
+  }
+
+  pub fn syscall_number(&self) -> Option<u64> {
+    if let SyscallInfoData::Entry { syscall_nr, .. } | SyscallInfoData::Seccomp { syscall_nr, .. } =
+      &self.data
+    {
+      Some(*syscall_nr)
+    } else {
+      None
+    }
+  }
+
   pub fn is_execve(&self) -> Option<bool> {
     if let SyscallInfoData::Entry { syscall_nr, .. } | SyscallInfoData::Seccomp { syscall_nr, .. } =
       &self.data
