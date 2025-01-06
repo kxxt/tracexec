@@ -28,9 +28,10 @@ use std::{fmt::Display, hint::black_box};
 use nix::{
   errno::Errno,
   libc::{self, c_int, pid_t, SIGRTMIN, WSTOPSIG},
-  sys::wait::WaitPidFlag,
+  sys::{signal, wait::WaitPidFlag},
   unistd::Pid,
 };
+use tracing::trace;
 
 use crate::ptrace::{
   guards::{
@@ -41,13 +42,13 @@ use crate::ptrace::{
 };
 
 use super::{
-  guards::{PtraceStopGuard, PtraceStopInnerGuard, PtraceSyscallStopGuard},
+  guards::{PtraceStopGuard, PtraceOpaqueStopGuard, PtraceSyscallStopGuard},
   RecursivePtraceEngine,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signal {
-  Standard(nix::sys::signal::Signal),
+  Standard(signal::Signal),
   Realtime(u8), // u8 is enough for Linux
 }
 
@@ -71,7 +72,7 @@ impl Display for Signal {
 
 impl Signal {
   pub(crate) fn from_raw(raw: c_int) -> Self {
-    match nix::sys::signal::Signal::try_from(raw) {
+    match signal::Signal::try_from(raw) {
       Ok(sig) => Self::Standard(sig),
       // libc might reserve some RT signals for itself.
       // But from a tracer's perspective we don't need to care about it.
@@ -88,8 +89,8 @@ impl Signal {
   }
 }
 
-impl From<nix::sys::signal::Signal> for Signal {
-  fn from(value: nix::sys::signal::Signal) -> Self {
+impl From<signal::Signal> for Signal {
+  fn from(value: signal::Signal) -> Self {
     Self::Standard(value)
   }
 }
@@ -124,7 +125,7 @@ impl<'a> PtraceWaitPidEvent<'a> {
       let stopsig = libc::WSTOPSIG(status);
       if stopsig == libc::SIGTRAP | 0x80 {
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Syscall(PtraceSyscallStopGuard {
-          guard: PtraceStopInnerGuard::new(engine, pid),
+          guard: PtraceOpaqueStopGuard::new(engine, pid),
         }))
       } else {
         let additional = status >> 16;
@@ -136,23 +137,24 @@ impl<'a> PtraceWaitPidEvent<'a> {
           let signal = Signal::from_raw(stopsig);
           match signal {
             // Only these four signals can be group-stop
-            Signal::Standard(nix::sys::signal::SIGSTOP)
-            | Signal::Standard(nix::sys::signal::SIGTSTP)
-            | Signal::Standard(nix::sys::signal::SIGTTIN)
-            | Signal::Standard(nix::sys::signal::SIGTTOU) => {
+            Signal::Standard(signal::SIGSTOP)
+            | Signal::Standard(signal::SIGTSTP)
+            | Signal::Standard(signal::SIGTTIN)
+            | Signal::Standard(signal::SIGTTOU) => {
               // Ambiguity
               let siginfo = nix::sys::ptrace::getsiginfo(pid);
               match siginfo {
                 // First, we check special SIGSTOP
                 Ok(siginfo)
-                  if signal == Signal::Standard(nix::sys::signal::SIGSTOP)
+                  if signal == Signal::Standard(signal::SIGSTOP)
                     && unsafe { siginfo.si_pid() == 0 } =>
                 {
                   // This is a PTRACE event disguised under SIGSTOP
                   // e.g. PTRACE_O_TRACECLONE generates this event for newly cloned process
+                  trace!("clone child event as sigstop");
                   PtraceWaitPidEvent::Ptrace(PtraceStopGuard::CloneChild(
                     PtraceCloneChildStopGuard {
-                      guard: PtraceStopInnerGuard::new(engine, pid),
+                      guard: PtraceOpaqueStopGuard::new(engine, pid),
                     },
                   ))
                 }
@@ -162,7 +164,7 @@ impl<'a> PtraceWaitPidEvent<'a> {
                   PtraceWaitPidEvent::Ptrace(PtraceStopGuard::SignalDelivery(
                     PtraceSignalDeliveryStopGuard {
                       signal,
-                      guard: PtraceStopInnerGuard::new(engine, pid),
+                      guard: PtraceOpaqueStopGuard::new(engine, pid),
                     },
                   ))
                 }
@@ -170,7 +172,7 @@ impl<'a> PtraceWaitPidEvent<'a> {
                 Err(Errno::EINVAL) => {
                   // group-stop
                   PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Group(PtraceGroupStopGuard {
-                    guard: PtraceStopInnerGuard::new(engine, pid),
+                    guard: PtraceOpaqueStopGuard::new(engine, pid),
                   }))
                 }
                 // The child is killed before we get to run getsiginfo (very little chance)
@@ -178,7 +180,7 @@ impl<'a> PtraceWaitPidEvent<'a> {
                 Err(Errno::ESRCH) => PtraceWaitPidEvent::Ptrace(PtraceStopGuard::SignalDelivery(
                   PtraceSignalDeliveryStopGuard {
                     signal,
-                    guard: PtraceStopInnerGuard::new(engine, pid),
+                    guard: PtraceOpaqueStopGuard::new(engine, pid),
                   },
                 )),
                 // Could this ever happen?
@@ -188,38 +190,70 @@ impl<'a> PtraceWaitPidEvent<'a> {
             _ => PtraceWaitPidEvent::Ptrace(PtraceStopGuard::SignalDelivery(
               PtraceSignalDeliveryStopGuard {
                 signal,
-                guard: PtraceStopInnerGuard::new(engine, pid),
+                guard: PtraceOpaqueStopGuard::new(engine, pid),
               },
             )),
           }
         } else {
           // A special ptrace stop
-          debug_assert_eq!(WSTOPSIG(status), libc::SIGTRAP);
           match additional {
             libc::PTRACE_EVENT_SECCOMP => {
               PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Seccomp(PtraceSeccompStopGuard {
-                guard: PtraceStopInnerGuard::new(engine, pid),
+                guard: PtraceOpaqueStopGuard::new(engine, pid),
               }))
             }
             libc::PTRACE_EVENT_EXEC => {
               PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Exec(PtraceExecStopGuard {
                 former_tid: nix::sys::ptrace::getevent(pid).map(|x| Pid::from_raw(x as pid_t)),
-                guard: PtraceStopInnerGuard::new(engine, pid),
+                guard: PtraceOpaqueStopGuard::new(engine, pid),
               }))
             }
             libc::PTRACE_EVENT_EXIT => {
               PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Exit(PtraceExitStopGuard {
                 status: nix::sys::ptrace::getevent(pid).map(|x| x as c_int),
-                guard: PtraceStopInnerGuard::new(engine, pid),
+                guard: PtraceOpaqueStopGuard::new(engine, pid),
               }))
             }
             libc::PTRACE_EVENT_CLONE | libc::PTRACE_EVENT_FORK | libc::PTRACE_EVENT_VFORK => {
               PtraceWaitPidEvent::Ptrace(PtraceStopGuard::CloneParent(PtraceCloneParentStopGuard {
                 child: nix::sys::ptrace::getevent(pid).map(|x| Pid::from_raw(x as pid_t)),
-                guard: PtraceStopInnerGuard::new(engine, pid),
+                guard: PtraceOpaqueStopGuard::new(engine, pid),
               }))
             }
-            _ => unimplemented!(),
+            libc::PTRACE_EVENT_STOP => {
+              let sig = Signal::from_raw(WSTOPSIG(status));
+              match sig {
+                Signal::Standard(signal::SIGTRAP) => {
+                  // Newly cloned child
+                  trace!(
+                    "unsure child {pid}, eventmsg: {:?}, siginfo: {:?}",
+                    nix::sys::ptrace::getevent(pid),
+                    nix::sys::ptrace::getsiginfo(pid)
+                  );
+                  // println!(
+                  //   "/proc/{pid}/status: {}",
+                  //   std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap()
+                  // );
+                  PtraceWaitPidEvent::Ptrace(PtraceStopGuard::CloneChild(
+                    PtraceCloneChildStopGuard {
+                      guard: PtraceOpaqueStopGuard::new(engine, pid),
+                    },
+                  ))
+                  // FIXME: could also be PTRACE_INTERRUPT
+                }
+                // Only these four signals can be group-stop
+                Signal::Standard(signal::SIGSTOP)
+                | Signal::Standard(signal::SIGTSTP)
+                | Signal::Standard(signal::SIGTTIN)
+                | Signal::Standard(signal::SIGTTOU) => {
+                  PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Group(PtraceGroupStopGuard {
+                    guard: PtraceOpaqueStopGuard::new(engine, pid),
+                  }))
+                }
+                _ => unimplemented!("ptrace_interrupt"),
+              }
+            }
+            _ => unreachable!(),
           }
         }
       }

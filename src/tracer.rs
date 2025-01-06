@@ -19,11 +19,7 @@ use nix::{
   libc::{
     self, dup2, pthread_self, pthread_setname_np, raise, AT_EMPTY_PATH, SIGSTOP, S_ISGID, S_ISUID,
   },
-  sys::{
-    ptrace::{traceme, AddressType},
-    stat::fstat,
-    wait::WaitPidFlag,
-  },
+  sys::{ptrace::AddressType, stat::fstat, wait::WaitPidFlag},
   unistd::{
     getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, Gid, Pid, Uid, User,
   },
@@ -72,10 +68,10 @@ mod test;
 pub use inspect::InspectError;
 
 cfg_if! {
-    if #[cfg(feature = "seccomp-bpf")] {
-        use crate::cli::options::SeccompBpf;
-        use crate::seccomp;
-    }
+  if #[cfg(feature = "seccomp-bpf")] {
+    use crate::cli::options::SeccompBpf;
+    use crate::seccomp;
+  }
 }
 
 pub struct Tracer {
@@ -279,8 +275,8 @@ impl Tracer {
           setpgid(me, me)?;
         }
 
-        traceme()?;
-        trace!("traceme setup!");
+        // traceme()?;
+        // trace!("traceme setup!");
 
         if let Some(user) = &user {
           // First, read set(u|g)id info from stat
@@ -319,8 +315,8 @@ impl Tracer {
       use nix::sys::ptrace::Options;
       Options::PTRACE_O_TRACEEXEC | Options::PTRACE_O_EXITKILL | Options::PTRACE_O_TRACESYSGOOD
     };
-    let engine = RecursivePtraceEngine::new(self.seccomp_bpf());
-    let guard = unsafe { engine.import_traceme_child(root_child, ptrace_opts)? };
+    let mut engine = RecursivePtraceEngine::new(self.seccomp_bpf());
+    let guard = engine.seize_children_recursive(root_child, ptrace_opts)?;
     let mut root_child_state = ProcessState::new(root_child, 0)?;
     root_child_state.ppid = Some(getpid());
     {
@@ -482,10 +478,14 @@ impl Tracer {
               } else if state.status == ProcessStatus::Initialized {
                 // Manually inserted process state. (root child)
                 handled = true;
-              } else {
+              } else if matches!(state.status, ProcessStatus::Exited(_)) {
                 // Pid reuse
                 pid_reuse = true;
                 pending_guards.insert(pid, guard.into());
+              } else {
+                handled = true;
+                trace!("bogus clone child event, ignoring");
+                guard.seccomp_aware_cont_syscall(true)?;
               }
             } else {
               pending_guards.insert(pid, guard.into());
