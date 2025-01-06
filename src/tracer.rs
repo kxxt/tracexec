@@ -562,14 +562,6 @@ impl Tracer {
           let mut store = self.store.write().unwrap();
           if let Some(state) = store.get_current_mut(pid) {
             state.status = ProcessStatus::Exited(ProcessExit::Signal(sig));
-            if pid == root_child {
-              filterable_event!(TraceeExit {
-                signal: Some(sig),
-                exit_code: 128 + sig.as_raw(),
-              })
-              .send_if_match(&self.msg_tx, self.filter)?;
-              return Ok(ControlFlow::Break(()));
-            }
             let associated_events = state.associated_events.clone();
             if !associated_events.is_empty() {
               self.msg_tx.send(
@@ -581,6 +573,14 @@ impl Tracer {
                 .into(),
               )?;
             }
+            if pid == root_child {
+              filterable_event!(TraceeExit {
+                signal: Some(sig),
+                exit_code: 128 + sig.as_raw(),
+              })
+              .send_if_match(&self.msg_tx, self.filter)?;
+              return Ok(ControlFlow::Break(()));
+            }
           }
         }
         PtraceWaitPidEvent::Exited { pid, code } => {
@@ -589,16 +589,6 @@ impl Tracer {
           let mut store = self.store.write().unwrap();
           if let Some(state) = store.get_current_mut(pid) {
             state.status = ProcessStatus::Exited(ProcessExit::Code(code));
-            let should_exit = if pid == root_child {
-              filterable_event!(TraceeExit {
-                signal: None,
-                exit_code: code,
-              })
-              .send_if_match(&self.msg_tx, self.filter)?;
-              true
-            } else {
-              false
-            };
             let associated_events = state.associated_events.clone();
             if !associated_events.is_empty() {
               self.msg_tx.send(
@@ -610,6 +600,16 @@ impl Tracer {
                 .into(),
               )?;
             }
+            let should_exit = if pid == root_child {
+              filterable_event!(TraceeExit {
+                signal: None,
+                exit_code: code,
+              })
+              .send_if_match(&self.msg_tx, self.filter)?;
+              true
+            } else {
+              false
+            };
             if should_exit {
               return Ok(ControlFlow::Break(()));
             }
