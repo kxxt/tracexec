@@ -31,6 +31,7 @@ pub struct RecursivePtraceEngine {
   seccomp: bool,
   _unsync_marker: PhantomUnsync,
   _unsend_marker: PhantomUnsend,
+  running: bool,
 }
 
 /// A recursive ptracer that works on a tracee and all of its children.
@@ -41,6 +42,53 @@ impl RecursivePtraceEngine {
       seccomp,
       _unsync_marker: PhantomData,
       _unsend_marker: PhantomData,
+      running: false,
+    }
+  }
+
+  pub fn seize_children_recursive(
+    &mut self,
+    tracee: Pid,
+    mut options: nix::sys::ptrace::Options,
+  ) -> Result<PtraceStopGuard<'_>, Errno> {
+    if self.running {
+      return Err(Errno::EEXIST);
+    } else {
+      self.running = true;
+    }
+    loop {
+      let status = waitpid(tracee, Some(WaitPidFlag::WSTOPPED))?;
+      match status {
+        WaitStatus::Stopped(_, nix::sys::signal::SIGSTOP) => {
+          break;
+        }
+        WaitStatus::Stopped(_, signal) => {
+          trace!("tracee stopped by other signal, delivering it...");
+          ptrace::cont(tracee, signal)?;
+        }
+        _ => unreachable!(), // WSTOPPED wait for children that have been stopped by delivery of a signal.
+      }
+    }
+    trace!("tracee stopped, setting options");
+    use nix::sys::ptrace::Options;
+    if self.seccomp {
+      options |= Options::PTRACE_O_TRACESECCOMP;
+    }
+    ptrace::seize(
+      tracee,
+      options
+        | Options::PTRACE_O_TRACEFORK
+        | Options::PTRACE_O_TRACECLONE
+        | Options::PTRACE_O_TRACEVFORK,
+    )?;
+
+    ptrace::interrupt(tracee)?;
+
+    let status = waitpid::waitpid(self, Some(tracee), Some(WaitPidFlag::WSTOPPED))?;
+    match status {
+      PtraceWaitPidEvent::Signaled { .. } | PtraceWaitPidEvent::Exited { .. } => Err(Errno::ESRCH),
+      PtraceWaitPidEvent::Ptrace(guard) => Ok(guard),
+      _ => unreachable!(),
     }
   }
 
@@ -49,11 +97,17 @@ impl RecursivePtraceEngine {
   ///
   /// This function will wait until the child is in the signal delivery stop of SIGSTOP.
   /// If any other signal is raised for the tracee, this function
+  #[allow(unused)]
   pub unsafe fn import_traceme_child(
-    &self,
+    &mut self,
     tracee: Pid,
     mut options: nix::sys::ptrace::Options, // TODO: we shouldn't expose this.
   ) -> Result<PtraceSignalDeliveryStopGuard<'_>, Errno> {
+    if self.running {
+      return Err(Errno::EEXIST);
+    } else {
+      self.running = true;
+    }
     loop {
       let status = waitpid(tracee, Some(WaitPidFlag::WSTOPPED))?;
       match status {
@@ -81,7 +135,7 @@ impl RecursivePtraceEngine {
     )?;
     Ok(PtraceSignalDeliveryStopGuard {
       signal: nix::sys::signal::SIGSTOP.into(),
-      guard: PtraceStopInnerGuard::new(self, tracee),
+      guard: PtraceOpaqueStopGuard::new(self, tracee),
     })
   }
 

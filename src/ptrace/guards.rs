@@ -141,18 +141,29 @@ pub trait PtraceStop: private::Sealed + Sized {
 }
 
 #[derive(Debug)]
-pub(super) struct PtraceStopInnerGuard<'a> {
+pub struct PtraceOpaqueStopGuard<'a> {
   pub(super) pid: Pid,
   pub(super) engine: &'a RecursivePtraceEngine,
 }
 
-impl PartialEq for PtraceStopInnerGuard<'_> {
+impl private::Sealed for PtraceOpaqueStopGuard<'_> {}
+impl PtraceStop for PtraceOpaqueStopGuard<'_> {
+  fn pid(&self) -> Pid {
+    self.pid
+  }
+
+  fn seccomp(&self) -> bool {
+    self.engine.seccomp
+  }
+}
+
+impl PartialEq for PtraceOpaqueStopGuard<'_> {
   fn eq(&self, other: &Self) -> bool {
     self.pid == other.pid && std::ptr::eq(self.engine, other.engine)
   }
 }
 
-impl<'a> PtraceStopInnerGuard<'a> {
+impl<'a> PtraceOpaqueStopGuard<'a> {
   pub(super) fn new(engine: &'a RecursivePtraceEngine, pid: Pid) -> Self {
     Self { pid, engine }
   }
@@ -164,13 +175,13 @@ impl<'a> PtraceStopInnerGuard<'a> {
 
 #[derive(Debug)]
 pub struct PtraceSyscallStopGuard<'a> {
-  pub(super) guard: PtraceStopInnerGuard<'a>,
+  pub(super) guard: PtraceOpaqueStopGuard<'a>,
 }
 
 #[derive(Debug)]
 pub struct PtraceSignalDeliveryStopGuard<'a> {
   pub(super) signal: Signal,
-  pub(super) guard: PtraceStopInnerGuard<'a>,
+  pub(super) guard: PtraceOpaqueStopGuard<'a>,
 }
 
 impl PtraceSignalDeliveryStopGuard<'_> {
@@ -252,7 +263,7 @@ impl PtraceSignalDeliveryStopGuard<'_> {
 #[derive(Debug)]
 pub struct PtraceCloneParentStopGuard<'a> {
   pub(super) child: Result<Pid, Errno>,
-  pub(super) guard: PtraceStopInnerGuard<'a>,
+  pub(super) guard: PtraceOpaqueStopGuard<'a>,
 }
 
 impl PtraceCloneParentStopGuard<'_> {
@@ -263,31 +274,31 @@ impl PtraceCloneParentStopGuard<'_> {
 
 #[derive(Debug)]
 pub struct PtraceCloneChildStopGuard<'a> {
-  pub(super) guard: PtraceStopInnerGuard<'a>,
+  pub(super) guard: PtraceOpaqueStopGuard<'a>,
 }
 
 #[derive(Debug)]
 pub struct PtraceExitStopGuard<'a> {
   #[allow(unused)]
   pub(super) status: Result<c_int, Errno>,
-  pub(super) guard: PtraceStopInnerGuard<'a>,
+  pub(super) guard: PtraceOpaqueStopGuard<'a>,
 }
 
 #[derive(Debug)]
 pub struct PtraceExecStopGuard<'a> {
   #[allow(unused)]
   pub(super) former_tid: Result<Pid, Errno>,
-  pub(super) guard: PtraceStopInnerGuard<'a>,
+  pub(super) guard: PtraceOpaqueStopGuard<'a>,
 }
 
 #[derive(Debug)]
 pub struct PtraceSeccompStopGuard<'a> {
-  pub(super) guard: PtraceStopInnerGuard<'a>,
+  pub(super) guard: PtraceOpaqueStopGuard<'a>,
 }
 
 #[derive(Debug)]
 pub struct PtraceGroupStopGuard<'a> {
-  pub(super) guard: PtraceStopInnerGuard<'a>,
+  pub(super) guard: PtraceOpaqueStopGuard<'a>,
 }
 
 macro_rules! impl_ptrace_stop {
@@ -336,6 +347,13 @@ pub enum PtraceStopGuard<'a> {
   /// classify this signal delivery stop into a group stop
   /// or the child part of a clone stop.
   SignalDelivery(PtraceSignalDeliveryStopGuard<'a>),
+  /// The stop that happens when a newly attached child
+  /// gets stopped by SIGSTOP (traceme) or by PTRACE_EVENT_STOP
+  /// with SIGTRAP (seize).
+  ///
+  /// Note that in the latter case, false positive might be reported.
+  /// It is not sure whether this is a kernel bug
+  /// or some undocumented cases for PTRACE_EVENT_STOP.
   CloneChild(PtraceCloneChildStopGuard<'a>),
   Group(PtraceGroupStopGuard<'a>),
   CloneParent(PtraceCloneParentStopGuard<'a>),
