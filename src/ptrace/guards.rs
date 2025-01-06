@@ -18,7 +18,7 @@ use nix::{
   sys::ptrace::AddressType,
   unistd::Pid,
 };
-use tracing::info;
+use tracing::{info, trace};
 
 use crate::arch::{Regs, RegsPayload, RegsRepr};
 
@@ -133,6 +133,32 @@ pub trait PtraceStop: private::Sealed + Sized {
 
   fn detach(self) -> Result<(), Errno> {
     nix::sys::ptrace::detach(self.pid(), None)
+  }
+
+  /// TODO: only allow this for PTRACE_SEIZE
+  fn listen(&self, ignore_esrch: bool) -> Result<(), Errno> {
+    let pid = self.pid();
+    trace!("put {pid} into listen state");
+    let result = unsafe {
+      Errno::result(nix::libc::ptrace(
+        nix::sys::ptrace::Request::PTRACE_LISTEN as nix::sys::ptrace::RequestType,
+        nix::libc::pid_t::from(pid.as_raw()),
+        std::ptr::null_mut::<AddressType>(),
+        0,
+      ))
+      .map(|_| ())
+    };
+    if ignore_esrch {
+      match result {
+        Err(Errno::ESRCH) => {
+          info!("seccomp_aware_cont_syscall failed: {pid}, ESRCH, child gone!");
+          Ok(())
+        }
+        other => other,
+      }
+    } else {
+      result
+    }
   }
 
   fn pid(&self) -> Pid;
@@ -298,6 +324,12 @@ pub struct PtraceSeccompStopGuard<'a> {
 
 #[derive(Debug)]
 pub struct PtraceGroupStopGuard<'a> {
+  pub(super) signal: Signal,
+  pub(super) guard: PtraceOpaqueStopGuard<'a>,
+}
+
+#[derive(Debug)]
+pub struct PtraceInterruptStopGuard<'a> {
   pub(super) guard: PtraceOpaqueStopGuard<'a>,
 }
 
@@ -335,7 +367,8 @@ impl_ptrace_stop!(
   CloneParent(PtraceCloneParentStopGuard<'a>),
   Exec(PtraceExecStopGuard<'a>),
   Exit(PtraceExitStopGuard<'a>),
-  Seccomp(PtraceSeccompStopGuard<'a>)
+  Seccomp(PtraceSeccompStopGuard<'a>),
+  Interrupt(PtraceInterruptStopGuard<'a>)
 );
 
 #[derive(Debug)]
@@ -360,6 +393,7 @@ pub enum PtraceStopGuard<'a> {
   Exec(PtraceExecStopGuard<'a>),
   Exit(PtraceExitStopGuard<'a>),
   Seccomp(PtraceSeccompStopGuard<'a>),
+  Interrupt(PtraceInterruptStopGuard<'a>),
 }
 
 impl private::Sealed for PtraceStopGuard<'_> {}
@@ -376,6 +410,7 @@ impl PtraceStop for PtraceStopGuard<'_> {
       PtraceStopGuard::Exec(guard) => guard.pid(),
       PtraceStopGuard::Exit(guard) => guard.pid(),
       PtraceStopGuard::Seccomp(guard) => guard.pid(),
+      PtraceStopGuard::Interrupt(guard) => guard.pid(),
     }
   }
 
@@ -390,6 +425,7 @@ impl PtraceStop for PtraceStopGuard<'_> {
       PtraceStopGuard::Exec(guard) => guard.seccomp(),
       PtraceStopGuard::Exit(guard) => guard.seccomp(),
       PtraceStopGuard::Seccomp(guard) => guard.seccomp(),
+      PtraceStopGuard::Interrupt(guard) => guard.seccomp(),
     }
   }
 }

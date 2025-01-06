@@ -42,8 +42,8 @@ use crate::ptrace::{
 };
 
 use super::{
-  guards::{PtraceStopGuard, PtraceOpaqueStopGuard, PtraceSyscallStopGuard},
-  RecursivePtraceEngine,
+  guards::{PtraceOpaqueStopGuard, PtraceStopGuard, PtraceSyscallStopGuard},
+  PtraceInterruptStopGuard, RecursivePtraceEngine,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,7 +171,9 @@ impl<'a> PtraceWaitPidEvent<'a> {
                 // Otherwise, if we see EINVAL, this is a group-stop
                 Err(Errno::EINVAL) => {
                   // group-stop
+                  trace!("group stop, unseized");
                   PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Group(PtraceGroupStopGuard {
+                    signal,
                     guard: PtraceOpaqueStopGuard::new(engine, pid),
                   }))
                 }
@@ -224,22 +226,26 @@ impl<'a> PtraceWaitPidEvent<'a> {
               let sig = Signal::from_raw(WSTOPSIG(status));
               match sig {
                 Signal::Standard(signal::SIGTRAP) => {
-                  // Newly cloned child
-                  trace!(
-                    "unsure child {pid}, eventmsg: {:?}, siginfo: {:?}",
-                    nix::sys::ptrace::getevent(pid),
-                    nix::sys::ptrace::getsiginfo(pid)
-                  );
-                  // println!(
-                  //   "/proc/{pid}/status: {}",
-                  //   std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap()
-                  // );
-                  PtraceWaitPidEvent::Ptrace(PtraceStopGuard::CloneChild(
-                    PtraceCloneChildStopGuard {
-                      guard: PtraceOpaqueStopGuard::new(engine, pid),
-                    },
-                  ))
-                  // FIXME: could also be PTRACE_INTERRUPT
+                  if nix::sys::ptrace::getsiginfo(pid) == Err(Errno::EINVAL) {
+                    //  PTRACE_INTERRUPT
+                    PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Interrupt(
+                      PtraceInterruptStopGuard {
+                        guard: PtraceOpaqueStopGuard::new(engine, pid),
+                      },
+                    ))
+                  } else {
+                    // Newly cloned child
+                    trace!(
+                      "unsure child {pid}, eventmsg: {:?}, siginfo: {:?}",
+                      nix::sys::ptrace::getevent(pid),
+                      nix::sys::ptrace::getsiginfo(pid)
+                    );
+                    PtraceWaitPidEvent::Ptrace(PtraceStopGuard::CloneChild(
+                      PtraceCloneChildStopGuard {
+                        guard: PtraceOpaqueStopGuard::new(engine, pid),
+                      },
+                    ))
+                  }
                 }
                 // Only these four signals can be group-stop
                 Signal::Standard(signal::SIGSTOP)
@@ -247,6 +253,7 @@ impl<'a> PtraceWaitPidEvent<'a> {
                 | Signal::Standard(signal::SIGTTIN)
                 | Signal::Standard(signal::SIGTTOU) => {
                   PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Group(PtraceGroupStopGuard {
+                    signal: sig,
                     guard: PtraceOpaqueStopGuard::new(engine, pid),
                   }))
                 }
