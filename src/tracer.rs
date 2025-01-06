@@ -552,7 +552,9 @@ impl Tracer {
           }
         }
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Group(guard)) => {
-          // TODO: switch to PTRACE_SEIZE and handle group-stop.
+          guard.listen(true)?;
+        }
+        PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Interrupt(guard)) => {
           guard.seccomp_aware_cont_syscall(true)?;
         }
         PtraceWaitPidEvent::Signaled { pid, signal: sig } => {
