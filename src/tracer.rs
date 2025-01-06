@@ -20,7 +20,7 @@ use nix::{
     self, dup2, pthread_self, pthread_setname_np, raise, AT_EMPTY_PATH, SIGSTOP, S_ISGID, S_ISUID,
   },
   sys::{
-    ptrace::{self, getsiginfo, traceme, AddressType},
+    ptrace::{traceme, AddressType},
     stat::fstat,
     wait::WaitPidFlag,
   },
@@ -372,7 +372,7 @@ impl Tracer {
                   }.into())?;
                 }
               } else {
-                self.proprgate_operation_error(hit, false, self.detach_process_internal(state, None, hid))?;
+                self.proprgate_operation_error(hit, false, self.detach_process_internal(state, None, hid, &mut pending_guards))?;
               }
             }
             #[cfg(feature = "seccomp-bpf")]
@@ -427,7 +427,12 @@ impl Tracer {
                 self.proprgate_operation_error(
                   detach.hit,
                   false,
-                  self.detach_process_internal(state, Some((detach.signal, guard)), detach.hid),
+                  self.detach_process_internal(
+                    state,
+                    Some((detach.signal, guard)),
+                    detach.hid,
+                    pending_guards,
+                  ),
                 )?;
                 continue;
               }
@@ -463,7 +468,6 @@ impl Tracer {
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::CloneChild(guard)) => {
           let pid = guard.pid();
           trace!("sigstop event, child: {pid}");
-          trace!("SigInfo: {:?}", getsiginfo(pid));
           {
             let mut store = self.store.write().unwrap();
             let mut pid_reuse = false;
@@ -1139,6 +1143,7 @@ impl Tracer {
     state: &mut ProcessState,
     signal: Option<(Signal, PtraceSignalDeliveryStopGuard<'_>)>,
     hid: u64,
+    pending_guards: &mut HashMap<Pid, PtraceStopGuard<'_>>,
   ) -> Result<(), Either<Errno, SendError<TracerMessage>>> {
     let pid = state.pid;
     trace!("detaching: {pid}, signal: {:?}", signal);
@@ -1147,7 +1152,8 @@ impl Tracer {
     if let Some((sig, guard)) = signal {
       guard.injected_detach(sig)
     } else {
-      ptrace::detach(pid, None)
+      let guard = pending_guards.remove(&state.pid).unwrap();
+      guard.detach()
     }
     .inspect_err(|e| warn!("Failed to detach from {pid}: {e}"))
     .map_err(Either::Left)?;
