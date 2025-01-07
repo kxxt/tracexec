@@ -9,7 +9,7 @@ use std::{
   time::Duration,
 };
 
-use arcstr::ArcStr;
+use crate::cache::ArcStr;
 use cfg_if::cfg_if;
 use either::Either;
 use enumflags2::BitFlags;

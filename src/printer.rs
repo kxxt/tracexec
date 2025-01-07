@@ -16,7 +16,7 @@ use crate::{
   tracer::state::{ExecData, ProcessState},
 };
 
-use arcstr::ArcStr;
+use crate::cache::ArcStr;
 use itertools::chain;
 use nix::{fcntl::OFlag, libc::ENOENT, unistd::Pid};
 use owo_colors::{OwoColorize, Style};

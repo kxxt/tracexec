@@ -5,7 +5,7 @@ use std::{
   sync::Arc,
 };
 
-use arcstr::ArcStr;
+use crate::cache::ArcStr;
 use nix::unistd::Pid;
 use regex_cursor::engines::pikevm::{self, PikeVM};
 use strum::IntoStaticStr;

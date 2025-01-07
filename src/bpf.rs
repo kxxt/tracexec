@@ -13,12 +13,12 @@ use std::{
   process,
   sync::{
     atomic::{AtomicBool, Ordering},
-    Arc, OnceLock, RwLock,
+    Arc, LazyLock, RwLock,
   },
   time::Duration,
 };
 
-use arcstr::ArcStr;
+use crate::cache::ArcStr;
 use color_eyre::{eyre::eyre, Section};
 use enumflags2::{BitFlag, BitFlags};
 use event::EventStorage;
@@ -818,11 +818,10 @@ fn utf8_lossy_cow_from_bytes_with_nul(data: &[u8]) -> Cow<str> {
 }
 
 fn cached_cow(cow: Cow<str>) -> ArcStr {
-  let cache = CACHE.get_or_init(|| Arc::new(RwLock::new(StringCache::new())));
   match cow {
-    Cow::Borrowed(s) => cache.write().unwrap().get_or_insert(s),
-    Cow::Owned(s) => cache.write().unwrap().get_or_insert_owned(s),
+    Cow::Borrowed(s) => CACHE.write().unwrap().get_or_insert(s),
+    Cow::Owned(s) => CACHE.write().unwrap().get_or_insert_owned(s),
   }
 }
 
-static CACHE: OnceLock<Arc<RwLock<StringCache>>> = OnceLock::new();
+static CACHE: LazyLock<RwLock<StringCache>> = LazyLock::new(|| RwLock::new(StringCache::new()));

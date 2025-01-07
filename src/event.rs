@@ -7,7 +7,7 @@ use std::{
   sync::{atomic::AtomicU64, Arc},
 };
 
-use arcstr::ArcStr;
+use crate::cache::ArcStr;
 use clap::ValueEnum;
 use crossterm::event::KeyEvent;
 use either::Either;

@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 /// Regex and regex-cursor related code
 use regex_cursor::Cursor;
 
@@ -302,7 +304,7 @@ pub struct ArgvCursor<'a, T> {
   offset: usize,
 }
 
-pub const SPACE: OutputMsg = OutputMsg::Ok(arcstr::literal!(" "));
+pub static SPACE: LazyLock<OutputMsg> = LazyLock::new(|| OutputMsg::Ok(" ".into()));
 
 impl<'a, T> ArgvCursor<'a, T>
 where
@@ -380,14 +382,12 @@ where
 #[cfg(test)]
 mod cursor_tests {
   use super::*;
-  use arcstr::ArcStr;
-
-  pub const SPACE: ArcStr = arcstr::literal!(" ");
+  use crate::cache::ArcStr;
 
   #[test]
   fn smoke_test() {
     let single = vec![ArcStr::from("abc")];
-    let separator = SPACE;
+    let separator = " ".into();
     let mut cursor = ArgvCursor::new(single.as_slice(), &separator);
     assert_eq!(cursor.chunk(), "abc".as_bytes());
     assert!(!cursor.advance());
