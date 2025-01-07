@@ -12,7 +12,7 @@ use std::{
   sync::{Arc, LazyLock, RwLock},
 };
 
-use arcstr::ArcStr;
+use crate::cache::ArcStr;
 use filedescriptor::AsRawFileDescriptor;
 use owo_colors::OwoColorize;
 

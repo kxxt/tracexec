@@ -1,7 +1,7 @@
 //! Data structures for export command
 use std::{error::Error, sync::Arc};
 
-use arcstr::ArcStr;
+use crate::cache::ArcStr;
 use nix::libc::pid_t;
 use serde::Serialize;
 

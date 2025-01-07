@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, ffi::CString};
 
-use arcstr::ArcStr;
+use crate::cache::ArcStr;
 use nix::{
   errno::Errno,
   sys::ptrace::{self, AddressType},
