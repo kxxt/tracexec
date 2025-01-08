@@ -16,7 +16,7 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::sync::Arc;
+use std::{collections::VecDeque, sync::Arc};
 
 use indexmap::IndexMap;
 use nix::sys::signal;
@@ -68,9 +68,9 @@ impl Event {
 
 pub struct EventList {
   state: ListState,
-  events: Vec<Event>,
+  events: VecDeque<Event>,
   /// The string representation of the events, used for searching
-  event_lines: Vec<EventLine>,
+  event_lines: VecDeque<EventLine>,
   /// Current window of the event list, [start, end)
   window: (usize, usize),
   /// Cache of the list items in the view
@@ -96,8 +96,8 @@ impl EventList {
   pub fn new(baseline: Arc<BaselineInfo>, follow: bool, modifier_args: ModifierArgs) -> Self {
     Self {
       state: ListState::default(),
-      events: vec![],
-      event_lines: vec![],
+      events: VecDeque::new(),
+      event_lines: VecDeque::new(),
       window: (0, 0),
       nr_items_in_window: 0,
       horizontal_offset: 0,
@@ -182,8 +182,19 @@ impl EventList {
   }
 
   // TODO: this is ugly due to borrow checking.
-  pub fn window(items: &[EventLine], window: (usize, usize)) -> &[EventLine] {
-    &items[window.0..window.1.min(items.len())]
+  pub fn window<'a, T>(items: (&'a [T], &'a [T]), window: (usize, usize)) -> (&'a [T], &'a [T]) {
+    let end = window.1.min(items.0.len() + items.1.len());
+    let separation = items.0.len();
+    if window.0 >= separation {
+      (&[], &items.1[(window.0 - separation)..(end - separation)])
+    } else if end > separation {
+      (
+        &items.0[window.0..separation],
+        &items.1[..(end - separation)],
+      )
+    } else {
+      (&items.0[window.0..end], [].as_slice())
+    }
   }
 
   pub fn statistics(&self) -> Line {
@@ -209,8 +220,8 @@ impl Widget for &mut EventList {
     self.inner_width = area.width - 2; // for the selection indicator
     let mut max_len = area.width as usize - 1;
     // Iterate through all elements in the `items` and stylize them.
-    let events_in_window = EventList::window(&self.event_lines, self.window);
-    self.nr_items_in_window = events_in_window.len();
+    let events_in_window = EventList::window(self.event_lines.as_slices(), self.window);
+    self.nr_items_in_window = events_in_window.0.len() + events_in_window.1.len();
     // tracing::debug!(
     //   "Should refresh list cache: {}",
     //   self.should_refresh_list_cache
@@ -415,8 +426,8 @@ impl EventList {
       },
       details: event,
     };
-    self.event_lines.push(event.to_event_line(self));
-    self.events.push(event);
+    self.event_lines.push_back(event.to_event_line(self));
+    self.events.push_back(event);
     self.incremental_search();
     if (self.window.0..self.window.1).contains(&(self.events.len() - 1)) {
       self.should_refresh_list_cache = true;
@@ -735,5 +746,65 @@ impl EventList {
         self.should_refresh_list_cache
       );
     }
+  }
+}
+
+#[cfg(test)]
+
+mod test {
+  use super::EventList;
+
+  #[test]
+  fn test_window_with_valid_input() {
+    let items = (&[1, 2, 3] as &[i32], &[4, 5, 6] as &[i32]);
+    let window = (1, 4);
+
+    let result = EventList::window(items, window);
+
+    assert_eq!(result.0, &[2, 3]);
+    assert_eq!(result.1, &[4]);
+
+    let result = EventList::window(items, (3, 5));
+
+    assert_eq!(result.0, &[] as &[i32]);
+    assert_eq!(result.1, &[4, 5] as &[i32]);
+
+    let result = EventList::window(items, (0, 2));
+
+    assert_eq!(result.0, &[1, 2] as &[i32]);
+    assert_eq!(result.1, &[] as &[i32]);
+  }
+
+  #[test]
+  fn test_window_with_empty_slices() {
+    let items = (&[] as &[i32], &[] as &[i32]);
+    let window = (0, 2);
+
+    let result = EventList::window(items, window);
+
+    assert_eq!(result.0, &[] as &[i32]);
+    assert_eq!(result.1, &[] as &[i32]);
+  }
+
+  #[test]
+  fn test_window_with_out_of_bounds_window() {
+    let items = (&[1, 2] as &[i32], &[3, 4, 5] as &[i32]);
+    let window = (3, 7);
+
+    let result = EventList::window(items, window);
+
+    assert_eq!(result.0, &[] as &[i32]);
+    assert_eq!(result.1, &[4, 5]);
+  }
+
+  #[test]
+  fn test_window_with_zero_length_window() {
+    let items = (&[1, 2, 3] as &[i32], &[4, 5, 6] as &[i32]);
+    let window = (2, 2);
+
+    let result = EventList::window(items, window);
+
+    assert_eq!(result.0, &[] as &[i32]);
+    assert_eq!(result.1, &[] as &[i32]);
   }
 }
