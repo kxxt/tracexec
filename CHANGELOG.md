@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.8.1
+## v0.8.2
 
 ### Notice
 
@@ -26,6 +26,7 @@ where the patch that causes the regression is reverted. Further investigation is
 - Internal refactor: remove lazy_static
 - Internal refactor: replace some static variables with constants (by @Integral-Tech)
 - tracexec now uses `PTRACE_SEIZE` instead of setting `PTRACE_TRACEME` after fork.
+- Specify MSRV in `Cargo.toml`. (v0.8.1 is yanked because the incompatible lockfile version change from 3 to 4).
 
 ## v0.8.0
 
