@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.8.1
+
+### Notice
+
+There is an LTS kernel regression that affects the experimental eBPF backend for tracexec.
+Users on LTS kernel v6.6.64..v6.6.69 experiencing eBPF load errors should upgrade to v6.6.70,
+where the patch that causes the regression is reverted. Further investigation is still going on.
+
+- https://github.com/kxxt/tracexec/issues/55
+- https://lore.kernel.org/all/fz5bo35ahmtygtbwhbit7vobn6beg3gnlkdd6wvrv4bf3z3ixy@vim77gb777mk/
+
+### Fixes
+
+- tracexec now correctly handles ptrace group stop.
+(In other words, the stopping signals are now handled transparently).
+- Fix missing process state update for the root tracee when it exits.
+- CI: misc fixes for nix userspace-kernel integration tests.
+
+### Other Changes
+
+- Update dependencies
+- Misc CI changes.
+- Internal refactor: safer abstraction for ptrace.
+- Internal refactor: remove lazy_static
+- Internal refactor: replace some static variables with constants (by @Integral-Tech)
+- tracexec now uses `PTRACE_SEIZE` instead of setting `PTRACE_TRACEME` after fork.
+
 ## v0.8.0
 
 ### Breaking Changes
