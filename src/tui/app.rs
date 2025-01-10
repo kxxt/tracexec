@@ -202,7 +202,7 @@ impl App {
               // Cancel all popups
               self.popup = None;
               // Cancel non-finished query
-              if self.query_builder.as_ref().map_or(false, |b| b.editing()) {
+              if self.query_builder.as_ref().is_some_and(|b| b.editing()) {
                 self.query_builder = None;
                 self.event_list.set_query(None);
               }

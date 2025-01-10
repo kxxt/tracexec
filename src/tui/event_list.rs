@@ -229,7 +229,7 @@ impl Widget for &mut EventList {
           let highlighted = self
             .query_result
             .as_ref()
-            .map_or(false, |query_result| query_result.indices.contains_key(&i));
+            .is_some_and(|query_result| query_result.indices.contains_key(&i));
           let mut base = full_line
             .line
             .clone()
