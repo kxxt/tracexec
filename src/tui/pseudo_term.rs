@@ -124,9 +124,11 @@ impl PseudoTerminalPane {
   pub async fn handle_key_event(&self, key: &KeyEvent) -> bool {
     let input_bytes = match key.code {
       KeyCode::Char(ch) => {
-        let mut send = vec![ch as u8];
-        let char = ch.to_ascii_uppercase();
-        if key.modifiers == KeyModifiers::CONTROL {
+        let mut send = vec![0; 4];
+        ch.encode_utf8(&mut send);
+        send.drain(ch.len_utf8()..);
+        if ch.is_ascii() && key.modifiers == KeyModifiers::CONTROL {
+          let char = ch.to_ascii_uppercase();
           // https://github.com/fyne-io/terminal/blob/master/input.go
           // https://gist.github.com/ConnerWill/d4b6c776b509add763e17f9f113fd25b
           match char {
