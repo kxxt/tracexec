@@ -51,16 +51,28 @@ use super::{
 pub struct Event {
   pub details: Arc<TracerEventDetails>,
   pub status: Option<EventStatus>,
+  /// The string representation of the events, used for searching
+  pub event_line: EventLine,
+}
+
+pub struct EventModifier {
+  modifier_args: ModifierArgs,
+  rt_modifier: RuntimeModifier,
 }
 
 impl Event {
-  fn to_event_line(&self, list: &EventList) -> EventLine {
-    self.details.to_event_line(
-      &list.baseline,
+  fn to_event_line(
+    details: &TracerEventDetails,
+    status: Option<EventStatus>,
+    baseline: &BaselineInfo,
+    modifier: &EventModifier,
+  ) -> EventLine {
+    details.to_event_line(
+      &baseline,
       false,
-      &list.modifier_args,
-      list.runtime_modifier(),
-      self.status,
+      &modifier.modifier_args,
+      modifier.rt_modifier,
+      status,
       true,
     )
   }
@@ -69,8 +81,6 @@ impl Event {
 pub struct EventList {
   state: ListState,
   events: VecDeque<Event>,
-  /// The string representation of the events, used for searching
-  event_lines: VecDeque<EventLine>,
   /// Current window of the event list, [start, end)
   window: (usize, usize),
   /// Cache of the list items in the view
@@ -83,6 +93,7 @@ pub struct EventList {
   inner_width: u16,
   /// max width of the lines in the current window
   max_width: usize,
+  max_events: u64,
   pub max_window_len: usize,
   pub baseline: Arc<BaselineInfo>,
   follow: bool,
@@ -93,17 +104,22 @@ pub struct EventList {
 }
 
 impl EventList {
-  pub fn new(baseline: Arc<BaselineInfo>, follow: bool, modifier_args: ModifierArgs) -> Self {
+  pub fn new(
+    baseline: Arc<BaselineInfo>,
+    follow: bool,
+    modifier_args: ModifierArgs,
+    max_events: u64,
+  ) -> Self {
     Self {
       state: ListState::default(),
       events: VecDeque::new(),
-      event_lines: VecDeque::new(),
       window: (0, 0),
       nr_items_in_window: 0,
       horizontal_offset: 0,
       inner_width: 0,
       max_width: 0,
       max_window_len: 0,
+      max_events,
       baseline,
       follow,
       should_refresh_list_cache: true,
@@ -141,9 +157,9 @@ impl EventList {
 
   pub fn toggle_env_display(&mut self) {
     self.rt_modifier.show_env = !self.rt_modifier.show_env;
-    for line in &mut self.event_lines {
-      if let Some(mask) = &mut line.env_mask {
-        mask.toggle(&mut line.line);
+    for event in &mut self.events {
+      if let Some(mask) = &mut event.event_line.env_mask {
+        mask.toggle(&mut event.event_line.line);
       }
     }
     self.should_refresh_list_cache = true;
@@ -152,9 +168,9 @@ impl EventList {
 
   pub fn toggle_cwd_display(&mut self) {
     self.rt_modifier.show_cwd = !self.rt_modifier.show_cwd;
-    for line in &mut self.event_lines {
-      if let Some(mask) = &mut line.cwd_mask {
-        mask.toggle(&mut line.line);
+    for event in &mut self.events {
+      if let Some(mask) = &mut event.event_line.cwd_mask {
+        mask.toggle(&mut event.event_line.line);
       }
     }
     self.should_refresh_list_cache = true;
@@ -220,7 +236,7 @@ impl Widget for &mut EventList {
     self.inner_width = area.width - 2; // for the selection indicator
     let mut max_len = area.width as usize - 1;
     // Iterate through all elements in the `items` and stylize them.
-    let events_in_window = EventList::window(self.event_lines.as_slices(), self.window);
+    let events_in_window = EventList::window(self.events.as_slices(), self.window);
     self.nr_items_in_window = events_in_window.0.len() + events_in_window.1.len();
     // tracing::debug!(
     //   "Should refresh list cache: {}",
@@ -230,18 +246,19 @@ impl Widget for &mut EventList {
       self.should_refresh_list_cache = false;
       tracing::debug!("Refreshing list cache");
       let items = self
-        .event_lines
+        .events
         .iter()
         .enumerate()
         .skip(self.window.0)
         .take(self.window.1 - self.window.0)
-        .map(|(i, full_line)| {
-          max_len = max_len.max(full_line.line.width());
+        .map(|(i, event)| {
+          max_len = max_len.max(event.event_line.line.width());
           let highlighted = self
             .query_result
             .as_ref()
             .is_some_and(|query_result| query_result.indices.contains_key(&i));
-          let mut base = full_line
+          let mut base = event
+            .event_line
             .line
             .clone()
             .substring(self.horizontal_offset, area.width);
@@ -345,8 +362,8 @@ impl EventList {
     // Events won't change during the search because this is Rust and we already have a reference to it.
     // Rust really makes the code more easier to reason about.
     let searched_len = self.events.len();
-    for (i, evt) in self.event_lines.iter().enumerate() {
-      if query.matches(evt) {
+    for (i, evt) in self.events.iter().enumerate() {
+      if query.matches(&evt.event_line) {
         indices.insert(i, 0);
       }
     }
@@ -373,17 +390,17 @@ impl EventList {
     };
     let mut modified = false;
     for (i, evt) in self
-      .event_lines
+      .events
       .iter()
       .enumerate()
       .skip(existing_result.searched_len)
     {
-      if query.matches(evt) {
+      if query.matches(&evt.event_line) {
         existing_result.indices.insert(i, 0);
         modified = true;
       }
     }
-    existing_result.searched_len = self.event_lines.len();
+    existing_result.searched_len = self.events.len();
     if modified {
       self.should_refresh_list_cache = true;
     }
@@ -411,22 +428,27 @@ impl EventList {
 /// Event Management
 impl EventList {
   pub fn push(&mut self, event: impl Into<Arc<TracerEventDetails>>) {
-    let event = event.into();
-    let event = Event {
-      status: match event.as_ref() {
-        TracerEventDetails::NewChild { .. } => Some(EventStatus::ProcessRunning),
-        TracerEventDetails::Exec(exec) => {
-          match exec.result {
-            0 => Some(EventStatus::ProcessRunning),
-            -2 => Some(EventStatus::ExecENOENT), // ENOENT
-            _ => Some(EventStatus::ExecFailure),
-          }
+    let details = event.into();
+    let status = match details.as_ref() {
+      TracerEventDetails::NewChild { .. } => Some(EventStatus::ProcessRunning),
+      TracerEventDetails::Exec(exec) => {
+        match exec.result {
+          0 => Some(EventStatus::ProcessRunning),
+          -2 => Some(EventStatus::ExecENOENT), // ENOENT
+          _ => Some(EventStatus::ExecFailure),
         }
-        _ => None,
-      },
-      details: event,
+      }
+      _ => None,
     };
-    self.event_lines.push_back(event.to_event_line(self));
+    let event = Event {
+      event_line: Event::to_event_line(&details, status, &self.baseline, &self.event_modifier()),
+      details,
+      status,
+    };
+    if self.events.len() >= self.max_events as usize {
+      self.events.pop_front();
+      self.should_refresh_list_cache = true;
+    }
     self.events.push_back(event);
     self.incremental_search();
     if (self.window.0..self.window.1).contains(&(self.events.len() - 1)) {
@@ -435,6 +457,7 @@ impl EventList {
   }
 
   pub fn update(&mut self, update: ProcessStateUpdateEvent) {
+    let modifier = self.event_modifier();
     for i in update.ids {
       let i = i as usize;
       if let TracerEventDetails::Exec(exec) = self.events[i].details.as_ref() {
@@ -472,7 +495,12 @@ impl EventList {
         ProcessStateUpdate::Detached { .. } => Some(EventStatus::ProcessDetached),
         _ => unimplemented!(),
       };
-      self.event_lines[i] = self.events[i].to_event_line(self);
+      self.events[i].event_line = Event::to_event_line(
+        &self.events[i].details,
+        self.events[i].status,
+        &self.baseline,
+        &modifier,
+      );
       if self.window.0 <= i && i < self.window.1 {
         self.should_refresh_list_cache = true;
       }
@@ -481,12 +509,18 @@ impl EventList {
 
   pub fn rebuild_lines(&mut self) {
     // TODO: only update spans that are affected by the change
-    self.event_lines = self
-      .events
-      .iter()
-      .map(|evt| evt.to_event_line(self))
-      .collect();
+    let modifier = self.event_modifier();
+    for e in self.events.iter_mut() {
+      e.event_line = Event::to_event_line(&e.details, e.status, &self.baseline, &modifier);
+    }
     self.should_refresh_list_cache = true;
+  }
+
+  fn event_modifier(&self) -> EventModifier {
+    EventModifier {
+      modifier_args: self.modifier_args,
+      rt_modifier: self.rt_modifier,
+    }
   }
 }
 

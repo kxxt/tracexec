@@ -32,7 +32,7 @@ pub struct PtraceArgs {
   pub tracer_delay: Option<u64>,
 }
 
-#[derive(Args, Debug, Default, Clone)]
+#[derive(Args, Debug, Default, Clone, Copy)]
 pub struct ModifierArgs {
   #[clap(long, help = "Only show successful calls", default_value_t = false)]
   pub successful_only: bool,
@@ -420,6 +420,12 @@ pub struct TuiModeArgs {
     value_parser = frame_rate_parser
   )]
   pub frame_rate: Option<f64>,
+  #[clap(
+    long,
+    short = 'm',
+    help = "Max number of events to keep in TUI (0=unlimited)"
+  )]
+  pub max_events: Option<u64>,
 }
 
 #[derive(Args, Debug, Default, Clone)]
@@ -444,6 +450,7 @@ impl TuiModeArgs {
     self.active_pane = self.active_pane.or(config.active_pane);
     self.layout = self.layout.or(config.layout);
     self.frame_rate = self.frame_rate.or(config.frame_rate);
+    self.max_events = self.max_events.or(config.max_events);
     self.follow |= config.follow.unwrap_or_default();
     if (!self.terminate_on_exit) && (!self.kill_on_exit) {
       match config.exit_handling {

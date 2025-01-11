@@ -60,6 +60,9 @@
 # Target frame rate. A positive floating-point number
 # frame_rate = 60.0
 
+# Max number of events to keep in TUI. (0=unlimited)
+# max_events = 1_000_000
+
 #
 # Config for Log mode
 #

@@ -74,6 +74,7 @@ pub struct TuiModeConfig {
   pub layout: Option<AppLayout>,
   #[serde(default, deserialize_with = "deserialize_frame_rate")]
   pub frame_rate: Option<f64>,
+  pub max_events: Option<u64>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
