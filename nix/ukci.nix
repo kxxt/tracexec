@@ -26,13 +26,13 @@ localFlake:
               test_exe = "tracexec_no_rcu_kfuncs";
               sha256 = "sha256-M6es158EuHmcQohFctwu23WxzVhLHTLUaNHbEQJOs7w=";
             }
-            # {
-            #   name = "6.6lts";
-            #   tag = "6.6.69";
-            #   source = "mirror";
-            #   test_exe = "tracexec";
-            #   sha256 = "sha256-nGMFVnt12ZUUzebrneOZc/PVyFenW9nc38pXBB+NTzQ=";
-            # }
+            {
+              name = "6.6lts";
+              tag = "6.6.70";
+              source = "mirror";
+              test_exe = "tracexec";
+              sha256 = "sha256-hNI+4H+yb+u8ttEpW6Fe/cZ6w4K0E3ssiFMUbBD9L5c=";
+            }
             {
               name = "6.12";
               tag = "6.12.8";
