@@ -715,6 +715,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ftree"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ae0379499242d3b9355c5069b43b9417def8c9b09903b930db1fe49318dc9e9"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -885,6 +894,15 @@ checksum = "62f822373a4fe84d4bb149bf54e584a7f4abec90e072ed49cda0edea5b95471f"
 dependencies = [
  "equivalent",
  "hashbrown",
+]
+
+[[package]]
+name = "indexset"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20305cb9171bd8657ee6e0c800926b181d91bca3523fca32e835f2fd7f4e1875"
+dependencies = [
+ "ftree",
 ]
 
 [[package]]
@@ -2199,7 +2217,7 @@ dependencies = [
  "filterable-enum",
  "futures",
  "hashbrown",
- "indexmap",
+ "indexset",
  "itertools 0.14.0",
  "kxxt-owo-colors",
  "libbpf-cargo",

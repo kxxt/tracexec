@@ -1,7 +1,6 @@
 use std::error::Error;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use indexmap::IndexMap;
 use itertools::Itertools;
 use ratatui::{
   style::Styled,
@@ -37,11 +36,11 @@ pub enum QueryKind {
 #[derive(Debug)]
 pub struct QueryResult {
   /// The indices of matching events and the start of the match, use IndexMap to keep the order
-  pub indices: IndexMap<usize, usize>,
-  /// The length of all searched items, used to implement incremental query
-  pub searched_len: usize,
+  pub indices: indexset::BTreeSet<u64>,
+  /// The maximum of searched id
+  pub searched_id: u64,
   /// The currently focused item in query result, an index of `indices`
-  pub selection: Option<usize>,
+  pub selection: Option<u64>,
 }
 
 impl Query {
@@ -82,35 +81,29 @@ impl Query {
 impl QueryResult {
   pub fn next_result(&mut self) {
     if let Some(selection) = self.selection {
-      if selection + 1 < self.indices.len() {
-        self.selection = Some(selection + 1);
-      } else {
-        // If the current selection is the last one, loop back to the first one
-        self.selection = Some(0)
+      self.selection = match self.indices.range((selection + 1)..).next() {
+        Some(id) => Some(*id),
+        None => self.indices.first().copied(),
       }
     } else if !self.indices.is_empty() {
-      self.selection = Some(0);
+      self.selection = self.indices.first().copied();
     }
   }
 
   pub fn prev_result(&mut self) {
     if let Some(selection) = self.selection {
-      if selection > 0 {
-        self.selection = Some(selection - 1);
-      } else {
-        // If the current selection is the first one, loop back to the last one
-        self.selection = Some(self.indices.len() - 1);
-      }
+      self.selection = match self.indices.range(..selection).next() {
+        Some(id) => Some(*id),
+        None => self.indices.last().copied(),
+      };
     } else if !self.indices.is_empty() {
-      self.selection = Some(self.indices.len() - 1);
+      self.selection = self.indices.last().copied();
     }
   }
 
-  /// Return the index of the currently selected item in the event list
-  pub fn selection(&self) -> Option<usize> {
-    self
-      .selection
-      .map(|index| *self.indices.get_index(index).unwrap().0)
+  /// Return the id of the currently selected event
+  pub fn selection(&self) -> Option<u64> {
+    self.selection
   }
 
   pub fn statistics(&self) -> Line {
@@ -124,7 +117,7 @@ impl QueryResult {
         .set_style(THEME.query_match_total_cnt);
       let selected = self
         .selection
-        .map(|index| index + 1)
+        .map(|index| self.indices.rank(&index) + 1)
         .unwrap_or(0)
         .to_string()
         .set_style(THEME.query_match_current_no);

@@ -60,7 +60,6 @@ tui-popup = "0.6.0"
 thiserror = "1.0.59"
 tui-scrollview = "0.5.0"
 bitflags = "2.5.0"
-indexmap = "2.2.6"
 tui-prompts = "0.5.0"
 unicode-segmentation = "1.11.0"
 unicode-width = "0.1.12"
@@ -81,6 +80,7 @@ libseccomp = { version = "0.3.0", optional = true }
 weak-table = { version = "0.3.2", default-features = false, features = ["ahash"] }
 rand = "0.8.5"
 hashbrown = "0.15.2"
+indexset = "0.10.0"
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 

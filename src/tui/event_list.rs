@@ -19,7 +19,6 @@
 use std::{cell::RefCell, collections::VecDeque, rc::Rc, sync::Arc};
 
 use hashbrown::HashMap;
-use indexmap::IndexMap;
 use nix::sys::signal;
 use ratatui::{
   layout::Alignment::Right,
@@ -251,15 +250,14 @@ impl Widget for &mut EventList {
       let items = self
         .events
         .iter()
-        .enumerate()
         .skip(self.window.0)
         .take(self.window.1 - self.window.0)
-        .map(|(i, event)| {
+        .map(|event| {
           max_len = max_len.max(event.borrow().event_line.line.width());
           let highlighted = self
             .query_result
             .as_ref()
-            .is_some_and(|query_result| query_result.indices.contains_key(&i));
+            .is_some_and(|query_result| query_result.indices.contains(&event.borrow().id));
           let mut base = event
             .borrow()
             .event_line
@@ -362,25 +360,29 @@ impl EventList {
     let Some(query) = self.query.as_ref() else {
       return;
     };
-    let mut indices = IndexMap::new();
+    let mut indices = indexset::BTreeSet::new();
     // Events won't change during the search because this is Rust and we already have a reference to it.
     // Rust really makes the code more easier to reason about.
-    let searched_len = self.events.len();
-    for (i, evt) in self.events.iter().enumerate() {
+    for evt in self.events.iter() {
       if query.matches(&evt.borrow().event_line) {
-        indices.insert(i, 0);
+        indices.insert(evt.borrow().id);
       }
     }
     let mut result = QueryResult {
       indices,
-      searched_len,
+      searched_id: self
+        .events
+        .iter()
+        .last()
+        .map(|r| r.borrow().id)
+        .unwrap_or(0),
       selection: None,
     };
     result.next_result();
     let selection = result.selection();
     self.query_result = Some(result);
     self.should_refresh_list_cache = true;
-    self.scroll_to(selection);
+    self.scroll_to_id(selection);
   }
 
   /// Incremental search for newly added events
@@ -388,23 +390,25 @@ impl EventList {
     let Some(query) = self.query.as_ref() else {
       return;
     };
+    let offset = self.id_index_offset();
     let Some(existing_result) = self.query_result.as_mut() else {
       self.search();
       return;
     };
     let mut modified = false;
-    for (i, evt) in self
-      .events
-      .iter()
-      .enumerate()
-      .skip(existing_result.searched_len)
-    {
+    let start_search_index = existing_result.searched_id.saturating_sub(offset) as usize;
+    for evt in self.events.iter().skip(start_search_index) {
       if query.matches(&evt.borrow().event_line) {
-        existing_result.indices.insert(i, 0);
+        existing_result.indices.insert(evt.borrow().id);
         modified = true;
       }
     }
-    existing_result.searched_len = self.events.len();
+    existing_result.searched_id = self
+      .events
+      .iter()
+      .last()
+      .map(|r| r.borrow().id)
+      .unwrap_or(0);
     if modified {
       self.should_refresh_list_cache = true;
     }
@@ -414,8 +418,8 @@ impl EventList {
     if let Some(query_result) = self.query_result.as_mut() {
       query_result.next_result();
       let selection = query_result.selection();
-      self.scroll_to(selection);
       self.stop_follow();
+      self.scroll_to_id(selection);
     }
   }
 
@@ -423,8 +427,8 @@ impl EventList {
     if let Some(query_result) = self.query_result.as_mut() {
       query_result.prev_result();
       let selection = query_result.selection();
-      self.scroll_to(selection);
       self.stop_follow();
+      self.scroll_to_id(selection);
     }
   }
 }
@@ -455,7 +459,11 @@ impl EventList {
     };
     if self.events.len() >= self.max_events as usize {
       if let Some(e) = self.events.pop_front() {
-        self.event_map.remove(&e.borrow().id);
+        let id = e.borrow().id;
+        self.event_map.remove(&id);
+        if let Some(q) = &mut self.query_result {
+          q.indices.remove(&id);
+        }
       }
       self.should_refresh_list_cache = true;
     }
@@ -487,7 +495,9 @@ impl EventList {
       if let Some(e) = self.event_map.get(&i) {
         let mut e = e.borrow_mut();
         e.status = match update.update {
-        ProcessStateUpdate::Exit(ProcessExit::Code(0)) => Some(EventStatus::ProcessExitedNormally),
+          ProcessStateUpdate::Exit(ProcessExit::Code(0)) => {
+            Some(EventStatus::ProcessExitedNormally)
+          }
           ProcessStateUpdate::Exit(ProcessExit::Code(c)) => {
             Some(EventStatus::ProcessExitedAbnormally(c))
           }
@@ -543,6 +553,24 @@ impl EventList {
 
 /// Scrolling implementation for the EventList
 impl EventList {
+  fn id_index_offset(&self) -> u64 {
+    self
+      .events
+      .get(self.window.0)
+      .map(|e| e.borrow().id)
+      .unwrap_or(0)
+      .saturating_sub(self.window.0 as u64)
+  }
+
+  fn scroll_to_id(&mut self, id: Option<u64>) {
+    let Some(id) = id else {
+      return;
+    };
+    // self.window.0 should be <= its id
+
+    self.scroll_to(Some((id - self.id_index_offset()) as usize));
+  }
+
   /// Scroll to the given index and select it,
   /// Usually the item will be at the top of the window,
   /// but if there are not enough items or the item is already in current window,
