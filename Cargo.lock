@@ -2198,6 +2198,7 @@ dependencies = [
  "filedescriptor",
  "filterable-enum",
  "futures",
+ "hashbrown",
  "indexmap",
  "itertools 0.14.0",
  "kxxt-owo-colors",

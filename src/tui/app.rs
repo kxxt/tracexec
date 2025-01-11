@@ -392,8 +392,8 @@ impl App {
                   KeyCode::Char('c')
                     if ke.modifiers == KeyModifiers::NONE && self.clipboard.is_some() =>
                   {
-                    if let Some(selected) = self.event_list.selection() {
-                      action_tx.send(Action::ShowCopyDialog(selected.details.clone()))?;
+                    if let Some((details, _)) = self.event_list.selection() {
+                      action_tx.send(Action::ShowCopyDialog(details))?;
                     }
                   }
                   KeyCode::Char('l') if ke.modifiers == KeyModifiers::ALT => {
@@ -416,9 +416,9 @@ impl App {
                     action_tx.send(Action::SetActivePopup(ActivePopup::Help))?;
                   }
                   KeyCode::Char('v') if ke.modifiers == KeyModifiers::NONE => {
-                    if let Some(selected) = self.event_list.selection() {
+                    if let Some((event, status)) = self.event_list.selection() {
                       action_tx.send(Action::SetActivePopup(ActivePopup::ViewDetails(
-                        DetailsPopupState::new(selected, self.event_list.baseline.clone()),
+                        DetailsPopupState::new(event, status, self.event_list.baseline.clone()),
                       )))?;
                     }
                   }
@@ -449,7 +449,7 @@ impl App {
                   self.root_pid = Some(*pid);
                 }
                 debug_assert_eq!(e.id, self.event_list.len() as u64);
-                self.event_list.push(e.details);
+                self.event_list.push(e.id, e.details);
                 if self.event_list.is_following() {
                   action_tx.send(Action::ScrollToBottom)?;
                 }

@@ -204,7 +204,7 @@ async fn main() -> color_eyre::Result<()> {
       let tracer = Arc::new(tracer::Tracer::new(
         tracer_mode,
         tracing_args.clone(),
-        modifier_args.clone(),
+        modifier_args,
         ptrace_args,
         tracer_event_args,
         baseline.clone(),
@@ -269,7 +269,7 @@ async fn main() -> color_eyre::Result<()> {
           foreground: tracing_args.foreground(),
         },
         tracing_args.clone(),
-        modifier_args.clone(),
+        modifier_args,
         ptrace_args,
         TracerEventArgs::all(),
         baseline.clone(),
