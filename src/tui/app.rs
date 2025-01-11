@@ -448,7 +448,6 @@ impl App {
                   debug!("Received tracee spawn event: {pid}");
                   self.root_pid = Some(*pid);
                 }
-                debug_assert_eq!(e.id, self.event_list.len() as u64);
                 self.event_list.push(e.id, e.details);
                 if self.event_list.is_following() {
                   action_tx.send(Action::ScrollToBottom)?;
