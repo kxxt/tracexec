@@ -67,6 +67,8 @@ use super::{
   Tui,
 };
 
+pub const DEFAULT_MAX_EVENTS: u64 = 1_000_000;
+
 #[derive(
   Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum, Display, Deserialize, Serialize,
 )]
@@ -122,7 +124,12 @@ impl App {
       }
     }
     Ok(Self {
-      event_list: EventList::new(baseline, tui_args.follow, modifier_args.to_owned()),
+      event_list: EventList::new(
+        baseline,
+        tui_args.follow,
+        modifier_args.to_owned(),
+        tui_args.max_events.unwrap_or(DEFAULT_MAX_EVENTS),
+      ),
       printer_args: PrinterArgs::from_cli(tracing_args, modifier_args),
       split_percentage: if pty_master.is_some() { 50 } else { 100 },
       term: if let Some(pty_master) = pty_master {
