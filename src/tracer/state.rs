@@ -21,7 +21,7 @@ use crate::{
 use super::BreakPointHit;
 
 pub struct ProcessStateStore {
-  processes: HashMap<Pid, Vec<ProcessState>>,
+  processes: HashMap<Pid, Option<ProcessState>>,
 }
 
 #[derive(Debug)]
@@ -110,18 +110,18 @@ impl ProcessStateStore {
   }
 
   pub fn insert(&mut self, state: ProcessState) {
-    self.processes.entry(state.pid).or_default().push(state);
+    self.processes.entry(state.pid).or_default().replace(state);
   }
 
   pub fn get_current_mut(&mut self, pid: Pid) -> Option<&mut ProcessState> {
     // The last process in the vector is the current process
     // println!("Getting {pid}");
-    self.processes.get_mut(&pid)?.last_mut()
+    self.processes.get_mut(&pid)?.as_mut()
   }
 
   pub fn get_current(&self, pid: Pid) -> Option<&ProcessState> {
     // The last process in the vector is the current process
-    self.processes.get(&pid)?.last()
+    self.processes.get(&pid)?.as_ref()
   }
 }
 
