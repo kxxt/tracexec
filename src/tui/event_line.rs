@@ -54,6 +54,20 @@ impl Display for EventLine {
   }
 }
 
+impl EventLine {
+  pub fn toggle_cwd_mask(&mut self) {
+    if let Some(mask) = &mut self.cwd_mask {
+      mask.toggle(&mut self.line);
+    }
+  }
+
+  pub fn toggle_env_mask(&mut self) {
+    if let Some(mask) = &mut self.env_mask {
+      mask.toggle(&mut self.line);
+    }
+  }
+}
+
 // Original Copyright Notice for the following code:
 
 // Copyright (c) 2024 Pascal Kuthe

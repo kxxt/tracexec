@@ -25,7 +25,6 @@ use crate::{
 };
 
 use super::{
-  event_list::Event,
   help::{help_desc, help_key},
   theme::THEME,
 };
@@ -52,34 +51,30 @@ pub struct DetailsPopupState {
 }
 
 impl DetailsPopupState {
-  pub fn new(event: &Event, baseline: Arc<BaselineInfo>) -> Self {
+  pub fn new(
+    event: Arc<TracerEventDetails>,
+    status: Option<EventStatus>,
+    baseline: Arc<BaselineInfo>,
+  ) -> Self {
     let mut modifier_args = Default::default();
     let rt_modifier = Default::default();
     let mut details = vec![(
-      if matches!(event.details.as_ref(), TracerEventDetails::Exec(_)) {
+      if matches!(event.as_ref(), TracerEventDetails::Exec(_)) {
         " Cmdline "
       } else {
         " Details "
       },
-      event
-        .details
-        .to_tui_line(&baseline, true, &modifier_args, rt_modifier, None),
+      event.to_tui_line(&baseline, true, &modifier_args, rt_modifier, None),
     )];
-    let (env, fdinfo, available_tabs) = if let TracerEventDetails::Exec(exec) =
-      event.details.as_ref()
-    {
+    let (env, fdinfo, available_tabs) = if let TracerEventDetails::Exec(exec) = event.as_ref() {
       details.extend([
         (" (Experimental) Cmdline with stdio ", {
           modifier_args.stdio_in_cmdline = true;
-          event
-            .details
-            .to_tui_line(&baseline, true, &modifier_args, rt_modifier, None)
+          event.to_tui_line(&baseline, true, &modifier_args, rt_modifier, None)
         }),
         (" (Experimental) Cmdline with fds ", {
           modifier_args.fd_in_cmdline = true;
-          event
-            .details
-            .to_tui_line(&baseline, true, &modifier_args, rt_modifier, None)
+          event.to_tui_line(&baseline, true, &modifier_args, rt_modifier, None)
         }),
         (" Pid ", Line::from(exec.pid.to_string())),
         (" Syscall Result ", {
@@ -92,8 +87,8 @@ impl DetailsPopupState {
           }
         }),
         (" Process Status ", {
-          let formatted = event.status.unwrap().to_string();
-          match event.status.unwrap() {
+          let formatted = status.unwrap().to_string();
+          match status.unwrap() {
             EventStatus::ExecENOENT | EventStatus::ExecFailure => {
               formatted.set_style(THEME.status_exec_error).into()
             }

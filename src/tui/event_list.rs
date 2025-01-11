@@ -16,8 +16,9 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::{collections::VecDeque, sync::Arc};
+use std::{cell::RefCell, collections::VecDeque, rc::Rc, sync::Arc};
 
+use hashbrown::HashMap;
 use indexmap::IndexMap;
 use nix::sys::signal;
 use ratatui::{
@@ -53,6 +54,7 @@ pub struct Event {
   pub status: Option<EventStatus>,
   /// The string representation of the events, used for searching
   pub event_line: EventLine,
+  pub id: u64,
 }
 
 pub struct EventModifier {
@@ -68,7 +70,7 @@ impl Event {
     modifier: &EventModifier,
   ) -> EventLine {
     details.to_event_line(
-      &baseline,
+      baseline,
       false,
       &modifier.modifier_args,
       modifier.rt_modifier,
@@ -80,7 +82,8 @@ impl Event {
 
 pub struct EventList {
   state: ListState,
-  events: VecDeque<Event>,
+  events: VecDeque<Rc<RefCell<Event>>>,
+  event_map: HashMap<u64, Rc<RefCell<Event>>>,
   /// Current window of the event list, [start, end)
   window: (usize, usize),
   /// Cache of the list items in the view
@@ -113,6 +116,7 @@ impl EventList {
     Self {
       state: ListState::default(),
       events: VecDeque::new(),
+      event_map: HashMap::new(),
       window: (0, 0),
       nr_items_in_window: 0,
       horizontal_offset: 0,
@@ -157,10 +161,8 @@ impl EventList {
 
   pub fn toggle_env_display(&mut self) {
     self.rt_modifier.show_env = !self.rt_modifier.show_env;
-    for event in &mut self.events {
-      if let Some(mask) = &mut event.event_line.env_mask {
-        mask.toggle(&mut event.event_line.line);
-      }
+    for event in &self.events {
+      event.borrow_mut().event_line.toggle_env_mask();
     }
     self.should_refresh_list_cache = true;
     self.search();
@@ -169,9 +171,7 @@ impl EventList {
   pub fn toggle_cwd_display(&mut self) {
     self.rt_modifier.show_cwd = !self.rt_modifier.show_cwd;
     for event in &mut self.events {
-      if let Some(mask) = &mut event.event_line.cwd_mask {
-        mask.toggle(&mut event.event_line.line);
-      }
+      event.borrow_mut().event_line.toggle_cwd_mask();
     }
     self.should_refresh_list_cache = true;
     self.search();
@@ -183,8 +183,11 @@ impl EventList {
   }
 
   /// returns the selected item if there is any
-  pub fn selection(&self) -> Option<&Event> {
-    self.selection_index().map(|i| &self.events[i])
+  pub fn selection(&self) -> Option<(Arc<TracerEventDetails>, Option<EventStatus>)> {
+    self.selection_index().map(|i| {
+      let e = self.events[i].borrow();
+      (e.details.clone(), e.status)
+    })
   }
 
   /// Reset the window and force clear the list cache
@@ -252,12 +255,13 @@ impl Widget for &mut EventList {
         .skip(self.window.0)
         .take(self.window.1 - self.window.0)
         .map(|(i, event)| {
-          max_len = max_len.max(event.event_line.line.width());
+          max_len = max_len.max(event.borrow().event_line.line.width());
           let highlighted = self
             .query_result
             .as_ref()
             .is_some_and(|query_result| query_result.indices.contains_key(&i));
           let mut base = event
+            .borrow()
             .event_line
             .line
             .clone()
@@ -363,7 +367,7 @@ impl EventList {
     // Rust really makes the code more easier to reason about.
     let searched_len = self.events.len();
     for (i, evt) in self.events.iter().enumerate() {
-      if query.matches(&evt.event_line) {
+      if query.matches(&evt.borrow().event_line) {
         indices.insert(i, 0);
       }
     }
@@ -395,7 +399,7 @@ impl EventList {
       .enumerate()
       .skip(existing_result.searched_len)
     {
-      if query.matches(&evt.event_line) {
+      if query.matches(&evt.borrow().event_line) {
         existing_result.indices.insert(i, 0);
         modified = true;
       }
@@ -427,7 +431,10 @@ impl EventList {
 
 /// Event Management
 impl EventList {
-  pub fn push(&mut self, event: impl Into<Arc<TracerEventDetails>>) {
+  /// Push a new event into event list.
+  ///
+  /// Caller must guarantee that the id is strict monotonically increasing.
+  pub fn push(&mut self, id: u64, event: impl Into<Arc<TracerEventDetails>>) {
     let details = event.into();
     let status = match details.as_ref() {
       TracerEventDetails::NewChild { .. } => Some(EventStatus::ProcessRunning),
@@ -444,12 +451,20 @@ impl EventList {
       event_line: Event::to_event_line(&details, status, &self.baseline, &self.event_modifier()),
       details,
       status,
+      id,
     };
     if self.events.len() >= self.max_events as usize {
-      self.events.pop_front();
+      if let Some(e) = self.events.pop_front() {
+        self.event_map.remove(&e.borrow().id);
+      }
       self.should_refresh_list_cache = true;
     }
-    self.events.push_back(event);
+    let event = Rc::new(RefCell::new(event));
+    self.events.push_back(event.clone());
+    // # SAFETY
+    //
+    // The event ids are guaranteed to be unique
+    unsafe { self.event_map.insert_unique_unchecked(id, event) };
     self.incremental_search();
     if (self.window.0..self.window.1).contains(&(self.events.len() - 1)) {
       self.should_refresh_list_cache = true;
@@ -459,49 +474,50 @@ impl EventList {
   pub fn update(&mut self, update: ProcessStateUpdateEvent) {
     let modifier = self.event_modifier();
     for i in update.ids {
-      let i = i as usize;
-      if let TracerEventDetails::Exec(exec) = self.events[i].details.as_ref() {
-        if exec.result != 0 {
-          // Don't update the status for failed exec events
-          continue;
+      if self.event_map.get(&i).is_some_and(|e| {
+        if let TracerEventDetails::Exec(exec) = e.borrow().details.as_ref() {
+          exec.result != 0
+        } else {
+          false
         }
+      }) {
+        // Don't update the status for failed exec events
+        continue;
       }
-      self.events[i].status = match update.update {
+      if let Some(e) = self.event_map.get(&i) {
+        let mut e = e.borrow_mut();
+        e.status = match update.update {
         ProcessStateUpdate::Exit(ProcessExit::Code(0)) => Some(EventStatus::ProcessExitedNormally),
-        ProcessStateUpdate::Exit(ProcessExit::Code(c)) => {
-          Some(EventStatus::ProcessExitedAbnormally(c))
-        }
-        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGTERM))) => {
-          Some(EventStatus::ProcessTerminated)
-        }
-        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGKILL))) => {
-          Some(EventStatus::ProcessKilled)
-        }
-        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGINT))) => {
-          Some(EventStatus::ProcessInterrupted)
-        }
-        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGSEGV))) => {
-          Some(EventStatus::ProcessSegfault)
-        }
-        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGABRT))) => {
-          Some(EventStatus::ProcessAborted)
-        }
-        ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGILL))) => {
-          Some(EventStatus::ProcessIllegalInstruction)
-        }
-        ProcessStateUpdate::Exit(ProcessExit::Signal(s)) => Some(EventStatus::ProcessSignaled(s)),
-        ProcessStateUpdate::BreakPointHit { .. } => Some(EventStatus::ProcessPaused),
-        ProcessStateUpdate::Resumed => Some(EventStatus::ProcessRunning),
-        ProcessStateUpdate::Detached { .. } => Some(EventStatus::ProcessDetached),
-        _ => unimplemented!(),
-      };
-      self.events[i].event_line = Event::to_event_line(
-        &self.events[i].details,
-        self.events[i].status,
-        &self.baseline,
-        &modifier,
-      );
-      if self.window.0 <= i && i < self.window.1 {
+          ProcessStateUpdate::Exit(ProcessExit::Code(c)) => {
+            Some(EventStatus::ProcessExitedAbnormally(c))
+          }
+          ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGTERM))) => {
+            Some(EventStatus::ProcessTerminated)
+          }
+          ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGKILL))) => {
+            Some(EventStatus::ProcessKilled)
+          }
+          ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGINT))) => {
+            Some(EventStatus::ProcessInterrupted)
+          }
+          ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGSEGV))) => {
+            Some(EventStatus::ProcessSegfault)
+          }
+          ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGABRT))) => {
+            Some(EventStatus::ProcessAborted)
+          }
+          ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGILL))) => {
+            Some(EventStatus::ProcessIllegalInstruction)
+          }
+          ProcessStateUpdate::Exit(ProcessExit::Signal(s)) => Some(EventStatus::ProcessSignaled(s)),
+          ProcessStateUpdate::BreakPointHit { .. } => Some(EventStatus::ProcessPaused),
+          ProcessStateUpdate::Resumed => Some(EventStatus::ProcessRunning),
+          ProcessStateUpdate::Detached { .. } => Some(EventStatus::ProcessDetached),
+          _ => unimplemented!(),
+        };
+        e.event_line = Event::to_event_line(&e.details, e.status, &self.baseline, &modifier);
+      }
+      if self.window.0 <= i as usize && (i as usize) < self.window.1 {
         self.should_refresh_list_cache = true;
       }
     }
@@ -511,6 +527,7 @@ impl EventList {
     // TODO: only update spans that are affected by the change
     let modifier = self.event_modifier();
     for e in self.events.iter_mut() {
+      let mut e = e.borrow_mut();
       e.event_line = Event::to_event_line(&e.details, e.status, &self.baseline, &modifier);
     }
     self.should_refresh_list_cache = true;
