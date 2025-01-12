@@ -156,6 +156,9 @@ pub fn help<'a>(area: Rect) -> SizedParagraph<'a> {
     ", ".into(),
     help_key(<&str>::from(EventStatus::ProcessSignaled(nix::sys::signal::Signal::SIGURG.into()))),
     help_desc("Signaled"),
+    ", ".into(),
+    help_key(<&str>::from(EventStatus::InternalError)),
+    help_desc("An internal error occurred"),
   ]);
 
   let line5 = Line::default()

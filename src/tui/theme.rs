@@ -88,6 +88,7 @@ pub struct Theme {
   pub status_process_aborted: Style,
   pub status_process_sigill: Style,
   pub status_process_signaled: Style,
+  pub status_internal_failure: Style,
   pub status_indicator_process_running: &'static str,
   pub status_indicator_process_paused: &'static str,
   pub status_indicator_process_detached: &'static str,
@@ -102,6 +103,7 @@ pub struct Theme {
   pub status_indicator_process_aborted: &'static str,
   pub status_indicator_process_sigill: &'static str,
   pub status_indicator_process_signaled: &'static str,
+  pub status_indicator_internal_failure: &'static str,
   // Breakpoint Manager
   pub breakpoint_title_selected: Style,
   pub breakpoint_title: Style,
@@ -211,6 +213,7 @@ impl Default for Theme {
       status_indicator_process_aborted: "😱",
       status_indicator_process_sigill: "👿",
       status_indicator_process_signaled: "💀",
+      status_indicator_internal_failure: "⛔",
       status_process_running: Style::new().light_green().bold(),
       status_process_paused: Style::new().yellow().bold(),
       status_process_detached: Style::new().light_magenta().bold(),
@@ -224,6 +227,7 @@ impl Default for Theme {
       status_process_aborted: Style::new().light_red().bold().italic(),
       status_process_sigill: Style::new().light_red().bold().italic(),
       status_process_signaled: Style::new().light_red().bold().italic(),
+      status_internal_failure: Style::new().light_red().bold().italic(),
       // -- Breakpoint Manager --
       breakpoint_title_selected: Style::default().white().bold().on_magenta(),
       breakpoint_title: Style::default().white().bold(),

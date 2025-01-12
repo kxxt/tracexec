@@ -523,7 +523,9 @@ impl EventList {
           ProcessStateUpdate::BreakPointHit { .. } => Some(EventStatus::ProcessPaused),
           ProcessStateUpdate::Resumed => Some(EventStatus::ProcessRunning),
           ProcessStateUpdate::Detached { .. } => Some(EventStatus::ProcessDetached),
-          _ => unimplemented!(),
+          ProcessStateUpdate::ResumeError { .. } | ProcessStateUpdate::DetachError { .. } => {
+            Some(EventStatus::InternalError)
+          }
         };
         e.event_line = Event::to_event_line(&e.details, e.status, &self.baseline, &modifier);
       }

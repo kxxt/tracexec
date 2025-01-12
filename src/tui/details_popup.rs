@@ -120,6 +120,7 @@ impl DetailsPopupState {
             EventStatus::ProcessDetached => {
               formatted.set_style(THEME.status_process_detached).into()
             }
+            EventStatus::InternalError => formatted.set_style(THEME.status_internal_failure).into(),
           }
         }),
         (" Cwd ", Span::from(exec.cwd.as_ref().to_owned()).into()),

@@ -876,6 +876,8 @@ pub enum EventStatus {
   ProcessAborted,
   ProcessIllegalInstruction,
   ProcessSignaled(Signal),
+  // internal failure
+  InternalError,
 }
 
 impl From<EventStatus> for &'static str {
@@ -895,6 +897,7 @@ impl From<EventStatus> for &'static str {
       EventStatus::ProcessSignaled(_) => THEME.status_indicator_process_signaled,
       EventStatus::ProcessPaused => THEME.status_indicator_process_paused,
       EventStatus::ProcessDetached => THEME.status_indicator_process_detached,
+      EventStatus::InternalError => THEME.status_indicator_internal_failure,
     }
   }
 }
@@ -921,6 +924,7 @@ impl Display for EventStatus {
       ProcessSignaled(signal) => write!(f, "Signaled({})", signal)?,
       ProcessPaused => write!(f, "Paused due to breakpoint hit")?,
       ProcessDetached => write!(f, "Detached from tracexec")?,
+      InternalError => write!(f, "An internal error occurred in tracexec")?,
     }
     Ok(())
   }
