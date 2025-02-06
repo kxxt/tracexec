@@ -94,6 +94,9 @@ tracing-test = "0.2.4"
 [build-dependencies]
 libbpf-cargo = { version = "0.24.6", default-features = false }
 
+[patch.crates-io]
+vsprintf = { git = "https://github.com/kxxt/vsprintf", branch = "dylib" }
+
 
 [features]
 default = ["recommended", "vendored-libbpf"]
