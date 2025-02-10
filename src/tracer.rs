@@ -246,69 +246,64 @@ impl Tracer {
     let use_pseudo_term = slave_pty.is_some();
     let user = self.user.clone();
 
-    let root_child = pty::spawn_command(
-      slave_pty,
-      cmd,
-      |_| Ok(()),
-      move |program_path| {
-        #[cfg(feature = "seccomp-bpf")]
-        if seccomp_bpf == SeccompBpf::On {
-          seccomp::load_seccomp_filters()?;
-        }
+    let root_child = pty::spawn_command(slave_pty, cmd, move |program_path| {
+      #[cfg(feature = "seccomp-bpf")]
+      if seccomp_bpf == SeccompBpf::On {
+        seccomp::load_seccomp_filters()?;
+      }
 
-        if !with_tty {
-          unsafe {
-            let dev_null = std::fs::File::open("/dev/null")?;
-            dup2(dev_null.as_raw_fd(), 0);
-            dup2(dev_null.as_raw_fd(), 1);
-            dup2(dev_null.as_raw_fd(), 2);
-          }
+      if !with_tty {
+        unsafe {
+          let dev_null = std::fs::File::open("/dev/null")?;
+          dup2(dev_null.as_raw_fd(), 0);
+          dup2(dev_null.as_raw_fd(), 1);
+          dup2(dev_null.as_raw_fd(), 2);
         }
+      }
 
-        if use_pseudo_term {
-          setsid()?;
-          if unsafe { libc::ioctl(0, libc::TIOCSCTTY as _, 0) } == -1 {
-            Err(io::Error::last_os_error())?;
-          }
+      if use_pseudo_term {
+        setsid()?;
+        if unsafe { libc::ioctl(0, libc::TIOCSCTTY as _, 0) } == -1 {
+          Err(io::Error::last_os_error())?;
+        }
+      } else {
+        let me = getpid();
+        setpgid(me, me)?;
+      }
+
+      // traceme()?;
+      // trace!("traceme setup!");
+
+      if let Some(user) = &user {
+        // First, read set(u|g)id info from stat
+        let file = std::fs::File::open(program_path)?;
+        let stat = fstat(file.as_raw_fd())?;
+        drop(file);
+        // setuid binary
+        let euid = if stat.st_mode & S_ISUID > 0 {
+          Uid::from_raw(stat.st_uid)
         } else {
-          let me = getpid();
-          setpgid(me, me)?;
-        }
+          user.uid
+        };
+        // setgid binary
+        let egid = if stat.st_mode & S_ISGID > 0 {
+          Gid::from_raw(stat.st_gid)
+        } else {
+          user.gid
+        };
+        initgroups(&CString::new(user.name.as_str())?[..], user.gid)?;
+        setresgid(user.gid, egid, Gid::from_raw(u32::MAX))?;
+        setresuid(user.uid, euid, Uid::from_raw(u32::MAX))?;
+      }
 
-        // traceme()?;
-        // trace!("traceme setup!");
+      if 0 != unsafe { raise(SIGSTOP) } {
+        error!("raise failed!");
+        exit(-1);
+      }
+      trace!("raise success!");
 
-        if let Some(user) = &user {
-          // First, read set(u|g)id info from stat
-          let file = std::fs::File::open(program_path)?;
-          let stat = fstat(file.as_raw_fd())?;
-          drop(file);
-          // setuid binary
-          let euid = if stat.st_mode & S_ISUID > 0 {
-            Uid::from_raw(stat.st_uid)
-          } else {
-            user.uid
-          };
-          // setgid binary
-          let egid = if stat.st_mode & S_ISGID > 0 {
-            Gid::from_raw(stat.st_gid)
-          } else {
-            user.gid
-          };
-          initgroups(&CString::new(user.name.as_str())?[..], user.gid)?;
-          setresgid(user.gid, egid, Gid::from_raw(u32::MAX))?;
-          setresuid(user.uid, euid, Uid::from_raw(u32::MAX))?;
-        }
-
-        if 0 != unsafe { raise(SIGSTOP) } {
-          error!("raise failed!");
-          exit(-1);
-        }
-        trace!("raise success!");
-
-        Ok(())
-      },
-    )?
+      Ok(())
+    })?
     .process_id();
     filterable_event!(TraceeSpawn(root_child)).send_if_match(&self.msg_tx, self.filter)?;
     let ptrace_opts = {
