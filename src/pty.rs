@@ -529,30 +529,27 @@ impl PtyFd {
   fn spawn_command(
     &self,
     command: CommandBuilder,
-    command_hook: impl FnOnce(&mut Command) -> color_eyre::Result<()> + Send + Sync + 'static,
     pre_exec: impl Fn(&OsStr) -> color_eyre::Result<()> + Send + Sync + 'static,
   ) -> color_eyre::Result<std::process::Child> {
-    spawn_command_from_pty_fd(Some(self), command, command_hook, pre_exec)
+    spawn_command_from_pty_fd(Some(self), command, pre_exec)
   }
 }
 
 pub fn spawn_command(
   pts: Option<&UnixSlavePty>,
   command: CommandBuilder,
-  command_hook: impl FnOnce(&mut Command) -> color_eyre::Result<()> + Send + Sync + 'static,
   pre_exec: impl Fn(&OsStr) -> color_eyre::Result<()> + Send + Sync + 'static,
 ) -> color_eyre::Result<std::process::Child> {
   if let Some(pts) = pts {
-    pts.spawn_command(command, command_hook, pre_exec)
+    pts.spawn_command(command, pre_exec)
   } else {
-    spawn_command_from_pty_fd(None, command, command_hook, pre_exec)
+    spawn_command_from_pty_fd(None, command, pre_exec)
   }
 }
 
 fn spawn_command_from_pty_fd(
   pty: Option<&PtyFd>,
   command: CommandBuilder,
-  command_hook: impl FnOnce(&mut Command) -> color_eyre::Result<()> + Send + Sync + 'static,
   pre_exec: impl Fn(&OsStr) -> color_eyre::Result<()> + Send + Sync + 'static,
 ) -> color_eyre::Result<std::process::Child> {
   let configured_umask = command.umask;
@@ -565,8 +562,6 @@ fn spawn_command_from_pty_fd(
       .stdout(pty.as_stdio()?)
       .stderr(pty.as_stdio()?);
   }
-
-  command_hook(&mut cmd)?;
 
   unsafe {
     let program_path = cmd.get_program().to_owned();
@@ -632,10 +627,9 @@ impl UnixSlavePty {
   pub fn spawn_command(
     &self,
     command: CommandBuilder,
-    command_hook: impl FnOnce(&mut Command) -> color_eyre::Result<()> + Send + Sync + 'static,
     pre_exec: impl Fn(&OsStr) -> color_eyre::Result<()> + Send + Sync + 'static,
   ) -> color_eyre::Result<std::process::Child> {
-    self.fd.spawn_command(command, command_hook, pre_exec)
+    self.fd.spawn_command(command, pre_exec)
   }
 }
 
