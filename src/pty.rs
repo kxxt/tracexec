@@ -529,7 +529,7 @@ impl PtyFd {
   fn spawn_command(
     &self,
     command: CommandBuilder,
-    pre_exec: impl Fn(&Path) -> color_eyre::Result<()> + Send + Sync + 'static,
+    pre_exec: impl FnOnce(&Path) -> color_eyre::Result<()> + Send + Sync + 'static,
   ) -> color_eyre::Result<Pid> {
     spawn_command_from_pty_fd(Some(self), command, pre_exec)
   }
@@ -538,7 +538,7 @@ impl PtyFd {
 pub fn spawn_command(
   pts: Option<&UnixSlavePty>,
   command: CommandBuilder,
-  pre_exec: impl Fn(&Path) -> color_eyre::Result<()> + Send + Sync + 'static,
+  pre_exec: impl FnOnce(&Path) -> color_eyre::Result<()> + Send + Sync + 'static,
 ) -> color_eyre::Result<Pid> {
   if let Some(pts) = pts {
     pts.spawn_command(command, pre_exec)
@@ -550,7 +550,7 @@ pub fn spawn_command(
 fn spawn_command_from_pty_fd(
   pty: Option<&PtyFd>,
   command: CommandBuilder,
-  pre_exec: impl Fn(&Path) -> color_eyre::Result<()> + Send + Sync + 'static,
+  pre_exec: impl FnOnce(&Path) -> color_eyre::Result<()> + Send + Sync + 'static,
 ) -> color_eyre::Result<Pid> {
   let configured_umask = command.umask;
 
@@ -622,7 +622,7 @@ impl UnixSlavePty {
   pub fn spawn_command(
     &self,
     command: CommandBuilder,
-    pre_exec: impl Fn(&Path) -> color_eyre::Result<()> + Send + Sync + 'static,
+    pre_exec: impl FnOnce(&Path) -> color_eyre::Result<()> + Send + Sync + 'static,
   ) -> color_eyre::Result<Pid> {
     self.fd.spawn_command(command, pre_exec)
   }
