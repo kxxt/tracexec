@@ -28,16 +28,16 @@
 use color_eyre::eyre::{bail, Error};
 use filedescriptor::FileDescriptor;
 use nix::libc::{self, pid_t, winsize};
-use nix::unistd::Pid;
+use nix::unistd::{dup2, execv, fork, Pid};
 use std::cell::RefCell;
-use std::ffi::OsStr;
+use std::ffi::{CStr, CString, OsStr};
 
 use std::fs::File;
 use std::io::{Read, Write};
-use std::os::unix::ffi::OsStrExt;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::process::CommandExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{io, mem, ptr};
 
@@ -529,8 +529,8 @@ impl PtyFd {
   fn spawn_command(
     &self,
     command: CommandBuilder,
-    pre_exec: impl Fn(&OsStr) -> color_eyre::Result<()> + Send + Sync + 'static,
-  ) -> color_eyre::Result<std::process::Child> {
+    pre_exec: impl Fn(&Path) -> color_eyre::Result<()> + Send + Sync + 'static,
+  ) -> color_eyre::Result<Pid> {
     spawn_command_from_pty_fd(Some(self), command, pre_exec)
   }
 }
@@ -538,8 +538,8 @@ impl PtyFd {
 pub fn spawn_command(
   pts: Option<&UnixSlavePty>,
   command: CommandBuilder,
-  pre_exec: impl Fn(&OsStr) -> color_eyre::Result<()> + Send + Sync + 'static,
-) -> color_eyre::Result<std::process::Child> {
+  pre_exec: impl Fn(&Path) -> color_eyre::Result<()> + Send + Sync + 'static,
+) -> color_eyre::Result<Pid> {
   if let Some(pts) = pts {
     pts.spawn_command(command, pre_exec)
   } else {
@@ -550,22 +550,21 @@ pub fn spawn_command(
 fn spawn_command_from_pty_fd(
   pty: Option<&PtyFd>,
   command: CommandBuilder,
-  pre_exec: impl Fn(&OsStr) -> color_eyre::Result<()> + Send + Sync + 'static,
-) -> color_eyre::Result<std::process::Child> {
+  pre_exec: impl Fn(&Path) -> color_eyre::Result<()> + Send + Sync + 'static,
+) -> color_eyre::Result<Pid> {
   let configured_umask = command.umask;
 
-  let mut cmd = command.as_command()?;
+  let mut cmd = command.build()?;
 
-  if let Some(pty) = pty {
-    cmd
-      .stdin(pty.as_stdio()?)
-      .stdout(pty.as_stdio()?)
-      .stderr(pty.as_stdio()?);
-  }
+  match unsafe { fork()? } {
+    nix::unistd::ForkResult::Parent { child } => Ok(child),
+    nix::unistd::ForkResult::Child => {
+      if let Some(pty) = pty {
+        dup2(pty.as_raw_fd(), 0).unwrap();
+        dup2(pty.as_raw_fd(), 1).unwrap();
+        dup2(pty.as_raw_fd(), 2).unwrap();
+      }
 
-  unsafe {
-    let program_path = cmd.get_program().to_owned();
-    cmd.pre_exec(move || {
       // Clean up a few things before we exec the program
       // Clear out any potentially problematic signal
       // dispositions that we might have inherited
@@ -577,36 +576,32 @@ fn spawn_command_from_pty_fd(
         libc::SIGTERM,
         libc::SIGALRM,
       ] {
-        libc::signal(*signo, libc::SIG_DFL);
+        unsafe {
+          _ = libc::signal(*signo, libc::SIG_DFL);
+        }
       }
 
-      let empty_set: libc::sigset_t = std::mem::zeroed();
-      libc::sigprocmask(libc::SIG_SETMASK, &empty_set, std::ptr::null_mut());
+      unsafe {
+        let empty_set: libc::sigset_t = std::mem::zeroed();
+        _ = libc::sigprocmask(libc::SIG_SETMASK, &empty_set, std::ptr::null_mut());
+      }
 
       close_random_fds();
 
       if let Some(mask) = configured_umask {
-        libc::umask(mask);
+        _ = unsafe { libc::umask(mask) };
       }
 
-      pre_exec(program_path.as_os_str()).unwrap();
+      pre_exec(&cmd.program).unwrap();
 
-      Ok(())
-    })
-  };
-
-  let mut child = cmd.spawn()?;
-
-  // Ensure that we close out the slave fds that Child retains;
-  // they are not what we need (we need the master side to reference
-  // them) and won't work in the usual way anyway.
-  // In practice these are None, but it seems best to be move them
-  // out in case the behavior of Command changes in the future.
-  child.stdin.take();
-  child.stdout.take();
-  child.stderr.take();
-
-  Ok(child)
+      execv(
+        &CString::new(cmd.program.into_os_string().into_vec()).unwrap(),
+        &cmd.args,
+      )
+      .unwrap();
+      unreachable!()
+    }
+  }
 }
 
 /// Represents the master end of a pty.
@@ -627,8 +622,8 @@ impl UnixSlavePty {
   pub fn spawn_command(
     &self,
     command: CommandBuilder,
-    pre_exec: impl Fn(&OsStr) -> color_eyre::Result<()> + Send + Sync + 'static,
-  ) -> color_eyre::Result<std::process::Child> {
+    pre_exec: impl Fn(&Path) -> color_eyre::Result<()> + Send + Sync + 'static,
+  ) -> color_eyre::Result<Pid> {
     self.fd.spawn_command(command, pre_exec)
   }
 }

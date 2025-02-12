@@ -8,7 +8,7 @@ use std::{
   mem::MaybeUninit,
   os::{
     fd::{AsRawFd, RawFd},
-    unix::{fs::MetadataExt, process::CommandExt},
+    unix::{ffi::OsStringExt, fs::MetadataExt},
   },
   process,
   sync::{
@@ -37,8 +37,8 @@ use nix::{
     wait::{waitpid, WaitPidFlag, WaitStatus},
   },
   unistd::{
-    fork, getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, ForkResult, Gid,
-    Pid, Uid, User,
+    execv, fork, getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, ForkResult,
+    Gid, Pid, Uid, User,
   },
 };
 use process_tracker::ProcessTracker;
@@ -440,7 +440,7 @@ impl EbpfTracer {
       let mut cmd = CommandBuilder::new(&self.cmd[0]);
       cmd.args(self.cmd.iter().skip(1));
       cmd.cwd(std::env::current_dir()?);
-      let mut cmd = cmd.as_command()?;
+      let cmd = cmd.build()?;
       match unsafe { fork()? } {
         ForkResult::Parent { child } => {
           self
@@ -530,7 +530,12 @@ impl EbpfTracer {
 
           pty::close_random_fds();
 
-          return Err(cmd.exec().into());
+          execv(
+            &CString::new(cmd.program.into_os_string().into_vec()).unwrap(),
+            &cmd.args,
+          )
+          .unwrap();
+          unreachable!();
         }
       }
     } else {
