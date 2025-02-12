@@ -29,7 +29,9 @@ use color_eyre::eyre::{bail, Context};
 use nix::libc;
 use std::collections::BTreeMap;
 use std::env;
-use std::ffi::{OsStr, OsString};
+use std::ffi::{CString, OsStr, OsString};
+use std::os::unix::ffi::OsStringExt;
+use std::path::{Path, PathBuf};
 use tracing::warn;
 
 fn get_shell() -> String {
@@ -69,7 +71,7 @@ fn get_shell() -> String {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommandBuilder {
   args: Vec<OsString>,
-  cwd: Option<OsString>,
+  cwd: Option<PathBuf>,
   pub(crate) umask: Option<libc::mode_t>,
   controlling_tty: bool,
 }
@@ -156,7 +158,7 @@ impl CommandBuilder {
 
   pub fn cwd<D>(&mut self, dir: D)
   where
-    D: AsRef<OsStr>,
+    D: AsRef<Path>,
   {
     self.cwd = Some(dir.as_ref().to_owned());
   }
@@ -165,8 +167,8 @@ impl CommandBuilder {
     self.cwd.take();
   }
 
-  pub fn get_cwd(&self) -> Option<&OsString> {
-    self.cwd.as_ref()
+  pub fn get_cwd(&self) -> Option<&Path> {
+    self.cwd.as_deref()
   }
 }
 
@@ -179,23 +181,22 @@ impl CommandBuilder {
     env::var_os("PATH")
   }
 
-  fn search_path(&self, exe: &OsStr, cwd: &OsStr) -> color_eyre::Result<OsString> {
+  fn search_path(&self, exe: &OsStr, cwd: &Path) -> color_eyre::Result<PathBuf> {
     use nix::unistd::{access, AccessFlags};
     use std::path::Path;
 
     let exe_path: &Path = exe.as_ref();
     if exe_path.is_relative() {
-      let cwd: &Path = cwd.as_ref();
       let abs_path = cwd.join(exe_path);
       if abs_path.exists() {
-        return Ok(abs_path.into_os_string());
+        return Ok(abs_path);
       }
 
       if let Some(path) = self.resolve_path() {
         for path in std::env::split_paths(&path) {
           let candidate = path.join(exe);
           if access(&candidate, AccessFlags::X_OK).is_ok() {
-            return Ok(candidate.into_os_string());
+            return Ok(candidate);
           }
         }
       }
@@ -213,27 +214,36 @@ impl CommandBuilder {
         );
       }
 
-      Ok(exe.to_owned())
+      Ok(PathBuf::from(exe))
     }
   }
 
-  /// Convert the CommandBuilder to a `std::process::Command` instance.
-  pub(crate) fn as_command(&self) -> color_eyre::Result<std::process::Command> {
+  /// Convert the CommandBuilder to a `Command` instance.
+  pub(crate) fn build(self) -> color_eyre::Result<Command> {
     use std::os::unix::process::CommandExt;
     let cwd = env::current_dir()?;
     let dir = if let Some(dir) = self.cwd.as_deref() {
-      dir
+      dir.to_owned()
     } else {
-      cwd.as_os_str()
+      cwd
     };
-    let resolved = self.search_path(&self.args[0], dir)?;
+    let resolved = self.search_path(&self.args[0], &dir)?;
     tracing::trace!("resolved path to {:?}", resolved);
-    let mut cmd = std::process::Command::new(&resolved);
-    cmd.arg0(&self.args[0]);
-    cmd.args(&self.args[1..]);
 
-    cmd.current_dir(dir);
-
-    Ok(cmd)
+    Ok(Command {
+      program: resolved,
+      args: self
+        .args
+        .into_iter()
+        .map(|a| CString::new(a.into_vec()))
+        .collect::<Result<_, _>>()?,
+      cwd: dir,
+    })
   }
+}
+
+pub struct Command {
+  pub program: PathBuf,
+  pub args: Vec<CString>,
+  pub cwd: PathBuf,
 }

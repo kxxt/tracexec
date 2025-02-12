@@ -49,7 +49,7 @@ use crate::{
     PtraceSyscallLikeStop, PtraceSyscallStopGuard, PtraceWaitPidEvent, RecursivePtraceEngine,
     Signal,
   },
-  pty::{self, Child, UnixSlavePty},
+  pty::{self, UnixSlavePty},
   tracer::{inspect::read_env, state::ProcessExit},
 };
 
@@ -303,8 +303,7 @@ impl Tracer {
       trace!("raise success!");
 
       Ok(())
-    })?
-    .process_id();
+    })?;
     filterable_event!(TraceeSpawn(root_child)).send_if_match(&self.msg_tx, self.filter)?;
     let ptrace_opts = {
       use nix::sys::ptrace::Options;
