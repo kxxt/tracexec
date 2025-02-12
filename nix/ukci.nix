@@ -21,32 +21,39 @@ localFlake:
           sources = [
             {
               name = "6.1lts";
-              tag = "6.1.123";
+              tag = "6.1.128";
               source = "mirror";
               test_exe = "tracexec_no_rcu_kfuncs";
-              sha256 = "sha256-M6es158EuHmcQohFctwu23WxzVhLHTLUaNHbEQJOs7w=";
+              sha256 = "sha256-h01n0xgVcOaaxrM4U/BEjwX8kNTPPkuqrcSpzt58UPM=";
             }
             {
               name = "6.6lts";
-              tag = "6.6.70";
+              tag = "6.6.77";
               source = "mirror";
               test_exe = "tracexec";
-              sha256 = "sha256-hNI+4H+yb+u8ttEpW6Fe/cZ6w4K0E3ssiFMUbBD9L5c=";
+              sha256 = "sha256-CBCJ388SWu9nqpQOu5lf94m2RhKfXUsjZeHVaFspqE4=";
             }
             {
-              name = "6.12";
-              tag = "6.12.8";
+              name = "6.12lts";
+              tag = "6.12.13";
               source = "mirror";
               test_exe = "tracexec";
-              sha256 = "sha256-IpHaBlygS3Fcie5QNirsPwIadBS8lj8bVnNmgsgSKXk=";
+              sha256 = "sha256-8+ve6p5VW0z6zkTilnAFb0AkVB5r0iL7z3dsgYl0+7o=";
             }
             {
-              name = "6.13rc";
-              tag = "v6.13-rc5";
-              version = "6.13.0-rc5";
+              name = "6.13.2";
+              tag = "6.13.2";
+              source = "mirror";
+              test_exe = "tracexec";
+              sha256 = "sha256-zfYpgZBru+lwGutzxPn8yAegmEbCiHMWY9YnF+0a5wU=";
+            }
+            {
+              name = "6.14";
+              tag = "v6.14-rc2";
+              version = "6.14.0-rc2";
               source = "linus";
               test_exe = "tracexec";
-              sha256 = "sha256-I55oKtG547JdR4bqDOqNmRn0WCtogOIE2rLX29rgGHo=";
+              sha256 = "sha256-/wRx3Hlfo810/F8K2AlwEEujdoQ7nzF4ZeI6MbbM9V8=";
             }
           ];
           nixpkgs = localFlake.nixpkgs;
