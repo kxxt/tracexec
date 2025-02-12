@@ -1,10 +1,10 @@
 use std::{
   collections::{BTreeMap, HashMap},
   ffi::CString,
-  io::{self, stdin},
+  fs::File,
+  io::{self, stdin, Read, Write},
   ops::ControlFlow,
-  os::fd::AsRawFd,
-  process::exit,
+  os::fd::{AsRawFd, FromRawFd, OwnedFd},
   sync::{atomic::AtomicU32, Arc, RwLock},
   time::Duration,
 };
@@ -17,9 +17,14 @@ use inspect::{read_arcstr, read_output_msg_array};
 use nix::{
   errno::Errno,
   libc::{
-    self, dup2, pthread_self, pthread_setname_np, raise, AT_EMPTY_PATH, SIGSTOP, S_ISGID, S_ISUID,
+    self, c_int, dup2, pthread_self, pthread_setname_np, AT_EMPTY_PATH,
+    S_ISGID, S_ISUID,
   },
-  sys::{ptrace::AddressType, stat::fstat, wait::WaitPidFlag},
+  sys::{
+    ptrace::AddressType,
+    stat::fstat,
+    wait::WaitPidFlag,
+  },
   unistd::{
     getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, Gid, Pid, Uid, User,
   },
@@ -246,6 +251,14 @@ impl Tracer {
     let use_pseudo_term = slave_pty.is_some();
     let user = self.user.clone();
 
+    let mut fds: [c_int; 2] = [0; 2];
+    let ret = unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) };
+    if ret != 0 {
+      return Err(Errno::last().into());
+    }
+    let tracee_fd = unsafe { OwnedFd::from_raw_fd(fds[0]) };
+    let mut tracer_fd = unsafe { File::from_raw_fd(fds[1]) };
+    let tracee_raw_fd = tracee_fd.as_raw_fd();
     let root_child = pty::spawn_command(slave_pty, cmd, move |program_path| {
       #[cfg(feature = "seccomp-bpf")]
       if seccomp_bpf == SeccompBpf::On {
@@ -296,21 +309,22 @@ impl Tracer {
         setresuid(user.uid, euid, Uid::from_raw(u32::MAX))?;
       }
 
-      if 0 != unsafe { raise(SIGSTOP) } {
-        error!("raise failed!");
-        exit(-1);
-      }
-      trace!("raise success!");
+      trace!("Waiting for tracer");
+      let mut tracee_fd = unsafe { File::from_raw_fd(tracee_raw_fd) };
+      let mut message = [0; 2];
+      tracee_fd.read_exact(&mut message)?;
+      trace!("tracee continue to exec");
 
       Ok(())
     })?;
     filterable_event!(TraceeSpawn(root_child)).send_if_match(&self.msg_tx, self.filter)?;
+    drop(tracee_fd);
     let ptrace_opts = {
       use nix::sys::ptrace::Options;
       Options::PTRACE_O_TRACEEXEC | Options::PTRACE_O_EXITKILL | Options::PTRACE_O_TRACESYSGOOD
     };
     let mut engine = RecursivePtraceEngine::new(self.seccomp_bpf());
-    let guard = engine.seize_children_recursive(root_child, ptrace_opts)?;
+    engine.seize_children_recursive(root_child, ptrace_opts)?;
     let mut root_child_state = ProcessState::new(root_child, 0)?;
     root_child_state.ppid = Some(getpid());
     {
@@ -326,9 +340,13 @@ impl Tracer {
         r => r?,
       }
     }
-    // restart child
-    trace!("resuming child");
-    guard.seccomp_aware_cont_syscall(true)?;
+
+    // Resume tracee
+    // Write a message of exactly two bytes to wake up tracee to proceed to exec
+    tracer_fd.write_all(b"go")?;
+    drop(tracer_fd);
+    trace!("Wrote message to tracee");
+
     let mut collect_interval = tokio::time::interval(self.delay);
     let mut pending_guards = HashMap::new();
 

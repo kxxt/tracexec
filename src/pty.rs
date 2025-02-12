@@ -586,13 +586,13 @@ fn spawn_command_from_pty_fd(
         _ = libc::sigprocmask(libc::SIG_SETMASK, &empty_set, std::ptr::null_mut());
       }
 
+      pre_exec(&cmd.program).unwrap();
+
       close_random_fds();
 
       if let Some(mask) = configured_umask {
         _ = unsafe { libc::umask(mask) };
       }
-
-      pre_exec(&cmd.program).unwrap();
 
       execv(
         &CString::new(cmd.program.into_os_string().into_vec()).unwrap(),
