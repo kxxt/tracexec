@@ -8,7 +8,7 @@ use std::{
   mem::MaybeUninit,
   os::{
     fd::{AsRawFd, RawFd},
-    unix::{ffi::OsStringExt, fs::MetadataExt},
+    unix::fs::MetadataExt,
   },
   process,
   sync::{
@@ -37,8 +37,7 @@ use nix::{
     wait::{waitpid, WaitPidFlag, WaitStatus},
   },
   unistd::{
-    execv, fork, getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, ForkResult,
-    Gid, Pid, Uid, User,
+    getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, Gid, Pid, Uid, User,
   },
 };
 use process_tracker::ProcessTracker;
@@ -440,104 +439,75 @@ impl EbpfTracer {
       let mut cmd = CommandBuilder::new(&self.cmd[0]);
       cmd.args(self.cmd.iter().skip(1));
       cmd.cwd(std::env::current_dir()?);
-      let cmd = cmd.build()?;
-      match unsafe { fork()? } {
-        ForkResult::Parent { child } => {
-          self
-            .tx
-            .as_ref()
-            .map(|tx| filterable_event!(TraceeSpawn(child)).send_if_match(tx, self.filter))
-            .transpose()?;
-          if matches!(&self.mode, TracerMode::Log { foreground: true }) {
-            match tcsetpgrp(stdin(), child) {
-              Ok(_) => {}
-              Err(Errno::ENOTTY) => {
-                eprintln!("tcsetpgrp failed: ENOTTY");
-              }
-              r => r?,
-            }
-          }
-          open_skel.maps.rodata_data.tracexec_config.follow_fork = MaybeUninit::new(true);
-          open_skel.maps.rodata_data.tracexec_config.tracee_pid = child.as_raw();
-          open_skel.maps.rodata_data.tracexec_config.tracee_pidns_inum = pid_ns_ino as u32;
-          let mut skel = open_skel.load()?;
-          skel.attach()?;
-          match waitpid(child, Some(WaitPidFlag::WSTOPPED))? {
-            terminated @ WaitStatus::Exited(_, _) | terminated @ WaitStatus::Signaled(_, _, _) => {
-              panic!("Child exited abnormally before tracing is started: status: {terminated:?}");
-            }
-            WaitStatus::Stopped(_, _) => kill(child, nix::sys::signal::SIGCONT)?,
-            _ => unreachable!("Invalid wait status!"),
-          }
-          (skel, Some(child))
-        }
-        ForkResult::Child => {
-          let slave_pty = match &self.mode {
-            TracerMode::Tui(tty) => tty.as_ref(),
-            _ => None,
-          };
-
-          if let Some(pts) = slave_pty {
-            unsafe {
-              dup2(pts.fd.as_raw_fd(), 0);
-              dup2(pts.fd.as_raw_fd(), 1);
-              dup2(pts.fd.as_raw_fd(), 2);
-            }
-            setsid()?;
-            if unsafe { libc::ioctl(0, libc::TIOCSCTTY as _, 0) } == -1 {
-              Err(io::Error::last_os_error())?;
-            }
-          } else if matches!(self.mode, TracerMode::Tui(_)) {
-            unsafe {
-              let dev_null = std::fs::File::open("/dev/null")?;
-              dup2(dev_null.as_raw_fd(), 0);
-              dup2(dev_null.as_raw_fd(), 1);
-              dup2(dev_null.as_raw_fd(), 2);
-            }
-          } else {
-            let me = getpid();
-            setpgid(me, me)?;
-          }
-
-          // Wait for eBPF program to load
-          raise(nix::sys::signal::SIGSTOP)?;
-
-          if let Some(user) = &self.user {
-            initgroups(&CString::new(user.name.as_str())?[..], user.gid)?;
-            setresgid(user.gid, user.gid, Gid::from_raw(u32::MAX))?;
-            setresuid(user.uid, user.uid, Uid::from_raw(u32::MAX))?;
-          }
-
-          // Clean up a few things before we exec the program
-          // Clear out any potentially problematic signal
-          // dispositions that we might have inherited
-          for signo in &[
-            libc::SIGCHLD,
-            libc::SIGHUP,
-            libc::SIGINT,
-            libc::SIGQUIT,
-            libc::SIGTERM,
-            libc::SIGALRM,
-          ] {
-            unsafe {
-              libc::signal(*signo, libc::SIG_DFL);
-            }
-          }
+      let pts = match &self.mode {
+        TracerMode::Tui(tty) => tty.as_ref(),
+        _ => None,
+      };
+      let with_tty = match &self.mode {
+        TracerMode::Tui(tty) => tty.is_some(),
+        TracerMode::Log { .. } => true,
+      };
+      let use_pseudo_term = pts.is_some();
+      let user = self.user.clone();
+      let child = pty::spawn_command(pts, cmd, move |_program_path| {
+        if !with_tty {
           unsafe {
-            let empty_set: libc::sigset_t = std::mem::zeroed();
-            libc::sigprocmask(libc::SIG_SETMASK, &empty_set, std::ptr::null_mut());
+            let dev_null = std::fs::File::open("/dev/null")?;
+            dup2(dev_null.as_raw_fd(), 0);
+            dup2(dev_null.as_raw_fd(), 1);
+            dup2(dev_null.as_raw_fd(), 2);
           }
+        }
 
-          pty::close_random_fds();
+        if use_pseudo_term {
+          setsid()?;
+          if unsafe { libc::ioctl(0, libc::TIOCSCTTY as _, 0) } == -1 {
+            Err(io::Error::last_os_error())?;
+          }
+        } else {
+          let me = getpid();
+          setpgid(me, me)?;
+        }
 
-          execv(
-            &CString::new(cmd.program.into_os_string().into_vec()).unwrap(),
-            &cmd.args,
-          )
-          .unwrap();
-          unreachable!();
+        // Wait for eBPF program to load
+        raise(nix::sys::signal::SIGSTOP)?;
+
+        if let Some(user) = &user {
+          initgroups(&CString::new(user.name.as_str())?[..], user.gid)?;
+          setresgid(user.gid, user.gid, Gid::from_raw(u32::MAX))?;
+          setresuid(user.uid, user.uid, Uid::from_raw(u32::MAX))?;
+        }
+
+        Ok(())
+      })?;
+
+      self
+        .tx
+        .as_ref()
+        .map(|tx| filterable_event!(TraceeSpawn(child)).send_if_match(tx, self.filter))
+        .transpose()?;
+      if matches!(&self.mode, TracerMode::Log { foreground: true }) {
+        match tcsetpgrp(stdin(), child) {
+          Ok(_) => {}
+          Err(Errno::ENOTTY) => {
+            warn!("tcsetpgrp failed: ENOTTY");
+          }
+          r => r?,
         }
       }
+      open_skel.maps.rodata_data.tracexec_config.follow_fork = MaybeUninit::new(true);
+      open_skel.maps.rodata_data.tracexec_config.tracee_pid = child.as_raw();
+      open_skel.maps.rodata_data.tracexec_config.tracee_pidns_inum = pid_ns_ino as u32;
+      let mut skel = open_skel.load()?;
+      skel.attach()?;
+      match waitpid(child, Some(WaitPidFlag::WSTOPPED))? {
+        terminated @ WaitStatus::Exited(_, _) | terminated @ WaitStatus::Signaled(_, _, _) => {
+          panic!("Child exited abnormally before tracing is started: status: {terminated:?}");
+        }
+        WaitStatus::Stopped(_, _) => kill(child, nix::sys::signal::SIGCONT)?,
+        _ => unreachable!("Invalid wait status!"),
+      }
+      (skel, Some(child))
     } else {
       let mut skel = open_skel.load()?;
       skel.attach()?;

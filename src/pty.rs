@@ -452,7 +452,7 @@ fn tty_name(fd: RawFd) -> Option<PathBuf> {
 /// The implementation of this function relies on `/dev/fd` being available
 /// to provide the list of open fds.  Any errors in enumerating or closing
 /// the fds are silently ignored.
-pub fn close_random_fds() {
+fn close_random_fds() {
   // FreeBSD, macOS and presumably other BSDish systems have /dev/fd as
   // a directory listing the current fd numbers for the process.
   //
