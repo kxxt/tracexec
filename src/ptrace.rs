@@ -50,27 +50,12 @@ impl RecursivePtraceEngine {
     &mut self,
     tracee: Pid,
     mut options: nix::sys::ptrace::Options,
-  ) -> Result<PtraceGroupStopGuard<'_>, Errno> {
+  ) -> Result<(), Errno> {
     if self.running {
       return Err(Errno::EEXIST);
     } else {
       self.running = true;
     }
-    // In this loop, the tracee is not traced yet.
-    loop {
-      let status = waitpid(tracee, Some(WaitPidFlag::WSTOPPED))?;
-      match status {
-        WaitStatus::Stopped(_, nix::sys::signal::SIGSTOP) => {
-          break;
-        }
-        WaitStatus::Stopped(_, _) => {
-          trace!("tracee stopped by other signal, continuing");
-          continue;
-        }
-        _ => unreachable!(), // WSTOPPED wait for children that have been stopped by delivery of a signal.
-      }
-    }
-    trace!("tracee stopped, setting options");
     use nix::sys::ptrace::Options;
     if self.seccomp {
       options |= Options::PTRACE_O_TRACESECCOMP;
@@ -82,16 +67,7 @@ impl RecursivePtraceEngine {
         | Options::PTRACE_O_TRACECLONE
         | Options::PTRACE_O_TRACEVFORK,
     )?;
-
-    // Then we will observe a group stop resulting of the very SIGSTOP
-
-    let status = waitpid::waitpid(self, Some(tracee), Some(WaitPidFlag::WSTOPPED))?;
-    trace!("waitpid event: {status:?}");
-    match status {
-      PtraceWaitPidEvent::Signaled { .. } | PtraceWaitPidEvent::Exited { .. } => Err(Errno::ESRCH),
-      PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Group(guard)) => Ok(guard),
-      _ => unreachable!(),
-    }
+    Ok(())
   }
 
   /// Following the convention on ptrace(2), this function expects a child that initiates a `PTRACE_TRACEME`
