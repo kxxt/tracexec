@@ -188,6 +188,8 @@ Options:
           Set the layout of the TUI when it launches [possible values: horizontal, vertical]
   -F, --frame-rate <FRAME_RATE>
           Set the frame rate of the TUI (60 by default)
+  -m, --max-events <MAX_EVENTS>
+          Max number of events to keep in TUI (0=unlimited)
   -D, --default-external-command <DEFAULT_EXTERNAL_COMMAND>
           Set the default external command to run when using "Detach, Stop and Run Command" feature in Hit Manager
   -b, --add-breakpoint <BREAKPOINTS>

@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.9.0
+
+### Breaking Changes
+
+- MSRV bumps will no longer be a breaking change in future releases.
+- Bump MSRV to 1.83
+
+### Enhancement
+
+- Add `--max-events`/`max_events` option/config for TUI mode, which limits the
+  max number of events to keep in memory. This is 1,000,000 by default.
+  Previously there's no limit and the memory used by the events are not freed
+  until program exit. Set it to `0` will disable this limit.
+- eBPF: update kernels in UKCI. (6.12 LTS is now tested in UKCI)
+
+### Fixes
+
+- Fix some ptrace quirks that could cause tracee to hang.
+- Fix multi-character input in pseudo terminal.
+- Add a new event status for internal failure
+- Update dependencies (which gets rid of some yanked crates)
+
 ## v0.8.2
 
 ### Notice
