@@ -55,7 +55,7 @@ mod process_tracker;
 mod tracer;
 pub use event::BpfError;
 
-pub async fn run(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre::Result<()> {
+pub async fn main(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre::Result<()> {
   let obj = Box::leak(Box::new(MaybeUninit::uninit()));
   match command {
     EbpfCommand::Log {
