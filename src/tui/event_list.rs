@@ -831,7 +831,6 @@ impl EventList {
 }
 
 #[cfg(test)]
-
 mod test {
   use super::EventList;
 

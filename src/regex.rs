@@ -389,11 +389,11 @@ mod cursor_tests {
     let single = vec![ArcStr::from("abc")];
     let separator = " ".into();
     let mut cursor = ArgvCursor::new(single.as_slice(), &separator);
-    assert_eq!(cursor.chunk(), "abc".as_bytes());
+    assert_eq!(cursor.chunk(), b"abc");
     assert!(!cursor.advance());
-    assert_eq!(cursor.chunk(), "abc".as_bytes());
+    assert_eq!(cursor.chunk(), b"abc");
     assert!(!cursor.backtrack());
-    assert_eq!(cursor.chunk(), "abc".as_bytes());
+    assert_eq!(cursor.chunk(), b"abc");
     // 2
     let two = vec![ArcStr::from("abc"); 2];
     let mut cursor = ArgvCursor::new(two.as_slice(), &separator);
