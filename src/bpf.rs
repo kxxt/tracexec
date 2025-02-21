@@ -3,14 +3,11 @@ use std::{
   ffi::CStr,
   mem::MaybeUninit,
   process,
-  sync::{
-    atomic::Ordering,
-    Arc, LazyLock, RwLock,
-  },
+  sync::{Arc, LazyLock, RwLock, atomic::Ordering},
 };
 
 use crate::cache::ArcStr;
-use color_eyre::{eyre::eyre, Section};
+use color_eyre::{Section, eyre::eyre};
 use enumflags2::BitFlag;
 use nix::unistd::User;
 use tokio::{
@@ -22,18 +19,15 @@ use tracer::EbpfTracer;
 use crate::{
   cache::StringCache,
   cli::{
+    Cli, EbpfCommand,
     args::LogModeArgs,
     options::{Color, ExportFormat},
-    Cli, EbpfCommand,
   },
-  event::{
-    TracerEvent, TracerEventDetails,
-    TracerEventDetailsKind, TracerMessage,
-  },
+  event::{TracerEvent, TracerEventDetails, TracerEventDetailsKind, TracerMessage},
   export::{self, JsonExecEvent, JsonMetaData},
   printer::{Printer, PrinterArgs},
   proc::BaselineInfo,
-  pty::{native_pty_system, PtySize, PtySystem},
+  pty::{PtySize, PtySystem, native_pty_system},
   serialize_json_to_output,
   tracer::TracerMode,
   tui::{self, app::App},
@@ -55,7 +49,11 @@ mod process_tracker;
 mod tracer;
 pub use event::BpfError;
 
-pub async fn main(command: EbpfCommand, user: Option<User>, color: Color) -> color_eyre::Result<()> {
+pub async fn main(
+  command: EbpfCommand,
+  user: Option<User>,
+  color: Color,
+) -> color_eyre::Result<()> {
   let obj = Box::leak(Box::new(MaybeUninit::uninit()));
   match command {
     EbpfCommand::Log {
@@ -94,9 +92,9 @@ pub async fn main(command: EbpfCommand, user: Option<User>, color: Color) -> col
       let follow_forks = !cmd.is_empty();
       if tui_args.tty && !follow_forks {
         return Err(
-          eyre!("--tty is not supported for eBPF system-wide tracing.").with_suggestion(|| {
-            "Did you mean to use follow-fork mode? e.g. tracexec ebpf tui -t -- bash"
-          }),
+          eyre!("--tty is not supported for eBPF system-wide tracing.").with_suggestion(
+            || "Did you mean to use follow-fork mode? e.g. tracexec ebpf tui -t -- bash",
+          ),
         );
       }
       let modifier_args = modifier_args.processed();

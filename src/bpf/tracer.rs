@@ -10,8 +10,8 @@ use std::{
     unix::fs::MetadataExt,
   },
   sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
   },
   time::Duration,
 };
@@ -19,31 +19,30 @@ use std::{
 use super::interface::BpfEventFlags;
 use super::process_tracker::ProcessTracker;
 use super::skel::{
+  TracexecSystemSkel,
   types::{
     event_type, exec_event, exit_event, fd_event, fork_event, path_event, path_segment_event,
     tracexec_event_header,
   },
-  TracexecSystemSkel,
 };
 use super::{event::EventStorage, skel::TracexecSystemSkelBuilder};
-use crate::bpf::{cached_cow, utf8_lossy_cow_from_bytes_with_nul, BpfError};
+use crate::bpf::{BpfError, cached_cow, utf8_lossy_cow_from_bytes_with_nul};
 use color_eyre::Section;
 use enumflags2::{BitFlag, BitFlags};
 use libbpf_rs::{
-  num_possible_cpus,
+  ErrorKind, OpenObject, RingBuffer, RingBufferBuilder, num_possible_cpus,
   skel::{OpenSkel, Skel, SkelBuilder},
-  ErrorKind, OpenObject, RingBuffer, RingBufferBuilder,
 };
 use nix::{
   errno::Errno,
   fcntl::OFlag,
-  libc::{self, c_int, AT_FDCWD},
+  libc::{self, AT_FDCWD, c_int},
   sys::{
     signal::{kill, raise},
-    wait::{waitpid, WaitPidFlag, WaitStatus},
+    wait::{WaitPidFlag, WaitStatus, waitpid},
   },
   unistd::{
-    dup2, getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, Gid, Pid, Uid, User,
+    Gid, Pid, Uid, User, dup2, getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp,
   },
 };
 use tokio::sync::mpsc::UnboundedSender;
@@ -53,17 +52,17 @@ use crate::{
   cli::args::ModifierArgs,
   cmdbuilder::CommandBuilder,
   event::{
-    filterable_event, ExecEvent, FilterableTracerEventDetails, FriendlyError, OutputMsg,
-    ProcessStateUpdate, ProcessStateUpdateEvent, TracerEvent, TracerEventDetails,
-    TracerEventDetailsKind, TracerMessage,
+    ExecEvent, FilterableTracerEventDetails, FriendlyError, OutputMsg, ProcessStateUpdate,
+    ProcessStateUpdateEvent, TracerEvent, TracerEventDetails, TracerEventDetailsKind,
+    TracerMessage, filterable_event,
   },
   printer::{Printer, PrinterOut},
-  proc::{cached_string, diff_env, parse_failiable_envp, BaselineInfo, FileDescriptorInfo},
+  proc::{BaselineInfo, FileDescriptorInfo, cached_string, diff_env, parse_failiable_envp},
   ptrace::Signal,
   pty::{self},
   tracer::{
-    state::{ExecData, ProcessExit},
     TracerMode,
+    state::{ExecData, ProcessExit},
   },
 };
 

@@ -27,23 +27,23 @@ use std::{fmt::Display, hint::black_box};
 
 use nix::{
   errno::Errno,
-  libc::{self, c_int, pid_t, SIGRTMIN, WSTOPSIG},
+  libc::{self, SIGRTMIN, WSTOPSIG, c_int, pid_t},
   sys::{signal, wait::WaitPidFlag},
   unistd::Pid,
 };
 use tracing::trace;
 
 use crate::ptrace::{
+  PtraceSeccompStopGuard,
   guards::{
     PtraceCloneChildStopGuard, PtraceCloneParentStopGuard, PtraceExecStopGuard,
     PtraceExitStopGuard, PtraceGroupStopGuard, PtraceSignalDeliveryStopGuard,
   },
-  PtraceSeccompStopGuard,
 };
 
 use super::{
-  guards::{PtraceOpaqueStopGuard, PtraceStopGuard, PtraceSyscallStopGuard},
   PtraceInterruptStopGuard, RecursivePtraceEngine,
+  guards::{PtraceOpaqueStopGuard, PtraceStopGuard, PtraceSyscallStopGuard},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -20,7 +20,7 @@ use std::{path::PathBuf, sync::LazyLock};
 
 use color_eyre::eyre::Result;
 use tracing_error::ErrorLayer;
-use tracing_subscriber::{self, layer::SubscriberExt, util::SubscriberInitExt, Layer};
+use tracing_subscriber::{self, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 pub use tracing::*;
 

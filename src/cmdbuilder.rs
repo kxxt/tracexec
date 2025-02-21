@@ -25,7 +25,7 @@
 
 #![allow(unused)]
 
-use color_eyre::eyre::{bail, Context};
+use color_eyre::eyre::{Context, bail};
 use nix::libc;
 use std::collections::BTreeMap;
 use std::env;
@@ -35,7 +35,7 @@ use std::path::{Path, PathBuf};
 use tracing::warn;
 
 fn get_shell() -> String {
-  use nix::unistd::{access, AccessFlags};
+  use nix::unistd::{AccessFlags, access};
   use std::ffi::CStr;
   use std::path::Path;
   use std::str;
@@ -182,7 +182,7 @@ impl CommandBuilder {
   }
 
   fn search_path(&self, exe: &OsStr, cwd: &Path) -> color_eyre::Result<PathBuf> {
-    use nix::unistd::{access, AccessFlags};
+    use nix::unistd::{AccessFlags, access};
     use std::path::Path;
 
     let exe_path: &Path = exe.as_ref();

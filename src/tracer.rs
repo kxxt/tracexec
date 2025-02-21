@@ -2,10 +2,10 @@ use std::{
   collections::{BTreeMap, HashMap},
   ffi::CString,
   fs::File,
-  io::{self, stdin, Read, Write},
+  io::{self, Read, Write, stdin},
   ops::ControlFlow,
   os::fd::{AsRawFd, FromRawFd, OwnedFd},
-  sync::{atomic::AtomicU32, Arc, RwLock},
+  sync::{Arc, RwLock, atomic::AtomicU32},
   time::Duration,
 };
 
@@ -16,23 +16,16 @@ use enumflags2::BitFlags;
 use inspect::{read_arcstr, read_output_msg_array};
 use nix::{
   errno::Errno,
-  libc::{
-    self, c_int, dup2, pthread_self, pthread_setname_np, AT_EMPTY_PATH,
-    S_ISGID, S_ISUID,
-  },
-  sys::{
-    ptrace::AddressType,
-    stat::fstat,
-    wait::WaitPidFlag,
-  },
+  libc::{self, AT_EMPTY_PATH, S_ISGID, S_ISUID, c_int, dup2, pthread_self, pthread_setname_np},
+  sys::{ptrace::AddressType, stat::fstat, wait::WaitPidFlag},
   unistd::{
-    getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, Gid, Pid, Uid, User,
+    Gid, Pid, Uid, User, getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp,
   },
 };
 use state::{PendingDetach, Syscall};
 use tokio::{
   select,
-  sync::mpsc::{error::SendError, UnboundedReceiver, UnboundedSender},
+  sync::mpsc::{UnboundedReceiver, UnboundedSender, error::SendError},
 };
 use tracing::{debug, error, info, trace, warn};
 
@@ -41,13 +34,14 @@ use crate::{
   cli::args::{LogModeArgs, ModifierArgs, PtraceArgs, TracerEventArgs},
   cmdbuilder::CommandBuilder,
   event::{
-    filterable_event, ExecEvent, OutputMsg, ProcessStateUpdate, ProcessStateUpdateEvent,
-    TracerEvent, TracerEventDetails, TracerEventDetailsKind, TracerEventMessage, TracerMessage,
+    ExecEvent, OutputMsg, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEvent,
+    TracerEventDetails, TracerEventDetailsKind, TracerEventMessage, TracerMessage,
+    filterable_event,
   },
   printer::{Printer, PrinterArgs, PrinterOut},
   proc::{
-    cached_string, diff_env, parse_envp, read_comm, read_cwd, read_exe, read_fd, read_fds,
-    read_interpreter_recursive, BaselineInfo,
+    BaselineInfo, cached_string, diff_env, parse_envp, read_comm, read_cwd, read_exe, read_fd,
+    read_fds, read_interpreter_recursive,
   },
   ptrace::{
     PtraceSeccompStopGuard, PtraceSignalDeliveryStopGuard, PtraceStop, PtraceStopGuard,
@@ -504,7 +498,9 @@ impl Tracer {
             }
             // Either this is an untracked new progress, or pid_reuse happened
             if !handled || pid_reuse {
-              trace!("sigstop event received before ptrace fork event, pid: {pid}, pid_reuse: {pid_reuse}");
+              trace!(
+                "sigstop event received before ptrace fork event, pid: {pid}, pid_reuse: {pid_reuse}"
+              );
               let mut state = ProcessState::new(pid, 0)?;
               state.status = ProcessStatus::SigstopReceived;
               store.insert(state);
@@ -552,7 +548,9 @@ impl Tracer {
               }
             }
             if !handled || pid_reuse {
-              trace!("ptrace fork event received before sigstop, pid: {pid}, child: {new_child}, pid_reuse: {pid_reuse}");
+              trace!(
+                "ptrace fork event received before sigstop, pid: {pid}, child: {new_child}, pid_reuse: {pid_reuse}"
+              );
               let mut state = ProcessState::new(new_child, 0)?;
               state.status = ProcessStatus::PtraceForkEventReceived;
               state.ppid = Some(pid);
@@ -1207,7 +1205,7 @@ impl Tracer {
 
   #[cfg(feature = "seccomp-bpf")]
   fn suspend_seccomp_bpf(&self, pid: Pid) -> Result<(), Errno> {
-    use nix::libc::{ptrace, PTRACE_O_SUSPEND_SECCOMP, PTRACE_SETOPTIONS};
+    use nix::libc::{PTRACE_O_SUSPEND_SECCOMP, PTRACE_SETOPTIONS, ptrace};
 
     if self.seccomp_bpf == SeccompBpf::On {
       unsafe {

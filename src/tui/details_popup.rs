@@ -5,7 +5,7 @@ use std::{
 
 use arboard::Clipboard;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use itertools::{chain, Itertools};
+use itertools::{Itertools, chain};
 use nix::{errno::Errno, fcntl::OFlag};
 use ratatui::{
   buffer::Buffer,

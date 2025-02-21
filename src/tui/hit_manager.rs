@@ -4,10 +4,10 @@ use std::{
   sync::Arc,
 };
 
-use color_eyre::{eyre::eyre, Section};
+use color_eyre::{Section, eyre::eyre};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use either::Either;
-use itertools::{chain, Itertools};
+use itertools::{Itertools, chain};
 use nix::{sys::signal::Signal, unistd::Pid};
 use ratatui::{
   layout::{Alignment, Constraint, Layout},
@@ -22,7 +22,7 @@ use tui_widget_list::{ListBuilder, ListView};
 
 use crate::{
   action::Action,
-  tracer::{state::BreakPointStop, BreakPointHit, Tracer},
+  tracer::{BreakPointHit, Tracer, state::BreakPointStop},
 };
 
 use super::{

@@ -39,12 +39,12 @@ use std::{io, os::unix::ffi::OsStrExt, process, sync::Arc};
 use atoi::atoi;
 use clap::Parser;
 use cli::{
+  Cli,
   args::TracerEventArgs,
   config::{Config, ConfigLoadError},
   options::ExportFormat,
-  Cli,
 };
-use color_eyre::eyre::{bail, OptionExt};
+use color_eyre::eyre::{OptionExt, bail};
 
 use export::{JsonExecEvent, JsonMetaData};
 use nix::unistd::{Uid, User};
@@ -53,11 +53,11 @@ use tokio::sync::mpsc;
 use tui::app::PTracer;
 
 use crate::{
-  cli::{args::LogModeArgs, options::Color, CliCommand},
+  cli::{CliCommand, args::LogModeArgs, options::Color},
   event::{TracerEvent, TracerEventDetails, TracerMessage},
   log::initialize_panic_handler,
   proc::BaselineInfo,
-  pty::{native_pty_system, PtySize, PtySystem},
+  pty::{PtySize, PtySystem, native_pty_system},
   tracer::TracerMode,
   tui::app::App,
 };

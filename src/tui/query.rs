@@ -7,7 +7,7 @@ use ratatui::{
   text::{Line, Span},
   widgets::{StatefulWidget, Widget},
 };
-use regex_cursor::{engines::pikevm, regex_automata::util::syntax, IntoCursor};
+use regex_cursor::{IntoCursor, engines::pikevm, regex_automata::util::syntax};
 use tui_prompts::{State, TextPrompt, TextState};
 
 use crate::action::Action;

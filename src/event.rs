@@ -4,7 +4,7 @@ use std::{
   fmt::{Debug, Display},
   hash::Hash,
   io::Write,
-  sync::{atomic::AtomicU64, Arc},
+  sync::{Arc, atomic::AtomicU64},
 };
 
 use crate::cache::ArcStr;
@@ -13,7 +13,7 @@ use crossterm::event::KeyEvent;
 use either::Either;
 use enumflags2::BitFlags;
 use filterable_enum::FilterableEnum;
-use itertools::{chain, Itertools};
+use itertools::{Itertools, chain};
 use nix::{errno::Errno, fcntl::OFlag, libc::c_int, unistd::Pid};
 use owo_colors::OwoColorize;
 use ratatui::{
@@ -29,9 +29,9 @@ use crate::{
   action::CopyTarget,
   cli::{self, args::ModifierArgs},
   printer::ListPrinter,
-  proc::{cached_string, BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter},
+  proc::{BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter, cached_string},
   ptrace::Signal,
-  tracer::{state::ProcessExit, BreakPointHit, InspectError},
+  tracer::{BreakPointHit, InspectError, state::ProcessExit},
   tui::{
     event_line::{EventLine, Mask},
     theme::THEME,
@@ -429,7 +429,7 @@ impl TracerEventDetails {
     };
 
     let mut line = match self {
-      Self::Info(TracerEventMessage { ref msg, pid }) => chain!(
+      Self::Info(TracerEventMessage { msg, pid }) => chain!(
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
@@ -437,7 +437,7 @@ impl TracerEventDetails {
         [": ".into(), msg.clone().set_style(THEME.tracer_info)]
       )
       .collect(),
-      Self::Warning(TracerEventMessage { ref msg, pid }) => chain!(
+      Self::Warning(TracerEventMessage { msg, pid }) => chain!(
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
@@ -445,7 +445,7 @@ impl TracerEventDetails {
         [": ".into(), msg.clone().set_style(THEME.tracer_warning)]
       )
       .collect(),
-      Self::Error(TracerEventMessage { ref msg, pid }) => chain!(
+      Self::Error(TracerEventMessage { msg, pid }) => chain!(
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
