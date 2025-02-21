@@ -37,16 +37,16 @@ use libbpf_rs::{
 use nix::{
   errno::Errno,
   fcntl::OFlag,
-  libc::{self, c_int, dup2, AT_FDCWD},
+  libc::{self, c_int, AT_FDCWD},
   sys::{
     signal::{kill, raise},
     wait::{waitpid, WaitPidFlag, WaitStatus},
   },
   unistd::{
-    getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, Gid, Pid, Uid, User,
+    dup2, getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp, Gid, Pid, Uid, User,
   },
 };
-use tokio::sync::mpsc::{UnboundedSender};
+use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, warn};
 
 use crate::{
@@ -502,12 +502,10 @@ impl EbpfTracer {
       let user = self.user.clone();
       let child = pty::spawn_command(pts, cmdbuilder, move |_program_path| {
         if !with_tty {
-          unsafe {
-            let dev_null = std::fs::File::open("/dev/null")?;
-            dup2(dev_null.as_raw_fd(), 0);
-            dup2(dev_null.as_raw_fd(), 1);
-            dup2(dev_null.as_raw_fd(), 2);
-          }
+          let dev_null = std::fs::File::open("/dev/null")?;
+          dup2(dev_null.as_raw_fd(), 0).unwrap();
+          dup2(dev_null.as_raw_fd(), 1).unwrap();
+          dup2(dev_null.as_raw_fd(), 2).unwrap();
         }
 
         if use_pseudo_term {
