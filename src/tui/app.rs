@@ -53,6 +53,7 @@ use crate::{
 };
 
 use super::{
+  Tui,
   breakpoint_manager::{BreakPointManager, BreakPointManagerState},
   copy_popup::{CopyPopup, CopyPopupState},
   details_popup::{DetailsPopup, DetailsPopupState},
@@ -64,7 +65,6 @@ use super::{
   query::QueryBuilder,
   theme::THEME,
   ui::render_title,
-  Tui,
 };
 
 pub const DEFAULT_MAX_EVENTS: u64 = 1_000_000;

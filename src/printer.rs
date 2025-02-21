@@ -12,7 +12,7 @@ use crate::{
     theme::THEME,
   },
   event::{FriendlyError, OutputMsg},
-  proc::{diff_env, BaselineInfo, FileDescriptorInfoCollection, Interpreter},
+  proc::{BaselineInfo, FileDescriptorInfoCollection, Interpreter, diff_env},
   tracer::state::{ExecData, ProcessState},
 };
 

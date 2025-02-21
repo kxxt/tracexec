@@ -12,7 +12,7 @@ use strum::IntoStaticStr;
 
 use crate::{
   event::OutputMsg,
-  proc::{read_comm, FileDescriptorInfoCollection, Interpreter},
+  proc::{FileDescriptorInfoCollection, Interpreter, read_comm},
   ptrace::Signal,
   regex::{ArgvCursor, SPACE},
   tracer::InspectError,

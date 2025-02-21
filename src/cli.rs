@@ -1,5 +1,5 @@
 use std::{
-  io::{stderr, stdout, BufWriter},
+  io::{BufWriter, stderr, stdout},
   path::PathBuf,
 };
 

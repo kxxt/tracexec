@@ -25,10 +25,10 @@
 
 #![allow(unused)]
 
-use color_eyre::eyre::{bail, Error};
+use color_eyre::eyre::{Error, bail};
 use filedescriptor::FileDescriptor;
 use nix::libc::{self, pid_t, winsize};
-use nix::unistd::{dup2, execv, fork, Pid};
+use nix::unistd::{Pid, dup2, execv, fork};
 use std::cell::RefCell;
 use std::ffi::{CStr, CString, OsStr};
 

@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use itertools::{chain, Itertools};
+use itertools::{Itertools, chain};
 use ratatui::{
   layout::{Alignment, Constraint, Layout},
   prelude::{Buffer, Rect},
@@ -15,8 +15,8 @@ use tui_widget_list::{ListBuilder, ListView};
 use crate::{
   action::{Action, ActivePopup},
   tracer::{
-    state::{BreakPoint, BreakPointPattern, BreakPointStop, BreakPointType},
     Tracer,
+    state::{BreakPoint, BreakPointPattern, BreakPointStop, BreakPointType},
   },
 };
 
@@ -215,7 +215,7 @@ impl BreakPointManagerState {
                   "Breakpoint Editor Error".to_string(),
                   vec![Line::from(message)],
                 ),
-              )))
+              )));
             }
           };
           let new = BreakPoint {
@@ -256,7 +256,7 @@ impl BreakPointManagerState {
         KeyCode::F(1) => {
           return Some(Action::SetActivePopup(ActivePopup::InfoPopup(
             BreakPointManager::help(),
-          )))
+          )));
         }
         KeyCode::Char('q') => return Some(Action::CloseBreakpointManager),
         KeyCode::Down | KeyCode::Char('j') => {

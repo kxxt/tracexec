@@ -19,9 +19,9 @@ use owo_colors::OwoColorize;
 use nix::{
   fcntl::OFlag,
   libc::AT_FDCWD,
-  unistd::{getpid, Pid},
+  unistd::{Pid, getpid},
 };
-use serde::{ser::SerializeSeq, Serialize, Serializer};
+use serde::{Serialize, Serializer, ser::SerializeSeq};
 use tracing::warn;
 
 use crate::{cache::StringCache, event::OutputMsg, pty::UnixSlavePty};

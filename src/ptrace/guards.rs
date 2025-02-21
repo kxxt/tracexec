@@ -12,8 +12,8 @@ use either::Either;
 use nix::{
   errno::Errno,
   libc::{
-    ptrace_syscall_info, PTRACE_GET_SYSCALL_INFO, PTRACE_SYSCALL_INFO_ENTRY,
-    PTRACE_SYSCALL_INFO_EXIT, PTRACE_SYSCALL_INFO_SECCOMP,
+    PTRACE_GET_SYSCALL_INFO, PTRACE_SYSCALL_INFO_ENTRY, PTRACE_SYSCALL_INFO_EXIT,
+    PTRACE_SYSCALL_INFO_SECCOMP, ptrace_syscall_info,
   },
   sys::ptrace::AddressType,
   unistd::Pid,
@@ -23,9 +23,9 @@ use tracing::{info, trace};
 use crate::arch::{Regs, RegsPayload, RegsRepr};
 
 use super::{
+  RecursivePtraceEngine,
   syscall::{AuditArch, SyscallInfo, SyscallInfoData},
   waitpid::Signal,
-  RecursivePtraceEngine,
 };
 mod private {
   pub trait Sealed {}

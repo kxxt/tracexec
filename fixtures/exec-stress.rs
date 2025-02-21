@@ -1,7 +1,7 @@
 use std::ffi::CString;
 
 use nix::unistd::execv;
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{Rng, distributions::Alphanumeric};
 
 // A stress test.
 // It will exec itself with random strings as arguments for n times

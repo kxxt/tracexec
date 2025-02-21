@@ -10,7 +10,7 @@ use nix::{
   errno::Errno,
   sys::{
     ptrace::{self},
-    wait::{waitpid, WaitPidFlag, WaitStatus},
+    wait::{WaitPidFlag, WaitStatus, waitpid},
   },
   unistd::Pid,
 };

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
   event::OutputMsg,
-  proc::{cached_string, FileDescriptorInfoCollection},
+  proc::{FileDescriptorInfoCollection, cached_string},
 };
 
 /// The temporary storage for receiving information
