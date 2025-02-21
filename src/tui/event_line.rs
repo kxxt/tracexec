@@ -203,11 +203,11 @@ mod tests {
   fn smoke_test() {
     let single = vec![Span::raw("abc")];
     let mut cursor = EventLineCursor::new(single.as_slice());
-    assert_eq!(cursor.chunk(), "abc".as_bytes());
+    assert_eq!(cursor.chunk(), b"abc");
     assert!(!cursor.advance());
-    assert_eq!(cursor.chunk(), "abc".as_bytes());
+    assert_eq!(cursor.chunk(), b"abc");
     assert!(!cursor.backtrack());
-    assert_eq!(cursor.chunk(), "abc".as_bytes());
+    assert_eq!(cursor.chunk(), b"abc");
     let multi = vec![Span::raw("abc"); 100];
     let mut cursor = EventLineCursor::new(multi.as_slice());
     let mut offset = 0;
