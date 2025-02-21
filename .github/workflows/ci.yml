@@ -59,7 +59,7 @@ jobs:
       - name: Lint dependencies
         uses: EmbarkStudios/cargo-deny-action@v1
         with:
-          rust-version: 1.83
+          rust-version: 1.85
   clippy:
     runs-on: ubuntu-latest
     steps:
@@ -149,7 +149,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.83"
+          toolchain: "1.85"
           targets: ${{ matrix.target }}
           components: rustfmt
       - name: Install cross-compilation tools
