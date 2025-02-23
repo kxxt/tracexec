@@ -7,5 +7,8 @@ mod waitpid;
 
 pub use engine::RecursivePtraceEngine;
 pub use guards::*;
-pub use tracer::*;
+pub use inspect::InspectError;
+pub use tracer::{
+  BreakPoint, BreakPointHit, BreakPointPattern, BreakPointStop, BreakPointType, Tracer,
+};
 pub use waitpid::*;

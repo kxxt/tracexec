@@ -13,7 +13,6 @@ use crate::{
   },
   event::{FriendlyError, OutputMsg},
   proc::{BaselineInfo, FileDescriptorInfoCollection, Interpreter, diff_env},
-  ptrace::state::ProcessState,
   tracer::ExecData,
 };
 
@@ -259,14 +258,14 @@ impl Printer {
     });
   }
 
-  pub fn print_new_child(&self, state: &ProcessState, child: Pid) -> color_eyre::Result<()> {
+  pub fn print_new_child(&self, parent: Pid, comm: &str, child: Pid) -> color_eyre::Result<()> {
     Self::OUT.with_borrow_mut(|out| {
       let Some(out) = out else {
         return Ok(());
       };
-      write!(out, "{}", state.pid.bright_green())?;
+      write!(out, "{}", parent.bright_green())?;
       if self.args.trace_comm {
-        write!(out, "<{}>", state.comm.cyan())?;
+        write!(out, "<{}>", comm.cyan())?;
       }
       writeln!(out, ": {}: {}", "new child".purple(), child.bright_green())?;
       out.flush()?;

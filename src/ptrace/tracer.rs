@@ -55,18 +55,15 @@ use crate::{
   pty,
 };
 
-use self::state::BreakPointStop;
+use self::inspect::{read_string, read_string_array};
+pub use self::state::{BreakPoint, BreakPointPattern, BreakPointStop, BreakPointType};
 use self::state::{ProcessState, ProcessStateStore, ProcessStatus};
-use self::{
-  inspect::{read_string, read_string_array},
-  state::BreakPoint,
-};
 
-pub mod state;
+mod state;
 #[cfg(test)]
 mod test;
 
-pub use inspect::InspectError;
+use inspect::InspectError;
 
 cfg_if! {
   if #[cfg(feature = "seccomp-bpf")] {
@@ -509,7 +506,9 @@ impl Tracer {
               pid: new_child,
             });
             self.msg_tx.send(event.into())?;
-            self.printer.print_new_child(parent, new_child)?;
+            self
+              .printer
+              .print_new_child(parent.pid, &parent.comm, new_child)?;
           }
           {
             let mut store = self.store.write().unwrap();
