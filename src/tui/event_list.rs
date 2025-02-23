@@ -38,7 +38,7 @@ use crate::{
   },
   proc::BaselineInfo,
   ptrace::Signal,
-  tracer::state::ProcessExit,
+  tracer::ProcessExit,
 };
 
 use super::{

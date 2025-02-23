@@ -13,7 +13,8 @@ use crate::{
   },
   event::{FriendlyError, OutputMsg},
   proc::{BaselineInfo, FileDescriptorInfoCollection, Interpreter, diff_env},
-  tracer::state::{ExecData, ProcessState},
+  ptrace::state::ProcessState,
+  tracer::ExecData,
 };
 
 use crate::cache::ArcStr;

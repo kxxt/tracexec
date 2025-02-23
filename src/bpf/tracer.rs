@@ -60,10 +60,7 @@ use crate::{
   proc::{BaselineInfo, FileDescriptorInfo, cached_string, diff_env, parse_failiable_envp},
   ptrace::Signal,
   pty::{self},
-  tracer::{
-    TracerMode,
-    state::{ExecData, ProcessExit},
-  },
+  tracer::{ExecData, ProcessExit, TracerMode},
 };
 
 #[derive(Default)]

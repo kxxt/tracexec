@@ -10,10 +10,9 @@ use crate::{
   cli::args::{LogModeArgs, ModifierArgs, PtraceArgs, TracerEventArgs},
   event::{OutputMsg, TracerEvent, TracerEventDetails, TracerMessage},
   proc::{BaselineInfo, Interpreter},
-  tracer::Tracer,
 };
 
-use super::{PendingRequest, TracerMode};
+use super::{PendingRequest, Tracer, TracerMode};
 
 #[fixture]
 fn true_executable() -> PathBuf {

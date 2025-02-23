@@ -31,7 +31,8 @@ use crate::{
   printer::ListPrinter,
   proc::{BaselineInfo, EnvDiff, FileDescriptorInfoCollection, Interpreter, cached_string},
   ptrace::Signal,
-  tracer::{BreakPointHit, InspectError, state::ProcessExit},
+  ptrace::{BreakPointHit, InspectError},
+  tracer::ProcessExit,
   tui::{
     event_line::{EventLine, Mask},
     theme::THEME,
