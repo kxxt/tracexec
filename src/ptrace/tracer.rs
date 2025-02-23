@@ -1,6 +1,5 @@
 use std::{
   collections::{BTreeMap, HashMap},
-  ffi::CString,
   fs::File,
   io::{self, Read, Write, stdin},
   ops::ControlFlow,
@@ -11,6 +10,7 @@ use std::{
 
 use crate::{
   cache::ArcStr,
+  tracee,
   tracer::{ExecData, ProcessExit, TracerBuilder, TracerMode},
 };
 use cfg_if::cfg_if;
@@ -21,9 +21,7 @@ use nix::{
   errno::Errno,
   libc::{self, AT_EMPTY_PATH, S_ISGID, S_ISUID, c_int, pthread_self, pthread_setname_np},
   sys::{ptrace::AddressType, stat::fstat, wait::WaitPidFlag},
-  unistd::{
-    Gid, Pid, Uid, User, dup2, getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp,
-  },
+  unistd::{Gid, Pid, Uid, User, getpid, tcsetpgrp},
 };
 use state::{PendingDetach, Syscall};
 use tokio::{
@@ -242,24 +240,14 @@ impl Tracer {
       }
 
       if !with_tty {
-        let dev_null = std::fs::File::open("/dev/null")?;
-        dup2(dev_null.as_raw_fd(), 0).unwrap();
-        dup2(dev_null.as_raw_fd(), 1).unwrap();
-        dup2(dev_null.as_raw_fd(), 2).unwrap();
+        tracee::nullify_stdio()?;
       }
 
       if use_pseudo_term {
-        setsid()?;
-        if unsafe { libc::ioctl(0, libc::TIOCSCTTY as _, 0) } == -1 {
-          Err(io::Error::last_os_error())?;
-        }
+        tracee::lead_session_and_control_terminal()?;
       } else {
-        let me = getpid();
-        setpgid(me, me)?;
+        tracee::lead_process_group()?;
       }
-
-      // traceme()?;
-      // trace!("traceme setup!");
 
       if let Some(user) = &user {
         // First, read set(u|g)id info from stat
@@ -278,9 +266,7 @@ impl Tracer {
         } else {
           user.gid
         };
-        initgroups(&CString::new(user.name.as_str())?[..], user.gid)?;
-        setresgid(user.gid, egid, Gid::from_raw(u32::MAX))?;
-        setresuid(user.uid, euid, Uid::from_raw(u32::MAX))?;
+        tracee::runas(user, Some((euid, egid)))?;
       }
 
       trace!("Waiting for tracer");
