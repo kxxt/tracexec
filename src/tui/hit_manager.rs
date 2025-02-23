@@ -22,7 +22,7 @@ use tui_widget_list::{ListBuilder, ListView};
 
 use crate::{
   action::Action,
-  ptrace::{BreakPointHit, Tracer, state::BreakPointStop},
+  ptrace::{BreakPointHit, BreakPointStop, Tracer},
 };
 
 use super::{

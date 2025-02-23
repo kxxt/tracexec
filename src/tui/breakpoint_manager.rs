@@ -14,10 +14,7 @@ use tui_widget_list::{ListBuilder, ListView};
 
 use crate::{
   action::{Action, ActivePopup},
-  ptrace::{
-    Tracer,
-    state::{BreakPoint, BreakPointPattern, BreakPointStop, BreakPointType},
-  },
+  ptrace::{BreakPoint, BreakPointPattern, BreakPointStop, BreakPointType, Tracer},
 };
 
 use super::{
