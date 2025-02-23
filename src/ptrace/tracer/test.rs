@@ -7,7 +7,10 @@ use tracing::info;
 use tracing_test::traced_test;
 
 use crate::{
-  cli::args::{LogModeArgs, ModifierArgs},
+  cli::{
+    args::{LogModeArgs, ModifierArgs},
+    options::SeccompBpf,
+  },
   event::{OutputMsg, TracerEvent, TracerEventDetails, TracerMessage},
   proc::{BaselineInfo, Interpreter},
   tracer::TracerBuilder,
@@ -36,6 +39,7 @@ fn true_executable() -> PathBuf {
 #[fixture]
 fn tracer(
   #[default(Default::default())] modifier_args: ModifierArgs,
+  #[default(Default::default())] seccomp_bpf: SeccompBpf,
 ) -> (Arc<Tracer>, UnboundedReceiver<TracerMessage>, SpawnToken) {
   let tracer_mod = TracerMode::Log { foreground: false };
   let tracing_args = LogModeArgs::default();
@@ -47,6 +51,7 @@ fn tracer(
     .tracer_tx(msg_tx)
     .baseline(Arc::new(baseline))
     .printer_from_cli(&tracing_args)
+    .seccomp_bpf(seccomp_bpf)
     .build_ptrace()
     .unwrap();
   (Arc::new(tracer), msg_rx, token)
@@ -131,9 +136,15 @@ async fn tracer_decodes_proc_self_exe(
 
 #[traced_test]
 #[rstest]
+#[case(SeccompBpf::Auto)]
+#[case(SeccompBpf::Off)]
 #[file_serial]
 #[tokio::test]
-async fn tracer_emits_exec_event(tracer: TracerFixture, true_executable: PathBuf) {
+async fn tracer_emits_exec_event(
+  #[allow(unused)] #[case] seccomp_bpf: SeccompBpf,
+  #[with(Default::default(), seccomp_bpf)] tracer: TracerFixture,
+  true_executable: PathBuf,
+) {
   // TODO: don't assume FHS
   let (tracer, rx, req_rx) = tracer;
   let true_executable = true_executable.to_string_lossy().to_string();
