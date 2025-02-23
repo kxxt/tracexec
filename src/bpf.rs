@@ -64,10 +64,10 @@ pub async fn main(
       let modifier_args = modifier_args.processed();
       let baseline = Arc::new(BaselineInfo::new()?);
       let output = Cli::get_output(output, color)?;
-      let printer = Arc::new(Printer::new(
+      let printer = Printer::new(
         PrinterArgs::from_cli(&log_args, &modifier_args),
         baseline.clone(),
-      ));
+      );
       let tracer = TracerBuilder::new()
         .mode(TracerMode::Log {
           foreground: log_args.foreground(),
@@ -135,10 +135,10 @@ pub async fn main(
         pty_master,
       )?;
       app.activate_experiment("eBPF");
-      let printer = Arc::new(Printer::new(
+      let printer = Printer::new(
         PrinterArgs::from_cli(&log_args, &modifier_args),
         baseline.clone(),
-      ));
+      );
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
       // let (req_tx, req_rx) = mpsc::unbounded_channel();
       let tracer = TracerBuilder::new()
@@ -194,10 +194,10 @@ pub async fn main(
         no_foreground,
         ..Default::default()
       };
-      let printer = Arc::new(Printer::new(
+      let printer = Printer::new(
         PrinterArgs::from_cli(&log_args, &modifier_args),
         baseline.clone(),
-      ));
+      );
       let (tx, mut rx) = mpsc::unbounded_channel();
       let tracer = TracerBuilder::new()
         .mode(TracerMode::Log {

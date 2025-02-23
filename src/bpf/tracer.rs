@@ -84,7 +84,7 @@ impl TracerBuilder {
     EbpfTracer {
       user: self.user,
       modifier: self.modifier,
-      printer: self.printer.unwrap(),
+      printer: Arc::new(self.printer.unwrap()),
       baseline: self.baseline.unwrap(),
       tx: self.tx,
       filter: self

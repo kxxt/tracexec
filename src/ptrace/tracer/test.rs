@@ -7,12 +7,13 @@ use tracing::info;
 use tracing_test::traced_test;
 
 use crate::{
-  cli::args::{LogModeArgs, ModifierArgs, PtraceArgs, TracerEventArgs},
+  cli::args::{LogModeArgs, ModifierArgs, TracerEventArgs},
   event::{OutputMsg, TracerEvent, TracerEventDetails, TracerMessage},
   proc::{BaselineInfo, Interpreter},
+  tracer::TracerBuilder,
 };
 
-use super::{PendingRequest, Tracer, TracerMode};
+use super::{SpawnToken, Tracer, TracerMode};
 
 #[fixture]
 fn true_executable() -> PathBuf {
@@ -35,45 +36,29 @@ fn true_executable() -> PathBuf {
 #[fixture]
 fn tracer(
   #[default(Default::default())] modifier_args: ModifierArgs,
-) -> (
-  Arc<Tracer>,
-  UnboundedReceiver<TracerMessage>,
-  UnboundedReceiver<PendingRequest>,
-) {
+) -> (Arc<Tracer>, UnboundedReceiver<TracerMessage>, SpawnToken) {
   let tracer_mod = TracerMode::Log { foreground: false };
   let tracing_args = LogModeArgs::default();
-  let tracer_event_args = TracerEventArgs::all();
   let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
-  let (req_tx, req_rx) = tokio::sync::mpsc::unbounded_channel();
   let baseline = BaselineInfo::new().unwrap();
-
-  (
-    Arc::new(
-      Tracer::new(
-        tracer_mod,
-        tracing_args,
-        modifier_args,
-        PtraceArgs::default(),
-        tracer_event_args,
-        baseline,
-        msg_tx,
-        None,
-        req_tx,
-      )
-      .unwrap(),
-    ),
-    msg_rx,
-    req_rx,
-  )
+  let (tracer, token) = TracerBuilder::new()
+    .mode(tracer_mod)
+    .modifier(modifier_args)
+    .tracer_tx(msg_tx)
+    .baseline(Arc::new(baseline))
+    .printer_from_cli(&tracing_args)
+    .build_ptrace()
+    .unwrap();
+  (Arc::new(tracer), msg_rx, token)
 }
 
 async fn run_exe_and_collect_msgs(
   tracer: Arc<Tracer>,
   mut rx: UnboundedReceiver<TracerMessage>,
-  req_rx: UnboundedReceiver<PendingRequest>,
+  token: SpawnToken,
   argv: Vec<String>,
 ) -> Vec<TracerMessage> {
-  let tracer_thread = tracer.spawn(argv, None, req_rx);
+  let tracer_thread = tracer.spawn(argv, None, token);
   tracer_thread.await.unwrap().unwrap();
 
   async {
@@ -86,11 +71,7 @@ async fn run_exe_and_collect_msgs(
   .await
 }
 
-type TracerFixture = (
-  Arc<Tracer>,
-  UnboundedReceiver<TracerMessage>,
-  UnboundedReceiver<PendingRequest>,
-);
+type TracerFixture = (Arc<Tracer>, UnboundedReceiver<TracerMessage>, SpawnToken);
 
 #[traced_test]
 #[rstest]
