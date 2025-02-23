@@ -56,14 +56,16 @@ use crate::{
 };
 
 use self::inspect::{read_string, read_string_array};
-pub use self::state::{BreakPoint, BreakPointPattern, BreakPointStop, BreakPointType};
 use self::state::{ProcessState, ProcessStateStore, ProcessStatus};
+use super::breakpoint::{BreakPoint, BreakPointStop};
 
 mod state;
 #[cfg(test)]
 mod test;
 
 use inspect::InspectError;
+
+use super::BreakPointHit;
 
 cfg_if! {
   if #[cfg(feature = "seccomp-bpf")] {
@@ -87,13 +89,6 @@ pub struct Tracer {
   breakpoints: RwLock<BTreeMap<u32, BreakPoint>>,
   req_tx: UnboundedSender<PendingRequest>,
   delay: Duration,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BreakPointHit {
-  pub bid: u32,
-  pub pid: Pid,
-  pub stop: BreakPointStop,
 }
 
 pub enum PendingRequest {
