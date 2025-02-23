@@ -19,10 +19,10 @@ use enumflags2::BitFlags;
 use inspect::{read_arcstr, read_output_msg_array};
 use nix::{
   errno::Errno,
-  libc::{self, AT_EMPTY_PATH, S_ISGID, S_ISUID, c_int, dup2, pthread_self, pthread_setname_np},
+  libc::{self, AT_EMPTY_PATH, S_ISGID, S_ISUID, c_int, pthread_self, pthread_setname_np},
   sys::{ptrace::AddressType, stat::fstat, wait::WaitPidFlag},
   unistd::{
-    Gid, Pid, Uid, User, getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp,
+    Gid, Pid, Uid, User, dup2, getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp,
   },
 };
 use state::{PendingDetach, Syscall};
@@ -238,12 +238,10 @@ impl Tracer {
       }
 
       if !with_tty {
-        unsafe {
-          let dev_null = std::fs::File::open("/dev/null")?;
-          dup2(dev_null.as_raw_fd(), 0);
-          dup2(dev_null.as_raw_fd(), 1);
-          dup2(dev_null.as_raw_fd(), 2);
-        }
+        let dev_null = std::fs::File::open("/dev/null")?;
+        dup2(dev_null.as_raw_fd(), 0).unwrap();
+        dup2(dev_null.as_raw_fd(), 1).unwrap();
+        dup2(dev_null.as_raw_fd(), 2).unwrap();
       }
 
       if use_pseudo_term {
