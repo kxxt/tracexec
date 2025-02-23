@@ -1,4 +1,15 @@
-use crate::{ptrace::InspectError, pty::UnixSlavePty};
+use enumflags2::BitFlags;
+use nix::unistd::User;
+use tokio::sync::mpsc::UnboundedSender;
+
+use crate::{
+  cli::args::ModifierArgs,
+  event::{TracerEventDetailsKind, TracerMessage},
+  printer::Printer,
+  proc::BaselineInfo,
+  ptrace::InspectError,
+  pty::UnixSlavePty,
+};
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
@@ -6,6 +17,68 @@ use crate::{
   proc::{FileDescriptorInfoCollection, Interpreter},
   ptrace::Signal,
 };
+
+#[derive(Default)]
+pub struct TracerBuilder {
+  pub(crate) user: Option<User>,
+  pub(crate) modifier: ModifierArgs,
+  pub(crate) mode: Option<TracerMode>,
+  pub(crate) filter: Option<BitFlags<TracerEventDetailsKind>>,
+  pub(crate) tx: Option<UnboundedSender<TracerMessage>>,
+  // TODO: remove this.
+  pub(crate) printer: Option<Arc<Printer>>,
+  pub(crate) baseline: Option<Arc<BaselineInfo>>,
+}
+
+impl TracerBuilder {
+  /// Initialize a new [`TracerBuilder`]
+  pub fn new() -> Self {
+    Default::default()
+  }
+
+  /// Sets the `User` used when spawning the command.
+  ///
+  /// Default to current user.
+  pub fn user(mut self, user: Option<User>) -> Self {
+    self.user = user;
+    self
+  }
+
+  pub fn modifier(mut self, modifier: ModifierArgs) -> Self {
+    self.modifier = modifier;
+    self
+  }
+
+  /// Sets the mode for the trace e.g. TUI or Log
+  pub fn mode(mut self, mode: TracerMode) -> Self {
+    self.mode = Some(mode);
+    self
+  }
+
+  /// Sets a filter for wanted tracer events.
+  pub fn filter(mut self, filter: BitFlags<TracerEventDetailsKind>) -> Self {
+    self.filter = Some(filter);
+    self
+  }
+
+  /// Passes the tx part of tracer event channel
+  ///
+  /// By default this is not set and tracer will not send events.
+  pub fn tracer_tx(mut self, tx: UnboundedSender<TracerMessage>) -> Self {
+    self.tx = Some(tx);
+    self
+  }
+
+  pub fn printer(mut self, printer: Arc<Printer>) -> Self {
+    self.printer = Some(printer);
+    self
+  }
+
+  pub fn baseline(mut self, baseline: Arc<BaselineInfo>) -> Self {
+    self.baseline = Some(baseline);
+    self
+  }
+}
 
 #[derive(Debug)]
 pub struct ExecData {

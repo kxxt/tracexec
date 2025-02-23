@@ -6,7 +6,7 @@ use std::{
   sync::{Arc, LazyLock, RwLock, atomic::Ordering},
 };
 
-use crate::cache::ArcStr;
+use crate::{cache::ArcStr, tracer::TracerBuilder};
 use color_eyre::{Section, eyre::eyre};
 use enumflags2::BitFlag;
 use nix::unistd::User;
@@ -14,7 +14,6 @@ use tokio::{
   sync::mpsc::{self},
   task::spawn_blocking,
 };
-use tracer::EbpfTracer;
 
 use crate::{
   cache::StringCache,
@@ -69,7 +68,7 @@ pub async fn main(
         PrinterArgs::from_cli(&log_args, &modifier_args),
         baseline.clone(),
       ));
-      let tracer = EbpfTracer::builder()
+      let tracer = TracerBuilder::new()
         .mode(TracerMode::Log {
           foreground: log_args.foreground(),
         })
@@ -78,7 +77,7 @@ pub async fn main(
         .baseline(baseline)
         .user(user)
         .modifier(modifier_args)
-        .build();
+        .build_ebpf();
       let running_tracer = tracer.spawn(&cmd, obj, Some(output))?;
       running_tracer.run_until_exit();
       Ok(())
@@ -142,7 +141,7 @@ pub async fn main(
       ));
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
       // let (req_tx, req_rx) = mpsc::unbounded_channel();
-      let tracer = EbpfTracer::builder()
+      let tracer = TracerBuilder::new()
         .mode(tracer_mode)
         .printer(printer)
         .baseline(baseline)
@@ -150,7 +149,7 @@ pub async fn main(
         .filter(tracer_event_args.filter()?)
         .user(user)
         .tracer_tx(tracer_tx)
-        .build();
+        .build_ebpf();
       let running_tracer = tracer.spawn(&cmd, obj, None)?;
       let should_exit = running_tracer.should_exit.clone();
       let tracer_thread = spawn_blocking(move || {
@@ -200,7 +199,7 @@ pub async fn main(
         baseline.clone(),
       ));
       let (tx, mut rx) = mpsc::unbounded_channel();
-      let tracer = EbpfTracer::builder()
+      let tracer = TracerBuilder::new()
         .mode(TracerMode::Log {
           foreground: log_args.foreground(),
         })
@@ -209,7 +208,7 @@ pub async fn main(
         .baseline(baseline.clone())
         .tracer_tx(tx)
         .user(user)
-        .build();
+        .build_ebpf();
       let running_tracer = tracer.spawn(&cmd, obj, None)?;
       let tracer_thread = spawn_blocking(move || {
         running_tracer.run_until_exit();

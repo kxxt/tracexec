@@ -26,7 +26,10 @@ use super::skel::{
   },
 };
 use super::{event::EventStorage, skel::TracexecSystemSkelBuilder};
-use crate::bpf::{BpfError, cached_cow, utf8_lossy_cow_from_bytes_with_nul};
+use crate::{
+  bpf::{BpfError, cached_cow, utf8_lossy_cow_from_bytes_with_nul},
+  tracer::TracerBuilder,
+};
 use color_eyre::Section;
 use enumflags2::{BitFlag, BitFlags};
 use libbpf_rs::{
@@ -63,23 +66,21 @@ use crate::{
   tracer::{ExecData, ProcessExit, TracerMode},
 };
 
-#[derive(Default)]
-pub struct EbpfTracerBuilder {
+pub struct EbpfTracer {
   user: Option<User>,
   modifier: ModifierArgs,
-  mode: Option<TracerMode>,
-  filter: Option<BitFlags<TracerEventDetailsKind>>,
+  printer: Arc<Printer>,
+  baseline: Arc<BaselineInfo>,
   tx: Option<UnboundedSender<TracerMessage>>,
-  // TODO: remove this.
-  printer: Option<Arc<Printer>>,
-  baseline: Option<Arc<BaselineInfo>>,
+  filter: BitFlags<TracerEventDetailsKind>,
+  mode: TracerMode,
 }
 
-impl EbpfTracerBuilder {
+impl TracerBuilder {
   /// Build a [`EbpfTracer`].
   ///
   /// Panics on unset required fields.
-  pub fn build(self) -> EbpfTracer {
+  pub fn build_ebpf(self) -> EbpfTracer {
     EbpfTracer {
       user: self.user,
       modifier: self.modifier,
@@ -92,66 +93,9 @@ impl EbpfTracerBuilder {
       mode: self.mode.unwrap(),
     }
   }
-
-  /// Sets the `User` used when spawning the command.
-  ///
-  /// Default to current user.
-  pub fn user(mut self, user: Option<User>) -> Self {
-    self.user = user;
-    self
-  }
-
-  pub fn modifier(mut self, modifier: ModifierArgs) -> Self {
-    self.modifier = modifier;
-    self
-  }
-
-  /// Sets the mode for the trace e.g. TUI or Log
-  pub fn mode(mut self, mode: TracerMode) -> Self {
-    self.mode = Some(mode);
-    self
-  }
-
-  /// Sets a filter for wanted tracer events.
-  pub fn filter(mut self, filter: BitFlags<TracerEventDetailsKind>) -> Self {
-    self.filter = Some(filter);
-    self
-  }
-
-  /// Passes the tx part of tracer event channel
-  ///
-  /// By default this is not set and tracer will not send events.
-  pub fn tracer_tx(mut self, tx: UnboundedSender<TracerMessage>) -> Self {
-    self.tx = Some(tx);
-    self
-  }
-
-  pub fn printer(mut self, printer: Arc<Printer>) -> Self {
-    self.printer = Some(printer);
-    self
-  }
-
-  pub fn baseline(mut self, baseline: Arc<BaselineInfo>) -> Self {
-    self.baseline = Some(baseline);
-    self
-  }
-}
-
-pub struct EbpfTracer {
-  user: Option<User>,
-  modifier: ModifierArgs,
-  printer: Arc<Printer>,
-  baseline: Arc<BaselineInfo>,
-  tx: Option<UnboundedSender<TracerMessage>>,
-  filter: BitFlags<TracerEventDetailsKind>,
-  mode: TracerMode,
 }
 
 impl EbpfTracer {
-  pub fn builder() -> EbpfTracerBuilder {
-    Default::default()
-  }
-
   #[allow(clippy::needless_lifetimes)]
   pub fn spawn<'obj>(
     self,
