@@ -11,7 +11,7 @@ use std::{
 
 use crate::{
   cache::ArcStr,
-  tracer::{ExecData, ProcessExit, TracerMode},
+  tracer::{ExecData, ProcessExit, TracerBuilder, TracerMode},
 };
 use cfg_if::cfg_if;
 use either::Either;
@@ -28,20 +28,20 @@ use nix::{
 use state::{PendingDetach, Syscall};
 use tokio::{
   select,
-  sync::mpsc::{UnboundedReceiver, UnboundedSender, error::SendError},
+  sync::mpsc::{UnboundedReceiver, UnboundedSender, error::SendError, unbounded_channel},
 };
 use tracing::{debug, error, info, trace, warn};
 
 use crate::{
   arch::RegsExt,
-  cli::args::{LogModeArgs, ModifierArgs, PtraceArgs, TracerEventArgs},
+  cli::args::ModifierArgs,
   cmdbuilder::CommandBuilder,
   event::{
     ExecEvent, OutputMsg, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEvent,
     TracerEventDetails, TracerEventDetailsKind, TracerEventMessage, TracerMessage,
     filterable_event,
   },
-  printer::{Printer, PrinterArgs, PrinterOut},
+  printer::{Printer, PrinterOut},
   proc::{
     BaselineInfo, cached_string, diff_env, parse_envp, read_comm, read_cwd, read_exe, read_fd,
     read_fds, read_interpreter_recursive,
@@ -91,6 +91,80 @@ pub struct Tracer {
   delay: Duration,
 }
 
+pub struct SpawnToken {
+  req_rx: UnboundedReceiver<PendingRequest>,
+  /// The tx part is only used to check if this token belongs
+  /// to the same [`Tracer`] where it comes from.
+  req_tx: UnboundedSender<PendingRequest>,
+}
+
+impl TracerBuilder {
+  pub fn build_ptrace(self) -> color_eyre::Result<(Tracer, SpawnToken)> {
+    #[cfg(feature = "seccomp-bpf")]
+    let seccomp_bpf = if self.seccomp_bpf == SeccompBpf::Auto {
+      // TODO: check if the kernel supports seccomp-bpf
+      // Let's just enable it for now and see if anyone complains
+      if self.user.is_some() {
+        // Seccomp-bpf enforces no-new-privs, so when using --user to trace set(u|g)id
+        // binaries, we disable seccomp-bpf by default.
+        SeccompBpf::Off
+      } else {
+        SeccompBpf::On
+      }
+    } else {
+      self.seccomp_bpf
+    };
+    let with_tty = match self.mode.as_ref().unwrap() {
+      TracerMode::Tui(tty) => tty.is_some(),
+      TracerMode::Log { .. } => true,
+    };
+    let (req_tx, req_rx) = unbounded_channel();
+    Ok((
+      Tracer {
+        with_tty,
+        store: RwLock::new(ProcessStateStore::new()),
+        #[cfg(feature = "seccomp-bpf")]
+        seccomp_bpf,
+        msg_tx: self.tx.expect("tracer_tx is required for ptrace tracer"),
+        user: self.user,
+        printer: self.printer.unwrap(),
+        modifier_args: self.modifier,
+        filter: {
+          let mut filter = self
+            .filter
+            .unwrap_or_else(BitFlags::<TracerEventDetailsKind>::all);
+          trace!("Event filter: {:?}", filter);
+          if let TracerMode::Log { .. } = self.mode.as_ref().unwrap() {
+            // FIXME: In logging mode, we rely on root child exit event to exit the process
+            //        with the same exit code as the root child. It is not printed in logging mode.
+            //        Ideally we should use another channel to send the exit code to the main thread.
+            filter |= TracerEventDetailsKind::TraceeExit;
+          }
+          filter
+        },
+        baseline: self.baseline.unwrap(),
+        breakpoints: RwLock::new(BTreeMap::new()),
+        req_tx: req_tx.clone(),
+        delay: {
+          #[allow(clippy::useless_let_if_seq)]
+          let mut default = Duration::from_micros(1);
+          #[cfg(feature = "seccomp-bpf")]
+          #[allow(clippy::useless_let_if_seq)]
+          if seccomp_bpf == SeccompBpf::On {
+            default = Duration::from_micros(500);
+          }
+          self
+            .ptrace_polling_delay
+            .map(Duration::from_micros)
+            .unwrap_or(default)
+        },
+        mode: self.mode.unwrap(),
+      },
+      SpawnToken { req_rx, req_tx },
+    ))
+  }
+}
+
 pub enum PendingRequest {
   ResumeProcess(BreakPointHit),
   DetachProcess {
@@ -103,86 +177,16 @@ pub enum PendingRequest {
 }
 
 impl Tracer {
-  // TODO: create a TracerBuilder maybe
-  #[allow(clippy::too_many_arguments)]
-  pub fn new(
-    mode: TracerMode,
-    tracing_args: LogModeArgs,
-    modifier_args: ModifierArgs,
-    ptrace_args: PtraceArgs,
-    tracer_event_args: TracerEventArgs,
-    baseline: BaselineInfo,
-    event_tx: UnboundedSender<TracerMessage>,
-    user: Option<User>,
-    req_tx: UnboundedSender<PendingRequest>,
-  ) -> color_eyre::Result<Self> {
-    let baseline = Arc::new(baseline);
-    #[cfg(feature = "seccomp-bpf")]
-    let seccomp_bpf = if ptrace_args.seccomp_bpf == SeccompBpf::Auto {
-      // TODO: check if the kernel supports seccomp-bpf
-      // Let's just enable it for now and see if anyone complains
-      if user.is_some() {
-        // Seccomp-bpf enforces no-new-privs, so when using --user to trace set(u|g)id
-        // binaries, we disable seccomp-bpf by default.
-        SeccompBpf::Off
-      } else {
-        SeccompBpf::On
-      }
-    } else {
-      ptrace_args.seccomp_bpf
-    };
-    Ok(Self {
-      with_tty: match &mode {
-        TracerMode::Tui(tty) => tty.is_some(),
-        TracerMode::Log { .. } => true,
-      },
-      store: RwLock::new(ProcessStateStore::new()),
-      #[cfg(feature = "seccomp-bpf")]
-      seccomp_bpf,
-      msg_tx: event_tx,
-      user,
-      filter: {
-        let mut filter = tracer_event_args.filter()?;
-        trace!("Event filter: {:?}", filter);
-        if let TracerMode::Log { .. } = mode {
-          // FIXME: In logging mode, we rely on root child exit event to exit the process
-          //        with the same exit code as the root child. It is not printed in logging mode.
-          //        Ideally we should use another channel to send the exit code to the main thread.
-          filter |= TracerEventDetailsKind::TraceeExit;
-        }
-        filter
-      },
-      printer: Printer::new(
-        PrinterArgs::from_cli(&tracing_args, &modifier_args),
-        baseline.clone(),
-      ),
-      delay: {
-        #[allow(clippy::useless_let_if_seq)]
-        let mut default = Duration::from_micros(1);
-        #[cfg(feature = "seccomp-bpf")]
-        #[allow(clippy::useless_let_if_seq)]
-        if seccomp_bpf == SeccompBpf::On {
-          default = Duration::from_micros(500);
-        }
-        ptrace_args
-          .tracer_delay
-          .map(Duration::from_micros)
-          .unwrap_or(default)
-      },
-      modifier_args,
-      baseline,
-      mode,
-      breakpoints: RwLock::new(BTreeMap::new()),
-      req_tx,
-    })
-  }
-
   pub fn spawn(
     self: Arc<Self>,
     args: Vec<String>,
     output: Option<Box<PrinterOut>>,
-    req_rx: UnboundedReceiver<PendingRequest>,
+    token: SpawnToken,
   ) -> tokio::task::JoinHandle<color_eyre::Result<()>> {
+    if !self.req_tx.same_channel(&token.req_tx) {
+      panic!("The spawn token used does not match the tracer")
+    }
+    drop(token.req_tx);
     tokio::task::spawn_blocking({
       move || {
         unsafe {
@@ -192,7 +196,7 @@ impl Tracer {
         let tx = self.msg_tx.clone();
         let result = tokio::runtime::Handle::current().block_on(async move {
           self.printer.init_thread_local(output);
-          self.run(args, req_rx).await
+          self.run(args, token.req_rx).await
         });
         if let Err(e) = &result {
           tx.send(TracerMessage::FatalError(e.to_string())).unwrap();

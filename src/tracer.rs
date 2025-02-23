@@ -3,9 +3,12 @@ use nix::unistd::User;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
-  cli::args::ModifierArgs,
+  cli::{
+    args::{LogModeArgs, ModifierArgs},
+    options::SeccompBpf,
+  },
   event::{TracerEventDetailsKind, TracerMessage},
-  printer::Printer,
+  printer::{Printer, PrinterArgs},
   proc::BaselineInfo,
   ptrace::InspectError,
   pty::UnixSlavePty,
@@ -26,14 +29,34 @@ pub struct TracerBuilder {
   pub(crate) filter: Option<BitFlags<TracerEventDetailsKind>>,
   pub(crate) tx: Option<UnboundedSender<TracerMessage>>,
   // TODO: remove this.
-  pub(crate) printer: Option<Arc<Printer>>,
+  pub(crate) printer: Option<Printer>,
   pub(crate) baseline: Option<Arc<BaselineInfo>>,
+  // --- ptrace specific ---
+  pub(crate) seccomp_bpf: SeccompBpf,
+  pub(crate) ptrace_polling_delay: Option<u64>,
 }
 
 impl TracerBuilder {
   /// Initialize a new [`TracerBuilder`]
   pub fn new() -> Self {
     Default::default()
+  }
+
+  /// Sets ptrace polling delay (in microseconds)
+  ///
+  /// This option is not used in eBPF tracer.
+  pub fn ptrace_polling_delay(mut self, ptrace_polling_delay: Option<u64>) -> Self {
+    self.ptrace_polling_delay = ptrace_polling_delay;
+    self
+  }
+
+  /// Sets seccomp-bpf mode for ptrace tracer
+  ///
+  /// Default to auto.
+  /// This option is not used in eBPF tracer.
+  pub fn seccomp_bpf(mut self, seccomp_bpf: SeccompBpf) -> Self {
+    self.seccomp_bpf = seccomp_bpf;
+    self
   }
 
   /// Sets the `User` used when spawning the command.
@@ -69,8 +92,19 @@ impl TracerBuilder {
     self
   }
 
-  pub fn printer(mut self, printer: Arc<Printer>) -> Self {
+  pub fn printer(mut self, printer: Printer) -> Self {
     self.printer = Some(printer);
+    self
+  }
+
+  /// Create a printer from CLI options,
+  ///
+  /// Requires `modifier` and `baseline` to be set before calling.
+  pub fn printer_from_cli(mut self, tracing_args: &LogModeArgs) -> Self {
+    self.printer = Some(Printer::new(
+      PrinterArgs::from_cli(tracing_args, &self.modifier),
+      self.baseline.clone().unwrap(),
+    ));
     self
   }
 

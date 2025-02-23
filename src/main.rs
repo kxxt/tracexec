@@ -50,6 +50,7 @@ use export::{JsonExecEvent, JsonMetaData};
 use nix::unistd::{Uid, User};
 use serde::Serialize;
 use tokio::sync::mpsc;
+use tracer::TracerBuilder;
 use tui::app::PTracer;
 
 use crate::{
@@ -124,21 +125,21 @@ async fn main() -> color_eyre::Result<()> {
       let output = Cli::get_output(output, cli.color)?;
       let baseline = BaselineInfo::new()?;
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
-      let (req_tx, req_rx) = mpsc::unbounded_channel();
-      let tracer = Arc::new(ptrace::Tracer::new(
-        TracerMode::Log {
+      let (tracer, token) = TracerBuilder::new()
+        .mode(TracerMode::Log {
           foreground: tracing_args.foreground(),
-        },
-        tracing_args,
-        modifier_args,
-        ptrace_args,
-        tracer_event_args,
-        baseline,
-        tracer_tx,
-        user,
-        req_tx,
-      )?);
-      let tracer_thread = tracer.spawn(cmd, Some(output), req_rx);
+        })
+        .modifier(modifier_args)
+        .user(user)
+        .tracer_tx(tracer_tx)
+        .baseline(Arc::new(baseline))
+        .filter(tracer_event_args.filter()?)
+        .seccomp_bpf(ptrace_args.seccomp_bpf)
+        .ptrace_polling_delay(ptrace_args.tracer_delay)
+        .printer_from_cli(&tracing_args)
+        .build_ptrace()?;
+      let tracer = Arc::new(tracer);
+      let tracer_thread = tracer.spawn(cmd, Some(output), token);
       loop {
         match tracer_rx.recv().await {
           Some(TracerMessage::Event(TracerEvent {
@@ -199,20 +200,21 @@ async fn main() -> color_eyre::Result<()> {
         diff_env: true,
         ..Default::default()
       };
-      let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
-      let (req_tx, req_rx) = mpsc::unbounded_channel();
-      let tracer = Arc::new(ptrace::Tracer::new(
-        tracer_mode,
-        tracing_args.clone(),
-        modifier_args,
-        ptrace_args,
-        tracer_event_args,
-        baseline.clone(),
-        tracer_tx,
-        user,
-        req_tx,
-      )?);
       let baseline = Arc::new(baseline);
+      let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
+      let (tracer, token) = TracerBuilder::new()
+        .mode(tracer_mode)
+        .modifier(modifier_args)
+        .user(user)
+        .tracer_tx(tracer_tx)
+        .baseline(baseline.clone())
+        .filter(tracer_event_args.filter()?)
+        .seccomp_bpf(ptrace_args.seccomp_bpf)
+        .ptrace_polling_delay(ptrace_args.tracer_delay)
+        .printer_from_cli(&tracing_args)
+        .build_ptrace()?;
+      let tracer = Arc::new(tracer);
+
       let frame_rate = tui_args.frame_rate.unwrap_or(60.);
       let mut app = App::new(
         Some(PTracer {
@@ -225,7 +227,7 @@ async fn main() -> color_eyre::Result<()> {
         baseline,
         pty_master,
       )?;
-      let tracer_thread = tracer.spawn(cmd, None, req_rx);
+      let tracer_thread = tracer.spawn(cmd, None, token);
       let mut tui = tui::Tui::new()?.frame_rate(frame_rate);
       tui.enter(tracer_rx)?;
       app.run(&mut tui).await?;
@@ -262,22 +264,22 @@ async fn main() -> color_eyre::Result<()> {
         ..Default::default()
       };
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
-      let (req_tx, req_rx) = mpsc::unbounded_channel();
       let baseline = BaselineInfo::new()?;
-      let tracer = Arc::new(ptrace::Tracer::new(
-        TracerMode::Log {
+      let (tracer, token) = TracerBuilder::new()
+        .mode(TracerMode::Log {
           foreground: tracing_args.foreground(),
-        },
-        tracing_args.clone(),
-        modifier_args,
-        ptrace_args,
-        TracerEventArgs::all(),
-        baseline.clone(),
-        tracer_tx,
-        user,
-        req_tx,
-      )?);
-      let tracer_thread = tracer.spawn(cmd, None, req_rx);
+        })
+        .modifier(modifier_args)
+        .user(user)
+        .tracer_tx(tracer_tx)
+        .baseline(Arc::new(baseline.clone()))
+        .filter(TracerEventArgs::all().filter()?)
+        .seccomp_bpf(ptrace_args.seccomp_bpf)
+        .ptrace_polling_delay(ptrace_args.tracer_delay)
+        .printer_from_cli(&tracing_args)
+        .build_ptrace()?;
+      let tracer = Arc::new(tracer);
+      let tracer_thread = tracer.spawn(cmd, None, token);
       match format {
         ExportFormat::Json => {
           let mut json = export::Json {
