@@ -6,6 +6,7 @@
 
 use std::{cell::Cell, marker::PhantomData, sync::MutexGuard};
 
+use color_eyre::eyre::Context;
 use nix::{
   errno::Errno,
   sys::{
@@ -16,7 +17,7 @@ use nix::{
 };
 use tracing::trace;
 
-use crate::ptrace::PtraceOpaqueStopGuard;
+use crate::ptrace::{PtraceOpaqueStopGuard, PtraceStop};
 
 use super::{PtraceSignalDeliveryStopGuard, PtraceWaitPidEvent, waitpid};
 
@@ -47,9 +48,9 @@ impl RecursivePtraceEngine {
     &mut self,
     tracee: Pid,
     mut options: nix::sys::ptrace::Options,
-  ) -> Result<(), Errno> {
+  ) -> color_eyre::Result<()> {
     if self.running {
-      return Err(Errno::EEXIST);
+      return Err(Errno::EEXIST.into());
     } else {
       self.running = true;
     }
@@ -64,6 +65,19 @@ impl RecursivePtraceEngine {
         | Options::PTRACE_O_TRACECLONE
         | Options::PTRACE_O_TRACEVFORK,
     )?;
+    ptrace::interrupt(tracee)?;
+    match self.next_event(None)? {
+      PtraceWaitPidEvent::Ptrace(ptrace_stop_guard) => {
+        ptrace_stop_guard.seccomp_aware_cont_syscall(true)?;
+      }
+      PtraceWaitPidEvent::Signaled { pid, signal } => {
+        return Err(Errno::ESRCH).with_context(|| format!("Tracee {pid} signaled with {signal}"));
+      }
+      PtraceWaitPidEvent::Exited { pid, code } => {
+        return Err(Errno::ESRCH).with_context(|| format!("Tracee {pid} exited with code {code}"));
+      }
+      PtraceWaitPidEvent::StillAlive | PtraceWaitPidEvent::Continued(_) => unreachable!(),
+    }
     Ok(())
   }
 
