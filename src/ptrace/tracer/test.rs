@@ -7,7 +7,7 @@ use tracing::info;
 use tracing_test::traced_test;
 
 use crate::{
-  cli::args::{LogModeArgs, ModifierArgs, TracerEventArgs},
+  cli::args::{LogModeArgs, ModifierArgs},
   event::{OutputMsg, TracerEvent, TracerEventDetails, TracerMessage},
   proc::{BaselineInfo, Interpreter},
   tracer::TracerBuilder,

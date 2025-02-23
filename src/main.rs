@@ -31,6 +31,7 @@ mod pty;
 mod regex;
 #[cfg(feature = "seccomp-bpf")]
 mod seccomp;
+mod tracee;
 mod tracer;
 mod tui;
 

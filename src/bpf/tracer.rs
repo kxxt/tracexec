@@ -1,14 +1,11 @@
 use std::{
   cell::RefCell,
   collections::{HashMap, HashSet},
-  ffi::{CString, OsStr},
-  io::{self, stdin},
+  ffi::OsStr,
+  io::stdin,
   iter::repeat,
   mem::MaybeUninit,
-  os::{
-    fd::{AsRawFd, RawFd},
-    unix::fs::MetadataExt,
-  },
+  os::{fd::RawFd, unix::fs::MetadataExt},
   sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -28,6 +25,7 @@ use super::skel::{
 use super::{event::EventStorage, skel::TracexecSystemSkelBuilder};
 use crate::{
   bpf::{BpfError, cached_cow, utf8_lossy_cow_from_bytes_with_nul},
+  tracee,
   tracer::TracerBuilder,
 };
 use color_eyre::Section;
@@ -44,9 +42,7 @@ use nix::{
     signal::{kill, raise},
     wait::{WaitPidFlag, WaitStatus, waitpid},
   },
-  unistd::{
-    Gid, Pid, Uid, User, dup2, getpid, initgroups, setpgid, setresgid, setresuid, setsid, tcsetpgrp,
-  },
+  unistd::{Pid, User, tcsetpgrp},
 };
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, warn};
@@ -442,29 +438,20 @@ impl EbpfTracer {
       let user = self.user.clone();
       let child = pty::spawn_command(pts, cmdbuilder, move |_program_path| {
         if !with_tty {
-          let dev_null = std::fs::File::open("/dev/null")?;
-          dup2(dev_null.as_raw_fd(), 0).unwrap();
-          dup2(dev_null.as_raw_fd(), 1).unwrap();
-          dup2(dev_null.as_raw_fd(), 2).unwrap();
+          tracee::nullify_stdio()?;
         }
 
         if use_pseudo_term {
-          setsid()?;
-          if unsafe { libc::ioctl(0, libc::TIOCSCTTY as _, 0) } == -1 {
-            Err(io::Error::last_os_error())?;
-          }
+          tracee::lead_session_and_control_terminal()?;
         } else {
-          let me = getpid();
-          setpgid(me, me)?;
+          tracee::lead_process_group()?;
         }
 
         // Wait for eBPF program to load
         raise(nix::sys::signal::SIGSTOP)?;
 
         if let Some(user) = &user {
-          initgroups(&CString::new(user.name.as_str())?[..], user.gid)?;
-          setresgid(user.gid, user.gid, Gid::from_raw(u32::MAX))?;
-          setresuid(user.uid, user.uid, Uid::from_raw(u32::MAX))?;
+          tracee::runas(user, None)?;
         }
 
         Ok(())
