@@ -43,13 +43,14 @@ use crate::{
     BaselineInfo, cached_string, diff_env, parse_envp, read_comm, read_cwd, read_exe, read_fd,
     read_fds, read_interpreter_recursive,
   },
+  ptrace::inspect::{self, read_env},
   ptrace::{
     PtraceSeccompStopGuard, PtraceSignalDeliveryStopGuard, PtraceStop, PtraceStopGuard,
     PtraceSyscallLikeStop, PtraceSyscallStopGuard, PtraceWaitPidEvent, RecursivePtraceEngine,
     Signal,
   },
   pty::{self, UnixSlavePty},
-  tracer::{inspect::read_env, state::ProcessExit},
+  tracer::state::ProcessExit,
 };
 
 use self::state::BreakPointStop;
@@ -59,7 +60,6 @@ use self::{
   state::BreakPoint,
 };
 
-mod inspect;
 pub mod state;
 #[cfg(test)]
 mod test;
