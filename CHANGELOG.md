@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.9.1
+
+### Fixes
+
+Fix a bug introduced in v0.9.0 that when seccomp-bpf is turned off, tracexec aborts with an assertion error.
+
+### Other
+
+- Massive internal refactor.
+- Bump MSRV to 1.85 and edition to 2024.
+
 ## v0.9.0
 
 ### Breaking Changes
