@@ -7,7 +7,7 @@ use enumflags2::BitFlags;
 use crate::{
   cli::config::{ColorLevel, EnvDisplay, FileDescriptorDisplay},
   event::TracerEventDetailsKind,
-  tracer::state::BreakPoint,
+  ptrace::state::BreakPoint,
   tui::app::AppLayout,
 };
 

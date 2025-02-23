@@ -47,8 +47,8 @@ use crate::{
   event::{Event, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEventDetails, TracerMessage},
   printer::PrinterArgs,
   proc::BaselineInfo,
+  ptrace::Tracer,
   pty::{PtySize, UnixMasterPty},
-  tracer::Tracer,
   tui::{error_popup::InfoPopupState, query::QueryKind},
 };
 

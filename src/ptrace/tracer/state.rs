@@ -1,21 +1,18 @@
-use std::{
-  borrow::Cow,
-  collections::{BTreeMap, HashMap},
-  error::Error,
-  sync::Arc,
-};
+use std::{borrow::Cow, collections::HashMap, error::Error};
 
-use crate::cache::ArcStr;
+use crate::{
+  cache::ArcStr,
+  tracer::{ExecData, ProcessExit},
+};
 use nix::unistd::Pid;
 use regex_cursor::engines::pikevm::{self, PikeVM};
 use strum::IntoStaticStr;
 
 use crate::{
   event::OutputMsg,
-  proc::{FileDescriptorInfoCollection, Interpreter, read_comm},
+  proc::read_comm,
   ptrace::Signal,
   regex::{ArgvCursor, SPACE},
-  tracer::InspectError,
 };
 
 use super::BreakPointHit;
@@ -54,12 +51,6 @@ pub struct ProcessState {
   pub pending_detach: Option<PendingDetach>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProcessExit {
-  Code(i32),
-  Signal(Signal),
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProcessStatus {
   Initialized,
@@ -69,36 +60,6 @@ pub enum ProcessStatus {
   Exited(ProcessExit),
   BreakPointHit,
   Detached,
-}
-
-#[derive(Debug)]
-pub struct ExecData {
-  pub filename: OutputMsg,
-  pub argv: Arc<Result<Vec<OutputMsg>, InspectError>>,
-  pub envp: Arc<Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>>,
-  pub cwd: OutputMsg,
-  pub interpreters: Option<Vec<Interpreter>>,
-  pub fdinfo: Arc<FileDescriptorInfoCollection>,
-}
-
-impl ExecData {
-  pub fn new(
-    filename: OutputMsg,
-    argv: Result<Vec<OutputMsg>, InspectError>,
-    envp: Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>,
-    cwd: OutputMsg,
-    interpreters: Option<Vec<Interpreter>>,
-    fdinfo: FileDescriptorInfoCollection,
-  ) -> Self {
-    Self {
-      filename,
-      argv: Arc::new(argv),
-      envp: Arc::new(envp),
-      cwd,
-      interpreters,
-      fdinfo: Arc::new(fdinfo),
-    }
-  }
 }
 
 impl ProcessStateStore {
