@@ -95,7 +95,6 @@ jobs:
             arch: x86_64
             libpath: usr/lib/x86_64-linux-gnu
             no-default-features: true
-            args: '-F seccomp-bpf'
           - os: ubuntu-24.04
             os-arch: amd64
             target: x86_64-unknown-linux-gnu
