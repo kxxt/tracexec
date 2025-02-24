@@ -13,7 +13,6 @@ use crate::{
   tracee,
   tracer::{ExecData, ProcessExit, TracerBuilder, TracerMode},
 };
-use cfg_if::cfg_if;
 use either::Either;
 use enumflags2::BitFlags;
 use inspect::{read_arcstr, read_output_msg_array};
@@ -65,12 +64,8 @@ use inspect::InspectError;
 
 use super::BreakPointHit;
 
-cfg_if! {
-  if #[cfg(feature = "seccomp-bpf")] {
-    use crate::cli::options::SeccompBpf;
-    use crate::seccomp;
-  }
-}
+use crate::cli::options::SeccompBpf;
+use crate::seccomp;
 
 pub struct Tracer {
   with_tty: bool,
@@ -80,7 +75,6 @@ pub struct Tracer {
   modifier_args: ModifierArgs,
   filter: BitFlags<TracerEventDetailsKind>,
   baseline: Arc<BaselineInfo>,
-  #[cfg(feature = "seccomp-bpf")]
   seccomp_bpf: SeccompBpf,
   msg_tx: UnboundedSender<TracerMessage>,
   user: Option<User>,
@@ -98,7 +92,6 @@ pub struct SpawnToken {
 
 impl TracerBuilder {
   pub fn build_ptrace(self) -> color_eyre::Result<(Tracer, SpawnToken)> {
-    #[cfg(feature = "seccomp-bpf")]
     let seccomp_bpf = if self.seccomp_bpf == SeccompBpf::Auto {
       // TODO: check if the kernel supports seccomp-bpf
       // Let's just enable it for now and see if anyone complains
@@ -121,7 +114,6 @@ impl TracerBuilder {
       Tracer {
         with_tty,
         store: RwLock::new(ProcessStateStore::new()),
-        #[cfg(feature = "seccomp-bpf")]
         seccomp_bpf,
         msg_tx: self.tx.expect("tracer_tx is required for ptrace tracer"),
         user: self.user,
@@ -144,13 +136,11 @@ impl TracerBuilder {
         breakpoints: RwLock::new(BTreeMap::new()),
         req_tx: req_tx.clone(),
         delay: {
-          #[allow(clippy::useless_let_if_seq)]
-          let mut default = Duration::from_micros(1);
-          #[cfg(feature = "seccomp-bpf")]
-          #[allow(clippy::useless_let_if_seq)]
-          if seccomp_bpf == SeccompBpf::On {
-            default = Duration::from_micros(500);
-          }
+          let default = if seccomp_bpf == SeccompBpf::On {
+            Duration::from_micros(500)
+          } else {
+            Duration::from_micros(1)
+          };
           self
             .ptrace_polling_delay
             .map(Duration::from_micros)
@@ -170,7 +160,6 @@ pub enum PendingRequest {
     signal: Option<Signal>,
     hid: u64,
   },
-  #[cfg(feature = "seccomp-bpf")]
   SuspendSeccompBpf(Pid),
 }
 
@@ -215,7 +204,6 @@ impl Tracer {
     cmd.args(args.iter().skip(1));
     cmd.cwd(std::env::current_dir()?);
 
-    #[cfg(feature = "seccomp-bpf")]
     let seccomp_bpf = self.seccomp_bpf;
     let slave_pty = match &self.mode {
       TracerMode::Tui(tty) => tty.as_ref(),
@@ -234,7 +222,6 @@ impl Tracer {
     let mut tracer_fd = unsafe { File::from_raw_fd(fds[1]) };
     let tracee_raw_fd = tracee_fd.as_raw_fd();
     let root_child = pty::spawn_command(slave_pty, cmd, move |program_path| {
-      #[cfg(feature = "seccomp-bpf")]
       if seccomp_bpf == SeccompBpf::On {
         seccomp::load_seccomp_filters()?;
       }
@@ -343,7 +330,6 @@ impl Tracer {
                 self.proprgate_operation_error(hit, false, self.detach_process_internal(state, None, hid, &mut pending_guards))?;
               }
             }
-            #[cfg(feature = "seccomp-bpf")]
             PendingRequest::SuspendSeccompBpf(pid) => {
               let _err = self.suspend_seccomp_bpf(pid).inspect_err(|e| {
                 error!("Failed to suspend seccomp-bpf for {pid}: {e}");
@@ -1171,7 +1157,6 @@ impl Tracer {
     Ok(())
   }
 
-  #[cfg(feature = "seccomp-bpf")]
   fn suspend_seccomp_bpf(&self, pid: Pid) -> Result<(), Errno> {
     use nix::libc::{PTRACE_O_SUSPEND_SECCOMP, PTRACE_SETOPTIONS, ptrace};
 
@@ -1190,7 +1175,6 @@ impl Tracer {
     Ok(())
   }
 
-  #[cfg(feature = "seccomp-bpf")]
   pub fn request_suspend_seccomp_bpf(&self, pid: Pid) -> color_eyre::Result<()> {
     trace!("received request to suspend {pid}'s seccomp-bpf filter");
     self.req_tx.send(PendingRequest::SuspendSeccompBpf(pid))?;
@@ -1198,13 +1182,7 @@ impl Tracer {
   }
 
   pub fn seccomp_bpf(&self) -> bool {
-    cfg_if! {
-      if #[cfg(feature = "seccomp-bpf")] {
-        self.seccomp_bpf == SeccompBpf::On
-      } else {
-        false
-      }
-    }
+    self.seccomp_bpf == SeccompBpf::On
   }
 }
 

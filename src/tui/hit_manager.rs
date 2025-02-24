@@ -502,7 +502,6 @@ impl HitManager {
           "syscall-exit(right after exec)".cyan().bold(),
           ". ".into(),
         ]),
-        #[cfg(feature = "seccomp-bpf")]
         Line::default().spans(vec![
           "By default, tracexec uses seccomp-bpf to speed up ptrace operations so that there is minimal overhead \
           when running programs inside tracexec. ".into(),

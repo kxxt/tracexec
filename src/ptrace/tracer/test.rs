@@ -141,7 +141,9 @@ async fn tracer_decodes_proc_self_exe(
 #[file_serial]
 #[tokio::test]
 async fn tracer_emits_exec_event(
-  #[allow(unused)] #[case] seccomp_bpf: SeccompBpf,
+  #[allow(unused)]
+  #[case]
+  seccomp_bpf: SeccompBpf,
   #[with(Default::default(), seccomp_bpf)] tracer: TracerFixture,
   true_executable: PathBuf,
 ) {

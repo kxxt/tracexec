@@ -62,15 +62,14 @@ jobs:
             target: riscv64gc-unknown-linux-gnu
             arch: riscv64
             libpath: usr/lib/riscv64-linux-gnu
-            no-default-features: true
-            features: ebpf,vendored-libbpf
+            no-default-features: false
           - os: ubuntu-24.04
             os-arch: riscv64
             target: riscv64gc-unknown-linux-gnu
             arch: riscv64
             libpath: usr/lib/riscv64-linux-gnu
-            no-default-features: true
-            features: ebpf,static,vendored
+            no-default-features: false
+            features: static,vendored
             artifact-suffix: -static
             rust_flags: -C target-feature=+crt-static
             static_libseccomp: true

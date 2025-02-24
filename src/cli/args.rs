@@ -11,7 +11,6 @@ use crate::{
   tui::app::AppLayout,
 };
 
-#[cfg(feature = "seccomp-bpf")]
 use super::options::SeccompBpf;
 use super::{
   config::{
@@ -22,7 +21,6 @@ use super::{
 
 #[derive(Args, Debug, Default, Clone)]
 pub struct PtraceArgs {
-  #[cfg(feature = "seccomp-bpf")]
   #[clap(long, help = "Controls whether to enable seccomp-bpf optimization, which greatly improves performance", default_value_t = SeccompBpf::Auto)]
   pub seccomp_bpf: SeccompBpf,
   #[clap(
@@ -62,7 +60,6 @@ pub struct ModifierArgs {
 impl PtraceArgs {
   pub fn merge_config(&mut self, config: PtraceConfig) {
     // seccomp-bpf
-    #[cfg(feature = "seccomp-bpf")]
     if let Some(setting) = config.seccomp_bpf {
       if self.seccomp_bpf == SeccompBpf::Auto {
         self.seccomp_bpf = setting;
