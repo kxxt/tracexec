@@ -21,7 +21,7 @@ To install from source, the following dependencies are needed:
 - `libbpf`: if not using `vendored-libbpf`
 - `zlib`: if not using `vendored-zlib`
 - `libelf`: if not using `vendored-libelf`
-- `libseccomp`: For `seccomp-bpf` feature.
+- `libseccomp`: For `seccomp-bpf`.
 - If any library vendoring feature is enabled:
   - `build-essential` `autopoint` `gettext` for Debian based distros
   - `base-devel` for Arch Linux
@@ -38,7 +38,6 @@ To control whether to dynamically link to libbpf, libelf and zlib, consult the n
 ### Feature Flags
 
 - `recommended`: This enables the recommended functionalities of tracexec
-    - `seccomp-bpf`: Use seccomp to accelerate ptrace operations. (Things are extremely slow if this is turned off.)
     - `ebpf`: eBPF backend that doesn't use ptrace and could be used for system wide tracing
 - `ebpf-debug`: Not meant for end users. This flag enables debug logging to `/sys/kernel/debug/tracing/trace_pipe` and some debug checks.
 - `static`: Statically link libelf, zlib and libbpf.

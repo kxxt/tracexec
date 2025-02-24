@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.10.0
+
+### Breaking Changes
+
+- The compile-time `seccomp-bpf` feature gate is removed. It is always enabled now.
+
 ## v0.9.1
 
 ### Fixes
