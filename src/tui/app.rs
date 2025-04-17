@@ -418,7 +418,12 @@ impl App {
                   KeyCode::Char('v') if ke.modifiers == KeyModifiers::NONE => {
                     if let Some((event, status)) = self.event_list.selection() {
                       action_tx.send(Action::SetActivePopup(ActivePopup::ViewDetails(
-                        DetailsPopupState::new(event, status, self.event_list.baseline.clone()),
+                        DetailsPopupState::new(
+                          event,
+                          status,
+                          self.event_list.baseline.clone(),
+                          self.event_list.modifier_args.hide_cloexec_fds,
+                        ),
                       )))?;
                     }
                   }

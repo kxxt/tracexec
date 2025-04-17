@@ -12,7 +12,7 @@ use crate::{
     theme::THEME,
   },
   event::{FriendlyError, OutputMsg},
-  proc::{BaselineInfo, FileDescriptorInfoCollection, Interpreter, diff_env},
+  proc::{BaselineInfo, FileDescriptorInfo, FileDescriptorInfoCollection, Interpreter, diff_env},
   tracer::ExecData,
 };
 
@@ -65,6 +65,7 @@ pub struct PrinterArgs {
   pub color: ColorLevel,
   pub stdio_in_cmdline: bool,
   pub fd_in_cmdline: bool,
+  pub hide_cloexec_fds: bool,
 }
 
 impl PrinterArgs {
@@ -121,6 +122,7 @@ impl PrinterArgs {
       },
       stdio_in_cmdline: modifier_args.stdio_in_cmdline,
       fd_in_cmdline: modifier_args.fd_in_cmdline,
+      hide_cloexec_fds: modifier_args.hide_cloexec_fds,
     }
   }
 }
@@ -273,6 +275,56 @@ impl Printer {
     })
   }
 
+  fn print_stdio_fd(
+    &self,
+    out: &mut dyn Write,
+    fd: i32,
+    orig_fd: &FileDescriptorInfo,
+    curr_fd: Option<&FileDescriptorInfo>,
+    list_printer: &ListPrinter,
+  ) -> io::Result<()> {
+    let desc = match fd {
+      0 => "stdin",
+      1 => "stdout",
+      2 => "stderr",
+      _ => unreachable!(),
+    };
+    if let Some(fdinfo) = curr_fd {
+      if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+        if !self.args.hide_cloexec_fds {
+          write!(
+            out,
+            "{}{}",
+            "cloexec: ".bright_red().bold(),
+            desc.bright_red().bold()
+          )?;
+          list_printer.comma(out)?;
+        } else {
+          write!(
+            out,
+            "{}{}",
+            "closed: ".bright_red().bold(),
+            desc.bright_red().bold()
+          )?;
+          list_printer.comma(out)?;
+        }
+      } else if fdinfo.not_same_file_as(orig_fd) {
+        write!(out, "{}", desc.bright_yellow().bold())?;
+        write!(out, "={}", fdinfo.path.bright_yellow())?;
+        list_printer.comma(out)?;
+      }
+    } else {
+      write!(
+        out,
+        "{}{}",
+        "closed: ".bright_red().bold(),
+        desc.bright_red().bold()
+      )?;
+      list_printer.comma(out)?;
+    }
+    Ok(())
+  }
+
   pub fn print_fd(
     &self,
     out: &mut dyn Write,
@@ -284,95 +336,28 @@ impl Printer {
         let list_printer = ListPrinter::new(self.args.color);
         list_printer.begin(out)?;
         // Stdio
-        let mut printed = 0;
-        let mut last = fds.fdinfo.len();
-        let fdinfo_orig = self.baseline.fdinfo.get(0).unwrap();
-        if let Some(fdinfo) = fds.fdinfo.get(&0) {
-          printed += 1;
-          if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
-            write!(out, "{}", "cloexec: stdin".bright_red().bold())?;
-            if printed < last {
-              list_printer.comma(out)?;
-            }
-          } else if fdinfo.not_same_file_as(fdinfo_orig) {
-            write!(out, "{}", "stdin".bright_yellow().bold())?;
-            write!(out, "={}", fdinfo.path.bright_yellow())?;
-            if printed < last {
-              list_printer.comma(out)?;
-            }
-          }
-        } else {
-          printed += 1;
-          write!(out, "{}", "closed: stdin".bright_red().bold())?;
-          if printed < last {
-            last += 1;
-            list_printer.comma(out)?;
-          }
-        }
-        let fdinfo_orig = self.baseline.fdinfo.get(1).unwrap();
-        if let Some(fdinfo) = fds.fdinfo.get(&1) {
-          printed += 1;
-          if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
-            write!(out, "{}", "cloexec: stdout".bright_red().bold())?;
-            if printed < last {
-              list_printer.comma(out)?;
-            }
-          } else if fdinfo.not_same_file_as(fdinfo_orig) {
-            write!(out, "{}", "stdout".bright_yellow().bold())?;
-            write!(out, "={}", fdinfo.path.bright_yellow())?;
-            if printed < last {
-              list_printer.comma(out)?;
-            }
-          }
-        } else {
-          printed += 1;
-          write!(out, "{}", "closed: stdout".bright_red().bold(),)?;
-          if printed < last {
-            last += 1;
-            list_printer.comma(out)?;
-          }
-        }
-        let fdinfo_orig = self.baseline.fdinfo.get(2).unwrap();
-        if let Some(fdinfo) = fds.fdinfo.get(&2) {
-          printed += 1;
-          if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
-            write!(out, "{}", "cloexec: stderr".bright_red().bold())?;
-            if printed < last {
-              list_printer.comma(out)?;
-            }
-          } else if fdinfo.not_same_file_as(fdinfo_orig) {
-            write!(out, "{}", "stderr".bright_yellow().bold())?;
-            write!(out, "={}", fdinfo.path.bright_yellow())?;
-            if printed < last {
-              list_printer.comma(out)?;
-            }
-          }
-        } else {
-          printed += 1;
-          write!(out, "{}", "closed: stderr".bright_red().bold(),)?;
-          if printed < last {
-            last += 1;
-            list_printer.comma(out)?;
-          }
+        for fd in 0..=2 {
+          let fdinfo_orig = self.baseline.fdinfo.get(fd).unwrap();
+          self.print_stdio_fd(out, fd, fdinfo_orig, fds.fdinfo.get(&fd), &list_printer)?;
         }
         for (&fd, fdinfo) in fds.fdinfo.iter() {
           if fd < 3 {
             continue;
           }
-          printed += 1;
           if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
-            write!(
-              out,
-              "{} {}",
-              "cloexec:".bright_red().bold(),
-              fd.bright_green().bold()
-            )?;
-            write!(out, "={}", fdinfo.path.bright_red())?;
+            if !self.args.hide_cloexec_fds {
+              write!(
+                out,
+                "{} {}",
+                "cloexec:".bright_red().bold(),
+                fd.bright_green().bold()
+              )?;
+              write!(out, "={}", fdinfo.path.bright_red())?;
+              list_printer.comma(out)?;
+            }
           } else {
             write!(out, "{}", fd.bright_green().bold())?;
             write!(out, "={}", fdinfo.path.bright_green())?;
-          }
-          if printed < last {
             list_printer.comma(out)?;
           }
         }
@@ -384,7 +369,14 @@ impl Printer {
         list_printer.begin(out)?;
         let last = fds.fdinfo.len() - 1;
         for (idx, (fd, fdinfo)) in fds.fdinfo.iter().enumerate() {
-          write!(out, "{}", fd.bright_cyan().bold())?;
+          if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+            if self.args.hide_cloexec_fds {
+              continue;
+            }
+            write!(out, "{}", fd.bright_red().bold())?;
+          } else {
+            write!(out, "{}", fd.bright_cyan().bold())?;
+          }
           write!(out, "={}", fdinfo.path)?;
           if idx != last {
             list_printer.comma(out)?;
