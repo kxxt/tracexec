@@ -565,65 +565,8 @@ impl TracerEventDetails {
 
         // Handle file descriptors
         if modifier.stdio_in_cmdline {
-          let fdinfo_orig = baseline.fdinfo.stdin().unwrap();
-          if let Some(fdinfo) = fdinfo.stdin() {
-            if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
-              // stdin will be closed
-              spans.push(space.clone());
-              spans.push("0>&-".set_style(THEME.cloexec_fd_in_cmdline));
-            } else if fdinfo.not_same_file_as(fdinfo_orig) {
-              spans.push(space.clone());
-              spans.push("<".set_style(THEME.modified_fd_in_cmdline));
-              spans.push(
-                fdinfo
-                  .path
-                  .tui_bash_escaped_with_style(THEME.modified_fd_in_cmdline),
-              );
-            }
-          } else {
-            // stdin is closed
-            spans.push(space.clone());
-            spans.push("0>&-".set_style(THEME.removed_fd_in_cmdline));
-          }
-          let fdinfo_orig = baseline.fdinfo.stdout().unwrap();
-          if let Some(fdinfo) = fdinfo.stdout() {
-            if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
-              // stdout will be closed
-              spans.push(space.clone());
-              spans.push("1>&-".set_style(THEME.cloexec_fd_in_cmdline));
-            } else if fdinfo.not_same_file_as(fdinfo_orig) {
-              spans.push(space.clone());
-              spans.push(">".set_style(THEME.modified_fd_in_cmdline));
-              spans.push(
-                fdinfo
-                  .path
-                  .tui_bash_escaped_with_style(THEME.modified_fd_in_cmdline),
-              )
-            }
-          } else {
-            // stdout is closed
-            spans.push(space.clone());
-            spans.push("1>&-".set_style(THEME.removed_fd_in_cmdline));
-          }
-          let fdinfo_orig = baseline.fdinfo.stderr().unwrap();
-          if let Some(fdinfo) = fdinfo.stderr() {
-            if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
-              // stderr will be closed
-              spans.push(space.clone());
-              spans.push("2>&-".set_style(THEME.cloexec_fd_in_cmdline));
-            } else if fdinfo.not_same_file_as(fdinfo_orig) {
-              spans.push(space.clone());
-              spans.push("2>".set_style(THEME.modified_fd_in_cmdline));
-              spans.push(
-                fdinfo
-                  .path
-                  .tui_bash_escaped_with_style(THEME.modified_fd_in_cmdline),
-              );
-            }
-          } else {
-            // stderr is closed
-            spans.push(space.clone());
-            spans.push("2>&-".set_style(THEME.removed_fd_in_cmdline));
+          for fd in 0..=2 {
+            self.handle_stdio_fd(fd, baseline, fdinfo, &mut spans);
           }
         }
 
@@ -678,6 +621,43 @@ impl TracerEventDetails {
       line,
       cwd_mask,
       env_mask,
+    }
+  }
+
+  fn handle_stdio_fd(
+    &self,
+    fd: i32,
+    baseline: &BaselineInfo,
+    curr: &FileDescriptorInfoCollection,
+    spans: &mut Vec<Span>,
+  ) {
+    let (fdstr, redir) = match fd {
+      0 => (" 0", "<"),
+      1 => (" 1", ">"),
+      2 => (" 2", "2>"),
+      _ => unreachable!(),
+    };
+
+    let space: Span = " ".into();
+    let fdinfo_orig = baseline.fdinfo.get(fd).unwrap();
+    if let Some(fdinfo) = curr.get(fd) {
+      if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+        // stdio fd will be closed
+        spans.push(fdstr.set_style(THEME.cloexec_fd_in_cmdline));
+        spans.push(">&-".set_style(THEME.cloexec_fd_in_cmdline));
+      } else if fdinfo.not_same_file_as(fdinfo_orig) {
+        spans.push(space.clone());
+        spans.push(redir.set_style(THEME.modified_fd_in_cmdline));
+        spans.push(
+          fdinfo
+            .path
+            .tui_bash_escaped_with_style(THEME.modified_fd_in_cmdline),
+        );
+      }
+    } else {
+      // stdio fd is closed
+      spans.push(fdstr.set_style(THEME.cloexec_fd_in_cmdline));
+      spans.push(">&-".set_style(THEME.removed_fd_in_cmdline));
     }
   }
 }

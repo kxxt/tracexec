@@ -55,6 +55,15 @@ pub struct ModifierArgs {
     conflicts_with = "resolve_proc_self_exe"
   )]
   pub no_resolve_proc_self_exe: bool,
+  #[clap(long, help = "Hide CLOEXEC fds", default_value_t = false)]
+  pub hide_cloexec_fds: bool,
+  #[clap(
+    long,
+    help = "Do not hide CLOEXEC fds",
+    default_value_t = false,
+    conflicts_with = "hide_cloexec_fds"
+  )]
+  pub no_hide_cloexec_fds: bool,
 }
 
 impl PtraceArgs {
@@ -76,6 +85,11 @@ impl ModifierArgs {
       (false, true) => false,
       _ => true, // default
     };
+    self.hide_cloexec_fds = match (self.hide_cloexec_fds, self.no_hide_cloexec_fds) {
+      (true, false) => true,
+      (false, true) => false,
+      _ => true, // default
+    };
     self
   }
 
@@ -87,6 +101,9 @@ impl ModifierArgs {
     // flags that have negation counterparts
     if (!self.no_resolve_proc_self_exe) && (!self.resolve_proc_self_exe) {
       self.resolve_proc_self_exe = config.resolve_proc_self_exe.unwrap_or_default();
+    }
+    if (!self.no_hide_cloexec_fds) && (!self.hide_cloexec_fds) {
+      self.hide_cloexec_fds = config.hide_cloexec_fds.unwrap_or_default();
     }
   }
 }

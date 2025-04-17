@@ -40,6 +40,9 @@
 # Resolve /proc/self/exe symlink
 # resolve_proc_self_exe = false
 
+# Hide CLOEXEC file descriptors
+# hide_cloexec_fds = true
+
 #
 # Config for TUI mode
 #

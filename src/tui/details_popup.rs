@@ -55,6 +55,7 @@ impl DetailsPopupState {
     event: Arc<TracerEventDetails>,
     status: Option<EventStatus>,
     baseline: Arc<BaselineInfo>,
+    hide_cloexec_fds: bool,
   ) -> Self {
     let mut modifier_args = Default::default();
     let rt_modifier = Default::default();
@@ -248,6 +249,9 @@ impl DetailsPopupState {
       };
       let mut fdinfo = vec![];
       for (&fd, info) in exec.fdinfo.fdinfo.iter() {
+        if hide_cloexec_fds && info.flags.contains(OFlag::O_CLOEXEC) {
+          continue;
+        }
         fdinfo.push(
           vec![
             " File Descriptor ".set_style(THEME.fd_label),

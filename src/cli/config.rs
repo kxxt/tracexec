@@ -59,6 +59,7 @@ pub struct ModifierConfig {
   pub fd_in_cmdline: Option<bool>,
   pub stdio_in_cmdline: Option<bool>,
   pub resolve_proc_self_exe: Option<bool>,
+  pub hide_cloexec_fds: Option<bool>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
