@@ -3,7 +3,7 @@ use std::{
   collections::{HashMap, HashSet},
   ffi::OsStr,
   io::stdin,
-  iter::repeat,
+  iter::repeat_n,
   mem::MaybeUninit,
   os::{fd::RawFd, unix::fs::MetadataExt},
   sync::{
@@ -252,7 +252,7 @@ impl EbpfTracer {
             if strings.len() != header.id as usize {
               // Insert placeholders for dropped events
               let dropped_event = OutputMsg::Err(BpfError::Dropped.into());
-              strings.extend(repeat(dropped_event).take(header.id as usize - strings.len()));
+              strings.extend(repeat_n(dropped_event, header.id as usize - strings.len()));
               debug_assert_eq!(strings.len(), header.id as usize);
             }
             // TODO: check flags in header
