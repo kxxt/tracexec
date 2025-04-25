@@ -596,6 +596,7 @@ impl Tracer {
     guard: Either<PtraceSyscallStopGuard<'a>, PtraceSeccompStopGuard<'a>>,
     pending_guards: &mut HashMap<Pid, PtraceStopGuard<'a>>,
   ) -> color_eyre::Result<()> {
+    let timestamp = chrono::Local::now();
     let pid = guard.pid();
     let mut store = self.store.write().unwrap();
     let p = store.get_current_mut(pid).unwrap();
@@ -689,6 +690,7 @@ impl Tracer {
         OutputMsg::Ok(read_cwd(pid)?),
         Some(interpreters),
         read_fds(pid)?,
+        timestamp,
       ));
     } else if info.is_execve().unwrap() {
       p.syscall = Syscall::Execve;
@@ -717,6 +719,7 @@ impl Tracer {
         OutputMsg::Ok(read_cwd(pid)?),
         Some(interpreters),
         read_fds(pid)?,
+        timestamp,
       ));
     } else {
       p.syscall = Syscall::Other;

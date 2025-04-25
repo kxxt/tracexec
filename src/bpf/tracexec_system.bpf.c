@@ -216,6 +216,8 @@ int __always_inline fill_field_with_unknown(u8 *buf) {
 }
 
 int trace_exec_common(struct sys_enter_exec_args *ctx) {
+  // Collect timestamp
+  u64 timestamp = bpf_ktime_get_boot_ns();
   // Collect UID/GID information
   uid_t uid, gid;
   u64 tmp = bpf_get_current_uid_gid();
@@ -238,6 +240,7 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   if (!event || !ctx)
     return 0;
   // Initialize event
+  event->timestamp = timestamp;
   event->header.pid = pid;
   event->tgid = tmp >> 32;
   // Initialize the event even if we don't really trace it.

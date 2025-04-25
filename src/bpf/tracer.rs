@@ -7,7 +7,7 @@ use std::{
   mem::MaybeUninit,
   os::{fd::RawFd, unix::fs::MetadataExt},
   sync::{
-    Arc,
+    Arc, LazyLock,
     atomic::{AtomicBool, Ordering},
   },
   time::Duration,
@@ -28,6 +28,7 @@ use crate::{
   tracee,
   tracer::TracerBuilder,
 };
+use chrono::DateTime;
 use color_eyre::Section;
 use enumflags2::{BitFlag, BitFlags};
 use libbpf_rs::{
@@ -193,6 +194,7 @@ impl EbpfTracer {
               cwd,
               None,
               storage.fdinfo_map,
+              DateTime::from_timestamp_nanos((*BOOT_TIME + event.timestamp) as i64).into(),
             );
             let pid = Pid::from_raw(header.pid);
             let comm = cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.comm));
@@ -522,3 +524,19 @@ impl RunningEbpfTracer<'_> {
     }
   }
 }
+
+static BOOT_TIME: LazyLock<u64> = LazyLock::new(|| {
+  let content = std::fs::read_to_string("/proc/stat").expect("Failed to read /proc/stat");
+  for line in content.lines() {
+    if line.starts_with("btime") {
+      return line
+        .split(' ')
+        .nth(1)
+        .unwrap()
+        .parse::<u64>()
+        .expect("Failed to parse btime in /proc/stat")
+        * 1_000_000_000;
+    }
+  }
+  panic!("btime is not available in /proc/stat. Am I running on Linux?")
+});
