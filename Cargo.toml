@@ -81,6 +81,7 @@ weak-table = { version = "0.3.2", default-features = false, features = ["ahash"]
 rand = "0.8.5"
 hashbrown = "0.15.2"
 indexset = "0.10.0"
+chrono = "0.4.40"
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 

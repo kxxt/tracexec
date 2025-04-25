@@ -1,3 +1,4 @@
+use chrono::{DateTime, Local};
 use enumflags2::BitFlags;
 use nix::unistd::User;
 use tokio::sync::mpsc::UnboundedSender;
@@ -122,6 +123,7 @@ pub struct ExecData {
   pub cwd: OutputMsg,
   pub interpreters: Option<Vec<Interpreter>>,
   pub fdinfo: Arc<FileDescriptorInfoCollection>,
+  pub timestamp: DateTime<Local>,
 }
 
 impl ExecData {
@@ -132,6 +134,7 @@ impl ExecData {
     cwd: OutputMsg,
     interpreters: Option<Vec<Interpreter>>,
     fdinfo: FileDescriptorInfoCollection,
+    timestamp: DateTime<Local>,
   ) -> Self {
     Self {
       filename,
@@ -140,6 +143,7 @@ impl ExecData {
       cwd,
       interpreters,
       fdinfo: Arc::new(fdinfo),
+      timestamp,
     }
   }
 }
