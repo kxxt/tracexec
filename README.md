@@ -162,6 +162,16 @@ Options:
           Resolve /proc/self/exe symlink
       --no-resolve-proc-self-exe
           Do not resolve /proc/self/exe symlink
+      --hide-cloexec-fds
+          Hide CLOEXEC fds
+      --no-hide-cloexec-fds
+          Do not hide CLOEXEC fds
+      --timestamp
+          Show timestamp information
+      --no-timestamp
+          Do not show timestamp information
+      --inline-timestamp-format <INLINE_TIMESTAMP_FORMAT>
+          Set the format of inline timestamp. See https://docs.rs/chrono/latest/chrono/format/strftime/index.html for available options.
       --seccomp-bpf <SECCOMP_BPF>
           Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
       --tracer-delay <TRACER_DELAY>
@@ -272,6 +282,16 @@ Options:
           Resolve /proc/self/exe symlink
       --no-resolve-proc-self-exe
           Do not resolve /proc/self/exe symlink
+      --hide-cloexec-fds
+          Hide CLOEXEC fds
+      --no-hide-cloexec-fds
+          Do not hide CLOEXEC fds
+      --timestamp
+          Show timestamp information
+      --no-timestamp
+          Do not show timestamp information
+      --inline-timestamp-format <INLINE_TIMESTAMP_FORMAT>
+          Set the format of inline timestamp. See https://docs.rs/chrono/latest/chrono/format/strftime/index.html for available options.
       --seccomp-bpf <SECCOMP_BPF>
           Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
       --tracer-delay <TRACER_DELAY>
@@ -302,19 +322,42 @@ Arguments:
   <CMD>...  command to be executed
 
 Options:
-      --successful-only              Only show successful calls
-      --fd-in-cmdline                [Experimental] Try to reproduce file descriptors in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
-      --stdio-in-cmdline             [Experimental] Try to reproduce stdio in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
-      --resolve-proc-self-exe        Resolve /proc/self/exe symlink
-      --no-resolve-proc-self-exe     Do not resolve /proc/self/exe symlink
-      --seccomp-bpf <SECCOMP_BPF>    Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
-      --tracer-delay <TRACER_DELAY>  Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1.
-  -F, --format <FORMAT>              the format for exported exec events [possible values: json-stream, json]
-  -p, --pretty                       prettify the output if supported
-  -o, --output <OUTPUT>              Output, stderr by default. A single hyphen '-' represents stdout.
-      --foreground                   Set the terminal foreground process group to tracee. This option is useful when tracexec is used interactively. [default]
-      --no-foreground                Do not set the terminal foreground process group to tracee
-  -h, --help                         Print help
+      --successful-only
+          Only show successful calls
+      --fd-in-cmdline
+          [Experimental] Try to reproduce file descriptors in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
+      --stdio-in-cmdline
+          [Experimental] Try to reproduce stdio in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.
+      --resolve-proc-self-exe
+          Resolve /proc/self/exe symlink
+      --no-resolve-proc-self-exe
+          Do not resolve /proc/self/exe symlink
+      --hide-cloexec-fds
+          Hide CLOEXEC fds
+      --no-hide-cloexec-fds
+          Do not hide CLOEXEC fds
+      --timestamp
+          Show timestamp information
+      --no-timestamp
+          Do not show timestamp information
+      --inline-timestamp-format <INLINE_TIMESTAMP_FORMAT>
+          Set the format of inline timestamp. See https://docs.rs/chrono/latest/chrono/format/strftime/index.html for available options.
+      --seccomp-bpf <SECCOMP_BPF>
+          Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
+      --tracer-delay <TRACER_DELAY>
+          Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1.
+  -F, --format <FORMAT>
+          the format for exported exec events [possible values: json-stream, json]
+  -p, --pretty
+          prettify the output if supported
+  -o, --output <OUTPUT>
+          Output, stderr by default. A single hyphen '-' represents stdout.
+      --foreground
+          Set the terminal foreground process group to tracee. This option is useful when tracexec is used interactively. [default]
+      --no-foreground
+          Do not set the terminal foreground process group to tracee
+  -h, --help
+          Print help
 
 ```
 
