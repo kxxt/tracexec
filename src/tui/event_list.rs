@@ -547,7 +547,7 @@ impl EventList {
 
   fn event_modifier(&self) -> EventModifier {
     EventModifier {
-      modifier_args: self.modifier_args,
+      modifier_args: self.modifier_args.clone(),
       rt_modifier: self.rt_modifier,
     }
   }

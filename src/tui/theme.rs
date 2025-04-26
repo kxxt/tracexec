@@ -10,6 +10,7 @@ pub struct Theme {
   pub popup_border: Style,
   pub app_title: Style,
   pub help_popup: Style,
+  pub inline_timestamp: Style,
   // Color for help items
   pub cli_flag: Style,
   pub help_key: Style,
@@ -130,6 +131,7 @@ impl Default for Theme {
       popup_border: Style::default(),
       app_title: Style::default().bold(),
       help_popup: Style::default().black().on_gray(),
+      inline_timestamp: Style::default().light_cyan(),
       // -- Help Items --
       cli_flag: Style::default().yellow().on_dark_gray().bold(),
       help_key: Style::default().black().on_cyan().bold(),

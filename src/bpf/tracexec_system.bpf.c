@@ -358,6 +358,7 @@ int trace_fork(u64 *ctx) {
 
 SEC("tp/sched/sched_process_exit")
 int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
+  u64 timestamp = bpf_ktime_get_boot_ns();
   pid_t pid, tgid;
   u64 tmp = bpf_get_current_pid_tgid();
   pid = (pid_t)tmp;
@@ -409,6 +410,7 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
   }
   entry->code = exit_code >> 8;
   entry->sig = exit_code & 0xFF;
+  entry->timestamp = timestamp;
   ret = bpf_ringbuf_output(&events, entry, sizeof(*entry), BPF_RB_FORCE_WAKEUP);
   if (ret < 0) {
     // TODO: find a better way to ensure userspace receives exit event

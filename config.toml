@@ -43,6 +43,12 @@
 # Hide CLOEXEC file descriptors
 # hide_cloexec_fds = true
 
+# Show timestamp information
+# timestamp.enable = false
+# The format of timestamp when shown inline
+# See https://docs.rs/chrono/latest/chrono/format/strftime/index.html for available options
+# timestamp.inline_format = "hh:mm:ss"
+
 #
 # Config for TUI mode
 #

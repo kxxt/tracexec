@@ -7,7 +7,7 @@ use std::{
   mem::MaybeUninit,
   os::{fd::RawFd, unix::fs::MetadataExt},
   sync::{
-    Arc, LazyLock,
+    Arc,
     atomic::{AtomicBool, Ordering},
   },
   time::Duration,
@@ -25,10 +25,11 @@ use super::skel::{
 use super::{event::EventStorage, skel::TracexecSystemSkelBuilder};
 use crate::{
   bpf::{BpfError, cached_cow, utf8_lossy_cow_from_bytes_with_nul},
+  timestamp::ts_from_boot_ns,
   tracee,
   tracer::TracerBuilder,
 };
-use chrono::DateTime;
+use chrono::Local;
 use color_eyre::Section;
 use enumflags2::{BitFlag, BitFlags};
 use libbpf_rs::{
@@ -194,7 +195,7 @@ impl EbpfTracer {
               cwd,
               None,
               storage.fdinfo_map,
-              DateTime::from_timestamp_nanos((*BOOT_TIME + event.timestamp) as i64).into(),
+              ts_from_boot_ns(event.timestamp),
             );
             let pid = Pid::from_raw(header.pid);
             let comm = cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.comm));
@@ -211,6 +212,7 @@ impl EbpfTracer {
               .unwrap();
             if self.filter.intersects(TracerEventDetailsKind::Exec) {
               let event = TracerEvent::from(TracerEventDetails::Exec(Box::new(ExecEvent {
+                timestamp: exec_data.timestamp,
                 pid,
                 cwd: exec_data.cwd.clone(),
                 comm,
@@ -352,12 +354,14 @@ impl EbpfTracer {
                 .map(|tx| {
                   FilterableTracerEventDetails::from(match (event.sig, event.code) {
                     (0, exit_code) => TracerEventDetails::TraceeExit {
+                      timestamp: ts_from_boot_ns(event.timestamp),
                       signal: None,
                       exit_code,
                     },
                     (sig, _) => {
                       // 0x80 bit indicates coredump
                       TracerEventDetails::TraceeExit {
+                        timestamp: ts_from_boot_ns(event.timestamp),
                         signal: Some(Signal::from_raw(sig as i32 & 0x7f)),
                         exit_code: 128 + (sig as i32 & 0x7f),
                       }
@@ -462,7 +466,13 @@ impl EbpfTracer {
       self
         .tx
         .as_ref()
-        .map(|tx| filterable_event!(TraceeSpawn(child)).send_if_match(tx, self.filter))
+        .map(|tx| {
+          filterable_event!(TraceeSpawn {
+            pid: child,
+            timestamp: Local::now()
+          })
+          .send_if_match(tx, self.filter)
+        })
         .transpose()?;
       if matches!(&self.mode, TracerMode::Log { foreground: true }) {
         match tcsetpgrp(stdin(), child) {
@@ -524,19 +534,3 @@ impl RunningEbpfTracer<'_> {
     }
   }
 }
-
-static BOOT_TIME: LazyLock<u64> = LazyLock::new(|| {
-  let content = std::fs::read_to_string("/proc/stat").expect("Failed to read /proc/stat");
-  for line in content.lines() {
-    if line.starts_with("btime") {
-      return line
-        .split(' ')
-        .nth(1)
-        .unwrap()
-        .parse::<u64>()
-        .expect("Failed to parse btime in /proc/stat")
-        * 1_000_000_000;
-    }
-  }
-  panic!("btime is not available in /proc/stat. Am I running on Linux?")
-});

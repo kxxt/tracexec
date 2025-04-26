@@ -7,7 +7,8 @@ use std::{
   sync::{Arc, atomic::AtomicU64},
 };
 
-use crate::cache::ArcStr;
+use crate::{cache::ArcStr, timestamp::Timestamp};
+use chrono::{DateTime, Local};
 use clap::ValueEnum;
 use crossterm::event::KeyEvent;
 use either::Either;
@@ -335,13 +336,18 @@ pub enum TracerEventDetails {
   Warning(TracerEventMessage),
   Error(TracerEventMessage),
   NewChild {
+    timestamp: Timestamp,
     ppid: Pid,
     pcomm: ArcStr,
     pid: Pid,
   },
   Exec(Box<ExecEvent>),
-  TraceeSpawn(Pid),
+  TraceeSpawn {
+    pid: Pid,
+    timestamp: Timestamp,
+  },
   TraceeExit {
+    timestamp: Timestamp,
     signal: Option<Signal>,
     exit_code: i32,
   },
@@ -350,6 +356,7 @@ pub enum TracerEventDetails {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TracerEventMessage {
   pub pid: Option<Pid>,
+  pub timestamp: Option<DateTime<Local>>,
   pub msg: String,
 }
 
@@ -365,6 +372,7 @@ pub struct ExecEvent {
   pub env_diff: Result<EnvDiff, InspectError>,
   pub fdinfo: Arc<FileDescriptorInfoCollection>,
   pub result: i64,
+  pub timestamp: Timestamp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -429,8 +437,25 @@ impl TracerEventDetails {
       rt_modifier
     };
 
+    let ts_formatter = |ts: Timestamp| {
+      if modifier.timestamp {
+        let fmt = modifier.inline_timestamp_format.as_deref().unwrap();
+        Some(Span::styled(
+          format!("{} ", ts.format(fmt)),
+          THEME.inline_timestamp,
+        ))
+      } else {
+        None
+      }
+    };
+
     let mut line = match self {
-      Self::Info(TracerEventMessage { msg, pid }) => chain!(
+      Self::Info(TracerEventMessage {
+        msg,
+        pid,
+        timestamp,
+      }) => chain!(
+        timestamp.and_then(ts_formatter),
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
@@ -438,7 +463,12 @@ impl TracerEventDetails {
         [": ".into(), msg.clone().set_style(THEME.tracer_info)]
       )
       .collect(),
-      Self::Warning(TracerEventMessage { msg, pid }) => chain!(
+      Self::Warning(TracerEventMessage {
+        msg,
+        pid,
+        timestamp,
+      }) => chain!(
+        timestamp.and_then(ts_formatter),
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
@@ -446,7 +476,12 @@ impl TracerEventDetails {
         [": ".into(), msg.clone().set_style(THEME.tracer_warning)]
       )
       .collect(),
-      Self::Error(TracerEventMessage { msg, pid }) => chain!(
+      Self::Error(TracerEventMessage {
+        msg,
+        pid,
+        timestamp,
+      }) => chain!(
+        timestamp.and_then(ts_formatter),
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
           .unwrap_or_default(),
@@ -454,7 +489,13 @@ impl TracerEventDetails {
         [": ".into(), msg.clone().set_style(THEME.tracer_error)]
       )
       .collect(),
-      Self::NewChild { ppid, pcomm, pid } => [
+      Self::NewChild {
+        ppid,
+        pcomm,
+        pid,
+        timestamp,
+      } => [
+        ts_formatter(*timestamp),
         Some(ppid.to_string().set_style(THEME.pid_success)),
         event_status.map(|s| <&'static str>::from(s).into()),
         Some(format!("<{}>", pcomm).set_style(THEME.comm)),
@@ -478,25 +519,27 @@ impl TracerEventDetails {
           fdinfo,
           ..
         } = exec.as_ref();
-        let mut spans: Vec<Span> = if !cmdline_only {
-          [
-            Some(pid.to_string().set_style(if *result == 0 {
-              THEME.pid_success
-            } else if *result == (-nix::libc::ENOENT) as i64 {
-              THEME.pid_enoent
-            } else {
-              THEME.pid_failure
-            })),
-            event_status.map(|s| <&'static str>::from(s).into()),
-            Some(format!("<{}>", comm).set_style(THEME.comm)),
-            Some(": ".into()),
-            Some("env".set_style(THEME.tracer_event)),
-          ]
-          .into_iter()
-          .flatten()
-          .collect()
+        let mut spans = ts_formatter(exec.timestamp).into_iter().collect_vec();
+        if !cmdline_only {
+          spans.extend(
+            [
+              Some(pid.to_string().set_style(if *result == 0 {
+                THEME.pid_success
+              } else if *result == (-nix::libc::ENOENT) as i64 {
+                THEME.pid_enoent
+              } else {
+                THEME.pid_failure
+              })),
+              event_status.map(|s| <&'static str>::from(s).into()),
+              Some(format!("<{}>", comm).set_style(THEME.comm)),
+              Some(": ".into()),
+              Some("env".set_style(THEME.tracer_event)),
+            ]
+            .into_iter()
+            .flatten(),
+          )
         } else {
-          vec!["env".set_style(THEME.tracer_event)]
+          spans.push("env".set_style(THEME.tracer_event));
         };
         let space: Span = " ".into();
 
@@ -592,12 +635,26 @@ impl TracerEventDetails {
 
         Line::default().spans(spans)
       }
-      Self::TraceeExit { signal, exit_code } => format!(
-        "tracee exit: signal: {:?}, exit_code: {}",
-        signal, exit_code
+      Self::TraceeExit {
+        signal,
+        exit_code,
+        timestamp,
+      } => chain!(
+        ts_formatter(*timestamp),
+        Some(
+          format!(
+            "tracee exit: signal: {:?}, exit_code: {}",
+            signal, exit_code
+          )
+          .into()
+        )
       )
-      .into(),
-      Self::TraceeSpawn(pid) => format!("tracee spawned: {}", pid).into(),
+      .collect(),
+      Self::TraceeSpawn { pid, timestamp } => chain!(
+        ts_formatter(*timestamp),
+        Some(format!("tracee spawned: {}", pid).into())
+      )
+      .collect(),
     };
     let mut cwd_mask = None;
     let mut env_mask = None;

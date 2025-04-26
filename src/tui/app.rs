@@ -448,7 +448,7 @@ impl App {
           Event::Tracer(msg) => {
             match msg {
               TracerMessage::Event(e) => {
-                if let TracerEventDetails::TraceeSpawn(pid) = &e.details {
+                if let TracerEventDetails::TraceeSpawn { pid, .. } = &e.details {
                   // FIXME: we should not rely on TracerMessage, which might be filtered.
                   debug!("Received tracee spawn event: {pid}");
                   self.root_pid = Some(*pid);
