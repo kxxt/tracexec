@@ -5,7 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
-use crate::tui::app::AppLayout;
+use crate::{timestamp::TimestampFormat, tui::app::AppLayout};
 
 use super::options::{ActivePane, SeccompBpf};
 
@@ -60,6 +60,13 @@ pub struct ModifierConfig {
   pub stdio_in_cmdline: Option<bool>,
   pub resolve_proc_self_exe: Option<bool>,
   pub hide_cloexec_fds: Option<bool>,
+  pub timestamp: Option<TimestampConfig>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct TimestampConfig {
+  pub enable: bool,
+  pub inline_format: Option<TimestampFormat>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]

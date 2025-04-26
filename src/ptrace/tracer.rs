@@ -10,9 +10,11 @@ use std::{
 
 use crate::{
   cache::ArcStr,
+  timestamp::Timestamp,
   tracee,
   tracer::{ExecData, ProcessExit, TracerBuilder, TracerMode},
 };
+use chrono::Local;
 use either::Either;
 use enumflags2::BitFlags;
 use inspect::{read_arcstr, read_output_msg_array};
@@ -264,7 +266,11 @@ impl Tracer {
 
       Ok(())
     })?;
-    filterable_event!(TraceeSpawn(root_child)).send_if_match(&self.msg_tx, self.filter)?;
+    filterable_event!(TraceeSpawn {
+      timestamp: Local::now(),
+      pid: root_child
+    })
+    .send_if_match(&self.msg_tx, self.filter)?;
     drop(tracee_fd);
     let ptrace_opts = {
       use nix::sys::ptrace::Options;
@@ -463,6 +469,7 @@ impl Tracer {
           }
         }
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::CloneParent(guard)) => {
+          let timestamp = Local::now();
           let new_child = guard.child()?;
           let pid = guard.pid();
           trace!("ptrace fork/clone event, pid: {pid}, child: {new_child}");
@@ -470,6 +477,7 @@ impl Tracer {
             let store = self.store.read().unwrap();
             let parent = store.get_current(pid).unwrap();
             let event = TracerEvent::from(TracerEventDetails::NewChild {
+              timestamp,
               ppid: parent.pid,
               pcomm: parent.comm.clone(),
               pid: new_child,
@@ -522,6 +530,7 @@ impl Tracer {
           guard.seccomp_aware_cont_syscall(true)?;
         }
         PtraceWaitPidEvent::Signaled { pid, signal: sig } => {
+          let timestamp = Local::now();
           debug!("signaled: {pid}, {:?}", sig);
           let mut store = self.store.write().unwrap();
           if let Some(state) = store.get_current_mut(pid) {
@@ -539,6 +548,7 @@ impl Tracer {
             }
             if pid == root_child {
               filterable_event!(TraceeExit {
+                timestamp,
                 signal: Some(sig),
                 exit_code: 128 + sig.as_raw(),
               })
@@ -549,6 +559,7 @@ impl Tracer {
         }
         PtraceWaitPidEvent::Exited { pid, code } => {
           // pid could also be a not traced subprocess.
+          let timestamp = Local::now();
           trace!("exited: pid {}, code {:?}", pid, code);
           let mut store = self.store.write().unwrap();
           if let Some(state) = store.get_current_mut(pid) {
@@ -566,6 +577,7 @@ impl Tracer {
             }
             let should_exit = if pid == root_child {
               filterable_event!(TraceeExit {
+                timestamp,
                 signal: None,
                 exit_code: code,
               })
@@ -606,6 +618,7 @@ impl Tracer {
       Ok(info) => info,
       Err(Errno::ESRCH) => {
         filterable_event!(Info(TracerEventMessage {
+          timestamp: self.timestamp_now(),
           msg: "Failed to get syscall info: ESRCH (child probably gone!)".to_string(),
           pid: Some(pid),
         }))
@@ -619,6 +632,7 @@ impl Tracer {
       Ok(regs) => regs,
       Err(Errno::ESRCH) => {
         filterable_event!(Info(TracerEventMessage {
+          timestamp: self.timestamp_now(),
           msg: "Failed to read registers: ESRCH (child probably gone!)".to_string(),
           pid: Some(pid),
         }))
@@ -804,6 +818,7 @@ impl Tracer {
             &self.baseline.env,
             p,
             exec_result,
+            p.exec_data.as_ref().unwrap().timestamp,
           )));
           p.associate_event([event.id]);
           self.msg_tx.send(event.into())?;
@@ -893,6 +908,7 @@ impl Tracer {
           if argv.is_empty() {
             self.msg_tx.send(
               TracerEventDetails::Warning(TracerEventMessage {
+                timestamp: self.timestamp_now(),
                 pid: Some(pid),
                 msg: "Empty argv, the printed cmdline is not accurate!".to_string(),
               })
@@ -903,6 +919,7 @@ impl Tracer {
         Err(e) => {
           self.msg_tx.send(
             TracerEventDetails::Warning(TracerEventMessage {
+              timestamp: self.timestamp_now(),
               pid: Some(pid),
               msg: format!("Failed to read argv: {:?}", e),
             })
@@ -923,6 +940,7 @@ impl Tracer {
       if let Err(e) = envp.as_ref() {
         self.msg_tx.send(
           TracerEventDetails::Warning(TracerEventMessage {
+            timestamp: self.timestamp_now(),
             pid: Some(pid),
             msg: format!("Failed to read envp: {:?}", e),
           })
@@ -942,6 +960,7 @@ impl Tracer {
       if let Err(e) = filename.as_deref() {
         self.msg_tx.send(
           TracerEventDetails::Warning(TracerEventMessage {
+            timestamp: self.timestamp_now(),
             pid: Some(pid),
             msg: format!("Failed to read filename: {:?}", e),
           })
@@ -957,9 +976,11 @@ impl Tracer {
     env: &BTreeMap<OutputMsg, OutputMsg>,
     state: &ProcessState,
     result: i64,
+    timestamp: Timestamp,
   ) -> Box<ExecEvent> {
     let exec_data = state.exec_data.as_ref().unwrap();
     Box::new(ExecEvent {
+      timestamp,
       pid: state.pid,
       cwd: exec_data.cwd.clone(),
       comm: state.comm.clone(),
@@ -1190,3 +1211,14 @@ impl Tracer {
 }
 
 const SENTINEL_SIGNAL: Signal = Signal::Standard(nix::sys::signal::SIGSTOP);
+
+impl Tracer {
+  /// Returns current timestamp if timestamp is enabled
+  fn timestamp_now(&self) -> Option<Timestamp> {
+    if self.modifier_args.timestamp {
+      Some(Local::now())
+    } else {
+      None
+    }
+  }
+}

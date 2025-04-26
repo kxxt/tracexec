@@ -30,6 +30,7 @@ mod ptrace;
 mod pty;
 mod regex;
 mod seccomp;
+mod timestamp;
 mod tracee;
 mod tracer;
 mod tui;
@@ -204,7 +205,7 @@ async fn main() -> color_eyre::Result<()> {
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
       let (tracer, token) = TracerBuilder::new()
         .mode(tracer_mode)
-        .modifier(modifier_args)
+        .modifier(modifier_args.clone())
         .user(user)
         .tracer_tx(tracer_tx)
         .baseline(baseline.clone())

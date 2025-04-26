@@ -8,6 +8,7 @@ use crate::{
   cli::config::{ColorLevel, EnvDisplay, FileDescriptorDisplay},
   event::TracerEventDetailsKind,
   ptrace::BreakPoint,
+  timestamp::TimestampFormat,
   tui::app::AppLayout,
 };
 
@@ -30,7 +31,7 @@ pub struct PtraceArgs {
   pub tracer_delay: Option<u64>,
 }
 
-#[derive(Args, Debug, Default, Clone, Copy)]
+#[derive(Args, Debug, Default, Clone)]
 pub struct ModifierArgs {
   #[clap(long, help = "Only show successful calls", default_value_t = false)]
   pub successful_only: bool,
@@ -64,6 +65,20 @@ pub struct ModifierArgs {
     conflicts_with = "hide_cloexec_fds"
   )]
   pub no_hide_cloexec_fds: bool,
+  #[clap(long, help = "Show timestamp information", default_value_t = false)]
+  pub timestamp: bool,
+  #[clap(
+    long,
+    help = "Do not show timestamp information",
+    default_value_t = false,
+    conflicts_with = "timestamp"
+  )]
+  pub no_timestamp: bool,
+  #[clap(
+    long,
+    help = "Set the format of inline timestamp. See https://docs.rs/chrono/latest/chrono/format/strftime/index.html for available options."
+  )]
+  pub inline_timestamp_format: Option<TimestampFormat>,
 }
 
 impl PtraceArgs {
@@ -90,6 +105,14 @@ impl ModifierArgs {
       (false, true) => false,
       _ => true, // default
     };
+    self.timestamp = match (self.timestamp, self.no_timestamp) {
+      (true, false) => true,
+      (false, true) => false,
+      _ => false, // default
+    };
+    self.inline_timestamp_format = self
+      .inline_timestamp_format
+      .or_else(|| Some(TimestampFormat::try_new("%H:%M:%S").unwrap()));
     self
   }
 
@@ -104,6 +127,14 @@ impl ModifierArgs {
     }
     if (!self.no_hide_cloexec_fds) && (!self.hide_cloexec_fds) {
       self.hide_cloexec_fds = config.hide_cloexec_fds.unwrap_or_default();
+    }
+    if let Some(c) = config.timestamp {
+      if (!self.timestamp) && (!self.no_timestamp) {
+        self.timestamp = c.enable;
+      }
+      if self.inline_timestamp_format.is_none() {
+        self.inline_timestamp_format = c.inline_format;
+      }
     }
   }
 }

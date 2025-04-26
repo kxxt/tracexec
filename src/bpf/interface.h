@@ -108,6 +108,7 @@ struct exec_event {
   bool is_execveat;
   bool is_compat;
   s64 ret;
+  u64 timestamp;
   // argc and env count
   u32 count[2];
   u32 fd_count;
@@ -159,6 +160,7 @@ struct exit_event {
   int code;
   u32 sig;
   bool is_root_tracee;
+  u64 timestamp;
 };
 
 union cache_item {

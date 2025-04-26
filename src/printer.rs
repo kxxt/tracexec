@@ -13,6 +13,7 @@ use crate::{
   },
   event::{FriendlyError, OutputMsg},
   proc::{BaselineInfo, FileDescriptorInfo, FileDescriptorInfoCollection, Interpreter, diff_env},
+  timestamp::TimestampFormat,
   tracer::ExecData,
 };
 
@@ -66,6 +67,7 @@ pub struct PrinterArgs {
   pub stdio_in_cmdline: bool,
   pub fd_in_cmdline: bool,
   pub hide_cloexec_fds: bool,
+  pub inline_timestamp_format: Option<TimestampFormat>,
 }
 
 impl PrinterArgs {
@@ -123,6 +125,9 @@ impl PrinterArgs {
       stdio_in_cmdline: modifier_args.stdio_in_cmdline,
       fd_in_cmdline: modifier_args.fd_in_cmdline,
       hide_cloexec_fds: modifier_args.hide_cloexec_fds,
+      inline_timestamp_format: modifier_args.timestamp.then(||
+        // We ensure a default is set in modifier_args
+        modifier_args.inline_timestamp_format.clone().unwrap()),
     }
   }
 }
@@ -411,6 +416,9 @@ impl Printer {
         return Ok(());
       };
       let list_printer = ListPrinter::new(self.args.color);
+      if let Some(f) = self.args.inline_timestamp_format.as_deref() {
+        write!(out, "{} ", exec_data.timestamp.format(f).bright_cyan())?;
+      }
       if result == 0 {
         write!(out, "{}", pid.bright_green())?;
       } else if result == -ENOENT as i64 {
