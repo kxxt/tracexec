@@ -67,6 +67,10 @@ impl DetailsPopupState {
       },
       event.to_tui_line(&baseline, true, &modifier_args, rt_modifier, None),
     )];
+    // timestamp
+    if let Some(ts) = event.timestamp() {
+      details.push((" Timestamp ", Line::raw(ts.format("%c").to_string())));
+    }
     let (env, fdinfo, available_tabs) = if let TracerEventDetails::Exec(exec) = event.as_ref() {
       details.extend([
         (" (Experimental) Cmdline with stdio ", {

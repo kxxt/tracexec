@@ -395,6 +395,16 @@ impl TracerEventDetails {
     TracerMessage::Event(self.into())
   }
 
+  pub fn timestamp(&self) -> Option<Timestamp> {
+    match self {
+      Self::Info(m) | Self::Warning(m) | Self::Error(m) => m.timestamp,
+      Self::Exec(exec_event) => Some(exec_event.timestamp),
+      Self::NewChild { timestamp, .. }
+      | Self::TraceeSpawn { timestamp, .. }
+      | Self::TraceeExit { timestamp, .. } => Some(*timestamp),
+    }
+  }
+
   pub fn to_tui_line(
     &self,
     baseline: &BaselineInfo,
