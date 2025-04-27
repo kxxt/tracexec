@@ -330,13 +330,16 @@ impl EbpfTracer {
                   .map(|tx| {
                     tx.send(
                       ProcessStateUpdateEvent {
-                        update: ProcessStateUpdate::Exit(match (event.sig, event.code) {
-                          (0, code) => ProcessExit::Code(code),
-                          (sig, _) => {
-                            // 0x80 bit indicates coredump
-                            ProcessExit::Signal(Signal::from_raw(sig as i32 & 0x7f))
-                          }
-                        }),
+                        update: ProcessStateUpdate::Exit {
+                          timestamp: ts_from_boot_ns(event.timestamp),
+                          status: match (event.sig, event.code) {
+                            (0, code) => ProcessExit::Code(code),
+                            (sig, _) => {
+                              // 0x80 bit indicates coredump
+                              ProcessExit::Signal(Signal::from_raw(sig as i32 & 0x7f))
+                            }
+                          },
+                        },
                         pid,
                         ids: associated.to_owned(),
                       }

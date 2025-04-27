@@ -539,7 +539,10 @@ impl Tracer {
             if !associated_events.is_empty() {
               self.msg_tx.send(
                 ProcessStateUpdateEvent {
-                  update: ProcessStateUpdate::Exit(ProcessExit::Signal(sig)),
+                  update: ProcessStateUpdate::Exit {
+                    timestamp,
+                    status: ProcessExit::Signal(sig),
+                  },
                   pid,
                   ids: associated_events,
                 }
@@ -568,7 +571,10 @@ impl Tracer {
             if !associated_events.is_empty() {
               self.msg_tx.send(
                 ProcessStateUpdateEvent {
-                  update: ProcessStateUpdate::Exit(ProcessExit::Code(code)),
+                  update: ProcessStateUpdate::Exit {
+                    status: ProcessExit::Code(code),
+                    timestamp,
+                  },
                   pid,
                   ids: associated_events,
                 }
@@ -1147,13 +1153,14 @@ impl Tracer {
     }
     .inspect_err(|e| warn!("Failed to detach from {pid}: {e}"))
     .map_err(Either::Left)?;
+    let timestamp = Local::now();
     trace!("detached: {pid}");
     let associated_events = state.associated_events.clone();
     self
       .msg_tx
       .send(
         ProcessStateUpdateEvent {
-          update: ProcessStateUpdate::Detached { hid },
+          update: ProcessStateUpdate::Detached { hid, timestamp },
           pid,
           ids: associated_events,
         }

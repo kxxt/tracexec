@@ -890,12 +890,33 @@ pub(crate) use filterable_event;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProcessStateUpdate {
-  Exit(ProcessExit),
+  Exit {
+    status: ProcessExit,
+    timestamp: Timestamp,
+  },
   BreakPointHit(BreakPointHit),
   Resumed,
-  Detached { hid: u64 },
-  ResumeError { hit: BreakPointHit, error: Errno },
-  DetachError { hit: BreakPointHit, error: Errno },
+  Detached {
+    hid: u64,
+    timestamp: Timestamp,
+  },
+  ResumeError {
+    hit: BreakPointHit,
+    error: Errno,
+  },
+  DetachError {
+    hit: BreakPointHit,
+    error: Errno,
+  },
+}
+
+impl ProcessStateUpdate {
+  pub fn termination_timestamp(&self) -> Option<Timestamp> {
+    match self {
+      Self::Exit { timestamp, .. } | Self::Detached { timestamp, .. } => Some(*timestamp),
+      _ => None,
+    }
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

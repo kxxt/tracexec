@@ -16,8 +16,14 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::{cell::RefCell, collections::VecDeque, rc::Rc, sync::Arc};
+use std::{
+  cell::{Ref, RefCell},
+  collections::VecDeque,
+  rc::Rc,
+  sync::Arc,
+};
 
+use chrono::TimeDelta;
 use hashbrown::HashMap;
 use nix::sys::signal;
 use ratatui::{
@@ -51,6 +57,8 @@ use super::{
 pub struct Event {
   pub details: Arc<TracerEventDetails>,
   pub status: Option<EventStatus>,
+  /// The elapsed time between event start and process exit/detach.
+  pub elapsed: Option<TimeDelta>,
   /// The string representation of the events, used for searching
   pub event_line: EventLine,
   pub id: u64,
@@ -182,10 +190,10 @@ impl EventList {
   }
 
   /// returns the selected item if there is any
-  pub fn selection(&self) -> Option<(Arc<TracerEventDetails>, Option<EventStatus>)> {
+  pub fn selection(&self) -> Option<(Arc<TracerEventDetails>, Ref<'_, Event>)> {
     self.selection_index().map(|i| {
       let e = self.events[i].borrow();
-      (e.details.clone(), e.status)
+      (e.details.clone(), e)
     })
   }
 
@@ -453,6 +461,7 @@ impl EventList {
     };
     let event = Event {
       event_line: Event::to_event_line(&details, status, &self.baseline, &self.event_modifier()),
+      elapsed: None,
       details,
       status,
       id,
@@ -495,31 +504,42 @@ impl EventList {
       if let Some(e) = self.event_map.get(&i) {
         let mut e = e.borrow_mut();
         e.status = match update.update {
-          ProcessStateUpdate::Exit(ProcessExit::Code(0)) => {
-            Some(EventStatus::ProcessExitedNormally)
-          }
-          ProcessStateUpdate::Exit(ProcessExit::Code(c)) => {
-            Some(EventStatus::ProcessExitedAbnormally(c))
-          }
-          ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGTERM))) => {
-            Some(EventStatus::ProcessTerminated)
-          }
-          ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGKILL))) => {
-            Some(EventStatus::ProcessKilled)
-          }
-          ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGINT))) => {
-            Some(EventStatus::ProcessInterrupted)
-          }
-          ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGSEGV))) => {
-            Some(EventStatus::ProcessSegfault)
-          }
-          ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGABRT))) => {
-            Some(EventStatus::ProcessAborted)
-          }
-          ProcessStateUpdate::Exit(ProcessExit::Signal(Signal::Standard(signal::SIGILL))) => {
-            Some(EventStatus::ProcessIllegalInstruction)
-          }
-          ProcessStateUpdate::Exit(ProcessExit::Signal(s)) => Some(EventStatus::ProcessSignaled(s)),
+          ProcessStateUpdate::Exit {
+            status: ProcessExit::Code(0),
+            ..
+          } => Some(EventStatus::ProcessExitedNormally),
+          ProcessStateUpdate::Exit {
+            status: ProcessExit::Code(c),
+            ..
+          } => Some(EventStatus::ProcessExitedAbnormally(c)),
+          ProcessStateUpdate::Exit {
+            status: ProcessExit::Signal(Signal::Standard(signal::SIGTERM)),
+            ..
+          } => Some(EventStatus::ProcessTerminated),
+          ProcessStateUpdate::Exit {
+            status: ProcessExit::Signal(Signal::Standard(signal::SIGKILL)),
+            ..
+          } => Some(EventStatus::ProcessKilled),
+          ProcessStateUpdate::Exit {
+            status: ProcessExit::Signal(Signal::Standard(signal::SIGINT)),
+            ..
+          } => Some(EventStatus::ProcessInterrupted),
+          ProcessStateUpdate::Exit {
+            status: ProcessExit::Signal(Signal::Standard(signal::SIGSEGV)),
+            ..
+          } => Some(EventStatus::ProcessSegfault),
+          ProcessStateUpdate::Exit {
+            status: ProcessExit::Signal(Signal::Standard(signal::SIGABRT)),
+            ..
+          } => Some(EventStatus::ProcessAborted),
+          ProcessStateUpdate::Exit {
+            status: ProcessExit::Signal(Signal::Standard(signal::SIGILL)),
+            ..
+          } => Some(EventStatus::ProcessIllegalInstruction),
+          ProcessStateUpdate::Exit {
+            status: ProcessExit::Signal(s),
+            ..
+          } => Some(EventStatus::ProcessSignaled(s)),
           ProcessStateUpdate::BreakPointHit { .. } => Some(EventStatus::ProcessPaused),
           ProcessStateUpdate::Resumed => Some(EventStatus::ProcessRunning),
           ProcessStateUpdate::Detached { .. } => Some(EventStatus::ProcessDetached),
@@ -527,6 +547,9 @@ impl EventList {
             Some(EventStatus::InternalError)
           }
         };
+        if let Some(ts) = update.update.termination_timestamp() {
+          e.elapsed = Some(ts - e.details.timestamp().unwrap())
+        }
         e.event_line = Event::to_event_line(&e.details, e.status, &self.baseline, &modifier);
       }
       if self.window.0 <= i as usize && (i as usize) < self.window.1 {
