@@ -416,11 +416,12 @@ impl App {
                     action_tx.send(Action::SetActivePopup(ActivePopup::Help))?;
                   }
                   KeyCode::Char('v') if ke.modifiers == KeyModifiers::NONE => {
-                    if let Some((event, status)) = self.event_list.selection() {
+                    if let Some((event, e)) = self.event_list.selection() {
                       action_tx.send(Action::SetActivePopup(ActivePopup::ViewDetails(
                         DetailsPopupState::new(
                           event,
-                          status,
+                          e.status,
+                          e.elapsed,
                           self.event_list.baseline.clone(),
                           self.event_list.modifier_args.hide_cloexec_fds,
                         ),
@@ -473,7 +474,7 @@ impl App {
                     // sudo -E env RUST_LOG=debug setpriv --reuid=$(id -u) --regid=$(id -g) --init-groups --inh-caps=+sys_admin --ambient-caps +sys_admin -- target/debug/tracexec tui -t --
                   }
                   ProcessStateUpdateEvent {
-                    update: ProcessStateUpdate::Detached { hid },
+                    update: ProcessStateUpdate::Detached { hid, .. },
                     pid,
                     ..
                   } => {

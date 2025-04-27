@@ -4,6 +4,7 @@ use std::{
 };
 
 use arboard::Clipboard;
+use chrono::TimeDelta;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use itertools::{Itertools, chain};
 use nix::{errno::Errno, fcntl::OFlag};
@@ -54,6 +55,7 @@ impl DetailsPopupState {
   pub fn new(
     event: Arc<TracerEventDetails>,
     status: Option<EventStatus>,
+    elapsed: Option<TimeDelta>,
     baseline: Arc<BaselineInfo>,
     hide_cloexec_fds: bool,
   ) -> Self {
@@ -70,6 +72,12 @@ impl DetailsPopupState {
     // timestamp
     if let Some(ts) = event.timestamp() {
       details.push((" Timestamp ", Line::raw(ts.format("%c").to_string())));
+    }
+    if let Some(elapsed) = elapsed.and_then(|x| x.to_std().ok()) {
+      details.push((
+        " Duration ",
+        Line::raw(humantime::format_duration(elapsed).to_string()),
+      ));
     }
     let (env, fdinfo, available_tabs) = if let TracerEventDetails::Exec(exec) = event.as_ref() {
       details.extend([

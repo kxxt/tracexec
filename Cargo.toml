@@ -83,6 +83,7 @@ hashbrown = "0.15.2"
 indexset = "0.10.0"
 chrono = "0.4.40"
 nutype = { version = "0.6.1", features = ["serde"] }
+humantime = "2.2.0"
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 
