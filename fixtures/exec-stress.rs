@@ -1,7 +1,7 @@
 use std::ffi::CString;
 
 use nix::unistd::execv;
-use rand::{Rng, distributions::Alphanumeric};
+use rand::{Rng, distr::Alphanumeric};
 
 // A stress test.
 // It will exec itself with random strings as arguments for n times
@@ -22,7 +22,7 @@ fn main() {
   ];
   rand_args.extend((0..10).map(|_| unsafe {
     CString::from_vec_unchecked(
-      rand::thread_rng()
+      rand::rng()
         .sample_iter(&Alphanumeric)
         .take(512)
         .chain(Some(0))
