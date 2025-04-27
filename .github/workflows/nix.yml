@@ -35,7 +35,7 @@ jobs:
           nix_conf: |
             keep-env-derivations = true
             keep-outputs = true
-      
+
       - name: Restore and save Nix store
         uses: nix-community/cache-nix-action@v6
         with:
@@ -46,7 +46,7 @@ jobs:
           # collect garbage until the Nix store size (in bytes) is at most this number
           # before trying to save a new cache
           # 1G = 1073741824
-          gc-max-store-size-linux: 1G
+          gc-max-store-size-linux: 2G
           # do purge caches
           purge: true
           # purge all versions of the cache
