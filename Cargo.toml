@@ -28,7 +28,7 @@ nix = { version = "0.29", features = [
     "signal",
     "user",
 ] }
-strum = { version = "0.26.1", features = ["derive"] }
+strum = { version = "0.27.1", features = ["derive"] }
 cfg-if = "1.0.0"
 owo-colors = { version = "4.0.0", package = "kxxt-owo-colors", features = [
     "global-colorized-control",
@@ -38,9 +38,9 @@ atoi = "2.0.0"
 tracing = { version = "0.1.40", features = ["release_max_level_info"] }
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-directories = "5.0.1"
+directories = "6"
 ratatui = { version = "0.29", features = ["unstable-rendered-line-info"] }
-crossterm = { version = "0.28.1", features = ["event-stream"] }
+crossterm = { version = "0.28", features = ["event-stream"] }
 tokio = { version = "1.37.0", features = ["full"] }
 tokio-util = "0.7.10"
 futures = "0.3.30"
@@ -57,12 +57,12 @@ arboard = { version = "3.3.2", default-features = false, features = [
     "wayland-data-control",
 ] }
 tui-popup = "0.6.0"
-thiserror = "1.0.59"
+thiserror = "2"
 tui-scrollview = "0.5.0"
 bitflags = "2.5.0"
 tui-prompts = "0.5.0"
 unicode-segmentation = "1.11.0"
-unicode-width = "0.1.12"
+unicode-width = "0.2.0"
 serial_test = { version = "3.1.1", features = ["file_locks"] }
 clap_complete = "4.5.2"
 regex-cursor = { version = "0.1.4", default-features = false }
@@ -76,11 +76,11 @@ serde_json = "1.0.120"
 libbpf-rs = { version = "0.24.6", optional = true, default-features = false }
 # libbpf-sys exists here because we want to control its features
 libbpf-sys = { version = "1", optional = true, default-features = false }
-libseccomp = "0.3.0"
+libseccomp = "0.4.0"
 weak-table = { version = "0.3.2", default-features = false, features = ["ahash"] }
-rand = "0.8.5"
+rand = "0.9"
 hashbrown = "0.15.2"
-indexset = "0.10.0"
+indexset = "0.12"
 chrono = "0.4.40"
 nutype = { version = "0.6.1", features = ["serde"] }
 humantime = "2.2.0"
@@ -91,7 +91,7 @@ humantime = "2.2.0"
 assert_cmd = "2.0.14"
 predicates = "3.1.0"
 
-rstest = "0.24.0"
+rstest = "0.25.0"
 tracing-test = "0.2.4"
 
 [build-dependencies]
