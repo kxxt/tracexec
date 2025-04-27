@@ -61,14 +61,7 @@ impl DetailsPopupState {
   ) -> Self {
     let mut modifier_args = Default::default();
     let rt_modifier = Default::default();
-    let mut details = vec![(
-      if matches!(event.as_ref(), TracerEventDetails::Exec(_)) {
-        " Cmdline "
-      } else {
-        " Details "
-      },
-      event.to_tui_line(&baseline, true, &modifier_args, rt_modifier, None),
-    )];
+    let mut details = vec![];
     // timestamp
     if let Some(ts) = event.timestamp() {
       details.push((" Timestamp ", Line::raw(ts.format("%c").to_string())));
@@ -79,16 +72,16 @@ impl DetailsPopupState {
         Line::raw(humantime::format_duration(elapsed).to_string()),
       ));
     }
+    details.push((
+      if matches!(event.as_ref(), TracerEventDetails::Exec(_)) {
+        " Cmdline "
+      } else {
+        " Details "
+      },
+      event.to_tui_line(&baseline, true, &modifier_args, rt_modifier, None),
+    ));
     let (env, fdinfo, available_tabs) = if let TracerEventDetails::Exec(exec) = event.as_ref() {
       details.extend([
-        (" (Experimental) Cmdline with stdio ", {
-          modifier_args.stdio_in_cmdline = true;
-          event.to_tui_line(&baseline, true, &modifier_args, rt_modifier, None)
-        }),
-        (" (Experimental) Cmdline with fds ", {
-          modifier_args.fd_in_cmdline = true;
-          event.to_tui_line(&baseline, true, &modifier_args, rt_modifier, None)
-        }),
         (" Pid ", Line::from(exec.pid.to_string())),
         (" Syscall Result ", {
           if exec.result == 0 {
@@ -143,10 +136,6 @@ impl DetailsPopupState {
           Span::from(exec.filename.as_ref().to_owned()).into(),
         ),
         (
-          " Argv ",
-          TracerEventDetails::argv_to_string(&exec.argv).into(),
-        ),
-        (
           " Interpreters ",
           Line::from(
             exec
@@ -179,6 +168,18 @@ impl DetailsPopupState {
           } else {
             "Closed".set_style(THEME.fd_closed).into()
           },
+        ),
+        (" (Experimental) Cmdline with stdio ", {
+          modifier_args.stdio_in_cmdline = true;
+          event.to_tui_line(&baseline, true, &modifier_args, rt_modifier, None)
+        }),
+        (" (Experimental) Cmdline with fds ", {
+          modifier_args.fd_in_cmdline = true;
+          event.to_tui_line(&baseline, true, &modifier_args, rt_modifier, None)
+        }),
+        (
+          " Argv ",
+          TracerEventDetails::argv_to_string(&exec.argv).into(),
         ),
       ]);
       let env = match exec.env_diff.as_ref() {
