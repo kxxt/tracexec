@@ -37,6 +37,7 @@ pub struct JsonExecEvent {
   pub argv: JsonResult<Vec<OutputMsg>>,
   pub env: JsonResult<EnvDiff>,
   pub fdinfo: FileDescriptorInfoCollection,
+  pub timestamp: u64,
 }
 
 impl JsonExecEvent {
@@ -57,6 +58,10 @@ impl JsonExecEvent {
       argv: JsonResult::from_result(Arc::unwrap_or_clone(event.argv)),
       env: JsonResult::from_result(event.env_diff),
       fdinfo: Arc::unwrap_or_clone(event.fdinfo),
+      timestamp: event
+        .timestamp
+        .timestamp_nanos_opt()
+        .expect("tracexec does not support dates beyond 2262-04-11") as u64,
     }
   }
 }
