@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.11.0
+
+### New Features
+
+![tracexec with inline timestamps](https://github.com/user-attachments/assets/eb54fae2-4c0d-4ef4-8b5e-0a515dd5caa1)
+
+tracexec now collects the timestamps of the events.
+It is currently hidden by default.
+To show the timestamps inline, use `--timestamp` option.
+To control the format of the inline timestamp, use `--inline-timestamp-format`
+(Please refer to https://docs.rs/chrono/latest/chrono/format/strftime/index.html for available specifiers)
+
+Use `timestamp.enable` config under `modifier` section to control whether to enable it by default or not
+and `timestamp.inline_format` config to control the format.
+
+![timestamps in details view](https://github.com/user-attachments/assets/7e4a68a4-901a-423c-b7ef-eee72b711038)
+
+### Breaking Changes
+
+File descriptors that are `O_CLOEXEC`(closing upon exec) are hidden by default now.
+The rationale behind this change is that most of the time we are only interested to know
+which FDs are inherited across exec.
+
+This behavior can be controlled with `--hide-cloexec-fds` or `--no-hide-cloexec-fds` options
+and `hide_cloexec_fds` config under `modifier` section.
+
+### Fixes
+
+- Fix caching in UKCI.
+
+### Other
+
+- TUI: The order of fields in details view are slightly adjusted.
+- Bump dependencies.
+- Regular kernel version bumps for UKCI.
+
 ## v0.10.0
 
 ### Breaking Changes
