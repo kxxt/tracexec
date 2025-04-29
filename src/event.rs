@@ -287,7 +287,10 @@ pub enum Event {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TracerMessage {
+  /// A tracer event is an event that could show in the logs or event list
   Event(TracerEvent),
+  /// A state update is any event that doesn't need to show in logs or having
+  /// its own line in event list.
   StateUpdate(ProcessStateUpdateEvent),
   FatalError(String),
 }
