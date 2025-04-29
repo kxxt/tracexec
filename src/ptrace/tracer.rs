@@ -278,7 +278,7 @@ impl Tracer {
     };
     let mut engine = RecursivePtraceEngine::new(self.seccomp_bpf());
     engine.seize_children_recursive(root_child, ptrace_opts)?;
-    let mut root_child_state = ProcessState::new(root_child, 0)?;
+    let mut root_child_state = ProcessState::new(root_child)?;
     root_child_state.ppid = Some(getpid());
     {
       self.store.write().unwrap().insert(root_child_state);
@@ -459,7 +459,7 @@ impl Tracer {
               trace!(
                 "sigstop event received before ptrace fork event, pid: {pid}, pid_reuse: {pid_reuse}"
               );
-              let mut state = ProcessState::new(pid, 0)?;
+              let mut state = ProcessState::new(pid)?;
               state.status = ProcessStatus::SigstopReceived;
               store.insert(state);
 
@@ -513,7 +513,7 @@ impl Tracer {
               trace!(
                 "ptrace fork event received before sigstop, pid: {pid}, child: {new_child}, pid_reuse: {pid_reuse}"
               );
-              let mut state = ProcessState::new(new_child, 0)?;
+              let mut state = ProcessState::new(new_child)?;
               state.status = ProcessStatus::PtraceForkEventReceived;
               state.ppid = Some(pid);
               store.insert(state);
