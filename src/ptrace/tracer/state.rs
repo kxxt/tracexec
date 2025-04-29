@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
   cache::ArcStr,
+  event::EventId,
   tracer::{ExecData, ProcessExit},
 };
 use nix::unistd::Pid;
@@ -39,7 +40,7 @@ pub struct ProcessState {
   pub is_exec_successful: bool,
   pub syscall: Syscall,
   pub exec_data: Option<ExecData>,
-  pub associated_events: Vec<u64>,
+  pub associated_events: Vec<EventId>,
   /// A pending detach request with a signal to send to the process
   pub pending_detach: Option<PendingDetach>,
 }
@@ -96,7 +97,7 @@ impl ProcessState {
     })
   }
 
-  pub fn associate_event(&mut self, id: impl IntoIterator<Item = u64>) {
+  pub fn associate_event(&mut self, id: impl IntoIterator<Item = EventId>) {
     self.associated_events.extend(id);
   }
 }

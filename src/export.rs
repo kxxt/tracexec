@@ -1,7 +1,7 @@
 //! Data structures for export command
 use std::{error::Error, sync::Arc};
 
-use crate::cache::ArcStr;
+use crate::{cache::ArcStr, event::EventId};
 use nix::libc::pid_t;
 use serde::Serialize;
 
@@ -28,7 +28,7 @@ impl<T: Serialize + Clone> JsonResult<T> {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct JsonExecEvent {
-  pub id: u64,
+  pub id: EventId,
   pub pid: pid_t,
   pub cwd: OutputMsg,
   pub comm_before_exec: ArcStr,
@@ -42,7 +42,7 @@ pub struct JsonExecEvent {
 
 impl JsonExecEvent {
   #[allow(clippy::boxed_local)] //
-  pub fn new(id: u64, event: ExecEvent) -> Self {
+  pub fn new(id: EventId, event: ExecEvent) -> Self {
     tracing::trace!(
       "arc stat: {}, {}",
       Arc::strong_count(&event.argv),
