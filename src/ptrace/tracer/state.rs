@@ -34,7 +34,6 @@ pub struct ProcessState {
   pub pid: Pid,
   pub ppid: Option<Pid>,
   pub status: ProcessStatus,
-  pub start_time: u64,
   pub comm: ArcStr,
   pub presyscall: bool,
   pub is_exec_successful: bool,
@@ -81,13 +80,12 @@ impl ProcessStateStore {
 }
 
 impl ProcessState {
-  pub fn new(pid: Pid, start_time: u64) -> color_eyre::Result<Self> {
+  pub fn new(pid: Pid) -> color_eyre::Result<Self> {
     Ok(Self {
       pid,
       ppid: None,
       status: ProcessStatus::Initialized,
       comm: read_comm(pid)?,
-      start_time,
       presyscall: true,
       is_exec_successful: false,
       syscall: Syscall::Other,
