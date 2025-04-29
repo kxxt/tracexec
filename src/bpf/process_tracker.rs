@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use nix::unistd::Pid;
 
+use crate::event::EventId;
+
 #[derive(Default)]
 pub struct ProcessTracker {
   processes: HashMap<Pid, ProcessState>,
@@ -9,7 +11,7 @@ pub struct ProcessTracker {
 
 #[derive(Debug, Default)]
 pub struct ProcessState {
-  associated_events: Vec<u64>,
+  associated_events: Vec<EventId>,
 }
 
 impl ProcessTracker {
@@ -27,7 +29,7 @@ impl ProcessTracker {
     let _ = self.processes.remove(&pid);
   }
 
-  pub fn associate_events(&mut self, pid: Pid, ids: impl IntoIterator<Item = u64>) {
+  pub fn associate_events(&mut self, pid: Pid, ids: impl IntoIterator<Item = EventId>) {
     self
       .processes
       .get_mut(&pid)
@@ -36,7 +38,7 @@ impl ProcessTracker {
       .extend(ids);
   }
 
-  pub fn force_associate_events(&mut self, pid: Pid, ids: impl IntoIterator<Item = u64>) {
+  pub fn force_associate_events(&mut self, pid: Pid, ids: impl IntoIterator<Item = EventId>) {
     self
       .processes
       .entry(pid)
@@ -46,11 +48,11 @@ impl ProcessTracker {
   }
 
   #[allow(unused)]
-  pub fn associated_events(&self, pid: Pid) -> &[u64] {
+  pub fn associated_events(&self, pid: Pid) -> &[EventId] {
     &self.processes.get(&pid).unwrap().associated_events
   }
 
-  pub fn maybe_associated_events(&self, pid: Pid) -> Option<&[u64]> {
+  pub fn maybe_associated_events(&self, pid: Pid) -> Option<&[EventId]> {
     self
       .processes
       .get(&pid)

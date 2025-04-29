@@ -10,7 +10,7 @@ use ratatui::{
 use regex_cursor::{IntoCursor, engines::pikevm, regex_automata::util::syntax};
 use tui_prompts::{State, TextPrompt, TextState};
 
-use crate::action::Action;
+use crate::{action::Action, event::EventId};
 
 use super::{event_line::EventLine, help::help_item, theme::THEME};
 
@@ -36,11 +36,11 @@ pub enum QueryKind {
 #[derive(Debug)]
 pub struct QueryResult {
   /// The indices of matching events and the start of the match, use IndexMap to keep the order
-  pub indices: indexset::BTreeSet<u64>,
+  pub indices: indexset::BTreeSet<EventId>,
   /// The maximum of searched id
-  pub searched_id: u64,
+  pub searched_id: EventId,
   /// The currently focused item in query result, an index of `indices`
-  pub selection: Option<u64>,
+  pub selection: Option<EventId>,
 }
 
 impl Query {
@@ -102,7 +102,7 @@ impl QueryResult {
   }
 
   /// Return the id of the currently selected event
-  pub fn selection(&self) -> Option<u64> {
+  pub fn selection(&self) -> Option<EventId> {
     self.selection
   }
 

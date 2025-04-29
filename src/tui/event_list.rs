@@ -40,7 +40,8 @@ use ratatui::{
 use crate::{
   cli::args::ModifierArgs,
   event::{
-    EventStatus, ProcessStateUpdate, ProcessStateUpdateEvent, RuntimeModifier, TracerEventDetails,
+    EventId, EventStatus, ProcessStateUpdate, ProcessStateUpdateEvent, RuntimeModifier,
+    TracerEventDetails,
   },
   proc::BaselineInfo,
   ptrace::Signal,
@@ -61,7 +62,7 @@ pub struct Event {
   pub elapsed: Option<TimeDelta>,
   /// The string representation of the events, used for searching
   pub event_line: EventLine,
-  pub id: u64,
+  pub id: EventId,
 }
 
 pub struct EventModifier {
@@ -90,7 +91,7 @@ impl Event {
 pub struct EventList {
   state: ListState,
   events: VecDeque<Rc<RefCell<Event>>>,
-  event_map: HashMap<u64, Rc<RefCell<Event>>>,
+  event_map: HashMap<EventId, Rc<RefCell<Event>>>,
   /// Current window of the event list, [start, end)
   window: (usize, usize),
   /// Cache of the list items in the view
@@ -383,7 +384,7 @@ impl EventList {
         .iter()
         .last()
         .map(|r| r.borrow().id)
-        .unwrap_or(0),
+        .unwrap_or_else(EventId::zero),
       selection: None,
     };
     result.next_result();
@@ -404,7 +405,10 @@ impl EventList {
       return;
     };
     let mut modified = false;
-    let start_search_index = existing_result.searched_id.saturating_sub(offset) as usize;
+    let start_search_index = existing_result
+      .searched_id
+      .into_inner()
+      .saturating_sub(offset) as usize;
     for evt in self.events.iter().skip(start_search_index) {
       if query.matches(&evt.borrow().event_line) {
         existing_result.indices.insert(evt.borrow().id);
@@ -416,7 +420,7 @@ impl EventList {
       .iter()
       .last()
       .map(|r| r.borrow().id)
-      .unwrap_or(0);
+      .unwrap_or_else(EventId::zero);
     if modified {
       self.should_refresh_list_cache = true;
     }
@@ -446,7 +450,7 @@ impl EventList {
   /// Push a new event into event list.
   ///
   /// Caller must guarantee that the id is strict monotonically increasing.
-  pub fn push(&mut self, id: u64, event: impl Into<Arc<TracerEventDetails>>) {
+  pub fn push(&mut self, id: EventId, event: impl Into<Arc<TracerEventDetails>>) {
     let details = event.into();
     let status = match details.as_ref() {
       TracerEventDetails::NewChild { .. } => Some(EventStatus::ProcessRunning),
@@ -552,7 +556,8 @@ impl EventList {
         }
         e.event_line = Event::to_event_line(&e.details, e.status, &self.baseline, &modifier);
       }
-      if self.window.0 <= i as usize && (i as usize) < self.window.1 {
+      let i = i.into_inner() as usize;
+      if self.window.0 <= i && i < self.window.1 {
         self.should_refresh_list_cache = true;
       }
     }
@@ -583,17 +588,18 @@ impl EventList {
       .events
       .get(self.window.0)
       .map(|e| e.borrow().id)
-      .unwrap_or(0)
+      .unwrap_or_else(EventId::zero)
+      .into_inner()
       .saturating_sub(self.window.0 as u64)
   }
 
-  fn scroll_to_id(&mut self, id: Option<u64>) {
+  fn scroll_to_id(&mut self, id: Option<EventId>) {
     let Some(id) = id else {
       return;
     };
     // self.window.0 should be <= its id
 
-    self.scroll_to(Some((id - self.id_index_offset()) as usize));
+    self.scroll_to(Some((id - self.id_index_offset()).into_inner() as usize));
   }
 
   /// Scroll to the given index and select it,

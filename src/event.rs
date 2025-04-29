@@ -23,8 +23,10 @@ use crate::{
   tui::theme::THEME,
 };
 
+mod id;
 mod message;
 mod ui;
+pub use id::*;
 pub use message::*;
 
 #[derive(Debug, Clone, Display, PartialEq, Eq)]
@@ -63,15 +65,15 @@ impl From<ProcessStateUpdateEvent> for TracerMessage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TracerEvent {
   pub details: TracerEventDetails,
-  pub id: u64,
+  pub id: EventId,
 }
 
 /// A global counter for events, though it should only be used by the tracer thread.
 static ID: AtomicU64 = AtomicU64::new(0);
 
 impl TracerEvent {
-  pub fn allocate_id() -> u64 {
-    ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+  pub fn allocate_id() -> EventId {
+    EventId::new(ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst))
   }
 }
 
@@ -160,12 +162,9 @@ impl TracerEventDetails {
       | Self::TraceeExit { timestamp, .. } => Some(*timestamp),
     }
   }
-
 }
 
-impl TracerEventDetails {
-
-}
+impl TracerEventDetails {}
 
 impl FilterableTracerEventDetails {
   pub fn send_if_match(
@@ -223,7 +222,7 @@ impl ProcessStateUpdate {
 pub struct ProcessStateUpdateEvent {
   pub update: ProcessStateUpdate,
   pub pid: Pid,
-  pub ids: Vec<u64>,
+  pub ids: Vec<EventId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -270,4 +269,3 @@ impl From<EventStatus> for &'static str {
     }
   }
 }
-
