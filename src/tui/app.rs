@@ -432,7 +432,17 @@ impl App {
                     if let Some((event, _)) = self.event_list.selection() {
                       if let TracerEventDetails::Exec(exec) = event.as_ref() {
                         if let Some(parent) = exec.parent {
-                          action_tx.send(Action::ScrollToId(parent.into()))?;
+                          let id = parent.into();
+                          if self.event_list.contains(id) {
+                            action_tx.send(Action::ScrollToId(id))?;
+                          } else {
+                            action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
+                              InfoPopupState::info(
+                                "GoTo Parent Result".into(),
+                                vec![Line::raw("The parent exec event is found, but has been cleared from memory.")],
+                              ),
+                            )))?;
+                          }
                         } else {
                           action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
                             InfoPopupState::info(
