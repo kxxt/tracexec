@@ -428,6 +428,31 @@ impl App {
                       )))?;
                     }
                   }
+                  KeyCode::Char('u') if ke.modifiers == KeyModifiers::NONE => {
+                    if let Some((event, _)) = self.event_list.selection() {
+                      if let TracerEventDetails::Exec(exec) = event.as_ref() {
+                        if let Some(parent) = exec.parent {
+                          action_tx.send(Action::ScrollToId(parent.into()))?;
+                        } else {
+                          action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
+                            InfoPopupState::info(
+                              "GoTo Parent Result".into(),
+                              vec![Line::raw("No parent exec event is found for this event.")],
+                            ),
+                          )))?;
+                        }
+                      } else {
+                        action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
+                          InfoPopupState::error(
+                            "GoTo Parent Error".into(),
+                            vec![Line::raw(
+                              "This feature is currently limited to exec events.",
+                            )],
+                          ),
+                        )))?;
+                      }
+                    }
+                  }
                   KeyCode::Char('b')
                     if ke.modifiers == KeyModifiers::NONE && self.tracer.is_some() =>
                   {
@@ -657,6 +682,9 @@ impl App {
           }
           Action::ScrollToEnd => {
             self.event_list.scroll_to_end();
+          }
+          Action::ScrollToId(id) => {
+            self.event_list.scroll_to_id(Some(id));
           }
           Action::ToggleFollow => {
             self.event_list.toggle_follow();
@@ -1007,6 +1035,9 @@ impl App {
         help_item!("V", "View"),
         help_item!("Ctrl+F", "Search"),
       ));
+      if self.event_list.selection().is_some() {
+        items.extend(help_item!("U", "GoTo Parent"));
+      }
       if let Some(h) = self.hit_manager_state.as_ref() {
         items.extend(help_item!("B", "Breakpoints"));
         if h.count() > 0 {

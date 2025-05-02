@@ -593,7 +593,7 @@ impl EventList {
       .saturating_sub(self.window.0 as u64)
   }
 
-  fn scroll_to_id(&mut self, id: Option<EventId>) {
+  pub fn scroll_to_id(&mut self, id: Option<EventId>) {
     let Some(id) = id else {
       return;
     };

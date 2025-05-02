@@ -4,7 +4,7 @@ use crossterm::event::KeyEvent;
 use ratatui::{layout::Size, text::Line};
 
 use crate::{
-  event::TracerEventDetails,
+  event::{EventId, TracerEventDetails},
   tui::{
     copy_popup::CopyPopupState, details_popup::DetailsPopupState, error_popup::InfoPopupState,
     query::Query,
@@ -36,6 +36,7 @@ pub enum Action {
   ToggleEnvDisplay,
   ToggleCwdDisplay,
   StopFollow,
+  ScrollToId(EventId),
   // Sizing
   ShrinkPane,
   GrowPane,
