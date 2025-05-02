@@ -25,9 +25,11 @@ use crate::{
 
 mod id;
 mod message;
+mod parent;
 mod ui;
 pub use id::*;
 pub use message::*;
+pub use parent::*;
 
 #[derive(Debug, Clone, Display, PartialEq, Eq)]
 pub enum Event {
@@ -111,6 +113,12 @@ pub enum TracerEventDetails {
   },
 }
 
+impl TracerEventDetails {
+  pub fn into_event_with_id(self, id: EventId) -> TracerEvent {
+    TracerEvent { details: self, id }
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TracerEventMessage {
   pub pid: Option<Pid>,
@@ -131,6 +139,7 @@ pub struct ExecEvent {
   pub fdinfo: Arc<FileDescriptorInfoCollection>,
   pub result: i64,
   pub timestamp: Timestamp,
+  pub parent: Option<ParentEventId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

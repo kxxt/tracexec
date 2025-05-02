@@ -307,8 +307,6 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
 
 SEC("tp_btf/sched_process_fork")
 int trace_fork(u64 *ctx) {
-  if (!tracexec_config.follow_fork)
-    return 0;
   struct task_struct *parent = (struct task_struct *)ctx[0];
   struct task_struct *child = (struct task_struct *)ctx[1];
   pid_t pid, tgid, parent_tgid;
@@ -372,12 +370,9 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
     return 0;
   struct task_struct *current = (void *)bpf_get_current_task();
   int ret = -1;
-  if (tracexec_config.follow_fork) {
-    // remove tgid from closure
-    ret = bpf_map_delete_elem(&tgid_closure, &tgid);
-    if (ret < 0)
-      debug("Failed to remove %d from closure: %d", tgid, ret);
-  }
+  // remove tgid from closure
+  bpf_map_delete_elem(&tgid_closure, &tgid);
+
   u32 entry_index = bpf_get_smp_processor_id();
   if (entry_index > tracexec_config.max_num_cpus) {
     debug("Too many cores!");
