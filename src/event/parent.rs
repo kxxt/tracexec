@@ -10,6 +10,14 @@ pub enum ParentEventId {
   Spawn(EventId),
 }
 
+impl From<ParentEventId> for EventId {
+  fn from(value: ParentEventId) -> Self {
+    match value {
+      ParentEventId::Become(event_id) | ParentEventId::Spawn(event_id) => event_id,
+    }
+  }
+}
+
 /// How this works
 ///
 /// Consider the following two situations:
@@ -56,7 +64,7 @@ impl ParentTracker {
   }
 
   pub fn save_parent_last_exec(&mut self, parent: &Self) {
-    self.parent_last_exec = parent.last_exec;
+    self.parent_last_exec = parent.last_exec.or(parent.parent_last_exec);
   }
 
   /// Updates parent tracker with an exec event
