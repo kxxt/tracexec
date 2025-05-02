@@ -237,6 +237,10 @@ impl EventList {
   pub fn len(&self) -> usize {
     self.events.len()
   }
+
+  pub fn contains(&self, id: EventId) -> bool {
+    self.event_map.contains_key(&id)
+  }
 }
 
 impl Widget for &mut EventList {
