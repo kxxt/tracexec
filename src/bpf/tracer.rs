@@ -211,7 +211,10 @@ impl EbpfTracer {
               )
               .unwrap();
             if self.filter.intersects(TracerEventDetailsKind::Exec) {
-              let event = TracerEvent::from(TracerEventDetails::Exec(Box::new(ExecEvent {
+              let id = TracerEvent::allocate_id();
+              let parent_tracker = tracker.parent_tracker_mut(pid).unwrap();
+              let parent = parent_tracker.update_last_exec(id, event.ret == 0);
+              let event = TracerEventDetails::Exec(Box::new(ExecEvent {
                 timestamp: exec_data.timestamp,
                 pid,
                 cwd: exec_data.cwd.clone(),
@@ -228,7 +231,9 @@ impl EbpfTracer {
                   .map_err(|e| *e),
                 result: event.ret,
                 fdinfo: exec_data.fdinfo.clone(),
-              })));
+                parent,
+              }))
+              .into_event_with_id(id);
               if follow_forks {
                 tracker.associate_events(pid, [event.id])
               } else {
@@ -386,7 +391,13 @@ impl EbpfTracer {
             assert_eq!(data.len(), size_of::<fork_event>());
             let event: &fork_event = unsafe { &*(data.as_ptr() as *const _) };
             // FORK_EVENT is only sent if follow_forks
-            tracker.add(Pid::from_raw(header.pid));
+            let fork_parent = Pid::from_raw(event.parent_tgid);
+            let pid = Pid::from_raw(header.pid);
+            tracker.add(pid);
+            if let [Some(curr), Some(par)] = tracker.parent_tracker_disjoint_mut(pid, fork_parent) {
+              // Parent can be missing if the fork happens before tracexec start.
+              curr.save_parent_last_exec(par);
+            }
             debug!("{} forked {}", event.parent_tgid, header.pid);
           }
         }

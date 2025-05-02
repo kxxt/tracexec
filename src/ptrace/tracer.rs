@@ -10,6 +10,7 @@ use std::{
 
 use crate::{
   cache::ArcStr,
+  event::ParentEventId,
   timestamp::Timestamp,
   tracee,
   tracer::{ExecData, ProcessExit, TracerBuilder, TracerMode},
@@ -517,7 +518,19 @@ impl Tracer {
               state.status = ProcessStatus::PtraceForkEventReceived;
               state.ppid = Some(pid);
               store.insert(state);
-              drop(store);
+            }
+            let [parent_s, child_s] = store.get_current_disjoint_mut(pid, new_child);
+            let parent_s = parent_s.unwrap();
+            if let Some(state) = child_s {
+              // We need to keep track of the parent event id of the exec event of the forked child
+              // Here, we record the last exec event id of the parent process for this child.
+              state
+                .parent_tracker
+                .save_parent_last_exec(&parent_s.parent_tracker);
+              debug!(
+                "save parent last exec for {new_child}, parent = {pid}, curr = {:?}, par = {:?}",
+                state.parent_tracker, parent_s.parent_tracker
+              );
             }
             // Resume parent
             guard.seccomp_aware_cont_syscall(true)?;
@@ -819,14 +832,17 @@ impl Tracer {
           return Ok(());
         }
         if self.filter.intersects(TracerEventDetailsKind::Exec) {
-          // TODO: optimize, we don't need to collect exec event for log mode
-          let event = TracerEvent::from(TracerEventDetails::Exec(Self::collect_exec_event(
+          let id = TracerEvent::allocate_id();
+          let parent = p.parent_tracker.update_last_exec(id, exec_result == 0);
+          let event = TracerEventDetails::Exec(Self::collect_exec_event(
             &self.baseline.env,
             p,
             exec_result,
             p.exec_data.as_ref().unwrap().timestamp,
-          )));
-          p.associate_event([event.id]);
+            parent,
+          ))
+          .into_event_with_id(id);
+          p.associate_event([id]);
           self.msg_tx.send(event.into())?;
           self.printer.print_exec_trace(
             p.pid,
@@ -983,6 +999,7 @@ impl Tracer {
     state: &ProcessState,
     result: i64,
     timestamp: Timestamp,
+    parent: Option<ParentEventId>,
   ) -> Box<ExecEvent> {
     let exec_data = state.exec_data.as_ref().unwrap();
     Box::new(ExecEvent {
@@ -1002,6 +1019,7 @@ impl Tracer {
         .map_err(|e| *e),
       result,
       fdinfo: exec_data.fdinfo.clone(),
+      parent,
     })
   }
 }

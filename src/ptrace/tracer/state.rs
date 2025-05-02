@@ -1,10 +1,9 @@
-use std::collections::HashMap;
-
 use crate::{
   cache::ArcStr,
-  event::EventId,
+  event::{EventId, ParentTracker},
   tracer::{ExecData, ProcessExit},
 };
+use hashbrown::HashMap;
 use nix::unistd::Pid;
 
 use crate::{proc::read_comm, ptrace::Signal};
@@ -12,7 +11,7 @@ use crate::{proc::read_comm, ptrace::Signal};
 use super::BreakPointHit;
 
 pub struct ProcessStateStore {
-  processes: HashMap<Pid, Option<ProcessState>>,
+  processes: HashMap<Pid, ProcessState>,
 }
 
 #[derive(Debug)]
@@ -39,6 +38,8 @@ pub struct ProcessState {
   pub is_exec_successful: bool,
   pub syscall: Syscall,
   pub exec_data: Option<ExecData>,
+  // Two kinds of parent: replace and fork.
+  pub parent_tracker: ParentTracker,
   pub associated_events: Vec<EventId>,
   /// A pending detach request with a signal to send to the process
   pub pending_detach: Option<PendingDetach>,
@@ -64,18 +65,22 @@ impl ProcessStateStore {
   }
 
   pub fn insert(&mut self, state: ProcessState) {
-    self.processes.entry(state.pid).or_default().replace(state);
+    self.processes.entry(state.pid).or_insert(state);
   }
 
   pub fn get_current_mut(&mut self, pid: Pid) -> Option<&mut ProcessState> {
     // The last process in the vector is the current process
     // println!("Getting {pid}");
-    self.processes.get_mut(&pid)?.as_mut()
+    self.processes.get_mut(&pid)
   }
 
   pub fn get_current(&self, pid: Pid) -> Option<&ProcessState> {
     // The last process in the vector is the current process
-    self.processes.get(&pid)?.as_ref()
+    self.processes.get(&pid)
+  }
+
+  pub fn get_current_disjoint_mut(&mut self, p1: Pid, p2: Pid) -> [Option<&mut ProcessState>; 2] {
+    self.processes.get_many_mut([&p1, &p2])
   }
 }
 
@@ -92,6 +97,7 @@ impl ProcessState {
       exec_data: None,
       associated_events: Vec::new(),
       pending_detach: None,
+      parent_tracker: ParentTracker::new(),
     })
   }
 
