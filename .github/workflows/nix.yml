@@ -46,7 +46,7 @@ jobs:
           # collect garbage until the Nix store size (in bytes) is at most this number
           # before trying to save a new cache
           # 1G = 1073741824
-          gc-max-store-size-linux: 2G
+          gc-max-store-size-linux: 6G
           # do purge caches
           purge: true
           # purge all versions of the cache
@@ -63,3 +63,5 @@ jobs:
       - run: nix build
       # Run Userspace<->Kernel CI
       - run: nix run '.#ukci'
+      - name: Add gc root for UKCI
+        run: ln -s "$(nix eval --raw '.#ukci')" /nix/var/nix/gcroots/ukci
