@@ -1,0 +1,28 @@
+# A list of allocated keys.
+
+## Event List
+B => breakpoint manager
+C => copy
+E => env display
+F => follow, +Ctrl=search
+G => grow pane
+H => Left
+J => Down
+K => Up
+L => Right, +Alt=Layout
+Q => Quit
+S => shrink pane
+T => backtrace
+U => goto parent
+V => show detail
+W => cwd display
+Z => hit manager
+F1
+Down
+Left
+Up
+Right
+PageDown
+PageUp
+Home
+End
