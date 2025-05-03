@@ -39,6 +39,7 @@ use super::{
   query::{Query, QueryResult},
 };
 
+mod react;
 mod scroll;
 mod ui;
 
@@ -81,6 +82,8 @@ pub struct EventList {
   rt_modifier: RuntimeModifier,
   query: Option<Query>,
   query_result: Option<QueryResult>,
+  is_ptrace: bool,
+  has_clipboard: bool,
 }
 
 impl EventList {
@@ -89,6 +92,8 @@ impl EventList {
     follow: bool,
     modifier_args: ModifierArgs,
     max_events: u64,
+    is_ptrace: bool,
+    has_clipboard: bool,
   ) -> Self {
     Self {
       state: ListState::default(),
@@ -109,6 +114,8 @@ impl EventList {
       rt_modifier: Default::default(),
       query: None,
       query_result: None,
+      is_ptrace,
+      has_clipboard,
     }
   }
 
