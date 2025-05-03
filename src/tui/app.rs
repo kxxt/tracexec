@@ -20,7 +20,7 @@ use std::{ops::ControlFlow, sync::Arc};
 
 use arboard::Clipboard;
 use clap::ValueEnum;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyModifiers};
 
 use itertools::chain;
 use nix::{errno::Errno, sys::signal::Signal, unistd::Pid};
@@ -56,7 +56,7 @@ use super::{
   Tui,
   breakpoint_manager::{BreakPointManager, BreakPointManagerState},
   copy_popup::{CopyPopup, CopyPopupState},
-  details_popup::{DetailsPopup, DetailsPopupState},
+  details_popup::DetailsPopup,
   error_popup::InfoPopup,
   event_list::EventList,
   help::{fancy_help_desc, help, help_item, help_key},
@@ -123,12 +123,15 @@ impl App {
         tracer.tracer.add_breakpoint(bp);
       }
     }
+    let clipboard = Clipboard::new().ok();
     Ok(Self {
       event_list: EventList::new(
         baseline,
         tui_args.follow,
         modifier_args.to_owned(),
         tui_args.max_events.unwrap_or(DEFAULT_MAX_EVENTS),
+        tracer.is_some(),
+        clipboard.is_some(),
       ),
       printer_args: PrinterArgs::from_cli(tracing_args, modifier_args),
       split_percentage: if pty_master.is_some() { 50 } else { 100 },
@@ -151,7 +154,7 @@ impl App {
       },
       root_pid: None,
       active_pane,
-      clipboard: Clipboard::new().ok(),
+      clipboard,
       layout: tui_args.layout.unwrap_or_default(),
       should_handle_internal_resize: true,
       popup: None,
@@ -314,166 +317,7 @@ impl App {
                       action_tx.send(Action::Quit)?;
                     }
                   }
-                  KeyCode::Down | KeyCode::Char('j') => {
-                    if ke.modifiers == KeyModifiers::CONTROL {
-                      action_tx.send(Action::PageDown)?;
-                    } else if ke.modifiers == KeyModifiers::NONE {
-                      action_tx.send(Action::NextItem)?;
-                    }
-                    // action_tx.send(Action::Render)?;
-                  }
-                  KeyCode::Up | KeyCode::Char('k') => {
-                    if ke.modifiers == KeyModifiers::CONTROL {
-                      action_tx.send(Action::StopFollow)?;
-                      action_tx.send(Action::PageUp)?;
-                    } else if ke.modifiers == KeyModifiers::NONE {
-                      action_tx.send(Action::StopFollow)?;
-                      action_tx.send(Action::PrevItem)?;
-                    }
-                    // action_tx.send(Action::Render)?;
-                  }
-                  KeyCode::Left | KeyCode::Char('h') => {
-                    if ke.modifiers == KeyModifiers::CONTROL {
-                      action_tx.send(Action::PageLeft)?;
-                    } else if ke.modifiers == KeyModifiers::NONE {
-                      action_tx.send(Action::ScrollLeft)?;
-                    }
-                    // action_tx.send(Action::Render)?;
-                  }
-                  KeyCode::Right | KeyCode::Char('l') if ke.modifiers != KeyModifiers::ALT => {
-                    if ke.modifiers == KeyModifiers::CONTROL {
-                      action_tx.send(Action::PageRight)?;
-                    } else if ke.modifiers == KeyModifiers::NONE {
-                      action_tx.send(Action::ScrollRight)?;
-                    }
-                    // action_tx.send(Action::Render)?;
-                  }
-                  KeyCode::PageDown if ke.modifiers == KeyModifiers::NONE => {
-                    action_tx.send(Action::PageDown)?;
-                    // action_tx.send(Action::Render)?;
-                  }
-                  KeyCode::PageUp if ke.modifiers == KeyModifiers::NONE => {
-                    action_tx.send(Action::StopFollow)?;
-                    action_tx.send(Action::PageUp)?;
-                    // action_tx.send(Action::Render)?;
-                  }
-                  KeyCode::Home => {
-                    if ke.modifiers == KeyModifiers::NONE {
-                      action_tx.send(Action::StopFollow)?;
-                      action_tx.send(Action::ScrollToTop)?;
-                    } else if ke.modifiers == KeyModifiers::SHIFT {
-                      action_tx.send(Action::ScrollToStart)?;
-                    }
-                    // action_tx.send(Action::Render)?;
-                  }
-                  KeyCode::End => {
-                    if ke.modifiers == KeyModifiers::NONE {
-                      action_tx.send(Action::ScrollToBottom)?;
-                    } else if ke.modifiers == KeyModifiers::SHIFT {
-                      action_tx.send(Action::ScrollToEnd)?;
-                    }
-                    // action_tx.send(Action::Render)?;
-                  }
-                  KeyCode::Char('g') if ke.modifiers == KeyModifiers::NONE => {
-                    action_tx.send(Action::GrowPane)?;
-                    // action_tx.send(Action::Render)?;
-                  }
-                  KeyCode::Char('s') => {
-                    if ke.modifiers == KeyModifiers::NONE {
-                      action_tx.send(Action::ShrinkPane)?;
-                    } else if ke.modifiers == KeyModifiers::ALT {
-                      action_tx.send(Action::HandleTerminalKeyPress(KeyEvent::new(
-                        KeyCode::Char('s'),
-                        KeyModifiers::CONTROL,
-                      )))?;
-                    }
-                    // action_tx.send(Action::Render)?;
-                  }
-                  KeyCode::Char('c')
-                    if ke.modifiers == KeyModifiers::NONE && self.clipboard.is_some() =>
-                  {
-                    if let Some((details, _)) = self.event_list.selection() {
-                      action_tx.send(Action::ShowCopyDialog(details))?;
-                    }
-                  }
-                  KeyCode::Char('l') if ke.modifiers == KeyModifiers::ALT => {
-                    action_tx.send(Action::SwitchLayout)?;
-                  }
-                  KeyCode::Char('f') => {
-                    if ke.modifiers == KeyModifiers::NONE {
-                      action_tx.send(Action::ToggleFollow)?;
-                    } else if ke.modifiers == KeyModifiers::CONTROL {
-                      action_tx.send(Action::BeginSearch)?;
-                    }
-                  }
-                  KeyCode::Char('e') if ke.modifiers == KeyModifiers::NONE => {
-                    action_tx.send(Action::ToggleEnvDisplay)?;
-                  }
-                  KeyCode::Char('w') if ke.modifiers == KeyModifiers::NONE => {
-                    action_tx.send(Action::ToggleCwdDisplay)?;
-                  }
-                  KeyCode::F(1) if ke.modifiers == KeyModifiers::NONE => {
-                    action_tx.send(Action::SetActivePopup(ActivePopup::Help))?;
-                  }
-                  KeyCode::Char('v') if ke.modifiers == KeyModifiers::NONE => {
-                    if let Some((event, e)) = self.event_list.selection() {
-                      action_tx.send(Action::SetActivePopup(ActivePopup::ViewDetails(
-                        DetailsPopupState::new(
-                          event,
-                          e.status,
-                          e.elapsed,
-                          self.event_list.baseline.clone(),
-                          self.event_list.modifier_args.hide_cloexec_fds,
-                        ),
-                      )))?;
-                    }
-                  }
-                  KeyCode::Char('u') if ke.modifiers == KeyModifiers::NONE => {
-                    if let Some((event, _)) = self.event_list.selection() {
-                      if let TracerEventDetails::Exec(exec) = event.as_ref() {
-                        if let Some(parent) = exec.parent {
-                          let id = parent.into();
-                          if self.event_list.contains(id) {
-                            action_tx.send(Action::ScrollToId(id))?;
-                          } else {
-                            action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
-                              InfoPopupState::info(
-                                "GoTo Parent Result".into(),
-                                vec![Line::raw("The parent exec event is found, but has been cleared from memory.")],
-                              ),
-                            )))?;
-                          }
-                        } else {
-                          action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
-                            InfoPopupState::info(
-                              "GoTo Parent Result".into(),
-                              vec![Line::raw("No parent exec event is found for this event.")],
-                            ),
-                          )))?;
-                        }
-                      } else {
-                        action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
-                          InfoPopupState::error(
-                            "GoTo Parent Error".into(),
-                            vec![Line::raw(
-                              "This feature is currently limited to exec events.",
-                            )],
-                          ),
-                        )))?;
-                      }
-                    }
-                  }
-                  KeyCode::Char('b')
-                    if ke.modifiers == KeyModifiers::NONE && self.tracer.is_some() =>
-                  {
-                    action_tx.send(Action::ShowBreakpointManager)?;
-                  }
-                  KeyCode::Char('z')
-                    if ke.modifiers == KeyModifiers::NONE && self.tracer.is_some() =>
-                  {
-                    action_tx.send(Action::ShowHitManager)?;
-                  }
-                  _ => {}
+                  _ => self.event_list.handle_key_event(ke, &action_tx)?,
                 }
               } else {
                 action_tx.send(Action::HandleTerminalKeyPress(ke))?;
