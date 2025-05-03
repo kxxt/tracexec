@@ -89,7 +89,7 @@ pub struct App {
   pub split_percentage: u16,
   pub layout: AppLayout,
   pub should_handle_internal_resize: bool,
-  pub popup: Option<ActivePopup>,
+  pub popup: Vec<ActivePopup>,
   pub active_experiments: Vec<&'static str>,
   tracer: Option<Arc<Tracer>>,
   query_builder: Option<QueryBuilder>,
@@ -157,7 +157,7 @@ impl App {
       clipboard,
       layout: tui_args.layout.unwrap_or_default(),
       should_handle_internal_resize: true,
-      popup: None,
+      popup: vec![],
       query_builder: None,
       breakpoint_manager: None,
       active_experiments: vec![],
@@ -210,7 +210,7 @@ impl App {
             if ke.code == KeyCode::Char('s') && ke.modifiers.contains(KeyModifiers::CONTROL) {
               action_tx.send(Action::SwitchActivePane)?;
               // Cancel all popups
-              self.popup = None;
+              self.popup.clear();
               // Cancel non-finished query
               if self.query_builder.as_ref().is_some_and(|b| b.editing()) {
                 self.query_builder = None;
@@ -232,16 +232,16 @@ impl App {
               if self.active_pane == ActivePane::Events {
                 // Handle popups
                 // TODO: do this in a separate function
-                if let Some(popup) = &mut self.popup {
+                if let Some(popup) = &mut self.popup.last_mut() {
                   match popup {
                     ActivePopup::Help => {
-                      self.popup = None;
+                      self.popup.pop();
                     }
                     ActivePopup::ViewDetails(state) => {
                       if ControlFlow::Break(())
                         == state.handle_key_event(ke, self.clipboard.as_mut())?
                       {
-                        self.popup = None;
+                        self.popup.pop();
                       }
                     }
                     ActivePopup::CopyTargetSelection(state) => {
@@ -285,7 +285,7 @@ impl App {
                       }
                       Err(e) => {
                         // Regex error
-                        self.popup = Some(ActivePopup::InfoPopup(InfoPopupState::error(
+                        self.popup.push(ActivePopup::InfoPopup(InfoPopupState::error(
                           "Regex Error".to_owned(),
                           e,
                         )));
@@ -311,8 +311,8 @@ impl App {
 
                 match ke.code {
                   KeyCode::Char('q') if ke.modifiers == KeyModifiers::NONE => {
-                    if self.popup.is_some() {
-                      self.popup = None;
+                    if !self.popup.is_empty() {
+                      self.popup.pop();
                     } else {
                       action_tx.send(Action::Quit)?;
                     }
@@ -592,7 +592,9 @@ impl App {
             }
           }
           Action::ShowCopyDialog(e) => {
-            self.popup = Some(ActivePopup::CopyTargetSelection(CopyPopupState::new(e)));
+            self
+              .popup
+              .push(ActivePopup::CopyTargetSelection(CopyPopupState::new(e)));
           }
           Action::CopyToClipboard { event, target } => {
             let text = event.text_for_copy(
@@ -606,13 +608,13 @@ impl App {
               clipboard.set_text(text)?;
             }
             // TODO: find a better way to do this
-            self.popup = None;
+            self.popup.pop();
           }
           Action::SetActivePopup(popup) => {
-            self.popup = Some(popup);
+            self.popup.push(popup);
           }
           Action::CancelCurrentPopup => {
-            self.popup = None;
+            self.popup.pop();
           }
           Action::BeginSearch => {
             if let Some(query_builder) = self.query_builder.as_mut() {
@@ -791,7 +793,7 @@ impl Widget for &mut App {
     }
 
     // popups
-    if let Some(popup) = self.popup.as_mut() {
+    if let Some(popup) = self.popup.last_mut() {
       match popup {
         ActivePopup::Help => {
           let popup = Popup::new(help(rest_area))
@@ -809,7 +811,7 @@ impl Widget for &mut App {
       }
     }
 
-    if let Some(ActivePopup::ViewDetails(_)) = &self.popup {
+    if let Some(ActivePopup::ViewDetails(_)) = &self.popup.last() {
       // Handled separately to pass borrow checker
       self.render_details_popup(rest_area, buf);
     }
@@ -818,7 +820,7 @@ impl Widget for &mut App {
 
 impl App {
   fn render_details_popup(&mut self, area: Rect, buf: &mut Buffer) {
-    let Some(ActivePopup::ViewDetails(state)) = self.popup.as_mut() else {
+    let Some(ActivePopup::ViewDetails(state)) = self.popup.last_mut() else {
       return;
     };
     // .borders(Borders::TOP | Borders::BOTTOM)
@@ -834,7 +836,7 @@ impl App {
         .flatten(),
     );
 
-    if let Some(popup) = &self.popup {
+    if let Some(popup) = &self.popup.last() {
       items.extend(help_item!("Q", "Close\u{00a0}Popup"));
       match popup {
         ActivePopup::ViewDetails(state) => {
