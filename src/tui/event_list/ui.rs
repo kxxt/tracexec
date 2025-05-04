@@ -61,18 +61,17 @@ impl Widget for &mut EventList {
         .skip(self.window.0)
         .take(self.window.1 - self.window.0)
         .map(|event| {
-          let event = event.borrow();
-          max_len = max_len.max(event.event_line.line.width());
+          let id = event.borrow().id;
+          let line = &self.event_map[&id].0;
+          max_len = max_len.max(line.line.width());
           let highlighted = self
             .query_result
             .as_ref()
-            .is_some_and(|query_result| query_result.indices.contains(&event.id));
-          let mut base = event
-            .event_line
+            .is_some_and(|query_result| query_result.indices.contains(&id));
+          let mut base = line
             .line
             .clone()
             .substring(self.horizontal_offset, area.width);
-          drop(event);
           if highlighted {
             base = base.style(THEME.search_match);
           }

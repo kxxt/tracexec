@@ -687,6 +687,15 @@ impl App {
       })
       .unwrap_or(&mut self.event_list)
   }
+
+  pub fn inspect_all_event_list_mut(&mut self, mut f: impl FnMut(&mut EventList)) {
+    f(&mut self.event_list);
+    for popup in self.popup.iter_mut() {
+      if let ActivePopup::Backtrace(b) = popup {
+        f(&mut b.list);
+      }
+    }
+  }
 }
 
 trait OptionalAccessMut<T> {
