@@ -36,6 +36,7 @@ impl BacktracePopupState {
       false,
       old_list.has_clipboard,
     );
+    list.rt_modifier = old_list.rt_modifier;
     for e in trace {
       list.dumb_push(e);
     }

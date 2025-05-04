@@ -44,8 +44,6 @@ pub struct Event {
   pub status: Option<EventStatus>,
   /// The elapsed time between event start and process exit/detach.
   pub elapsed: Option<TimeDelta>,
-  /// The string representation of the events, used for searching
-  pub event_line: EventLine,
   pub id: EventId,
 }
 
@@ -59,7 +57,8 @@ pub struct EventList {
   state: ListState,
   // TODO: move the event id out of RwLock
   events: VecDeque<Rc<RefCell<Event>>>,
-  event_map: HashMap<EventId, Rc<RefCell<Event>>>,
+  /// 0. The string representation of the events, used for searching
+  event_map: HashMap<EventId, (EventLine, Rc<RefCell<Event>>)>,
   /// Current window of the event list, [start, end)
   window: (usize, usize),
   /// Cache of the list items in the view
@@ -77,7 +76,7 @@ pub struct EventList {
   pub baseline: Arc<BaselineInfo>,
   follow: bool,
   pub modifier_args: ModifierArgs,
-  rt_modifier: RuntimeModifier,
+  pub(super) rt_modifier: RuntimeModifier,
   query: Option<Query>,
   query_result: Option<QueryResult>,
   is_ptrace: bool,
@@ -144,7 +143,12 @@ impl EventList {
   pub fn toggle_env_display(&mut self) {
     self.rt_modifier.show_env = !self.rt_modifier.show_env;
     for event in &self.events {
-      event.borrow_mut().event_line.toggle_env_mask();
+      self
+        .event_map
+        .get_mut(&event.borrow().id)
+        .unwrap()
+        .0
+        .toggle_env_mask();
     }
     self.should_refresh_list_cache = true;
     self.search();
@@ -153,7 +157,12 @@ impl EventList {
   pub fn toggle_cwd_display(&mut self) {
     self.rt_modifier.show_cwd = !self.rt_modifier.show_cwd;
     for event in &mut self.events {
-      event.borrow_mut().event_line.toggle_cwd_mask();
+      self
+        .event_map
+        .get_mut(&event.borrow().id)
+        .unwrap()
+        .0
+        .toggle_cwd_mask();
     }
     self.should_refresh_list_cache = true;
     self.search();
@@ -211,12 +220,12 @@ impl EventList {
   }
 
   pub(super) fn get(&self, id: EventId) -> Option<Rc<RefCell<Event>>> {
-    self.event_map.get(&id).map(Rc::clone)
+    self.event_map.get(&id).map(|(_, x)| Rc::clone(x))
   }
 
   pub fn get_map<T>(&self, id: EventId, f: impl FnOnce(&Event) -> T) -> Option<T> {
     self.event_map.get(&id).map(|e| {
-      let e = e.borrow();
+      let e = e.1.borrow();
       f(&e)
     })
   }
@@ -246,9 +255,9 @@ impl EventList {
     // Events won't change during the search because this is Rust and we already have a reference to it.
     // Rust really makes the code more easier to reason about.
     for evt in self.events.iter() {
-      let evt = evt.borrow();
-      if query.matches(&evt.event_line) {
-        indices.insert(evt.id);
+      let id = evt.borrow().id;
+      if query.matches(&self.event_map[&id].0) {
+        indices.insert(id);
       }
     }
     let mut result = QueryResult {
@@ -284,9 +293,9 @@ impl EventList {
       .into_inner()
       .saturating_sub(offset) as usize;
     for evt in self.events.iter().skip(start_search_index) {
-      let evt = evt.borrow();
-      if query.matches(&evt.event_line) {
-        existing_result.indices.insert(evt.id);
+      let id = evt.borrow().id;
+      if query.matches(&self.event_map[&id].0) {
+        existing_result.indices.insert(id);
         modified = true;
       }
     }
@@ -338,8 +347,8 @@ impl EventList {
       }
       _ => None,
     };
+    let event_line = Event::to_event_line(&details, status, &self.baseline, &self.event_modifier());
     let event = Event {
-      event_line: Event::to_event_line(&details, status, &self.baseline, &self.event_modifier()),
       elapsed: None,
       details,
       status,
@@ -360,7 +369,11 @@ impl EventList {
     // # SAFETY
     //
     // The event ids are guaranteed to be unique
-    unsafe { self.event_map.insert_unique_unchecked(id, event) };
+    unsafe {
+      self
+        .event_map
+        .insert_unique_unchecked(id, (event_line, event))
+    };
     self.incremental_search();
     if (self.window.0..self.window.1).contains(&(self.events.len() - 1)) {
       self.should_refresh_list_cache = true;
@@ -368,7 +381,11 @@ impl EventList {
   }
 
   pub fn set_status(&mut self, id: EventId, status: Option<EventStatus>) -> Option<()> {
-    self.event_map.get_mut(&id).map(|v| v.borrow_mut())?.status = status;
+    self
+      .event_map
+      .get_mut(&id)
+      .map(|v| v.1.borrow_mut())?
+      .status = status;
     Some(())
   }
 
@@ -378,16 +395,28 @@ impl EventList {
   pub(super) fn dumb_push(&mut self, event: Rc<RefCell<Event>>) {
     let id = event.borrow().id;
     self.events.push_back(event.clone());
+    let evt = event.borrow();
+    let event_line = Event::to_event_line(
+      &evt.details,
+      evt.status,
+      &self.baseline,
+      &self.event_modifier(),
+    );
+    drop(evt);
     // # SAFETY
     //
     // The event ids are guaranteed to be unique
-    unsafe { self.event_map.insert_unique_unchecked(id, event) };
+    unsafe {
+      self
+        .event_map
+        .insert_unique_unchecked(id, (event_line, event))
+    };
   }
 
   pub fn update(&mut self, update: ProcessStateUpdateEvent) {
     let modifier = self.event_modifier();
     for i in update.ids {
-      if let Some(e) = self.event_map.get(&i) {
+      if let Some((line, e)) = self.event_map.get_mut(&i) {
         let mut e = e.borrow_mut();
         if let TracerEventDetails::Exec(exec) = e.details.as_ref() {
           if exec.result != 0 {
@@ -399,7 +428,7 @@ impl EventList {
         if let Some(ts) = update.update.termination_timestamp() {
           e.elapsed = Some(ts - e.details.timestamp().unwrap())
         }
-        e.event_line = Event::to_event_line(&e.details, e.status, &self.baseline, &modifier);
+        *line = Event::to_event_line(&e.details, e.status, &self.baseline, &modifier);
       }
       let i = i.into_inner() as usize;
       if self.window.0 <= i && i < self.window.1 {
@@ -411,9 +440,9 @@ impl EventList {
   pub fn rebuild_lines(&mut self) {
     // TODO: only update spans that are affected by the change
     let modifier = self.event_modifier();
-    for e in self.events.iter_mut() {
-      let mut e = e.borrow_mut();
-      e.event_line = Event::to_event_line(&e.details, e.status, &self.baseline, &modifier);
+    for (_, (line, e)) in self.event_map.iter_mut() {
+      let e = e.borrow();
+      *line = Event::to_event_line(&e.details, e.status, &self.baseline, &modifier);
     }
     self.should_refresh_list_cache = true;
   }
