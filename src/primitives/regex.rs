@@ -201,7 +201,7 @@ impl<T> BidirectionalIterator for BidirectionalInterspersedIter<'_, T> {
 #[cfg(test)]
 mod iter_tests {
   use super::BidirectionalInterspersedIter;
-  use crate::regex::BidirectionalIterator;
+  use super::BidirectionalIterator;
 
   #[test]
   fn biter_interspersed_roundtrip() {

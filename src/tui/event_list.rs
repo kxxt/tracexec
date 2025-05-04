@@ -16,10 +16,7 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::{
-  collections::VecDeque,
-  sync::Arc,
-};
+use std::{collections::VecDeque, sync::Arc};
 
 use chrono::TimeDelta;
 use futures::future::OptionFuture;
