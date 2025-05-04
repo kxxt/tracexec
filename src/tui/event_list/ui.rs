@@ -22,9 +22,11 @@ use crate::{
 use super::{Event, EventList, EventModifier};
 
 impl Event {
-  pub(super) fn to_event_line(&self,
+  pub(super) fn to_event_line(
+    &self,
     baseline: &BaselineInfo,
     modifier: &EventModifier,
+    extra_prefix: Option<Span<'static>>,
   ) -> EventLine {
     self.details.to_event_line(
       baseline,
@@ -33,6 +35,7 @@ impl Event {
       modifier.rt_modifier,
       self.status,
       true,
+      extra_prefix,
     )
   }
 }
@@ -61,13 +64,14 @@ impl Widget for &mut EventList {
         .take(self.window.1 - self.window.0)
         .map(|event| {
           let id = event.borrow().id;
-          let line = &self.event_map[&id].0;
-          max_len = max_len.max(line.line.width());
+          let storage = &self.event_map[&id].0;
+          max_len = max_len.max(storage.line.line.width());
           let highlighted = self
             .query_result
             .as_ref()
             .is_some_and(|query_result| query_result.indices.contains(&id));
-          let mut base = line
+          let mut base = storage
+            .line
             .line
             .clone()
             .substring(self.horizontal_offset, area.width);

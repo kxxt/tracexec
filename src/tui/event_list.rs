@@ -20,7 +20,10 @@ use std::{cell::RefCell, collections::VecDeque, rc::Rc, sync::Arc};
 
 use chrono::TimeDelta;
 use hashbrown::HashMap;
-use ratatui::widgets::{List, ListState};
+use ratatui::{
+  text::Span,
+  widgets::{List, ListState},
+};
 use ui::pstate_update_to_status;
 
 use crate::{
@@ -47,6 +50,12 @@ pub struct Event {
   pub id: EventId,
 }
 
+#[derive(Debug)]
+struct EventLocalStorage {
+  pub extra_prefix: Option<Span<'static>>,
+  pub line: EventLine,
+}
+
 pub struct EventModifier {
   modifier_args: ModifierArgs,
   rt_modifier: RuntimeModifier,
@@ -58,7 +67,7 @@ pub struct EventList {
   // TODO: move the event id out of RwLock
   events: VecDeque<Rc<RefCell<Event>>>,
   /// 0. The string representation of the events, used for searching
-  event_map: HashMap<EventId, (EventLine, Rc<RefCell<Event>>)>,
+  event_map: HashMap<EventId, (EventLocalStorage, Rc<RefCell<Event>>)>,
   /// Current window of the event list, [start, end)
   window: (usize, usize),
   /// Cache of the list items in the view
@@ -153,6 +162,7 @@ impl EventList {
         .get_mut(&event.borrow().id)
         .unwrap()
         .0
+        .line
         .toggle_env_mask();
     }
     self.should_refresh_list_cache = true;
@@ -167,6 +177,7 @@ impl EventList {
         .get_mut(&event.borrow().id)
         .unwrap()
         .0
+        .line
         .toggle_cwd_mask();
     }
     self.should_refresh_list_cache = true;
@@ -261,7 +272,7 @@ impl EventList {
     // Rust really makes the code more easier to reason about.
     for evt in self.events.iter() {
       let id = evt.borrow().id;
-      if query.matches(&self.event_map[&id].0) {
+      if query.matches(&self.event_map[&id].0.line) {
         indices.insert(id);
       }
     }
@@ -299,7 +310,7 @@ impl EventList {
       .saturating_sub(offset) as usize;
     for evt in self.events.iter().skip(start_search_index) {
       let id = evt.borrow().id;
-      if query.matches(&self.event_map[&id].0) {
+      if query.matches(&self.event_map[&id].0.line) {
         existing_result.indices.insert(id);
         modified = true;
       }
@@ -358,7 +369,7 @@ impl EventList {
       status,
       id,
     };
-    let event_line = event.to_event_line(&self.baseline, &self.event_modifier());
+    let line = event.to_event_line(&self.baseline, &self.event_modifier(), None);
     if self.events.len() >= self.max_events as usize {
       if let Some(e) = self.events.pop_front() {
         let id = e.borrow().id;
@@ -375,9 +386,16 @@ impl EventList {
     //
     // The event ids are guaranteed to be unique
     unsafe {
-      self
-        .event_map
-        .insert_unique_unchecked(id, (event_line, event))
+      self.event_map.insert_unique_unchecked(
+        id,
+        (
+          EventLocalStorage {
+            line,
+            extra_prefix: None,
+          },
+          event,
+        ),
+      )
     };
     self.incremental_search();
     if (self.window.0..self.window.1).contains(&(self.events.len() - 1)) {
@@ -397,11 +415,15 @@ impl EventList {
   /// Directly push [`Event`] into the list without
   /// - Checking `max_events` constraint
   /// - Maintaining query result
-  pub(super) fn dumb_push(&mut self, event: Rc<RefCell<Event>>) {
+  pub(super) fn dumb_push(
+    &mut self,
+    event: Rc<RefCell<Event>>,
+    extra_prefix: Option<Span<'static>>,
+  ) {
     let id = event.borrow().id;
     self.events.push_back(event.clone());
     let evt = event.borrow();
-    let event_line = evt.to_event_line(&self.baseline, &self.event_modifier());
+    let line = evt.to_event_line(&self.baseline, &self.event_modifier(), extra_prefix.clone());
     drop(evt);
     // # SAFETY
     //
@@ -409,14 +431,14 @@ impl EventList {
     unsafe {
       self
         .event_map
-        .insert_unique_unchecked(id, (event_line, event))
+        .insert_unique_unchecked(id, (EventLocalStorage { line, extra_prefix }, event))
     };
   }
 
   pub fn update(&mut self, update: ProcessStateUpdateEvent) {
     let modifier = self.event_modifier();
     for i in update.ids {
-      if let Some((line, e)) = self.event_map.get_mut(&i) {
+      if let Some((storage, e)) = self.event_map.get_mut(&i) {
         let mut e = e.borrow_mut();
         if let TracerEventDetails::Exec(exec) = e.details.as_ref() {
           if exec.result != 0 {
@@ -428,7 +450,8 @@ impl EventList {
         if let Some(ts) = update.update.termination_timestamp() {
           e.elapsed = Some(ts - e.details.timestamp().unwrap())
         }
-        *line = e.to_event_line(&self.baseline, &modifier);
+        // FIXME: currently we do not handle event status updates in secondary event lists.
+        storage.line = e.to_event_line(&self.baseline, &modifier, storage.extra_prefix.clone());
       }
       let i = i.into_inner() as usize;
       if self.window.0 <= i && i < self.window.1 {
@@ -440,9 +463,9 @@ impl EventList {
   pub fn rebuild_lines(&mut self) {
     // TODO: only update spans that are affected by the change
     let modifier = self.event_modifier();
-    for (_, (line, e)) in self.event_map.iter_mut() {
+    for (_, (storage, e)) in self.event_map.iter_mut() {
       let e = e.borrow();
-      *line = e.to_event_line(&self.baseline, &modifier);
+      storage.line = e.to_event_line(&self.baseline, &modifier, storage.extra_prefix.clone());
     }
     self.should_refresh_list_cache = true;
   }

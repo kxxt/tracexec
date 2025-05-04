@@ -1,6 +1,9 @@
 use std::sync::LazyLock;
 
-use ratatui::style::{Modifier, Style, Stylize};
+use ratatui::{
+  style::{Modifier, Style, Stylize},
+  text::Span,
+};
 
 pub struct Theme {
   // Color for UI Elements
@@ -121,6 +124,10 @@ pub struct Theme {
   pub hit_entry_no_breakpoint_pattern: Style,
   pub hit_manager_default_command: Style,
   pub hit_manager_no_default_command: Style,
+  // Backtrace
+  pub backtrace_parent_spawns: Span<'static>,
+  pub backtrace_parent_becomes: Span<'static>,
+  pub backtrace_parent_unknown: Span<'static>,
 }
 
 impl Default for Theme {
@@ -246,6 +253,10 @@ impl Default for Theme {
       hit_entry_no_breakpoint_pattern: Style::default().light_red().bold(),
       hit_manager_default_command: Style::default().light_cyan().bold(),
       hit_manager_no_default_command: Style::default().light_yellow().bold(),
+      // -- Backtrace --
+      backtrace_parent_spawns: Span::raw(" S ").on_gray().light_blue().bold(),
+      backtrace_parent_becomes: Span::raw(" B ").on_white().light_red().bold(),
+      backtrace_parent_unknown: Span::raw("   "),
     }
   }
 }

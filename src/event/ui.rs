@@ -38,6 +38,7 @@ impl super::TracerEventDetails {
         rt_modifier,
         event_status,
         false,
+        None,
       )
       .line
   }
@@ -45,6 +46,7 @@ impl super::TracerEventDetails {
   /// Convert the event to a EventLine
   ///
   /// This method is resource intensive and the caller should cache the result
+  #[allow(clippy::too_many_arguments)]
   pub fn to_event_line(
     &self,
     baseline: &BaselineInfo,
@@ -53,6 +55,7 @@ impl super::TracerEventDetails {
     rt_modifier: RuntimeModifier,
     event_status: Option<EventStatus>,
     enable_mask: bool,
+    extra_prefix: Option<Span<'static>>,
   ) -> EventLine {
     let mut env_range = None;
     let mut cwd_range = None;
@@ -82,6 +85,7 @@ impl super::TracerEventDetails {
         pid,
         timestamp,
       }) => chain!(
+        extra_prefix,
         timestamp.and_then(ts_formatter),
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
@@ -95,6 +99,7 @@ impl super::TracerEventDetails {
         pid,
         timestamp,
       }) => chain!(
+        extra_prefix,
         timestamp.and_then(ts_formatter),
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
@@ -108,6 +113,7 @@ impl super::TracerEventDetails {
         pid,
         timestamp,
       }) => chain!(
+        extra_prefix,
         timestamp.and_then(ts_formatter),
         pid
           .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
@@ -122,6 +128,7 @@ impl super::TracerEventDetails {
         pid,
         timestamp,
       } => [
+        extra_prefix,
         ts_formatter(*timestamp),
         Some(ppid.to_string().set_style(THEME.pid_success)),
         event_status.map(|s| <&'static str>::from(s).into()),
@@ -146,7 +153,10 @@ impl super::TracerEventDetails {
           fdinfo,
           ..
         } = exec.as_ref();
-        let mut spans = ts_formatter(exec.timestamp).into_iter().collect_vec();
+        let mut spans = extra_prefix
+          .into_iter()
+          .chain(ts_formatter(exec.timestamp))
+          .collect_vec();
         if !cmdline_only {
           spans.extend(
             [
@@ -354,7 +364,15 @@ impl super::TracerEventDetails {
   ) -> Cow<'a, str> {
     if CopyTarget::Line == target {
       return self
-        .to_event_line(baseline, false, modifier_args, rt_modifier, None, false)
+        .to_event_line(
+          baseline,
+          false,
+          modifier_args,
+          rt_modifier,
+          None,
+          false,
+          None,
+        )
         .to_string()
         .into();
     }
@@ -372,6 +390,7 @@ impl super::TracerEventDetails {
           Default::default(),
           None,
           false,
+          None,
         )
         .to_string()
         .into(),
@@ -385,6 +404,7 @@ impl super::TracerEventDetails {
             Default::default(),
             None,
             false,
+            None,
           )
           .to_string()
           .into()
@@ -400,6 +420,7 @@ impl super::TracerEventDetails {
             Default::default(),
             None,
             false,
+            None,
           )
           .to_string()
           .into()
