@@ -1,4 +1,3 @@
-use itertools::chain;
 use ratatui::{
   buffer::Buffer,
   layout::{Constraint, Layout, Rect},
@@ -179,6 +178,9 @@ impl App {
           items.extend(help_item!("Enter", "Choose"));
           items.extend(state.help_items())
         }
+        ActivePopup::Backtrace(state) => {
+          state.list.update_help(&mut items);
+        }
         _ => {}
       }
     } else if let Some(breakpoint_manager) = self.breakpoint_manager.as_ref() {
@@ -189,41 +191,10 @@ impl App {
       items.extend(query_builder.help());
     } else if self.active_pane == ActivePane::Events {
       items.extend(help_item!("F1", "Help"));
+      self.event_list.update_help(&mut items);
       if self.term.is_some() {
         items.extend(help_item!("G/S", "Grow/Shrink\u{00a0}Pane"));
         items.extend(help_item!("Alt+L", "Layout"));
-      }
-      items.extend(chain!(
-        help_item!(
-          "F",
-          if self.event_list.is_following() {
-            "Unfollow"
-          } else {
-            "Follow"
-          }
-        ),
-        help_item!(
-          "E",
-          if self.event_list.is_env_in_cmdline() {
-            "Hide\u{00a0}Env"
-          } else {
-            "Show\u{00a0}Env"
-          }
-        ),
-        help_item!(
-          "W",
-          if self.event_list.is_cwd_in_cmdline() {
-            "Hide\u{00a0}CWD"
-          } else {
-            "Show\u{00a0}CWD"
-          }
-        ),
-        help_item!("V", "View"),
-        help_item!("Ctrl+F", "Search"),
-      ));
-      if self.event_list.selection_index().is_some() {
-        items.extend(help_item!("U", "GoTo Parent"));
-        items.extend(help_item!("T", "Backtrace"));
       }
       if let Some(h) = self.hit_manager_state.as_ref() {
         items.extend(help_item!("B", "Breakpoints"));
@@ -236,9 +207,6 @@ impl App {
         } else {
           items.extend(help_item!("Z", "Hits"));
         }
-      }
-      if self.clipboard.is_some() {
-        items.extend(help_item!("C", "Copy"));
       }
       if let Some(query_builder) = self.query_builder.as_ref() {
         items.extend(query_builder.help());

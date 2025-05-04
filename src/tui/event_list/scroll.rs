@@ -220,7 +220,6 @@ impl EventList {
       return;
     };
     // self.window.0 should be <= its id
-
     self.scroll_to(Some((id - self.id_index_offset()).into_inner() as usize));
   }
 

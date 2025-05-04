@@ -116,6 +116,7 @@ impl App {
         tui_args.max_events.unwrap_or(DEFAULT_MAX_EVENTS),
         tracer.is_some(),
         clipboard.is_some(),
+        true,
       ),
       printer_args: PrinterArgs::from_cli(tracing_args, modifier_args),
       split_percentage: if pty_master.is_some() { 50 } else { 100 },
@@ -304,6 +305,9 @@ impl App {
                     } else {
                       action_tx.send(Action::Quit);
                     }
+                  }
+                  KeyCode::Char('l') if ke.modifiers == KeyModifiers::ALT => {
+                    action_tx.send(Action::SwitchLayout);
                   }
                   _ => self.event_list.handle_key_event(ke, &action_tx).await?,
                 }

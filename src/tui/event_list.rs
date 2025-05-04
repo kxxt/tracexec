@@ -81,6 +81,9 @@ pub struct EventList {
   query_result: Option<QueryResult>,
   is_ptrace: bool,
   pub(super) has_clipboard: bool,
+  /// Whether this is the primary event list(a.k.a the one shown at start up),
+  /// or a secondary one(e.g. a subset event list embedded in a popup)
+  is_primary: bool,
 }
 
 impl EventList {
@@ -91,6 +94,7 @@ impl EventList {
     max_events: u64,
     is_ptrace: bool,
     has_clipboard: bool,
+    is_primary: bool,
   ) -> Self {
     Self {
       state: ListState::default(),
@@ -113,6 +117,7 @@ impl EventList {
       query_result: None,
       is_ptrace,
       has_clipboard,
+      is_primary,
     }
   }
 
