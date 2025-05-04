@@ -33,7 +33,7 @@ pub enum QueryKind {
   Filter,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct QueryResult {
   /// The indices of matching events and the start of the match, use IndexMap to keep the order
   pub indices: indexset::BTreeSet<EventId>,

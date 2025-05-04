@@ -6,12 +6,12 @@ use ratatui::{layout::Size, text::Line};
 use crate::{
   event::{EventId, TracerEventDetails},
   tui::{
-    copy_popup::CopyPopupState, details_popup::DetailsPopupState, error_popup::InfoPopupState,
-    query::Query,
+    backtrace_popup::BacktracePopupState, copy_popup::CopyPopupState,
+    details_popup::DetailsPopupState, error_popup::InfoPopupState, query::Query,
   },
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Action {
   // Application
   Quit,
@@ -97,9 +97,10 @@ pub enum SupportedShell {
   Fish,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum ActivePopup {
   Help,
+  Backtrace(BacktracePopupState),
   ViewDetails(DetailsPopupState),
   CopyTargetSelection(CopyPopupState),
   InfoPopup(InfoPopupState),
