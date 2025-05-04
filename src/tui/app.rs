@@ -482,22 +482,22 @@ impl App {
             })?;
           }
           Action::NextItem => {
-            self.event_list.next();
+            self.active_event_list().next();
           }
           Action::PrevItem => {
-            self.event_list.previous();
+            self.active_event_list().previous();
           }
           Action::PageDown => {
-            self.event_list.page_down();
+            self.active_event_list().page_down();
           }
           Action::PageUp => {
-            self.event_list.page_up();
+            self.active_event_list().page_up();
           }
           Action::PageLeft => {
-            self.event_list.page_left();
+            self.active_event_list().page_left();
           }
           Action::PageRight => {
-            self.event_list.page_right();
+            self.active_event_list().page_right();
           }
           Action::HandleTerminalKeyPress(ke) => {
             if let Some(term) = self.term.as_mut() {
@@ -508,25 +508,25 @@ impl App {
             self.should_handle_internal_resize = true;
           }
           Action::ScrollLeft => {
-            self.event_list.scroll_left();
+            self.active_event_list().scroll_left();
           }
           Action::ScrollRight => {
-            self.event_list.scroll_right();
+            self.active_event_list().scroll_right();
           }
           Action::ScrollToTop => {
-            self.event_list.scroll_to_top();
+            self.active_event_list().scroll_to_top();
           }
           Action::ScrollToBottom => {
-            self.event_list.scroll_to_bottom();
+            self.active_event_list().scroll_to_bottom();
           }
           Action::ScrollToStart => {
-            self.event_list.scroll_to_start();
+            self.active_event_list().scroll_to_start();
           }
           Action::ScrollToEnd => {
-            self.event_list.scroll_to_end();
+            self.active_event_list().scroll_to_end();
           }
           Action::ScrollToId(id) => {
-            self.event_list.scroll_to_id(Some(id));
+            self.active_event_list().scroll_to_id(Some(id));
           }
           Action::ToggleFollow => {
             self.event_list.toggle_follow();
@@ -535,10 +535,10 @@ impl App {
             }
           }
           Action::ToggleEnvDisplay => {
-            self.event_list.toggle_env_display();
+            self.active_event_list().toggle_env_display();
           }
           Action::ToggleCwdDisplay => {
-            self.event_list.toggle_cwd_display();
+            self.active_event_list().toggle_cwd_display();
           }
           Action::StopFollow => {
             self.event_list.stop_follow();
@@ -672,6 +672,20 @@ impl App {
       nix::sys::signal::kill(root_pid, sig)?;
     }
     Ok(())
+  }
+
+  pub fn active_event_list(&mut self) -> &mut EventList {
+    self
+      .popup
+      .last_mut()
+      .and_then(|p| {
+        if let ActivePopup::Backtrace(b) = p {
+          Some(&mut b.list)
+        } else {
+          None
+        }
+      })
+      .unwrap_or(&mut self.event_list)
   }
 }
 
