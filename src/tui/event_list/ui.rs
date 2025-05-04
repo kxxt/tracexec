@@ -12,7 +12,7 @@ use ratatui::{
 };
 
 use crate::{
-  event::{EventStatus, ProcessStateUpdate, TracerEventDetails},
+  event::{EventStatus, ProcessStateUpdate},
   proc::BaselineInfo,
   ptrace::Signal,
   tracer::ProcessExit,
@@ -22,18 +22,16 @@ use crate::{
 use super::{Event, EventList, EventModifier};
 
 impl Event {
-  pub(super) fn to_event_line(
-    details: &TracerEventDetails,
-    status: Option<EventStatus>,
+  pub(super) fn to_event_line(&self,
     baseline: &BaselineInfo,
     modifier: &EventModifier,
   ) -> EventLine {
-    details.to_event_line(
+    self.details.to_event_line(
       baseline,
       false,
       &modifier.modifier_args,
       modifier.rt_modifier,
-      status,
+      self.status,
       true,
     )
   }
