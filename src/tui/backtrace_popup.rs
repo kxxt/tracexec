@@ -7,10 +7,11 @@ use ratatui::{
   layout::{Alignment::Center, Rect},
   widgets::{Block, Borders, Clear, StatefulWidgetRef, Widget},
 };
-use tokio::sync::mpsc::UnboundedSender;
 use tracing::debug;
 
-use crate::{action::Action, event::TracerEventDetails};
+use crate::{
+  action::Action, event::TracerEventDetails, primitives::local_chan::LocalUnboundedSender,
+};
 
 use super::event_list::{Event, EventList};
 
@@ -102,10 +103,10 @@ impl BacktracePopupState {
   pub async fn handle_key_event(
     &self,
     ke: KeyEvent,
-    action_tx: &UnboundedSender<Action>,
+    action_tx: &LocalUnboundedSender<Action>,
   ) -> color_eyre::Result<()> {
     if ke.code == KeyCode::Char('q') {
-      action_tx.send(Action::CancelCurrentPopup)?
+      action_tx.send(Action::CancelCurrentPopup)
     } else {
       self.list.handle_key_event(ke, action_tx).await?
     }
