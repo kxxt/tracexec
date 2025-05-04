@@ -26,7 +26,6 @@ use nix::{errno::Errno, sys::signal::Signal, unistd::Pid};
 use ratatui::{layout::Position, style::Stylize, text::Line, widgets::Widget};
 use serde::{Deserialize, Serialize};
 use strum::Display;
-use tokio::sync::mpsc;
 use tracing::{debug, trace};
 
 use crate::{
@@ -179,7 +178,7 @@ impl App {
   }
 
   pub async fn run(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
-    let (action_tx, mut action_rx) = mpsc::unbounded_channel();
+    let (action_tx, action_rx) = crate::primitives::local_chan::unbounded();
 
     loop {
       // Handle events
@@ -189,11 +188,11 @@ impl App {
         }
         match e {
           Event::ShouldQuit => {
-            action_tx.send(Action::Quit)?;
+            action_tx.send(Action::Quit);
           }
           Event::Key(ke) => {
             if ke.code == KeyCode::Char('s') && ke.modifiers.contains(KeyModifiers::CONTROL) {
-              action_tx.send(Action::SwitchActivePane)?;
+              action_tx.send(Action::SwitchActivePane);
               // Cancel all popups
               self.popup.clear();
               // Cancel non-finished query
@@ -232,12 +231,12 @@ impl App {
                     }
                     ActivePopup::CopyTargetSelection(state) => {
                       if let Some(action) = state.handle_key_event(ke)? {
-                        action_tx.send(action)?;
+                        action_tx.send(action);
                       }
                     }
                     ActivePopup::InfoPopup(state) => {
                       if let Some(action) = state.handle_key_event(ke) {
-                        action_tx.send(action)?;
+                        action_tx.send(action);
                       }
                     }
                   }
@@ -248,7 +247,7 @@ impl App {
                 if let Some(h) = self.hit_manager_state.as_mut() {
                   if h.visible {
                     if let Some(action) = h.handle_key_event(ke) {
-                      action_tx.send(action)?;
+                      action_tx.send(action);
                     }
                     continue;
                   }
@@ -257,7 +256,7 @@ impl App {
                 // Handle breakpoint manager
                 if let Some(breakpoint_manager) = self.breakpoint_manager.as_mut() {
                   if let Some(action) = breakpoint_manager.handle_key_event(ke) {
-                    action_tx.send(action)?;
+                    action_tx.send(action);
                   }
                   continue;
                 }
@@ -266,9 +265,10 @@ impl App {
                 if let Some(query_builder) = self.query_builder.as_mut() {
                   if query_builder.editing() {
                     match query_builder.handle_key_events(ke) {
-                      Ok(result) => {
-                        result.map(|action| action_tx.send(action)).transpose()?;
+                      Ok(Some(action)) => {
+                        action_tx.send(action);
                       }
+                      Ok(None) => {}
                       Err(e) => {
                         // Regex error
                         self
@@ -284,12 +284,12 @@ impl App {
                     match (ke.code, ke.modifiers) {
                       (KeyCode::Char('n'), KeyModifiers::NONE) => {
                         trace!("Query: Next match");
-                        action_tx.send(Action::NextMatch)?;
+                        action_tx.send(Action::NextMatch);
                         continue;
                       }
                       (KeyCode::Char('p'), KeyModifiers::NONE) => {
                         trace!("Query: Prev match");
-                        action_tx.send(Action::PrevMatch)?;
+                        action_tx.send(Action::PrevMatch);
                         continue;
                       }
                       _ => {}
@@ -302,13 +302,13 @@ impl App {
                     if !self.popup.is_empty() {
                       self.popup.pop();
                     } else {
-                      action_tx.send(Action::Quit)?;
+                      action_tx.send(Action::Quit);
                     }
                   }
                   _ => self.event_list.handle_key_event(ke, &action_tx).await?,
                 }
               } else {
-                action_tx.send(Action::HandleTerminalKeyPress(ke))?;
+                action_tx.send(Action::HandleTerminalKeyPress(ke));
                 // action_tx.send(Action::Render)?;
               }
             }
@@ -323,7 +323,7 @@ impl App {
                 }
                 self.event_list.push(e.id, e.details).await;
                 if self.event_list.is_following() {
-                  action_tx.send(Action::ScrollToBottom)?;
+                  action_tx.send(Action::ScrollToBottom);
                 }
               }
               TracerMessage::StateUpdate(update) => {
@@ -362,7 +362,7 @@ impl App {
                             e.to_string().into(),
                           ],
                         ),
-                      )))?;
+                      )));
                     }
                   }
                   ProcessStateUpdateEvent {
@@ -386,7 +386,7 @@ impl App {
                           error.to_string().into(),
                         ],
                       ),
-                    )))?;
+                    )));
                     handled = true;
                   }
                   ProcessStateUpdateEvent {
@@ -410,7 +410,7 @@ impl App {
                           error.to_string().into(),
                         ],
                       ),
-                    )))?;
+                    )));
                     handled = true;
                   }
                   _ => (),
@@ -428,21 +428,21 @@ impl App {
                       e.into(),
                     ],
                   ),
-                )))?;
+                )));
               }
             }
             // action_tx.send(Action::Render)?;
           }
           Event::Render => {
-            action_tx.send(Action::Render)?;
+            action_tx.send(Action::Render);
           }
           Event::Resize(size) => {
-            action_tx.send(Action::Resize(size))?;
+            action_tx.send(Action::Resize(size));
             // action_tx.send(Action::Render)?;
           }
           Event::Init => {
             // Fix the size of the terminal
-            action_tx.send(Action::Resize(tui.size()?))?;
+            action_tx.send(Action::Resize(tui.size()?));
             // action_tx.send(Action::Render)?;
           }
           Event::Error => {}
@@ -450,7 +450,7 @@ impl App {
       }
 
       // Handle actions
-      while let Ok(action) = action_rx.try_recv() {
+      while let Some(action) = action_rx.receive() {
         if !matches!(action, Action::Render) {
           debug!("action: {action:?}");
         }
@@ -531,7 +531,7 @@ impl App {
           Action::ToggleFollow => {
             self.event_list.toggle_follow();
             if self.event_list.is_following() {
-              action_tx.send(Action::ScrollToBottom)?;
+              action_tx.send(Action::ScrollToBottom);
             }
           }
           Action::ToggleEnvDisplay => {
