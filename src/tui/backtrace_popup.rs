@@ -19,7 +19,7 @@ pub struct BacktracePopup;
 
 #[derive(Debug)]
 pub struct BacktracePopupState {
-  list: EventList,
+  pub(super) list: EventList,
   /// Whether there are dead events no longer in memory or not
   event_loss: bool,
   should_resize: bool,
