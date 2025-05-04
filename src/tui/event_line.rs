@@ -3,7 +3,9 @@ use std::{borrow::Cow, fmt::Display, mem, ops::Range};
 use ratatui::text::{Line, Span};
 use regex_cursor::{Cursor, IntoCursor};
 
-use crate::regex::{BidirectionalIter, BidirectionalIterator, IntoBidirectionalIterator};
+use crate::primitives::regex::{
+  BidirectionalIter, BidirectionalIterator, IntoBidirectionalIterator,
+};
 
 #[derive(Debug, Clone)]
 pub struct Mask {

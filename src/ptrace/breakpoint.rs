@@ -6,7 +6,7 @@ use strum::IntoStaticStr;
 
 use crate::{
   event::OutputMsg,
-  regex::{ArgvCursor, SPACE},
+  primitives::regex::{ArgvCursor, SPACE},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
