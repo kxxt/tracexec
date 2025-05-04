@@ -321,7 +321,7 @@ impl App {
                   debug!("Received tracee spawn event: {pid}");
                   self.root_pid = Some(*pid);
                 }
-                self.event_list.push(e.id, e.details).await;
+                self.event_list.push(e.id, e.details);
                 if self.event_list.is_following() {
                   action_tx.send(Action::ScrollToBottom);
                 }
@@ -416,7 +416,7 @@ impl App {
                   _ => (),
                 }
                 if !handled {
-                  self.event_list.update(update).await;
+                  self.event_list.update(update);
                 }
               }
               TracerMessage::FatalError(e) => {
@@ -526,7 +526,7 @@ impl App {
             self.event_list.scroll_to_end();
           }
           Action::ScrollToId(id) => {
-            self.event_list.scroll_to_id(Some(id)).await;
+            self.event_list.scroll_to_id(Some(id));
           }
           Action::ToggleFollow => {
             self.event_list.toggle_follow();
@@ -535,10 +535,10 @@ impl App {
             }
           }
           Action::ToggleEnvDisplay => {
-            self.event_list.toggle_env_display().await;
+            self.event_list.toggle_env_display();
           }
           Action::ToggleCwdDisplay => {
-            self.event_list.toggle_cwd_display().await;
+            self.event_list.toggle_cwd_display();
           }
           Action::StopFollow => {
             self.event_list.stop_follow();

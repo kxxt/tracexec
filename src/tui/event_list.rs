@@ -16,13 +16,11 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::{collections::VecDeque, sync::Arc};
+use std::{cell::RefCell, collections::VecDeque, rc::Rc, sync::Arc};
 
 use chrono::TimeDelta;
-use futures::future::OptionFuture;
 use hashbrown::HashMap;
 use ratatui::widgets::{List, ListState};
-use tokio::sync::RwLock;
 use ui::pstate_update_to_status;
 
 use crate::{
@@ -60,8 +58,8 @@ pub struct EventModifier {
 pub struct EventList {
   state: ListState,
   // TODO: move the event id out of RwLock
-  events: VecDeque<Arc<RwLock<Event>>>,
-  event_map: HashMap<EventId, Arc<RwLock<Event>>>,
+  events: VecDeque<Rc<RefCell<Event>>>,
+  event_map: HashMap<EventId, Rc<RefCell<Event>>>,
   /// Current window of the event list, [start, end)
   window: (usize, usize),
   /// Cache of the list items in the view
@@ -143,22 +141,22 @@ impl EventList {
     self.follow = false;
   }
 
-  pub async fn toggle_env_display(&mut self) {
+  pub fn toggle_env_display(&mut self) {
     self.rt_modifier.show_env = !self.rt_modifier.show_env;
     for event in &self.events {
-      event.write().await.event_line.toggle_env_mask();
+      event.borrow_mut().event_line.toggle_env_mask();
     }
     self.should_refresh_list_cache = true;
-    self.search().await;
+    self.search();
   }
 
-  pub async fn toggle_cwd_display(&mut self) {
+  pub fn toggle_cwd_display(&mut self) {
     self.rt_modifier.show_cwd = !self.rt_modifier.show_cwd;
     for event in &mut self.events {
-      event.write().await.event_line.toggle_cwd_mask();
+      event.borrow_mut().event_line.toggle_cwd_mask();
     }
     self.should_refresh_list_cache = true;
-    self.search().await;
+    self.search();
   }
 
   /// returns the index of the selected item if there is any
@@ -166,13 +164,16 @@ impl EventList {
     self.state.selected().map(|i| self.window.0 + i)
   }
 
+  pub(super) fn selection(&self) -> Option<Rc<RefCell<Event>>> {
+    self.selection_index().map(|i| self.events[i].clone())
+  }
+
   /// returns the selected item if there is any
-  pub async fn selection<T>(&self, f: impl FnOnce(&Event) -> T) -> Option<T> {
-    OptionFuture::from(self.selection_index().map(async |i| {
-      let e = self.events[i].read().await;
+  pub fn selection_map<T>(&self, f: impl FnOnce(&Event) -> T) -> Option<T> {
+    self.selection_index().map(|i| {
+      let e = self.events[i].borrow();
       f(&e)
-    }))
-    .await
+    })
   }
 
   /// Reset the window and force clear the list cache
@@ -209,12 +210,15 @@ impl EventList {
     self.event_map.contains_key(&id)
   }
 
-  pub async fn get<T>(&self, id: EventId, f: impl FnOnce(&Event) -> T) -> Option<T> {
-    OptionFuture::from(self.event_map.get(&id).map(async |e| {
-      let e = e.read().await;
+  pub(super) fn get(&self, id: EventId) -> Option<Rc<RefCell<Event>>> {
+    self.event_map.get(&id).map(Rc::clone)
+  }
+
+  pub fn get_map<T>(&self, id: EventId, f: impl FnOnce(&Event) -> T) -> Option<T> {
+    self.event_map.get(&id).map(|e| {
+      let e = e.borrow();
       f(&e)
-    }))
-    .await
+    })
   }
 }
 
@@ -223,7 +227,7 @@ impl EventList {
   pub async fn set_query(&mut self, query: Option<Query>) {
     if query.is_some() {
       self.query = query;
-      self.search().await;
+      self.search();
     } else {
       self.query = None;
       self.query_result = None;
@@ -234,7 +238,7 @@ impl EventList {
   /// Search for the query in the event list
   /// And update query result,
   /// Then set the selection to the first result(if any) and scroll to it
-  pub async fn search(&mut self) {
+  pub fn search(&mut self) {
     let Some(query) = self.query.as_ref() else {
       return;
     };
@@ -242,15 +246,18 @@ impl EventList {
     // Events won't change during the search because this is Rust and we already have a reference to it.
     // Rust really makes the code more easier to reason about.
     for evt in self.events.iter() {
-      let evt = evt.read().await;
+      let evt = evt.borrow();
       if query.matches(&evt.event_line) {
         indices.insert(evt.id);
       }
     }
     let mut result = QueryResult {
       indices,
-      searched_id: OptionFuture::from(self.events.iter().last().map(async |r| r.read().await.id))
-        .await
+      searched_id: self
+        .events
+        .iter()
+        .last()
+        .map(|r| r.borrow().id)
         .unwrap_or_else(EventId::zero),
       selection: None,
     };
@@ -258,17 +265,17 @@ impl EventList {
     let selection = result.selection();
     self.query_result = Some(result);
     self.should_refresh_list_cache = true;
-    self.scroll_to_id(selection).await;
+    self.scroll_to_id(selection);
   }
 
   /// Incremental search for newly added events
-  pub async fn incremental_search(&mut self) {
+  pub fn incremental_search(&mut self) {
     let Some(query) = self.query.as_ref() else {
       return;
     };
-    let offset = self.id_index_offset().await;
+    let offset = self.id_index_offset();
     let Some(existing_result) = self.query_result.as_mut() else {
-      self.search().await;
+      self.search();
       return;
     };
     let mut modified = false;
@@ -277,16 +284,18 @@ impl EventList {
       .into_inner()
       .saturating_sub(offset) as usize;
     for evt in self.events.iter().skip(start_search_index) {
-      let evt = evt.read().await;
+      let evt = evt.borrow();
       if query.matches(&evt.event_line) {
         existing_result.indices.insert(evt.id);
         modified = true;
       }
     }
-    existing_result.searched_id =
-      OptionFuture::from(self.events.iter().last().map(async |r| r.read().await.id))
-        .await
-        .unwrap_or_else(EventId::zero);
+    existing_result.searched_id = self
+      .events
+      .iter()
+      .last()
+      .map(|r| r.borrow().id)
+      .unwrap_or_else(EventId::zero);
     if modified {
       self.should_refresh_list_cache = true;
     }
@@ -297,7 +306,7 @@ impl EventList {
       query_result.next_result();
       let selection = query_result.selection();
       self.stop_follow();
-      self.scroll_to_id(selection).await;
+      self.scroll_to_id(selection);
     }
   }
 
@@ -306,7 +315,7 @@ impl EventList {
       query_result.prev_result();
       let selection = query_result.selection();
       self.stop_follow();
-      self.scroll_to_id(selection).await;
+      self.scroll_to_id(selection);
     }
   }
 }
@@ -316,7 +325,7 @@ impl EventList {
   /// Push a new event into event list.
   ///
   /// Caller must guarantee that the id is strict monotonically increasing.
-  pub async fn push(&mut self, id: EventId, event: impl Into<Arc<TracerEventDetails>>) {
+  pub fn push(&mut self, id: EventId, event: impl Into<Arc<TracerEventDetails>>) {
     let details = event.into();
     let status = match details.as_ref() {
       TracerEventDetails::NewChild { .. } => Some(EventStatus::ProcessRunning),
@@ -338,7 +347,7 @@ impl EventList {
     };
     if self.events.len() >= self.max_events as usize {
       if let Some(e) = self.events.pop_front() {
-        let id = e.read().await.id;
+        let id = e.borrow().id;
         self.event_map.remove(&id);
         if let Some(q) = &mut self.query_result {
           q.indices.remove(&id);
@@ -346,43 +355,40 @@ impl EventList {
       }
       self.should_refresh_list_cache = true;
     }
-    let event = Arc::new(RwLock::new(event));
+    let event = Rc::new(RefCell::new(event));
     self.events.push_back(event.clone());
     // # SAFETY
     //
     // The event ids are guaranteed to be unique
     unsafe { self.event_map.insert_unique_unchecked(id, event) };
-    self.incremental_search().await;
+    self.incremental_search();
     if (self.window.0..self.window.1).contains(&(self.events.len() - 1)) {
       self.should_refresh_list_cache = true;
     }
   }
 
-  pub async fn set_status(&mut self, id: EventId, status: Option<EventStatus>) -> Option<()> {
-    OptionFuture::from(self.event_map.get_mut(&id).map(|v| v.write()))
-      .await?
-      .status = status;
+  pub fn set_status(&mut self, id: EventId, status: Option<EventStatus>) -> Option<()> {
+    self.event_map.get_mut(&id).map(|v| v.borrow_mut())?.status = status;
     Some(())
   }
 
   /// Directly push [`Event`] into the list without
   /// - Checking `max_events` constraint
   /// - Maintaining query result
-  pub(super) async fn dumb_push(&mut self, event: Event) {
-    let id = event.id;
-    let e = Arc::new(RwLock::new(event));
-    self.events.push_back(e.clone());
+  pub(super) fn dumb_push(&mut self, event: Rc<RefCell<Event>>) {
+    let id = event.borrow().id;
+    self.events.push_back(event.clone());
     // # SAFETY
     //
     // The event ids are guaranteed to be unique
-    unsafe { self.event_map.insert_unique_unchecked(id, e) };
+    unsafe { self.event_map.insert_unique_unchecked(id, event) };
   }
 
-  pub async fn update(&mut self, update: ProcessStateUpdateEvent) {
+  pub fn update(&mut self, update: ProcessStateUpdateEvent) {
     let modifier = self.event_modifier();
     for i in update.ids {
       if let Some(e) = self.event_map.get(&i) {
-        let mut e = e.write().await;
+        let mut e = e.borrow_mut();
         if let TracerEventDetails::Exec(exec) = e.details.as_ref() {
           if exec.result != 0 {
             // Don't update the status for failed exec events
@@ -402,11 +408,11 @@ impl EventList {
     }
   }
 
-  pub async fn rebuild_lines(&mut self) {
+  pub fn rebuild_lines(&mut self) {
     // TODO: only update spans that are affected by the change
     let modifier = self.event_modifier();
     for e in self.events.iter_mut() {
-      let mut e = e.write().await;
+      let mut e = e.borrow_mut();
       e.event_line = Event::to_event_line(&e.details, e.status, &self.baseline, &modifier);
     }
     self.should_refresh_list_cache = true;
@@ -422,17 +428,14 @@ impl EventList {
 
 /// Scrolling implementation for the EventList
 impl EventList {
-  async fn id_index_offset(&self) -> u64 {
-    OptionFuture::from(
-      self
-        .events
-        .get(self.window.0)
-        .map(async |e| e.read().await.id),
-    )
-    .await
-    .unwrap_or_else(EventId::zero)
-    .into_inner()
-    .saturating_sub(self.window.0 as u64)
+  fn id_index_offset(&self) -> u64 {
+    self
+      .events
+      .get(self.window.0)
+      .map(|e| e.borrow().id)
+      .unwrap_or_else(EventId::zero)
+      .into_inner()
+      .saturating_sub(self.window.0 as u64)
   }
 
   /// Returns the index(absolute) of the last item in the window
