@@ -10,10 +10,15 @@ use ratatui::{
 use tracing::debug;
 
 use crate::{
-  action::Action, event::TracerEventDetails, primitives::local_chan::LocalUnboundedSender,
+  action::Action,
+  event::{ParentEventId, TracerEventDetails},
+  primitives::local_chan::LocalUnboundedSender,
 };
 
-use super::event_list::{Event, EventList};
+use super::{
+  event_list::{Event, EventList},
+  theme::THEME,
+};
 
 pub struct BacktracePopup;
 
@@ -24,6 +29,8 @@ pub struct BacktracePopupState {
   event_loss: bool,
   should_resize: bool,
 }
+
+type ParentAndEventQueue = VecDeque<(Option<ParentEventId>, Rc<RefCell<Event>>)>;
 
 impl BacktracePopupState {
   pub fn new(event: Rc<RefCell<Event>>, old_list: &EventList) -> Self {
@@ -38,8 +45,15 @@ impl BacktracePopupState {
       false,
     );
     list.rt_modifier = old_list.rt_modifier;
-    for e in trace {
-      list.dumb_push(e);
+    for (p, e) in trace {
+      list.dumb_push(
+        e,
+        match p {
+          Some(ParentEventId::Become(_)) => Some(THEME.backtrace_parent_becomes.clone()),
+          Some(ParentEventId::Spawn(_)) => Some(THEME.backtrace_parent_spawns.clone()),
+          None => Some(THEME.backtrace_parent_unknown.clone()),
+        },
+      );
     }
     Self {
       list,
@@ -49,10 +63,7 @@ impl BacktracePopupState {
   }
 
   /// Collect the backtrace and whether
-  fn collect_backtrace(
-    event: Rc<RefCell<Event>>,
-    list: &EventList,
-  ) -> (VecDeque<Rc<RefCell<Event>>>, bool) {
+  fn collect_backtrace(event: Rc<RefCell<Event>>, list: &EventList) -> (ParentAndEventQueue, bool) {
     let mut trace = VecDeque::new();
     let mut event = event;
     let event_loss = loop {
@@ -63,7 +74,7 @@ impl BacktracePopupState {
       let parent = exec.parent;
       drop(e);
       debug!("backtracing -- {event:?}");
-      trace.push_front(event);
+      trace.push_front((parent, event));
       if let Some(parent) = parent {
         let eid = parent.into();
         if let Some(e) = list.get(eid) {
