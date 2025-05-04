@@ -1,5 +1,3 @@
-
-
 use itertools::chain;
 use ratatui::{
   buffer::Buffer,
@@ -11,14 +9,19 @@ use ratatui::{
 use tui_popup::Popup;
 
 use crate::{
-  action::ActivePopup,
-  cli::options::ActivePane,
-  pty::PtySize,
+  action::ActivePopup, cli::options::ActivePane, pty::PtySize, tui::backtrace_popup::BacktracePopup,
 };
 
 use super::{
   super::{
-    breakpoint_manager::BreakPointManager, copy_popup::CopyPopup, details_popup::DetailsPopup, error_popup::InfoPopup, help::{fancy_help_desc, help, help_item, help_key}, hit_manager::HitManager, theme::THEME, ui::render_title
+    breakpoint_manager::BreakPointManager,
+    copy_popup::CopyPopup,
+    details_popup::DetailsPopup,
+    error_popup::InfoPopup,
+    help::{fancy_help_desc, help, help_item, help_key},
+    hit_manager::HitManager,
+    theme::THEME,
+    ui::render_title,
   },
   App, AppLayout,
 };
@@ -143,7 +146,10 @@ impl Widget for &mut App {
         ActivePopup::InfoPopup(state) => {
           InfoPopup.render(area, buf, state);
         }
-        _ => {}
+        ActivePopup::Backtrace(state) => {
+          BacktracePopup.render_ref(rest_area, buf, state);
+        }
+        ActivePopup::ViewDetails(_) => {}
       }
     }
 
@@ -227,8 +233,9 @@ impl App {
         help_item!("V", "View"),
         help_item!("Ctrl+F", "Search"),
       ));
-      if self.event_list.selection().is_some() {
+      if self.event_list.selection_index().is_some() {
         items.extend(help_item!("U", "GoTo Parent"));
+        items.extend(help_item!("T", "Backtrace"));
       }
       if let Some(h) = self.hit_manager_state.as_ref() {
         items.extend(help_item!("B", "Breakpoints"));

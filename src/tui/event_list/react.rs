@@ -5,13 +5,16 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::{
   action::{Action, ActivePopup},
   event::TracerEventDetails,
-  tui::{details_popup::DetailsPopupState, error_popup::InfoPopupState},
+  tui::{
+    backtrace_popup::BacktracePopupState, details_popup::DetailsPopupState,
+    error_popup::InfoPopupState,
+  },
 };
 
 use super::EventList;
 
 impl EventList {
-  pub fn handle_key_event(
+  pub async fn handle_key_event(
     &self,
     ke: KeyEvent,
     action_tx: &UnboundedSender<Action>,
@@ -92,8 +95,8 @@ impl EventList {
         }
         // action_tx.send(Action::Render)?;
       }
-      KeyCode::Char('c') if ke.modifiers == KeyModifiers::NONE && self.has_clipboard   => {
-        if let Some((details, _)) = self.selection() {
+      KeyCode::Char('c') if ke.modifiers == KeyModifiers::NONE && self.has_clipboard => {
+        if let Some(details) = self.selection(|e| e.details.clone()).await {
           action_tx.send(Action::ShowCopyDialog(details))?;
         }
       }
@@ -117,20 +120,23 @@ impl EventList {
         action_tx.send(Action::SetActivePopup(ActivePopup::Help))?;
       }
       KeyCode::Char('v') if ke.modifiers == KeyModifiers::NONE => {
-        if let Some((event, e)) = self.selection() {
-          action_tx.send(Action::SetActivePopup(ActivePopup::ViewDetails(
-            DetailsPopupState::new(
-              event,
+        if let Some(popup) = self
+          .selection(|e| {
+            ActivePopup::ViewDetails(DetailsPopupState::new(
+              e.details.clone(),
               e.status,
               e.elapsed,
               self.baseline.clone(),
               self.modifier_args.hide_cloexec_fds,
-            ),
-          )))?;
+            ))
+          })
+          .await
+        {
+          action_tx.send(Action::SetActivePopup(popup))?;
         }
       }
       KeyCode::Char('u') if ke.modifiers == KeyModifiers::NONE => {
-        if let Some((event, _)) = self.selection() {
+        if let Some(event) = self.selection(|e| e.details.clone()).await {
           if let TracerEventDetails::Exec(exec) = event.as_ref() {
             if let Some(parent) = exec.parent {
               let id = parent.into();
@@ -171,6 +177,24 @@ impl EventList {
       }
       KeyCode::Char('z') if ke.modifiers == KeyModifiers::NONE && self.is_ptrace => {
         action_tx.send(Action::ShowHitManager)?;
+      }
+      KeyCode::Char('t') if ke.modifiers == KeyModifiers::NONE => {
+        if let Some(e) = self.selection(|e| e.clone()).await {
+          if let TracerEventDetails::Exec(_) = e.details.as_ref() {
+            action_tx.send(Action::SetActivePopup(ActivePopup::Backtrace(
+              BacktracePopupState::new(e, self).await,
+            )))?;
+          } else {
+            action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
+              InfoPopupState::info(
+                "Backtrace Error".into(),
+                vec![Line::raw(
+                  "Backtrace feature is currently limited to exec events.",
+                )],
+              ),
+            )))?;
+          }
+        }
       }
       _ => {}
     }

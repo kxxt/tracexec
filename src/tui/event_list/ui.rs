@@ -61,13 +61,14 @@ impl Widget for &mut EventList {
         .skip(self.window.0)
         .take(self.window.1 - self.window.0)
         .map(|event| {
-          max_len = max_len.max(event.borrow().event_line.line.width());
+          // FIXME
+          let event = futures::executor::block_on(event.read());
+          max_len = max_len.max(event.event_line.line.width());
           let highlighted = self
             .query_result
             .as_ref()
-            .is_some_and(|query_result| query_result.indices.contains(&event.borrow().id));
+            .is_some_and(|query_result| query_result.indices.contains(&event.id));
           let mut base = event
-            .borrow()
             .event_line
             .line
             .clone()

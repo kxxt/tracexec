@@ -100,6 +100,8 @@ pub fn help<'a>(area: Rect) -> SizedParagraph<'a> {
     help_key("C"),
     " then select what to copy. To jump to the parent exec event of the currently selected event, press ".into(),
     help_key("U"),
+    ". To show the backtrace of the currently selected event, press ".into(),
+    help_key("T"),
     ". To quit, press ".into(),
     help_key("Q"),
     " while the event list is active.".into(),

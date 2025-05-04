@@ -199,7 +199,7 @@ impl App {
               // Cancel non-finished query
               if self.query_builder.as_ref().is_some_and(|b| b.editing()) {
                 self.query_builder = None;
-                self.event_list.set_query(None);
+                self.event_list.set_query(None).await;
               }
               // Cancel breakpoint manager
               if self.breakpoint_manager.is_some() {
@@ -219,6 +219,7 @@ impl App {
                 // TODO: do this in a separate function
                 if let Some(popup) = &mut self.popup.last_mut() {
                   match popup {
+                    ActivePopup::Backtrace(state) => state.handle_key_event(ke, &action_tx).await?,
                     ActivePopup::Help => {
                       self.popup.pop();
                     }
@@ -304,7 +305,7 @@ impl App {
                       action_tx.send(Action::Quit)?;
                     }
                   }
-                  _ => self.event_list.handle_key_event(ke, &action_tx)?,
+                  _ => self.event_list.handle_key_event(ke, &action_tx).await?,
                 }
               } else {
                 action_tx.send(Action::HandleTerminalKeyPress(ke))?;
@@ -320,7 +321,7 @@ impl App {
                   debug!("Received tracee spawn event: {pid}");
                   self.root_pid = Some(*pid);
                 }
-                self.event_list.push(e.id, e.details);
+                self.event_list.push(e.id, e.details).await;
                 if self.event_list.is_following() {
                   action_tx.send(Action::ScrollToBottom)?;
                 }
@@ -415,7 +416,7 @@ impl App {
                   _ => (),
                 }
                 if !handled {
-                  self.event_list.update(update);
+                  self.event_list.update(update).await;
                 }
               }
               TracerMessage::FatalError(e) => {
@@ -525,7 +526,7 @@ impl App {
             self.event_list.scroll_to_end();
           }
           Action::ScrollToId(id) => {
-            self.event_list.scroll_to_id(Some(id));
+            self.event_list.scroll_to_id(Some(id)).await;
           }
           Action::ToggleFollow => {
             self.event_list.toggle_follow();
@@ -534,10 +535,10 @@ impl App {
             }
           }
           Action::ToggleEnvDisplay => {
-            self.event_list.toggle_env_display();
+            self.event_list.toggle_env_display().await;
           }
           Action::ToggleCwdDisplay => {
-            self.event_list.toggle_cwd_display();
+            self.event_list.toggle_cwd_display().await;
           }
           Action::StopFollow => {
             self.event_list.stop_follow();
@@ -616,16 +617,16 @@ impl App {
           }
           Action::EndSearch => {
             self.query_builder = None;
-            self.event_list.set_query(None);
+            self.event_list.set_query(None).await;
           }
           Action::ExecuteSearch(query) => {
-            self.event_list.set_query(Some(query));
+            self.event_list.set_query(Some(query)).await;
           }
           Action::NextMatch => {
-            self.event_list.next_match();
+            self.event_list.next_match().await;
           }
           Action::PrevMatch => {
-            self.event_list.prev_match();
+            self.event_list.prev_match().await;
           }
           Action::ShowBreakpointManager => {
             if self.breakpoint_manager.is_none() {
