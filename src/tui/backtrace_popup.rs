@@ -35,6 +35,7 @@ impl BacktracePopupState {
       u64::MAX,
       false,
       old_list.has_clipboard,
+      false,
     );
     list.rt_modifier = old_list.rt_modifier;
     for e in trace {

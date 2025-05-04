@@ -1,9 +1,10 @@
+use itertools::chain;
 use nix::sys::signal;
 use ratatui::{
   buffer::Buffer,
   layout::{Alignment, Rect},
   style::{Color, Modifier, Style},
-  text::Line,
+  text::{Line, Span},
   widgets::{
     HighlightSpacing, List, ListItem, Scrollbar, ScrollbarOrientation, ScrollbarState,
     StatefulWidget, StatefulWidgetRef, Widget,
@@ -15,7 +16,7 @@ use crate::{
   proc::BaselineInfo,
   ptrace::Signal,
   tracer::ProcessExit,
-  tui::{event_line::EventLine, partial_line::PartialLine, theme::THEME},
+  tui::{event_line::EventLine, help::help_item, partial_line::PartialLine, theme::THEME},
 };
 
 use super::{Event, EventList, EventModifier};
@@ -157,6 +158,48 @@ impl EventList {
       self.events.len()
     ))
     .alignment(Alignment::Right)
+  }
+
+  pub fn update_help(&self, items: &mut Vec<Span<'_>>) {
+    if self.is_primary {
+      items.extend(chain!(
+        help_item!(
+          "F",
+          if self.is_following() {
+            "Unfollow"
+          } else {
+            "Follow"
+          }
+        ),
+        help_item!("Ctrl+F", "Search"),
+      ))
+    }
+    items.extend(chain!(
+      help_item!(
+        "E",
+        if self.is_env_in_cmdline() {
+          "Hide\u{00a0}Env"
+        } else {
+          "Show\u{00a0}Env"
+        }
+      ),
+      help_item!(
+        "W",
+        if self.is_cwd_in_cmdline() {
+          "Hide\u{00a0}CWD"
+        } else {
+          "Show\u{00a0}CWD"
+        }
+      ),
+      help_item!("V", "View"),
+    ));
+    if self.is_primary && self.selection_index().is_some() {
+      items.extend(help_item!("U", "GoTo Parent"));
+      items.extend(help_item!("T", "Backtrace"));
+    }
+    if self.has_clipboard {
+      items.extend(help_item!("C", "Copy"));
+    }
   }
 }
 

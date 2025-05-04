@@ -100,10 +100,7 @@ impl EventList {
           action_tx.send(Action::ShowCopyDialog(details));
         }
       }
-      KeyCode::Char('l') if ke.modifiers == KeyModifiers::ALT => {
-        action_tx.send(Action::SwitchLayout);
-      }
-      KeyCode::Char('f') => {
+      KeyCode::Char('f') if self.is_primary => {
         if ke.modifiers == KeyModifiers::NONE {
           action_tx.send(Action::ToggleFollow);
         } else if ke.modifiers == KeyModifiers::CONTROL {
@@ -132,7 +129,12 @@ impl EventList {
           action_tx.send(Action::SetActivePopup(popup));
         }
       }
-      KeyCode::Char('u') if ke.modifiers == KeyModifiers::NONE => {
+      // TODO: implement this for secondary event list
+      // Currently we only use secondary event list for displaying backtrace,
+      // goto parent is not actually useful in such case.
+      // But we should support filtering in the future, which could use this feature.
+      // We are missing the id <-> index mapping for non-contiguous event ids to implement it.
+      KeyCode::Char('u') if ke.modifiers == KeyModifiers::NONE && self.is_primary => {
         if let Some(event) = self.selection() {
           let e = event.borrow();
           if let TracerEventDetails::Exec(exec) = e.details.as_ref() {
@@ -176,7 +178,7 @@ impl EventList {
       KeyCode::Char('z') if ke.modifiers == KeyModifiers::NONE && self.is_ptrace => {
         action_tx.send(Action::ShowHitManager);
       }
-      KeyCode::Char('t') if ke.modifiers == KeyModifiers::NONE => {
+      KeyCode::Char('t') if ke.modifiers == KeyModifiers::NONE && self.is_primary => {
         if let Some(e) = self.selection() {
           let event = e.borrow();
           if let TracerEventDetails::Exec(_) = event.details.as_ref() {
