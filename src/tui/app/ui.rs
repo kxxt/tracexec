@@ -132,7 +132,7 @@ impl Widget for &mut App {
     }
 
     // popups
-    if let Some(popup) = self.popup.last_mut() {
+    for popup in self.popup.iter_mut() {
       match popup {
         ActivePopup::Help => {
           let popup = Popup::new(help(rest_area))
@@ -149,27 +149,15 @@ impl Widget for &mut App {
         ActivePopup::Backtrace(state) => {
           BacktracePopup.render_ref(rest_area, buf, state);
         }
-        ActivePopup::ViewDetails(_) => {}
+        ActivePopup::ViewDetails(state) => {
+          DetailsPopup::new(self.clipboard.is_some()).render_ref(rest_area, buf, state)
+        }
       }
-    }
-
-    if let Some(ActivePopup::ViewDetails(_)) = &self.popup.last() {
-      // Handled separately to pass borrow checker
-      self.render_details_popup(rest_area, buf);
     }
   }
 }
 
 impl App {
-  fn render_details_popup(&mut self, area: Rect, buf: &mut Buffer) {
-    let Some(ActivePopup::ViewDetails(state)) = self.popup.last_mut() else {
-      return;
-    };
-    // .borders(Borders::TOP | Borders::BOTTOM)
-    // .title_alignment(Alignment::Center);
-    DetailsPopup::new(self.clipboard.is_some()).render_ref(area, buf, state);
-  }
-
   fn render_help(&self, area: Rect, buf: &mut Buffer) {
     let mut items = Vec::from_iter(
       Some(help_item!("Ctrl+S", "Switch\u{00a0}Pane"))
