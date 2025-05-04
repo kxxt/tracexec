@@ -1,11 +1,13 @@
-use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+use std::{cell::RefCell, collections::VecDeque, rc::Rc, sync::LazyLock};
 
 use crossterm::event::{KeyCode, KeyEvent};
 
 use ratatui::{
   buffer::Buffer,
   layout::{Alignment::Center, Rect},
-  widgets::{Block, Borders, Clear, StatefulWidgetRef, Widget},
+  style::Styled,
+  text::Line,
+  widgets::{Block, Borders, Clear, StatefulWidgetRef, Widget, WidgetRef},
 };
 use tracing::debug;
 
@@ -90,11 +92,25 @@ impl BacktracePopupState {
   }
 }
 
+static HELP: LazyLock<Line<'static>> = LazyLock::new(|| {
+  Line::from(vec![
+    "Legend: ".into(),
+    THEME.backtrace_parent_becomes.clone(),
+    " Becomes ".set_style(THEME.cli_flag),
+    THEME.backtrace_parent_spawns.clone(),
+    " Spawns ".set_style(THEME.cli_flag),
+  ])
+});
+
 impl StatefulWidgetRef for BacktracePopup {
   type State = BacktracePopupState;
 
   fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
     Clear.render(area, buf);
+    let screen = buf.area;
+    let help_width = HELP.width() as u16;
+    let start = screen.right().saturating_sub(help_width);
+    HELP.render_ref(Rect::new(start, 0, help_width, 1), buf);
     let block = Block::new()
       .title(if !state.event_loss {
         " Backtrace "
