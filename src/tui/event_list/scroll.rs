@@ -215,15 +215,13 @@ impl EventList {
 
 /// Scroll to id/index
 impl EventList {
-  pub async fn scroll_to_id(&mut self, id: Option<EventId>) {
+  pub fn scroll_to_id(&mut self, id: Option<EventId>) {
     let Some(id) = id else {
       return;
     };
     // self.window.0 should be <= its id
 
-    self.scroll_to(Some(
-      (id - self.id_index_offset().await).into_inner() as usize
-    ));
+    self.scroll_to(Some((id - self.id_index_offset()).into_inner() as usize));
   }
 
   /// Scroll to the given index and select it,

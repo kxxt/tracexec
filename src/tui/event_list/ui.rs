@@ -61,8 +61,7 @@ impl Widget for &mut EventList {
         .skip(self.window.0)
         .take(self.window.1 - self.window.0)
         .map(|event| {
-          // FIXME
-          let event = futures::executor::block_on(event.read());
+          let event = event.borrow();
           max_len = max_len.max(event.event_line.line.width());
           let highlighted = self
             .query_result
@@ -73,6 +72,7 @@ impl Widget for &mut EventList {
             .line
             .clone()
             .substring(self.horizontal_offset, area.width);
+          drop(event);
           if highlighted {
             base = base.style(THEME.search_match);
           }

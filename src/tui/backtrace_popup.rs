@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use crossterm::event::{KeyCode, KeyEvent};
 
@@ -26,8 +26,8 @@ pub struct BacktracePopupState {
 }
 
 impl BacktracePopupState {
-  pub async fn new(event: Event, old_list: &EventList) -> Self {
-    let (trace, event_loss) = Self::collect_backtrace(event, old_list).await;
+  pub fn new(event: Rc<RefCell<Event>>, old_list: &EventList) -> Self {
+    let (trace, event_loss) = Self::collect_backtrace(event, old_list);
     let mut list = EventList::new(
       old_list.baseline.clone(),
       false,
@@ -37,7 +37,7 @@ impl BacktracePopupState {
       old_list.has_clipboard,
     );
     for e in trace {
-      list.dumb_push(e).await;
+      list.dumb_push(e);
     }
     Self {
       list,
@@ -47,19 +47,24 @@ impl BacktracePopupState {
   }
 
   /// Collect the backtrace and whether
-  async fn collect_backtrace(event: Event, list: &EventList) -> (VecDeque<Event>, bool) {
+  fn collect_backtrace(
+    event: Rc<RefCell<Event>>,
+    list: &EventList,
+  ) -> (VecDeque<Rc<RefCell<Event>>>, bool) {
     let mut trace = VecDeque::new();
     let mut event = event;
     let event_loss = loop {
-      let TracerEventDetails::Exec(exec) = event.details.as_ref() else {
+      let e = event.borrow();
+      let TracerEventDetails::Exec(exec) = e.details.as_ref() else {
         panic!("back trace should only contain exec event")
       };
       let parent = exec.parent;
+      drop(e);
       debug!("backtracing -- {event:?}");
       trace.push_front(event);
       if let Some(parent) = parent {
         let eid = parent.into();
-        if let Some(e) = list.get(eid, |e| e.to_owned()).await {
+        if let Some(e) = list.get(eid) {
           event = e;
         } else {
           break true;

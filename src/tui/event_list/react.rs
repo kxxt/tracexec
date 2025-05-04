@@ -96,7 +96,7 @@ impl EventList {
         // action_tx.send(Action::Render)?;
       }
       KeyCode::Char('c') if ke.modifiers == KeyModifiers::NONE && self.has_clipboard => {
-        if let Some(details) = self.selection(|e| e.details.clone()).await {
+        if let Some(details) = self.selection_map(|e| e.details.clone()) {
           action_tx.send(Action::ShowCopyDialog(details));
         }
       }
@@ -120,24 +120,22 @@ impl EventList {
         action_tx.send(Action::SetActivePopup(ActivePopup::Help));
       }
       KeyCode::Char('v') if ke.modifiers == KeyModifiers::NONE => {
-        if let Some(popup) = self
-          .selection(|e| {
-            ActivePopup::ViewDetails(DetailsPopupState::new(
-              e.details.clone(),
-              e.status,
-              e.elapsed,
-              self.baseline.clone(),
-              self.modifier_args.hide_cloexec_fds,
-            ))
-          })
-          .await
-        {
+        if let Some(popup) = self.selection_map(|e| {
+          ActivePopup::ViewDetails(DetailsPopupState::new(
+            e.details.clone(),
+            e.status,
+            e.elapsed,
+            self.baseline.clone(),
+            self.modifier_args.hide_cloexec_fds,
+          ))
+        }) {
           action_tx.send(Action::SetActivePopup(popup));
         }
       }
       KeyCode::Char('u') if ke.modifiers == KeyModifiers::NONE => {
-        if let Some(event) = self.selection(|e| e.details.clone()).await {
-          if let TracerEventDetails::Exec(exec) = event.as_ref() {
+        if let Some(event) = self.selection() {
+          let e = event.borrow();
+          if let TracerEventDetails::Exec(exec) = e.details.as_ref() {
             if let Some(parent) = exec.parent {
               let id = parent.into();
               if self.contains(id) {
@@ -179,10 +177,12 @@ impl EventList {
         action_tx.send(Action::ShowHitManager);
       }
       KeyCode::Char('t') if ke.modifiers == KeyModifiers::NONE => {
-        if let Some(e) = self.selection(|e| e.clone()).await {
-          if let TracerEventDetails::Exec(_) = e.details.as_ref() {
+        if let Some(e) = self.selection() {
+          let event = e.borrow();
+          if let TracerEventDetails::Exec(_) = event.details.as_ref() {
+            drop(event);
             action_tx.send(Action::SetActivePopup(ActivePopup::Backtrace(
-              BacktracePopupState::new(e, self).await,
+              BacktracePopupState::new(e, self),
             )));
           } else {
             action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
