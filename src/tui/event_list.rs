@@ -352,13 +352,13 @@ impl EventList {
       }
       _ => None,
     };
-    let event_line = Event::to_event_line(&details, status, &self.baseline, &self.event_modifier());
     let event = Event {
       elapsed: None,
       details,
       status,
       id,
     };
+    let event_line = event.to_event_line(&self.baseline, &self.event_modifier());
     if self.events.len() >= self.max_events as usize {
       if let Some(e) = self.events.pop_front() {
         let id = e.borrow().id;
@@ -401,12 +401,7 @@ impl EventList {
     let id = event.borrow().id;
     self.events.push_back(event.clone());
     let evt = event.borrow();
-    let event_line = Event::to_event_line(
-      &evt.details,
-      evt.status,
-      &self.baseline,
-      &self.event_modifier(),
-    );
+    let event_line = evt.to_event_line(&self.baseline, &self.event_modifier());
     drop(evt);
     // # SAFETY
     //
@@ -433,7 +428,7 @@ impl EventList {
         if let Some(ts) = update.update.termination_timestamp() {
           e.elapsed = Some(ts - e.details.timestamp().unwrap())
         }
-        *line = Event::to_event_line(&e.details, e.status, &self.baseline, &modifier);
+        *line = e.to_event_line(&self.baseline, &modifier);
       }
       let i = i.into_inner() as usize;
       if self.window.0 <= i && i < self.window.1 {
@@ -447,7 +442,7 @@ impl EventList {
     let modifier = self.event_modifier();
     for (_, (line, e)) in self.event_map.iter_mut() {
       let e = e.borrow();
-      *line = Event::to_event_line(&e.details, e.status, &self.baseline, &modifier);
+      *line = e.to_event_line(&self.baseline, &modifier);
     }
     self.should_refresh_list_cache = true;
   }
