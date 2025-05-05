@@ -1,4 +1,4 @@
-use std::ops::{ControlFlow, Deref, DerefMut};
+use std::ops::{Deref, DerefMut};
 
 use arboard::Clipboard;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -16,11 +16,16 @@ use ratatui::{
 };
 use tui_scrollview::{ScrollView, ScrollViewState};
 
-use crate::event::{EventStatus, TracerEventDetails};
+use crate::{
+  action::{Action, ActivePopup},
+  event::{EventId, EventStatus, ParentEvent, TracerEventDetails},
+  primitives::local_chan::LocalUnboundedSender,
+};
 
 use super::{
+  error_popup::{err_popup_goto_parent_miss, err_popup_goto_parent_not_found},
   event_list::{Event, EventList},
-  help::{help_desc, help_key},
+  help::{help_desc, help_item, help_key},
   theme::THEME,
 };
 
@@ -43,6 +48,7 @@ pub struct DetailsPopupState {
   fdinfo: Option<Vec<Line<'static>>>,
   available_tabs: Vec<&'static str>,
   tab_index: usize,
+  parent_id: Option<EventId>,
 }
 
 impl DetailsPopupState {
@@ -71,7 +77,7 @@ impl DetailsPopupState {
         .details
         .to_tui_line(&list.baseline, true, &modifier_args, rt_modifier, None),
     ));
-    let (env, fdinfo, available_tabs) = if let TracerEventDetails::Exec(exec) =
+    let (env, fdinfo, available_tabs, parent_id) = if let TracerEventDetails::Exec(exec) =
       event.details.as_ref()
     {
       details.extend([
@@ -164,6 +170,22 @@ impl DetailsPopupState {
         ),
       ]);
 
+      let parent_id = if let Some(parent) = list.get_parent(event.id) {
+        let (label, inner) = match parent {
+          ParentEvent::Become(inner) => (" Parent(Becomer) Cmdline ", inner),
+          ParentEvent::Spawn(inner) => (" Parent(Spawner) Cmdline ", inner),
+        };
+        let p = inner.borrow();
+        details.push((
+          label,
+          event
+            .details
+            .to_tui_line(&list.baseline, true, &modifier_args, rt_modifier, None),
+        ));
+        Some(p.id)
+      } else {
+        None
+      };
       details.extend([
         (" (Experimental) Cmdline with stdio ", {
           modifier_args.stdio_in_cmdline = true;
@@ -367,9 +389,10 @@ impl DetailsPopupState {
         Some(env),
         Some(fdinfo),
         vec!["Info", "Environment", "FdInfo"],
+        parent_id,
       )
     } else {
-      (None, None, vec!["Info"])
+      (None, None, vec!["Info"], None)
     };
     Self {
       details,
@@ -379,6 +402,7 @@ impl DetailsPopupState {
       env,
       available_tabs,
       tab_index: 0,
+      parent_id,
     }
   }
 
@@ -422,11 +446,23 @@ impl DetailsPopupState {
     self.available_tabs[self.tab_index]
   }
 
+  pub fn update_help(&self, items: &mut Vec<Span<'_>>) {
+    if self.active_tab() == "Info" {
+      items.extend(help_item!("W/S", "Move\u{00a0}Focus"));
+    }
+    items.extend(help_item!("←/Tab/→", "Switch\u{00a0}Tab"));
+    if self.env.is_some() {
+      items.extend(help_item!("U", "View\u{00a0}Parent\u{00a0}Details"));
+    }
+  }
+
   pub fn handle_key_event(
     &mut self,
     ke: KeyEvent,
     clipboard: Option<&mut Clipboard>,
-  ) -> color_eyre::Result<ControlFlow<()>> {
+    list: &EventList,
+    action_tx: &LocalUnboundedSender<Action>,
+  ) -> color_eyre::Result<()> {
     if ke.modifiers == KeyModifiers::NONE {
       match ke.code {
         KeyCode::Down | KeyCode::Char('j') => {
@@ -472,7 +508,7 @@ impl DetailsPopupState {
           }
         }
         KeyCode::Char('q') => {
-          return Ok(ControlFlow::Break(()));
+          action_tx.send(Action::CancelCurrentPopup);
         }
         KeyCode::Char('c') => {
           if self.active_tab() == "Info" {
@@ -481,13 +517,33 @@ impl DetailsPopupState {
             }
           }
         }
+        KeyCode::Char('u') if ke.modifiers == KeyModifiers::NONE => {
+          if self.env.is_none() {
+            // Do not handle non-exec events
+          } else if let Some(id) = self.parent_id {
+            if let Some(evt) = list.get(id) {
+              action_tx.send(Action::SetActivePopup(ActivePopup::ViewDetails(Self::new(
+                &evt.borrow(),
+                list,
+              ))));
+            } else {
+              action_tx.send(Action::SetActivePopup(err_popup_goto_parent_miss(
+                "View Parent Details Error",
+              )));
+            }
+          } else {
+            action_tx.send(Action::SetActivePopup(err_popup_goto_parent_not_found(
+              "View Parent Details Result",
+            )));
+          }
+        }
         KeyCode::Tab => {
           self.circle_tab();
         }
         _ => {}
       }
     }
-    Ok(ControlFlow::Continue(()))
+    Ok(())
   }
 }
 

@@ -16,7 +16,7 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::{ops::ControlFlow, sync::Arc};
+use std::sync::Arc;
 
 use arboard::Clipboard;
 use clap::ValueEnum;
@@ -224,11 +224,12 @@ impl App {
                       self.popup.pop();
                     }
                     ActivePopup::ViewDetails(state) => {
-                      if ControlFlow::Break(())
-                        == state.handle_key_event(ke, self.clipboard.as_mut())?
-                      {
-                        self.popup.pop();
-                      }
+                      state.handle_key_event(
+                        ke,
+                        self.clipboard.as_mut(),
+                        &self.event_list,
+                        &action_tx,
+                      )?;
                     }
                     ActivePopup::CopyTargetSelection(state) => {
                       if let Some(action) = state.handle_key_event(ke)? {

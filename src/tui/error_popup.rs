@@ -8,7 +8,7 @@ use ratatui::{
 };
 use tui_popup::Popup;
 
-use crate::action::Action;
+use crate::action::{Action, ActivePopup};
 
 use super::{sized_paragraph::SizedParagraph, theme::THEME};
 
@@ -61,4 +61,29 @@ impl StatefulWidget for InfoPopup {
     .style(state.style);
     popup.render_ref(area, buf);
   }
+}
+
+pub fn err_popup_goto_parent_miss(title: &'static str) -> ActivePopup {
+  ActivePopup::InfoPopup(InfoPopupState::info(
+    title.into(),
+    vec![Line::raw(
+      "The parent exec event is found, but has been cleared from memory.",
+    )],
+  ))
+}
+
+pub fn err_popup_goto_parent_not_found(title: &'static str) -> ActivePopup {
+  ActivePopup::InfoPopup(InfoPopupState::info(
+    title.into(),
+    vec![Line::raw("No parent exec event is found for this event.")],
+  ))
+}
+
+pub fn err_popup_goto_parent_not_exec(title: &'static str) -> ActivePopup {
+  ActivePopup::InfoPopup(InfoPopupState::error(
+    title.into(),
+    vec![Line::raw(
+      "This feature is currently limited to exec events.",
+    )],
+  ))
 }
