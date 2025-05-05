@@ -28,7 +28,9 @@ use ui::pstate_update_to_status;
 
 use crate::{
   cli::args::ModifierArgs,
-  event::{EventId, EventStatus, ProcessStateUpdateEvent, RuntimeModifier, TracerEventDetails},
+  event::{
+    EventId, EventStatus, ParentEvent, ProcessStateUpdateEvent, RuntimeModifier, TracerEventDetails,
+  },
   proc::BaselineInfo,
 };
 
@@ -244,6 +246,22 @@ impl EventList {
       let e = e.1.borrow();
       f(&e)
     })
+  }
+
+  pub fn get_parent(&self, id: EventId) -> Option<ParentEvent<Rc<RefCell<Event>>>> {
+    let parent_id = self.event_map.get(&id).and_then(|(_, e)| {
+      if let TracerEventDetails::Exec(exec) = e.borrow().details.as_ref() {
+        exec.parent
+      } else {
+        None
+      }
+    });
+    if let Some(p) = parent_id {
+      p.map(|id| self.event_map.get(&id).map(|(_, e)| e.clone()))
+        .transpose()
+    } else {
+      None
+    }
   }
 }
 

@@ -1,22 +1,43 @@
 //! Code for locating the id of parent event of an event.
 
 use super::EventId;
+use std::fmt::Debug;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ParentEventId {
+pub enum ParentEvent<T> {
   /// The parent process destroys itself and become a new process
-  Become(EventId),
+  Become(T),
   /// The parent process spawns a new process.
-  Spawn(EventId),
+  Spawn(T),
 }
 
-impl From<ParentEventId> for EventId {
-  fn from(value: ParentEventId) -> Self {
+impl From<ParentEvent<Self>> for EventId {
+  fn from(value: ParentEvent<Self>) -> Self {
     match value {
-      ParentEventId::Become(event_id) | ParentEventId::Spawn(event_id) => event_id,
+      ParentEvent::Become(event_id) | ParentEvent::Spawn(event_id) => event_id,
     }
   }
 }
+
+impl<T> ParentEvent<T> {
+  pub fn map<U>(self, f: impl FnOnce(T) -> U) -> ParentEvent<U> {
+    match self {
+      Self::Become(v) => ParentEvent::Become(f(v)),
+      Self::Spawn(v) => ParentEvent::Spawn(f(v)),
+    }
+  }
+}
+
+impl<T> ParentEvent<Option<T>> {
+  pub fn transpose(self) -> Option<ParentEvent<T>> {
+    match self {
+      Self::Become(v) => v.map(ParentEvent::Become),
+      Self::Spawn(v) => v.map(ParentEvent::Spawn),
+    }
+  }
+}
+
+pub type ParentEventId = ParentEvent<EventId>;
 
 /// How this works
 ///
@@ -78,9 +99,9 @@ impl ParentTracker {
     };
     if self.successful_exec_count >= 2 {
       // This is at least the second time of exec for this process
-      old_last_exec.map(ParentEventId::Become)
+      old_last_exec.map(ParentEvent::Become)
     } else {
-      self.parent_last_exec.map(ParentEventId::Spawn)
+      self.parent_last_exec.map(ParentEvent::Spawn)
     }
   }
 }

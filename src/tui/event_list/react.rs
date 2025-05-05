@@ -6,8 +6,12 @@ use crate::{
   event::TracerEventDetails,
   primitives::local_chan::LocalUnboundedSender,
   tui::{
-    backtrace_popup::BacktracePopupState, details_popup::DetailsPopupState,
-    error_popup::InfoPopupState,
+    backtrace_popup::BacktracePopupState,
+    details_popup::DetailsPopupState,
+    error_popup::{
+      InfoPopupState, err_popup_goto_parent_miss, err_popup_goto_parent_not_exec,
+      err_popup_goto_parent_not_found,
+    },
   },
 };
 
@@ -137,31 +141,18 @@ impl EventList {
               if self.contains(id) {
                 action_tx.send(Action::ScrollToId(id));
               } else {
-                action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
-                  InfoPopupState::info(
-                    "GoTo Parent Result".into(),
-                    vec![Line::raw(
-                      "The parent exec event is found, but has been cleared from memory.",
-                    )],
-                  ),
+                action_tx.send(Action::SetActivePopup(err_popup_goto_parent_miss(
+                  "Go To Parent Error",
                 )));
               }
             } else {
-              action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
-                InfoPopupState::info(
-                  "GoTo Parent Result".into(),
-                  vec![Line::raw("No parent exec event is found for this event.")],
-                ),
+              action_tx.send(Action::SetActivePopup(err_popup_goto_parent_not_found(
+                "Go To Parent Result",
               )));
             }
           } else {
-            action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
-              InfoPopupState::error(
-                "GoTo Parent Error".into(),
-                vec![Line::raw(
-                  "This feature is currently limited to exec events.",
-                )],
-              ),
+            action_tx.send(Action::SetActivePopup(err_popup_goto_parent_not_exec(
+              "Go to Parent Error",
             )));
           }
         }
