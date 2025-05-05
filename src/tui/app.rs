@@ -16,7 +16,10 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::sync::Arc;
+use std::{
+  sync::Arc,
+  time::{Duration, Instant},
+};
 
 use arboard::Clipboard;
 use clap::ValueEnum;
@@ -181,6 +184,7 @@ impl App {
   pub async fn run(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
     let (action_tx, action_rx) = crate::primitives::local_chan::unbounded();
 
+    let mut last_refresh_timestamp = Instant::now();
     loop {
       // Handle events
       if let Some(e) = tui.next().await {
@@ -327,9 +331,6 @@ impl App {
                   self.root_pid = Some(*pid);
                 }
                 self.event_list.push(e.id, e.details);
-                if self.event_list.is_following() {
-                  action_tx.send(Action::ScrollToBottom);
-                }
               }
               TracerMessage::StateUpdate(update) => {
                 trace!("Received process state update: {update:?}");
@@ -451,6 +452,15 @@ impl App {
             // action_tx.send(Action::Render)?;
           }
           Event::Error => {}
+        }
+      }
+
+      // Refresh list if following
+      if self.event_list.is_following() {
+        let t = Instant::now();
+        if t.duration_since(last_refresh_timestamp) > Duration::from_millis(100) {
+          last_refresh_timestamp = t;
+          action_tx.send(Action::ScrollToBottom);
         }
       }
 
