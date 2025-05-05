@@ -2233,7 +2233,7 @@ checksum = "28391a4201ba7eb1984cfeb6862c0b3ea2cfe23332298967c749dddc0d6cd976"
 
 [[package]]
 name = "tracexec"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "arboard",
  "assert_cmd",
