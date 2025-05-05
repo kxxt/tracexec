@@ -1,5 +1,42 @@
 # Changelog
 
+## v0.12.0
+
+### New Features
+
+#### Exec Backtrace
+
+Similar to stack traces, exec events also forms a backtrace.
+
+In TUI, tracexec now supports viewing the backtrace of any exec events by
+pressing `T`.
+
+![exec-backtrace](https://github.com/user-attachments/assets/af347aa1-a758-4388-972f-e1eaad869de3)
+
+The exec backtraces shows all the exec events that lead to the selected event.
+- For most events, the parent process spawns a new child process to execute the new program. (label `S`)
+- For some event, the parent process tears it self down and directly becomes(executes) the new program. (label `B`)
+
+#### Go To Parent
+
+Sometimes, reading the whole exec backtrace is unnecessary. A light-weight alternative is `Go To Parent`.
+
+By pressing `U` on an event, the TUI will jump to and select its parent event.
+In details view, pressing `U` will open the details of the parent event.
+
+And in the details view of an event, we now shows its parent event's commandline.
+
+![tracexec-goto-parent](https://github.com/user-attachments/assets/db253fa9-fc2d-4689-90d9-9cf236a50546)
+
+### Fixes
+
+- Greatly improve TUI responsiveness to user input when in following mode.
+
+### Misc
+
+- Internal refactor
+- UKCI: register ukci as a GC root.
+
 ## v0.11.0
 
 ### New Features
