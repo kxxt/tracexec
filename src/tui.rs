@@ -113,12 +113,9 @@ impl Tui {
         let crossterm_event = reader.next().fuse();
         let tracer_event = tracer_rx.recv();
         tokio::select! {
+          biased;
           () = _cancellation_token.cancelled() => {
-              break;
-          }
-          Some(tracer_event) = tracer_event => {
-            trace!("TUI event: tracer message!");
-            event_tx.send(Event::Tracer(tracer_event)).unwrap();
+            break;
           }
           Some(event) = crossterm_event => {
             #[cfg(debug_assertions)]
@@ -145,6 +142,10 @@ impl Tui {
               }
             }
           },
+          Some(tracer_event) = tracer_event => {
+            trace!("TUI event: tracer message!");
+            event_tx.send(Event::Tracer(tracer_event)).unwrap();
+          }
           _ = render_delay => {
             // log::trace!("TUI event: Render!");
             event_tx.send(Event::Render).unwrap();
