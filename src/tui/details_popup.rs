@@ -1,10 +1,6 @@
-use std::{
-  ops::{ControlFlow, Deref, DerefMut},
-  sync::Arc,
-};
+use std::ops::{ControlFlow, Deref, DerefMut};
 
 use arboard::Clipboard;
-use chrono::TimeDelta;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use itertools::{Itertools, chain};
 use nix::{errno::Errno, fcntl::OFlag};
@@ -20,12 +16,10 @@ use ratatui::{
 };
 use tui_scrollview::{ScrollView, ScrollViewState};
 
-use crate::{
-  event::{EventStatus, TracerEventDetails},
-  proc::BaselineInfo,
-};
+use crate::event::{EventStatus, TracerEventDetails};
 
 use super::{
+  event_list::{Event, EventList},
   help::{help_desc, help_key},
   theme::THEME,
 };
@@ -52,35 +46,34 @@ pub struct DetailsPopupState {
 }
 
 impl DetailsPopupState {
-  pub fn new(
-    event: Arc<TracerEventDetails>,
-    status: Option<EventStatus>,
-    elapsed: Option<TimeDelta>,
-    baseline: Arc<BaselineInfo>,
-    hide_cloexec_fds: bool,
-  ) -> Self {
+  pub fn new(event: &Event, list: &EventList) -> Self {
+    let hide_cloexec_fds = list.modifier_args.hide_cloexec_fds;
     let mut modifier_args = Default::default();
     let rt_modifier = Default::default();
     let mut details = vec![];
     // timestamp
-    if let Some(ts) = event.timestamp() {
+    if let Some(ts) = event.details.timestamp() {
       details.push((" Timestamp ", Line::raw(ts.format("%c").to_string())));
     }
-    if let Some(elapsed) = elapsed.and_then(|x| x.to_std().ok()) {
+    if let Some(elapsed) = event.elapsed.and_then(|x| x.to_std().ok()) {
       details.push((
         " Duration ",
         Line::raw(humantime::format_duration(elapsed).to_string()),
       ));
     }
     details.push((
-      if matches!(event.as_ref(), TracerEventDetails::Exec(_)) {
+      if matches!(event.details.as_ref(), TracerEventDetails::Exec(_)) {
         " Cmdline "
       } else {
         " Details "
       },
-      event.to_tui_line(&baseline, true, &modifier_args, rt_modifier, None),
+      event
+        .details
+        .to_tui_line(&list.baseline, true, &modifier_args, rt_modifier, None),
     ));
-    let (env, fdinfo, available_tabs) = if let TracerEventDetails::Exec(exec) = event.as_ref() {
+    let (env, fdinfo, available_tabs) = if let TracerEventDetails::Exec(exec) =
+      event.details.as_ref()
+    {
       details.extend([
         (" Pid ", Line::from(exec.pid.to_string())),
         (" Syscall Result ", {
@@ -93,8 +86,8 @@ impl DetailsPopupState {
           }
         }),
         (" Process Status ", {
-          let formatted = status.unwrap().to_string();
-          match status.unwrap() {
+          let formatted = event.status.unwrap().to_string();
+          match event.status.unwrap() {
             EventStatus::ExecENOENT | EventStatus::ExecFailure => {
               formatted.set_style(THEME.status_exec_error).into()
             }
@@ -169,13 +162,20 @@ impl DetailsPopupState {
             "Closed".set_style(THEME.fd_closed).into()
           },
         ),
+      ]);
+
+      details.extend([
         (" (Experimental) Cmdline with stdio ", {
           modifier_args.stdio_in_cmdline = true;
-          event.to_tui_line(&baseline, true, &modifier_args, rt_modifier, None)
+          event
+            .details
+            .to_tui_line(&list.baseline, true, &modifier_args, rt_modifier, None)
         }),
         (" (Experimental) Cmdline with fds ", {
           modifier_args.fd_in_cmdline = true;
-          event.to_tui_line(&baseline, true, &modifier_args, rt_modifier, None)
+          event
+            .details
+            .to_tui_line(&list.baseline, true, &modifier_args, rt_modifier, None)
         }),
         (
           " Argv ",
@@ -202,7 +202,7 @@ impl DetailsPopupState {
               .removed
               .iter()
               .map(|key| {
-                let value = baseline.env.get(key).unwrap();
+                let value = list.baseline.env.get(key).unwrap();
                 let spans = vec![
                   "-".set_style(THEME.minus_sign),
                   key.to_string().set_style(THEME.removed_env_key),
@@ -218,7 +218,7 @@ impl DetailsPopupState {
               .modified
               .iter()
               .flat_map(|(key, new)| {
-                let old = baseline.env.get(key).unwrap();
+                let old = list.baseline.env.get(key).unwrap();
                 let spans_old = vec![
                   "-".set_style(THEME.minus_sign),
                   key.to_string().set_style(THEME.removed_env_key),
@@ -240,7 +240,8 @@ impl DetailsPopupState {
           );
           env.extend(
             // Unchanged env
-            baseline
+            list
+              .baseline
               .env
               .iter()
               .filter(|(key, _)| !env_diff.is_modified_or_removed(key))

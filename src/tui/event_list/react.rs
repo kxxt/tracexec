@@ -117,16 +117,10 @@ impl EventList {
         action_tx.send(Action::SetActivePopup(ActivePopup::Help));
       }
       KeyCode::Char('v') if ke.modifiers == KeyModifiers::NONE => {
-        if let Some(popup) = self.selection_map(|e| {
-          ActivePopup::ViewDetails(DetailsPopupState::new(
-            e.details.clone(),
-            e.status,
-            e.elapsed,
-            self.baseline.clone(),
-            self.modifier_args.hide_cloexec_fds,
-          ))
-        }) {
-          action_tx.send(Action::SetActivePopup(popup));
+        if let Some(event) = self.selection() {
+          action_tx.send(Action::SetActivePopup(ActivePopup::ViewDetails(
+            DetailsPopupState::new(&event.borrow(), self),
+          )));
         }
       }
       // TODO: implement this for secondary event list
