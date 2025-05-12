@@ -7,6 +7,7 @@ use enumflags2::BitFlags;
 use crate::{
   cli::config::{ColorLevel, EnvDisplay, FileDescriptorDisplay},
   event::TracerEventDetailsKind,
+  otlp::OtlpProtocol,
   ptrace::BreakPoint,
   timestamp::TimestampFormat,
   tui::app::AppLayout,
@@ -488,6 +489,75 @@ pub struct DebuggerArgs {
     help = "Add a new breakpoint to the tracer. This option can be used multiple times. The format is <syscall-stop>:<pattern-type>:<pattern>, where syscall-stop can be sysenter or sysexit, pattern-type can be argv-regex, in-filename or exact-filename. For example, sysexit:in-filename:/bash",
   )]
   pub breakpoints: Vec<BreakPoint>,
+}
+
+#[derive(Args, Debug, Default, Clone)]
+pub struct OpenTelemetryArgs {
+  #[clap(
+    long,
+    short = 'X',
+    help = "Enable OpenTelemetry exporter with the specified protocol"
+  )]
+  pub enable_otlp: Option<OtlpProtocol>,
+  #[clap(long, help = "Disable OpenTelemetry exporter")]
+  pub disable_otlp: bool,
+  #[clap(long, help = "Set the endpoint URI for OpenTelemetry collector")]
+  pub otlp_endpoint: Option<String>,
+  #[clap(long, help = "Set the service name to use for OpenTelemetry")]
+  pub otlp_service_name: Option<String>,
+  // Boolean flags
+  #[clap(long, help = "Export values of environment variables to OpenTelemetry")]
+  pub otlp_export_env: bool,
+  #[clap(long, help = "Export environment variable diff to OpenTelemetry")]
+  pub otlp_export_env_diff: bool,
+  #[clap(
+    long,
+    help = "Export information about file descriptors to OpenTelemetry"
+  )]
+  pub otlp_export_fd: bool,
+  #[clap(long, help = "Export file descriptor diff to OpenTelemetry")]
+  pub otlp_export_fd_diff: bool,
+  #[clap(long, help = "Export commandline to OpenTelemetry")]
+  pub otlp_export_cmdline: bool,
+  #[clap(long, help = "Export argv to OpenTelemetry")]
+  pub otlp_export_argv: bool,
+  // Negation of boolean flags
+  #[clap(
+    long,
+    help = "Export values of environment variables to OpenTelemetry",
+    conflicts_with = "otlp_export_env"
+  )]
+  pub otlp_no_export_env: bool,
+  #[clap(
+    long,
+    help = "Export environment variable diff to OpenTelemetry",
+    conflicts_with = "otlp_export_env_diff"
+  )]
+  pub otlp_no_export_env_diff: bool,
+  #[clap(
+    long,
+    help = "Export information about file descriptors to OpenTelemetry",
+    conflicts_with = "otlp_export_fd"
+  )]
+  pub otlp_no_export_fd: bool,
+  #[clap(
+    long,
+    help = "Export file descriptor diff to OpenTelemetry",
+    conflicts_with = "otlp_export_fd_diff"
+  )]
+  pub otlp_no_export_fd_diff: bool,
+  #[clap(
+    long,
+    help = "Export commandline to OpenTelemetry",
+    conflicts_with = "otlp_export_cmdline"
+  )]
+  pub otlp_no_export_cmdline: bool,
+  #[clap(
+    long,
+    help = "Export argv to OpenTelemetry",
+    conflicts_with = "otlp_export_argv"
+  )]
+  pub otlp_no_export_argv: bool,
 }
 
 impl TuiModeArgs {

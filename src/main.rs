@@ -24,6 +24,7 @@ mod cmdbuilder;
 mod event;
 mod export;
 mod log;
+mod otlp;
 mod primitives;
 mod printer;
 mod proc;
@@ -49,6 +50,7 @@ use color_eyre::eyre::{OptionExt, bail};
 
 use export::{JsonExecEvent, JsonMetaData};
 use nix::unistd::{Uid, User};
+use otlp::{OtlpConfig, tracer::OtlpTracer};
 use serde::Serialize;
 use tokio::sync::mpsc;
 use tracer::TracerBuilder;
@@ -106,9 +108,13 @@ async fn main() -> color_eyre::Result<()> {
       min_support_kver.0, min_support_kver.1
     );
   }
+  let mut otlp_config = None;
   if !cli.no_profile {
     match Config::load(cli.profile.clone()) {
-      Ok(config) => cli.merge_config(config),
+      Ok(mut config) => {
+        std::mem::swap(&mut otlp_config, &mut config.otlp);
+        cli.merge_config(config)
+      }
       Err(ConfigLoadError::NotFound) => (),
       Err(e) => Err(e)?,
     };
@@ -121,8 +127,10 @@ async fn main() -> color_eyre::Result<()> {
       ptrace_args,
       tracer_event_args,
       output,
+      otlp_args,
     } => {
       let modifier_args = modifier_args.processed();
+      let otlp_config = OtlpConfig::from_cli_and_config(otlp_args, otlp_config.unwrap_or_default());
       let output = Cli::get_output(output, cli.color)?;
       let baseline = BaselineInfo::new()?;
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
@@ -138,6 +146,7 @@ async fn main() -> color_eyre::Result<()> {
         .seccomp_bpf(ptrace_args.seccomp_bpf)
         .ptrace_polling_delay(ptrace_args.tracer_delay)
         .printer_from_cli(&tracing_args)
+        .otlp(OtlpTracer::new(otlp_config)?)
         .build_ptrace()?;
       let tracer = Arc::new(tracer);
       let tracer_thread = tracer.spawn(cmd, Some(output), token);
@@ -168,8 +177,10 @@ async fn main() -> color_eyre::Result<()> {
       tracer_event_args,
       tui_args,
       debugger_args,
+      otlp_args,
     } => {
       let modifier_args = modifier_args.processed();
+      let otlp_config = OtlpConfig::from_cli_and_config(otlp_args, otlp_config.unwrap_or_default());
       // Disable owo-colors when running TUI
       owo_colors::control::set_should_colorize(false);
       log::debug!(
@@ -213,6 +224,7 @@ async fn main() -> color_eyre::Result<()> {
         .seccomp_bpf(ptrace_args.seccomp_bpf)
         .ptrace_polling_delay(ptrace_args.tracer_delay)
         .printer_from_cli(&tracing_args)
+        .otlp(OtlpTracer::new(otlp_config)?)
         .build_ptrace()?;
       let tracer = Arc::new(tracer);
 
@@ -250,8 +262,10 @@ async fn main() -> color_eyre::Result<()> {
       pretty,
       foreground,
       no_foreground,
+      otlp_args,
     } => {
       let modifier_args = modifier_args.processed();
+      let otlp_config = OtlpConfig::from_cli_and_config(otlp_args, otlp_config.unwrap_or_default());
       let mut output = Cli::get_output(output, cli.color)?;
       let tracing_args = LogModeArgs {
         show_cmdline: false,
@@ -278,10 +292,12 @@ async fn main() -> color_eyre::Result<()> {
         .seccomp_bpf(ptrace_args.seccomp_bpf)
         .ptrace_polling_delay(ptrace_args.tracer_delay)
         .printer_from_cli(&tracing_args)
+        .otlp(OtlpTracer::new(otlp_config)?)
         .build_ptrace()?;
       let tracer = Arc::new(tracer);
       let tracer_thread = tracer.spawn(cmd, None, token);
       match format {
+        ExportFormat::OpenTelemetry => todo!(),
         ExportFormat::Json => {
           let mut json = export::Json {
             meta: JsonMetaData::new(baseline),

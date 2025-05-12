@@ -84,6 +84,28 @@ indexset = "0.12"
 chrono = "0.4.40"
 nutype = { version = "0.6.1", features = ["serde"] }
 humantime = "2.2.0"
+opentelemetry = "0.29.1"
+opentelemetry_sdk = "0.29.0"
+url = { version = "2.5.4", features = ["serde"] }
+mini-moka = "0.10.3"
+# This is a transitive dependency.
+# We just want to set its features
+zstd = { version = "*" }
+
+[dependencies.opentelemetry-otlp]
+version = "0.29.0"
+default-features = false
+features = [
+    "trace", # We are not using metrics and logs
+    # GRPC, use tonic and zstd compression with system trust roots
+    "grpc-tonic",
+    "zstd-tonic",
+    "tls-roots",
+    # HTTP, use reqwest and rustls with system trust roots
+    "http-proto",
+    "reqwest-blocking-client",
+    "reqwest-rustls",
+]
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 
@@ -99,7 +121,7 @@ libbpf-cargo = { version = "0.24.6", default-features = false }
 
 
 [features]
-default = ["recommended", "vendored-libbpf"]
+default = ["recommended", "vendored-libbpf", "dynamic-libzstd"]
 recommended = ["ebpf"]
 ebpf = ["dep:libbpf-rs", "dep:libbpf-sys"]
 # The ebpf-debug feature is not meant for end users.
@@ -113,6 +135,7 @@ ebpf-no-rcu-kfuncs = ["ebpf"] # Avoid using rcu helpers. Necessary for kernel ve
 static = ["libbpf-sys/static"]
 vendored = ["libbpf-sys/vendored", "vendored-libbpf"]
 vendored-libbpf = ["libbpf-sys/vendored-libbpf", "libbpf-cargo/default"]
+dynamic-libzstd = ["zstd/pkg-config"]
 
 [profile.dev]
 opt-level = 1

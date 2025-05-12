@@ -9,6 +9,7 @@ use crate::{
     options::SeccompBpf,
   },
   event::{TracerEventDetailsKind, TracerMessage},
+  otlp::tracer::OtlpTracer,
   printer::{Printer, PrinterArgs},
   proc::BaselineInfo,
   ptrace::InspectError,
@@ -29,6 +30,7 @@ pub struct TracerBuilder {
   pub(crate) mode: Option<TracerMode>,
   pub(crate) filter: Option<BitFlags<TracerEventDetailsKind>>,
   pub(crate) tx: Option<UnboundedSender<TracerMessage>>,
+  pub(crate) otlp: OtlpTracer,
   // TODO: remove this.
   pub(crate) printer: Option<Printer>,
   pub(crate) baseline: Option<Arc<BaselineInfo>>,
@@ -93,6 +95,11 @@ impl TracerBuilder {
     self
   }
 
+  pub fn otlp(mut self, otlp: OtlpTracer) -> Self {
+    self.otlp = otlp;
+    self
+  }
+
   pub fn printer(mut self, printer: Printer) -> Self {
     self.printer = Some(printer);
     self
@@ -148,6 +155,7 @@ impl ExecData {
   }
 }
 
+#[derive(Debug)]
 pub enum TracerMode {
   Tui(Option<UnixSlavePty>),
   Log { foreground: bool },

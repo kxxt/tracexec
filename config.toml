@@ -117,3 +117,44 @@
 
 # Decode errno of exec failure
 # decode_errno = true
+
+#
+# Config for OpenTelemetry
+#
+[otlp]
+
+# Enable the OpenTelemetry exporter
+# enable = false
+
+# Protocol for the OpenTelemetry exporter
+# Currently supported protocols are http and grpc
+# protocol = "http"
+
+# Endpoint of the OpenTelemetry collector (http)
+# TLS is supported and the system trust roots are honored.
+# http.endpoint = "http://127.0.0.1:4318"
+
+# Endpoint of the OpenTelemetry collector (grpc)
+# TLS is supported and the system trust roots are honored.
+# grpc.endpoint = "http://127.0.0.1:4317"
+
+# Service name to use
+# service_name = "tracexec"
+
+# Export values of environment variables
+# export.env = true
+
+# Export the environment variable diff
+# export.env_diff = false
+
+# Export information about file descriptors
+# export.fd = true
+
+# Export the file descriptor diff
+# export.fd_diff = false
+
+# Export the commandline
+# export.cmdline = false
+
+# Export the arguments
+# export.argv = true

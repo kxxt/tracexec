@@ -1,15 +1,20 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::{
   cache::ArcStr,
   event::{EventId, ParentTracker},
   tracer::{ExecData, ProcessExit},
 };
+use chrono::{DateTime, Local};
 use hashbrown::HashMap;
 use nix::unistd::Pid;
+use opentelemetry::{Context, trace::TraceContextExt};
 
 use crate::{proc::read_comm, ptrace::Signal};
 
 use super::BreakPointHit;
 
+#[derive(Debug)]
 pub struct ProcessStateStore {
   processes: HashMap<Pid, ProcessState>,
 }
@@ -37,12 +42,16 @@ pub struct ProcessState {
   pub presyscall: bool,
   pub is_exec_successful: bool,
   pub syscall: Syscall,
+  /// The timestamp of last exe
+  pub timestamp: Option<DateTime<Local>>,
   pub exec_data: Option<ExecData>,
   // Two kinds of parent: replace and fork.
   pub parent_tracker: ParentTracker,
   pub associated_events: Vec<EventId>,
   /// A pending detach request with a signal to send to the process
   pub pending_detach: Option<PendingDetach>,
+  /// The OTLP context for the last exec event of this process
+  pub otlp_ctx: Option<Rc<RefCell<Context>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,10 +107,18 @@ impl ProcessState {
       associated_events: Vec::new(),
       pending_detach: None,
       parent_tracker: ParentTracker::new(),
+      otlp_ctx: None,
+      timestamp: None,
     })
   }
 
   pub fn associate_event(&mut self, id: impl IntoIterator<Item = EventId>) {
     self.associated_events.extend(id);
+  }
+
+  pub fn teriminate_otlp_span(&self, timestamp: DateTime<Local>) {
+    if let Some(ctx) = &self.otlp_ctx {
+      ctx.borrow_mut().span().end_with_timestamp(timestamp.into());
+    }
   }
 }

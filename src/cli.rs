@@ -3,7 +3,7 @@ use std::{
   path::PathBuf,
 };
 
-use args::{DebuggerArgs, PtraceArgs, TuiModeArgs};
+use args::{DebuggerArgs, OpenTelemetryArgs, PtraceArgs, TuiModeArgs};
 use clap::{CommandFactory, Parser, Subcommand};
 use config::Config;
 use options::ExportFormat;
@@ -67,6 +67,8 @@ pub enum CliCommand {
     ptrace_args: PtraceArgs,
     #[clap(flatten)]
     tracer_event_args: TracerEventArgs,
+    #[clap(flatten)]
+    otlp_args: OpenTelemetryArgs,
     #[clap(
       short,
       long,
@@ -85,6 +87,8 @@ pub enum CliCommand {
     #[clap(flatten)]
     tracer_event_args: TracerEventArgs,
     #[clap(flatten)]
+    otlp_args: OpenTelemetryArgs,
+    #[clap(flatten)]
     tui_args: TuiModeArgs,
     #[clap(flatten)]
     debugger_args: DebuggerArgs,
@@ -100,6 +104,8 @@ pub enum CliCommand {
     cmd: Vec<String>,
     #[clap(flatten)]
     modifier_args: ModifierArgs,
+    #[clap(flatten)]
+    otlp_args: OpenTelemetryArgs,
     #[clap(flatten)]
     ptrace_args: PtraceArgs,
     #[clap(short = 'F', long, help = "the format for exported exec events")]

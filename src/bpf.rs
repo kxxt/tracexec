@@ -214,6 +214,7 @@ pub async fn main(
         running_tracer.run_until_exit();
       });
       match format {
+        ExportFormat::OpenTelemetry => todo!(),
         ExportFormat::Json => {
           let mut json = export::Json {
             meta: JsonMetaData::new(baseline.as_ref().to_owned()),

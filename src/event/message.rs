@@ -2,6 +2,7 @@ use std::{
   borrow::Cow,
   fmt::{Debug, Display},
   hash::Hash,
+  sync::Arc,
 };
 
 use crate::cache::ArcStr;

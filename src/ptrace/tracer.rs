@@ -2,6 +2,7 @@ use std::{
   collections::{BTreeMap, HashMap},
   fs::File,
   io::{self, Read, Write, stdin},
+  marker::PhantomData,
   ops::ControlFlow,
   os::fd::{AsRawFd, FromRawFd, OwnedFd},
   sync::{Arc, RwLock, atomic::AtomicU32},
@@ -11,6 +12,7 @@ use std::{
 use crate::{
   cache::ArcStr,
   event::ParentEventId,
+  otlp::tracer::OtlpTracer,
   timestamp::Timestamp,
   tracee,
   tracer::{ExecData, ProcessExit, TracerBuilder, TracerMode},
@@ -28,7 +30,11 @@ use nix::{
 use state::{PendingDetach, Syscall};
 use tokio::{
   select,
-  sync::mpsc::{UnboundedReceiver, UnboundedSender, error::SendError, unbounded_channel},
+  sync::{
+    mpsc::{UnboundedReceiver, UnboundedSender, error::SendError, unbounded_channel},
+    oneshot,
+  },
+  task::JoinHandle,
 };
 use tracing::{debug, error, info, trace, warn};
 
@@ -57,7 +63,10 @@ use crate::{
 
 use self::inspect::{read_string, read_string_array};
 use self::state::{ProcessState, ProcessStateStore, ProcessStatus};
-use super::breakpoint::{BreakPoint, BreakPointStop};
+use super::{
+  breakpoint::{BreakPoint, BreakPointStop},
+  engine::PhantomUnsend,
+};
 
 mod state;
 #[cfg(test)]
@@ -70,6 +79,20 @@ use super::BreakPointHit;
 use crate::cli::options::SeccompBpf;
 use crate::seccomp;
 
+/// PTRACE tracer implementation.
+///
+/// The public api is Sync but internal implementation uses a dedicated
+/// tokio blocking thread which uses !Sync data structures.
+///
+/// Implementation wise, The [`Tracer`]` is `!Send` once it is running.
+/// However, when it has not started yet, we can move it to another thread.
+/// (In `spawn` with a Send wrapper)
+///
+/// But from a user's perspective, [`TracerBuilder::build_ptrace`] returns a
+/// [`SpawnToken`] to restrict that a tracer can only spawn once. And the user
+/// can call the public API of [`Tracer`] on arbitrary thread.
+/// So [`Arc<Tracer>`] should be [`Send`].
+#[derive(Debug)]
 pub struct Tracer {
   with_tty: bool,
   mode: TracerMode,
@@ -84,7 +107,10 @@ pub struct Tracer {
   breakpoints: RwLock<BTreeMap<u32, BreakPoint>>,
   req_tx: UnboundedSender<PendingRequest>,
   delay: Duration,
+  otlp: OtlpTracer,
 }
+
+unsafe impl Sync for Tracer {}
 
 pub struct SpawnToken {
   req_rx: UnboundedReceiver<PendingRequest>,
@@ -150,6 +176,7 @@ impl TracerBuilder {
             .unwrap_or(default)
         },
         mode: self.mode.unwrap(),
+        otlp: self.otlp,
       },
       SpawnToken { req_rx, req_tx },
     ))
@@ -172,21 +199,28 @@ impl Tracer {
     args: Vec<String>,
     output: Option<Box<PrinterOut>>,
     token: SpawnToken,
-  ) -> tokio::task::JoinHandle<color_eyre::Result<()>> {
+  ) -> JoinHandle<color_eyre::Result<()>> {
     if !self.req_tx.same_channel(&token.req_tx) {
       panic!("The spawn token used does not match the tracer")
     }
     drop(token.req_tx);
+    #[derive(Debug)]
+    struct SendWrapper<T>(T);
+    unsafe impl<T> Send for SendWrapper<T> {}
+    let this = SendWrapper(self);
+    let (tx, rx) = oneshot::channel();
+    tx.send(this).unwrap();
     tokio::task::spawn_blocking({
       move || {
+        let this = rx.blocking_recv()?.0;
         unsafe {
           let current_thread = pthread_self();
           pthread_setname_np(current_thread, c"tracer".as_ptr());
         }
-        let tx = self.msg_tx.clone();
+        let tx = this.msg_tx.clone();
         let result = tokio::runtime::Handle::current().block_on(async move {
-          self.printer.init_thread_local(output);
-          self.run(args, token.req_rx).await
+          this.printer.init_thread_local(output);
+          this.run(args, token.req_rx).await
         });
         if let Err(e) = &result {
           tx.send(TracerMessage::FatalError(e.to_string())).unwrap();
@@ -547,6 +581,7 @@ impl Tracer {
           debug!("signaled: {pid}, {:?}", sig);
           let mut store = self.store.write().unwrap();
           if let Some(state) = store.get_current_mut(pid) {
+            state.teriminate_otlp_span(timestamp);
             state.status = ProcessStatus::Exited(ProcessExit::Signal(sig));
             let associated_events = state.associated_events.clone();
             if !associated_events.is_empty() {
@@ -579,6 +614,7 @@ impl Tracer {
           trace!("exited: pid {}, code {:?}", pid, code);
           let mut store = self.store.write().unwrap();
           if let Some(state) = store.get_current_mut(pid) {
+            state.teriminate_otlp_span(timestamp);
             state.status = ProcessStatus::Exited(ProcessExit::Code(code));
             let associated_events = state.associated_events.clone();
             if !associated_events.is_empty() {
@@ -725,6 +761,7 @@ impl Tracer {
         read_fds(pid)?,
         timestamp,
       ));
+      p.timestamp = Some(timestamp);
     } else if info.is_execve().unwrap() {
       p.syscall = Syscall::Execve;
       trace!("pre execve {syscallno}",);
@@ -754,6 +791,7 @@ impl Tracer {
         read_fds(pid)?,
         timestamp,
       ));
+      p.timestamp = Some(timestamp);
     } else {
       p.syscall = Syscall::Other;
     }
@@ -833,15 +871,25 @@ impl Tracer {
         }
         if self.filter.intersects(TracerEventDetailsKind::Exec) {
           let id = TracerEvent::allocate_id();
-          let parent = p.parent_tracker.update_last_exec(id, exec_result == 0);
-          let event = TracerEventDetails::Exec(Self::collect_exec_event(
+          let (parent, parent_ctx) = p.parent_tracker.update_last_exec(id, exec_result == 0);
+          let exec = Self::collect_exec_event(
             &self.baseline.env,
             p,
             exec_result,
             p.exec_data.as_ref().unwrap().timestamp,
             parent,
-          ))
-          .into_event_with_id(id);
+          );
+          if exec.result == 0 {
+            let ctx = self
+              .otlp
+              .new_exec_ctx(&exec, parent_ctx.as_ref().map(|v| v.borrow()));
+            p.otlp_ctx = ctx.clone();
+            p.parent_tracker.update_last_exec_ctx(ctx, exec.timestamp);
+          } else {
+            // TODO: generate an event on parent span
+          }
+
+          let event = TracerEventDetails::Exec(exec).into_event_with_id(id);
           p.associate_event([id]);
           self.msg_tx.send(event.into())?;
           self.printer.print_exec_trace(

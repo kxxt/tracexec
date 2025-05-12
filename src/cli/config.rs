@@ -16,6 +16,7 @@ pub struct Config {
   pub modifier: Option<ModifierConfig>,
   pub ptrace: Option<PtraceConfig>,
   pub debugger: Option<DebuggerConfig>,
+  pub otlp: Option<OpenTelemetryConfig>,
 }
 
 #[derive(Debug, Error)]
@@ -117,6 +118,36 @@ pub struct LogModeConfig {
   pub show_cwd: Option<bool>,
   pub show_cmdline: Option<bool>,
   pub decode_errno: Option<bool>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct OpenTelemetryConfig {
+  pub enable: Option<bool>,
+  pub protocol: Option<String>,
+  pub service_name: Option<String>,
+  pub http: Option<OtelHttpConfig>,
+  pub grpc: Option<OtelGrpcConfig>,
+  pub export: Option<OtelExportConfig>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct OtelHttpConfig {
+  pub endpoint: Option<String>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct OtelGrpcConfig {
+  pub endpoint: Option<String>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct OtelExportConfig {
+  pub env: Option<bool>,
+  pub env_diff: Option<bool>,
+  pub fd: Option<bool>,
+  pub fd_diff: Option<bool>,
+  pub cmdline: Option<bool>,
+  pub argv: Option<bool>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]

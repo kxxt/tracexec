@@ -1,7 +1,11 @@
 //! Code for locating the id of parent event of an event.
 
+use opentelemetry::{Context, trace::TraceContextExt};
+
+use crate::timestamp::Timestamp;
+
 use super::EventId;
-use std::fmt::Debug;
+use std::{cell::RefCell, fmt::Debug, rc::Rc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParentEvent<T> {
@@ -77,6 +81,10 @@ pub struct ParentTracker {
   parent_last_exec: Option<EventId>,
   /// The last exec event of this process
   last_exec: Option<EventId>,
+  /// OTLP context for the parent event recorded at fork time,
+  parent_last_exec_ctx: Option<Rc<RefCell<Context>>>,
+  /// OTLP context for the last exec event
+  last_exec_ctx: Option<Rc<RefCell<Context>>>,
 }
 
 impl ParentTracker {
@@ -86,22 +94,41 @@ impl ParentTracker {
 
   pub fn save_parent_last_exec(&mut self, parent: &Self) {
     self.parent_last_exec = parent.last_exec.or(parent.parent_last_exec);
+    self.parent_last_exec_ctx = parent
+      .last_exec_ctx
+      .as_ref()
+      .or(parent.parent_last_exec_ctx.as_ref())
+      .cloned();
   }
 
   /// Updates parent tracker with an exec event
-  /// and returns the parent event id of this exec event
-  pub fn update_last_exec(&mut self, id: EventId, successful: bool) -> Option<ParentEventId> {
-    let old_last_exec = if successful {
+  /// and returns the parent event id and otlp context of this exec event
+  pub fn update_last_exec(
+    &mut self,
+    id: EventId,
+    successful: bool,
+  ) -> (Option<ParentEventId>, Option<Rc<RefCell<Context>>>) {
+    let (old_last_exec, old_ctx) = if successful {
       self.successful_exec_count += 1;
-      self.last_exec.replace(id)
+      (self.last_exec.replace(id), self.last_exec_ctx.clone())
     } else {
-      self.last_exec
+      (self.last_exec, self.last_exec_ctx.clone())
     };
     if self.successful_exec_count >= 2 {
       // This is at least the second time of exec for this process
-      old_last_exec.map(ParentEvent::Become)
+      (old_last_exec.map(ParentEvent::Become), old_ctx)
     } else {
-      self.parent_last_exec.map(ParentEvent::Spawn)
+      (
+        self.parent_last_exec.map(ParentEvent::Spawn),
+        self.parent_last_exec_ctx.clone(),
+      )
     }
+  }
+
+  pub fn update_last_exec_ctx(&mut self, ctx: Option<Rc<RefCell<Context>>>, timestamp: Timestamp) {
+    if let Some(ctx) = self.last_exec_ctx.as_ref() {
+      ctx.borrow_mut().span().end_with_timestamp(timestamp.into());
+    }
+    self.last_exec_ctx = ctx;
   }
 }
