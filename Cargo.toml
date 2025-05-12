@@ -84,7 +84,7 @@ indexset = "0.12"
 chrono = "0.4.40"
 nutype = { version = "0.6.1", features = ["serde"] }
 humantime = "2.2.0"
-opentelemetry = "0.29.1"
+opentelemetry = { version = "0.29.1", features = ["futures"] }
 opentelemetry_sdk = "0.29.0"
 url = { version = "2.5.4", features = ["serde"] }
 mini-moka = "0.10.3"
@@ -108,6 +108,9 @@ features = [
 ]
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
+
+[patch.'crates-io']
+opentelemetry-proto = { version = "0.29", package = "tracexec-opentelemetry-proto", path = "../opentelemetry-rust/opentelemetry-proto" }
 
 [dev-dependencies]
 assert_cmd = "2.0.14"

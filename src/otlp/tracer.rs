@@ -112,7 +112,7 @@ impl OtlpTracer {
       .with_start_time(exec.timestamp)
       .with_attributes([
         KeyValue::new(
-          "resource.name",
+          "service.name",
           exec
             .argv
             .as_deref()
@@ -194,9 +194,20 @@ impl OtlpTracer {
             .iter()
             .map(|k| KeyValue::new(format!("exec.env_diff.removed.{k}"), true)),
         );
+      } else {
+
       }
     }
     if self.export.fd_diff {}
+    // span.set_attribute(KeyValue::new(
+    //   "_service.name",
+    //   exec
+    //     .argv
+    //     .as_deref()
+    //     .ok()
+    //     .and_then(|v| v.first())
+    //     .unwrap_or(&exec.filename),
+    // ));
     Some(Rc::new(RefCell::new(Context::current_with_span(span))))
   }
 }
