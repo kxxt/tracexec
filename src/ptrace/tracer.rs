@@ -645,7 +645,7 @@ impl Tracer {
         PtraceWaitPidEvent::Continued(_) => unreachable!(),
         PtraceWaitPidEvent::StillAlive => break,
       }
-      if counter > 100 {
+      if counter > 10000 {
         // Give up if we have handled 100 events, so that we have a chance to handle other events
         debug!("yielding after 100 events");
         break;
@@ -868,6 +868,7 @@ impl Tracer {
         if self.filter.intersects(TracerEventDetailsKind::Exec) {
           let id = TracerEvent::allocate_id();
           let (parent, parent_ctx) = p.parent_tracker.update_last_exec(id, exec_result == 0);
+          let parent_ctx = parent_ctx.or_else(|| self.otlp.root_ctx());
           let exec = Self::collect_exec_event(
             &self.baseline.env,
             p,

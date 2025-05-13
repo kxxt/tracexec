@@ -146,7 +146,7 @@ async fn main() -> color_eyre::Result<()> {
         .seccomp_bpf(ptrace_args.seccomp_bpf)
         .ptrace_polling_delay(ptrace_args.tracer_delay)
         .printer_from_cli(&tracing_args)
-        .otlp(OtlpTracer::new(otlp_config)?)
+        .otlp(otlp_config)?
         .build_ptrace()?;
       let tracer = Arc::new(tracer);
       let tracer_thread = tracer.spawn(cmd, Some(output), token);
@@ -224,7 +224,7 @@ async fn main() -> color_eyre::Result<()> {
         .seccomp_bpf(ptrace_args.seccomp_bpf)
         .ptrace_polling_delay(ptrace_args.tracer_delay)
         .printer_from_cli(&tracing_args)
-        .otlp(OtlpTracer::new(otlp_config)?)
+        .otlp(otlp_config)?
         .build_ptrace()?;
       let tracer = Arc::new(tracer);
 
@@ -292,7 +292,7 @@ async fn main() -> color_eyre::Result<()> {
         .seccomp_bpf(ptrace_args.seccomp_bpf)
         .ptrace_polling_delay(ptrace_args.tracer_delay)
         .printer_from_cli(&tracing_args)
-        .otlp(OtlpTracer::new(otlp_config)?)
+        .otlp(otlp_config)?
         .build_ptrace()?;
       let tracer = Arc::new(tracer);
       let tracer_thread = tracer.spawn(cmd, None, token);

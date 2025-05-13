@@ -1,5 +1,7 @@
 use std::{
+  borrow::Cow,
   cell::{Ref, RefCell},
+  collections::BTreeMap,
   rc::Rc,
 };
 
@@ -19,7 +21,7 @@ use opentelemetry_sdk::{
 use crate::{
   cache::ArcStr,
   event::{ExecEvent, OutputMsg},
-  proc::Interpreter,
+  proc::{BaselineInfo, FileDescriptorInfoCollection, Interpreter},
 };
 
 use super::{OtlpConfig, OtlpExport, OtlpProtocolConfig, OtlpSpanEndAt};
@@ -29,12 +31,21 @@ pub struct OtlpTracer {
   inner: Option<OtlpTracerInner>,
   export: OtlpExport,
   span_end_at: OtlpSpanEndAt,
+  root_ctx: Option<Rc<RefCell<Context>>>,
 }
 
 #[derive(Debug)]
 pub struct OtlpTracerInner {
   provider: SdkTracerProvider,
   tracer: BoxedTracer,
+}
+
+impl Drop for OtlpTracer {
+  fn drop(&mut self) {
+    if let Some(ctx) = &self.root_ctx {
+      ctx.borrow_mut().span().end();
+    }
+  }
 }
 
 impl Drop for OtlpTracerInner {
@@ -47,7 +58,7 @@ impl Drop for OtlpTracerInner {
 }
 
 impl OtlpTracer {
-  pub fn new(config: OtlpConfig) -> color_eyre::Result<Self> {
+  pub fn new(config: OtlpConfig, baseline: &BaselineInfo) -> color_eyre::Result<Self> {
     let exporter = opentelemetry_otlp::SpanExporter::builder();
     let exporter = match config.enabled_protocol {
       Some(OtlpProtocolConfig::Grpc { endpoint }) => {
@@ -75,21 +86,21 @@ impl OtlpTracer {
           inner: None,
           export: config.export,
           span_end_at: config.span_end_at,
+          root_ctx: None,
         });
       }
     };
     let provider = {
-      let mut p = SdkTracerProvider::builder().with_span_limits(SpanLimits {
-        max_events_per_span: u32::MAX,
-        max_attributes_per_span: u32::MAX,
-        max_links_per_span: u32::MAX,
-        max_attributes_per_event: u32::MAX,
-        max_attributes_per_link: u32::MAX,
-      });
-      if let Some(serv_name) = config.service_name {
-        p = p.with_resource(Resource::builder().with_service_name(serv_name).build());
-      }
-      p.with_batch_exporter(exporter).build()
+      SdkTracerProvider::builder()
+        .with_span_limits(SpanLimits {
+          max_events_per_span: u32::MAX,
+          max_attributes_per_span: u32::MAX,
+          max_links_per_span: u32::MAX,
+          max_attributes_per_event: u32::MAX,
+          max_attributes_per_link: u32::MAX,
+        })
+        .with_batch_exporter(exporter)
+        .build()
     };
     let tracer = BoxedTracer::new(
       provider.boxed_tracer(
@@ -98,11 +109,42 @@ impl OtlpTracer {
           .build(),
       ),
     );
+
+    let serv_name = if let Some(serv_name) = config.service_name {
+      Cow::Owned(serv_name)
+    } else {
+      Cow::Borrowed("tracexec tracer")
+    };
+    let mut span = tracer.build(SpanBuilder::from_name(serv_name.clone()).with_attributes([
+      KeyValue::new("service.name", serv_name),
+      KeyValue::new("exec.cwd", &baseline.cwd),
+    ]));
+    span.set_attributes(Self::env_attrs(&baseline.env));
+
     Ok(Self {
       inner: Some(OtlpTracerInner { provider, tracer }),
       export: config.export,
       span_end_at: config.span_end_at,
+      root_ctx: Some(Rc::new(RefCell::new(Context::current_with_span(span)))),
     })
+  }
+
+  fn env_attrs(env: &BTreeMap<OutputMsg, OutputMsg>) -> impl IntoIterator<Item = KeyValue> {
+    env
+      .iter()
+      .map(|(k, v)| KeyValue::new(format!("exec.env.{k}"), v))
+  }
+
+  fn append_fd_attrs(fds: &FileDescriptorInfoCollection, span: &mut BoxedSpan) {
+    for (&fd, info) in fds.fdinfo.iter() {
+      span.set_attributes([
+        KeyValue::new(format!("exec.fd.{fd}"), &info.path),
+        KeyValue::new(format!("exec.fd.{fd}.pos"), info.pos as i64),
+        KeyValue::new(format!("exec.fd.{fd}.ino"), info.ino as i64),
+        KeyValue::new(format!("exec.fd.{fd}.mnt"), &info.mnt),
+        KeyValue::new(format!("exec.fd.{fd}.flags"), info.flags.bits() as i64),
+      ]);
+    }
   }
 
   /// Create a new exec context, optionally with a parent context
@@ -148,11 +190,7 @@ impl OtlpTracer {
     }
     if self.export.env {
       if let Ok(env) = exec.envp.as_ref() {
-        span.set_attributes(
-          env
-            .iter()
-            .map(|(k, v)| KeyValue::new(format!("exec.env.{k}"), v)),
-        );
+        span.set_attributes(Self::env_attrs(env));
       } else {
         span.set_attribute(KeyValue::new("warning.env", "Failed to inspect"));
       }
@@ -177,15 +215,7 @@ impl OtlpTracer {
       todo!()
     }
     if self.export.fd {
-      for (&fd, info) in exec.fdinfo.fdinfo.iter() {
-        span.set_attributes([
-          KeyValue::new(format!("exec.fd.{fd}"), &info.path),
-          KeyValue::new(format!("exec.fd.{fd}.pos"), info.pos as i64),
-          KeyValue::new(format!("exec.fd.{fd}.ino"), info.ino as i64),
-          KeyValue::new(format!("exec.fd.{fd}.mnt"), &info.mnt),
-          KeyValue::new(format!("exec.fd.{fd}.flags"), info.flags.bits() as i64),
-        ]);
-      }
+      Self::append_fd_attrs(&exec.fdinfo, &mut span);
     }
     if self.export.env_diff {
       if let Ok(diff) = exec.env_diff.as_ref() {
@@ -220,6 +250,10 @@ impl OtlpTracer {
 
   pub fn span_could_end_at_exec(&self) -> bool {
     self.span_end_at == OtlpSpanEndAt::Exec
+  }
+
+  pub fn root_ctx(&self) -> Option<Rc<RefCell<Context>>> {
+    self.root_ctx.clone()
   }
 }
 

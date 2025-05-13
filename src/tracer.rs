@@ -9,7 +9,7 @@ use crate::{
     options::SeccompBpf,
   },
   event::{TracerEventDetailsKind, TracerMessage},
-  otlp::tracer::OtlpTracer,
+  otlp::{OtlpConfig, tracer::OtlpTracer},
   printer::{Printer, PrinterArgs},
   proc::BaselineInfo,
   ptrace::InspectError,
@@ -95,9 +95,15 @@ impl TracerBuilder {
     self
   }
 
-  pub fn otlp(mut self, otlp: OtlpTracer) -> Self {
-    self.otlp = otlp;
-    self
+  pub fn otlp(mut self, otlp: OtlpConfig) -> color_eyre::Result<Self> {
+    self.otlp = OtlpTracer::new(
+      otlp,
+      &self
+        .baseline
+        .as_ref()
+        .expect("baseline needs to be set before setting otlp"),
+    )?;
+    Ok(self)
   }
 
   pub fn printer(mut self, printer: Printer) -> Self {
