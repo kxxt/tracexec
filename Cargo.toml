@@ -103,7 +103,8 @@ features = [
     "tls-roots",
     # HTTP, use reqwest and rustls with system trust roots
     "http-proto",
-    "reqwest-blocking-client",
+    # "reqwest-blocking-client",
+    "reqwest-client",
     "reqwest-rustls",
 ]
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
