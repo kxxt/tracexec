@@ -9,6 +9,7 @@ use opentelemetry::{
 };
 use opentelemetry_otlp::{Protocol, WithExportConfig};
 use opentelemetry_sdk::Resource;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
@@ -27,6 +28,17 @@ pub mod tracer;
   validate(with = validate_otlp_exporter, error = std::borrow::Cow<'static,str> ),
 )]
 struct OtlpExporter(Url);
+
+#[derive(Debug, Clone, ValueEnum, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[clap(rename_all = "kebab_case")]
+#[serde(rename_all = "kebab-case")]
+pub enum OtlpSpanEndAt {
+  /// If an exec event tears down the old program, end that span and start a new one
+  #[default]
+  Exec,
+  /// Only end the span when the process exits
+  Exit,
+}
 
 #[derive(Debug, Clone, ValueEnum)]
 #[clap(rename_all = "kebab_case")]
@@ -48,6 +60,7 @@ pub struct OtlpConfig {
   pub enabled_protocol: Option<OtlpProtocolConfig>,
   pub service_name: Option<String>,
   pub export: OtlpExport,
+  pub span_end_at: OtlpSpanEndAt,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -96,10 +109,15 @@ impl OtlpConfig {
       cmdline: fallback!(cli, config, cmdline, false),
       argv: fallback!(cli, config, argv, true),
     };
+    let span_end_at = cli
+      .otlp_span_end_at
+      .or(config.span_end_at)
+      .unwrap_or_default();
     Self {
       enabled_protocol,
       service_name,
       export,
+      span_end_at,
     }
   }
 }
@@ -108,5 +126,6 @@ fn validate_otlp_exporter(input: &Url) -> Result<(), Cow<'static, str>> {
   // match input.scheme() {
   //   // https://github.com/grpc/grpc/blob/master/doc/naming.md
   // }
-  todo!()
+  // todo!()
+  Ok(())
 }

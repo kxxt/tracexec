@@ -7,7 +7,7 @@ use enumflags2::BitFlags;
 use crate::{
   cli::config::{ColorLevel, EnvDisplay, FileDescriptorDisplay},
   event::TracerEventDetailsKind,
-  otlp::OtlpProtocol,
+  otlp::{OtlpProtocol, OtlpSpanEndAt},
   ptrace::BreakPoint,
   timestamp::TimestampFormat,
   tui::app::AppLayout,
@@ -505,6 +505,9 @@ pub struct OpenTelemetryArgs {
   pub otlp_endpoint: Option<String>,
   #[clap(long, help = "Set the service name to use for OpenTelemetry")]
   pub otlp_service_name: Option<String>,
+  // TODO: we need a better name for this
+  #[clap(long, help = "Set the possible span end point for OpenTelemetry")]
+  pub otlp_span_end_at: Option<OtlpSpanEndAt>,
   // Boolean flags
   #[clap(long, help = "Export values of environment variables to OpenTelemetry")]
   pub otlp_export_env: bool,

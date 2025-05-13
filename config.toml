@@ -141,6 +141,9 @@
 # Service name to use
 # service_name = "tracexec"
 
+# Set the possible span end point
+# span_end_point = "exec"
+
 # Export values of environment variables
 # export.env = true
 

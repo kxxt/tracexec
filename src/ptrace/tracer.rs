@@ -2,7 +2,6 @@ use std::{
   collections::{BTreeMap, HashMap},
   fs::File,
   io::{self, Read, Write, stdin},
-  marker::PhantomData,
   ops::ControlFlow,
   os::fd::{AsRawFd, FromRawFd, OwnedFd},
   sync::{Arc, RwLock, atomic::AtomicU32},
@@ -63,10 +62,7 @@ use crate::{
 
 use self::inspect::{read_string, read_string_array};
 use self::state::{ProcessState, ProcessStateStore, ProcessStatus};
-use super::{
-  breakpoint::{BreakPoint, BreakPointStop},
-  engine::PhantomUnsend,
-};
+use super::breakpoint::{BreakPoint, BreakPointStop};
 
 mod state;
 #[cfg(test)]
@@ -883,8 +879,16 @@ impl Tracer {
             let ctx = self
               .otlp
               .new_exec_ctx(&exec, parent_ctx.as_ref().map(|v| v.borrow()));
-            p.otlp_ctx = ctx.clone();
-            p.parent_tracker.update_last_exec_ctx(ctx, exec.timestamp);
+            if !self.otlp.span_could_end_at_exec() {
+              if let Some(ctx) = ctx.clone() {
+                p.otlp_ctxs.push(ctx);
+              }
+            }
+            p.parent_tracker.update_last_exec_ctx(
+              ctx,
+              exec.timestamp,
+              self.otlp.span_could_end_at_exec(),
+            );
           } else {
             // TODO: generate an event on parent span
           }

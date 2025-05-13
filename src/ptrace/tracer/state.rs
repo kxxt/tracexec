@@ -50,8 +50,8 @@ pub struct ProcessState {
   pub associated_events: Vec<EventId>,
   /// A pending detach request with a signal to send to the process
   pub pending_detach: Option<PendingDetach>,
-  /// The OTLP context for the last exec event of this process
-  pub otlp_ctx: Option<Rc<RefCell<Context>>>,
+  /// The OTLP context for all exec event of this process
+  pub otlp_ctxs: Vec<Rc<RefCell<Context>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,7 +107,7 @@ impl ProcessState {
       associated_events: Vec::new(),
       pending_detach: None,
       parent_tracker: ParentTracker::new(),
-      otlp_ctx: None,
+      otlp_ctxs: Vec::new(),
       timestamp: None,
     })
   }
@@ -117,7 +117,7 @@ impl ProcessState {
   }
 
   pub fn teriminate_otlp_span(&self, timestamp: DateTime<Local>) {
-    if let Some(ctx) = &self.otlp_ctx {
+    for ctx in &self.otlp_ctxs {
       ctx.borrow_mut().span().end_with_timestamp(timestamp.into());
     }
   }

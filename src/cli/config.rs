@@ -5,7 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
-use crate::{timestamp::TimestampFormat, tui::app::AppLayout};
+use crate::{otlp::OtlpSpanEndAt, timestamp::TimestampFormat, tui::app::AppLayout};
 
 use super::options::{ActivePane, SeccompBpf};
 
@@ -125,6 +125,7 @@ pub struct OpenTelemetryConfig {
   pub enable: Option<bool>,
   pub protocol: Option<String>,
   pub service_name: Option<String>,
+  pub span_end_at: Option<OtlpSpanEndAt>,
   pub http: Option<OtelHttpConfig>,
   pub grpc: Option<OtelGrpcConfig>,
   pub export: Option<OtelExportConfig>,

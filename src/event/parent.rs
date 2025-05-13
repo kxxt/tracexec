@@ -125,9 +125,16 @@ impl ParentTracker {
     }
   }
 
-  pub fn update_last_exec_ctx(&mut self, ctx: Option<Rc<RefCell<Context>>>, timestamp: Timestamp) {
+  pub fn update_last_exec_ctx(
+    &mut self,
+    ctx: Option<Rc<RefCell<Context>>>,
+    timestamp: Timestamp,
+    end_at_exec: bool,
+  ) {
     if let Some(ctx) = self.last_exec_ctx.as_ref() {
-      ctx.borrow_mut().span().end_with_timestamp(timestamp.into());
+      if end_at_exec {
+        ctx.borrow_mut().span().end_with_timestamp(timestamp.into());
+      }
     }
     self.last_exec_ctx = ctx;
   }

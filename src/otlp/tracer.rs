@@ -11,7 +11,10 @@ use opentelemetry::{
   trace::{Span, SpanBuilder, Status, TraceContextExt, Tracer},
 };
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{Resource, trace::SdkTracerProvider};
+use opentelemetry_sdk::{
+  Resource,
+  trace::{SdkTracerProvider, SpanLimits},
+};
 
 use crate::{
   cache::ArcStr,
@@ -19,12 +22,13 @@ use crate::{
   proc::Interpreter,
 };
 
-use super::{OtlpConfig, OtlpExport, OtlpProtocolConfig};
+use super::{OtlpConfig, OtlpExport, OtlpProtocolConfig, OtlpSpanEndAt};
 
 #[derive(Debug, Default)]
 pub struct OtlpTracer {
   inner: Option<OtlpTracerInner>,
   export: OtlpExport,
+  span_end_at: OtlpSpanEndAt,
 }
 
 #[derive(Debug)]
@@ -32,10 +36,6 @@ pub struct OtlpTracerInner {
   provider: SdkTracerProvider,
   tracer: BoxedTracer,
 }
-
-/// This is an unfortunate ugly hack because OpenTelemetry standard does not
-/// allow us to override the service name per span.
-pub struct OtlpProviderCache {}
 
 impl Drop for OtlpTracerInner {
   fn drop(&mut self) {
@@ -74,11 +74,18 @@ impl OtlpTracer {
         return Ok(Self {
           inner: None,
           export: config.export,
+          span_end_at: config.span_end_at,
         });
       }
     };
     let provider = {
-      let mut p = SdkTracerProvider::builder();
+      let mut p = SdkTracerProvider::builder().with_span_limits(SpanLimits {
+        max_events_per_span: u32::MAX,
+        max_attributes_per_span: u32::MAX,
+        max_links_per_span: u32::MAX,
+        max_attributes_per_event: u32::MAX,
+        max_attributes_per_link: u32::MAX,
+      });
       if let Some(serv_name) = config.service_name {
         p = p.with_resource(Resource::builder().with_service_name(serv_name).build());
       }
@@ -94,6 +101,7 @@ impl OtlpTracer {
     Ok(Self {
       inner: Some(OtlpTracerInner { provider, tracer }),
       export: config.export,
+      span_end_at: config.span_end_at,
     })
   }
 
@@ -195,7 +203,6 @@ impl OtlpTracer {
             .map(|k| KeyValue::new(format!("exec.env_diff.removed.{k}"), true)),
         );
       } else {
-
       }
     }
     if self.export.fd_diff {}
@@ -209,6 +216,10 @@ impl OtlpTracer {
     //     .unwrap_or(&exec.filename),
     // ));
     Some(Rc::new(RefCell::new(Context::current_with_span(span))))
+  }
+
+  pub fn span_could_end_at_exec(&self) -> bool {
+    self.span_end_at == OtlpSpanEndAt::Exec
   }
 }
 
