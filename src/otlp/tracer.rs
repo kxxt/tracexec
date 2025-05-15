@@ -28,7 +28,7 @@ use super::{OtlpConfig, OtlpExport, OtlpProtocolConfig, OtlpSpanEndAt};
 
 #[derive(Debug, Default)]
 pub struct OtlpTracer {
-  inner: Option<OtlpTracerInner>,
+  inner: RefCell<Option<OtlpTracerInner>>,
   export: OtlpExport,
   span_end_at: OtlpSpanEndAt,
   root_ctx: Option<Rc<RefCell<Context>>>,
@@ -83,7 +83,7 @@ impl OtlpTracer {
       }
       None => {
         return Ok(Self {
-          inner: None,
+          inner: RefCell::new(None),
           export: config.export,
           span_end_at: config.span_end_at,
           root_ctx: None,
@@ -122,7 +122,7 @@ impl OtlpTracer {
     span.set_attributes(Self::env_attrs(&baseline.env));
 
     Ok(Self {
-      inner: Some(OtlpTracerInner { provider, tracer }),
+      inner: RefCell::new(Some(OtlpTracerInner { provider, tracer })),
       export: config.export,
       span_end_at: config.span_end_at,
       root_ctx: Some(Rc::new(RefCell::new(Context::current_with_span(span)))),
@@ -147,13 +147,21 @@ impl OtlpTracer {
     }
   }
 
+  pub fn finalize(&self) {
+    drop(self.inner.borrow_mut().take());
+  }
+
   /// Create a new exec context, optionally with a parent context
   pub fn new_exec_ctx(
     &self,
     exec: &ExecEvent,
     ctx: Option<Ref<Context>>,
   ) -> Option<Rc<RefCell<Context>>> {
-    let Some(this) = &self.inner else {
+    if ctx.is_none() {
+      panic!("Should have a parent");
+    }
+    let this = self.inner.borrow();
+    let Some(this) = this.as_ref() else {
       return None;
     };
     let span_builder = this

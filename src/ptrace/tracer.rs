@@ -600,6 +600,7 @@ impl Tracer {
                 exit_code: 128 + sig.as_raw(),
               })
               .send_if_match(&self.msg_tx, self.filter)?;
+              self.otlp.finalize();
               return Ok(ControlFlow::Break(()));
             }
           }
@@ -633,6 +634,7 @@ impl Tracer {
                 exit_code: code,
               })
               .send_if_match(&self.msg_tx, self.filter)?;
+              self.otlp.finalize();
               true
             } else {
               false
