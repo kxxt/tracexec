@@ -245,6 +245,7 @@ impl ListPrinter {
   }
 }
 
+#[derive(Debug)]
 pub struct Printer {
   pub args: PrinterArgs,
   baseline: Arc<BaselineInfo>,

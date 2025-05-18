@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use itertools::{Itertools, chain};
@@ -14,7 +14,7 @@ use tui_widget_list::{ListBuilder, ListView};
 
 use crate::{
   action::{Action, ActivePopup},
-  ptrace::{BreakPoint, BreakPointPattern, BreakPointStop, BreakPointType, Tracer},
+  ptrace::{BreakPoint, BreakPointPattern, BreakPointStop, BreakPointType, RunningTracer},
 };
 
 use super::{
@@ -97,7 +97,7 @@ pub struct BreakPointManagerState {
   // between the tracer and the breakpoint manager. It's not trivial to store a LockGuard here.
   breakpoints: BTreeMap<u32, BreakPoint>,
   list_state: tui_widget_list::ListState,
-  tracer: Arc<Tracer>,
+  tracer: RunningTracer,
   editor: Option<tui_prompts::TextState<'static>>,
   /// The stop for the currently editing breakpoint
   stop: BreakPointStop,
@@ -172,7 +172,7 @@ impl BreakPointManager {
 }
 
 impl BreakPointManagerState {
-  pub fn new(tracer: Arc<Tracer>) -> Self {
+  pub fn new(tracer: RunningTracer) -> Self {
     let breakpoints = tracer.get_breakpoints();
     Self {
       breakpoints,

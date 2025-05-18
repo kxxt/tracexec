@@ -24,6 +24,7 @@ mod cmdbuilder;
 mod event;
 mod export;
 mod log;
+mod otel;
 mod primitives;
 mod printer;
 mod proc;
@@ -35,7 +36,7 @@ mod tracee;
 mod tracer;
 mod tui;
 
-use std::{io, os::unix::ffi::OsStrExt, process, sync::Arc};
+use std::{fmt::Display, io, os::unix::ffi::OsStrExt, process, sync::Arc};
 
 use atoi::atoi;
 use clap::Parser;
@@ -49,6 +50,8 @@ use color_eyre::eyre::{OptionExt, bail};
 
 use export::{JsonExecEvent, JsonMetaData};
 use nix::unistd::{Uid, User};
+use otel::OtelConfig;
+use owo_colors::OwoColorize;
 use serde::Serialize;
 use tokio::sync::mpsc;
 use tracer::TracerBuilder;
@@ -63,6 +66,14 @@ use crate::{
   tracer::TracerMode,
   tui::app::App,
 };
+
+fn handle_tracer_errors(errors: &[Vec<impl Display>]) {
+  for error in errors {
+    for line in error {
+      eprintln!("{}: {}", "error".red().bold(), line.white().bold());
+    }
+  }
+}
 
 #[tokio::main(worker_threads = 2)]
 async fn main() -> color_eyre::Result<()> {
@@ -106,9 +117,13 @@ async fn main() -> color_eyre::Result<()> {
       min_support_kver.0, min_support_kver.1
     );
   }
+  let mut otel_config = None;
   if !cli.no_profile {
     match Config::load(cli.profile.clone()) {
-      Ok(config) => cli.merge_config(config),
+      Ok(mut config) => {
+        std::mem::swap(&mut otel_config, &mut config.otel);
+        cli.merge_config(config)
+      }
       Err(ConfigLoadError::NotFound) => (),
       Err(e) => Err(e)?,
     };
@@ -121,9 +136,11 @@ async fn main() -> color_eyre::Result<()> {
       ptrace_args,
       tracer_event_args,
       output,
+      otel_args,
     } => {
       let modifier_args = modifier_args.processed();
-      let output = Cli::get_output(output, cli.color)?;
+      let otel_config = OtelConfig::from_cli_and_config(otel_args, otel_config.unwrap_or_default());
+      let output = Cli::get_output(output, cli.color, true)?;
       let baseline = BaselineInfo::new()?;
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
       let (tracer, token) = TracerBuilder::new()
@@ -138,9 +155,10 @@ async fn main() -> color_eyre::Result<()> {
         .seccomp_bpf(ptrace_args.seccomp_bpf)
         .ptrace_polling_delay(ptrace_args.tracer_delay)
         .printer_from_cli(&tracing_args)
+        .otel(otel_config)?
         .build_ptrace()?;
-      let tracer = Arc::new(tracer);
-      let tracer_thread = tracer.spawn(cmd, Some(output), token);
+      let (_tracer, tracer_thread) = tracer.spawn(cmd, Some(output), token)?;
+      let mut errors = Vec::new();
       loop {
         match tracer_rx.recv().await {
           Some(TracerMessage::Event(TracerEvent {
@@ -149,12 +167,17 @@ async fn main() -> color_eyre::Result<()> {
           })) => {
             tracing::debug!("Waiting for tracer thread to exit");
             tracer_thread.await??;
+            handle_tracer_errors(&errors);
             process::exit(exit_code);
+          }
+          Some(TracerMessage::Error(e)) => {
+            errors.push(e);
           }
           // channel closed abnormally.
           None | Some(TracerMessage::FatalError(_)) => {
             tracing::debug!("Waiting for tracer thread to exit");
             tracer_thread.await??;
+            handle_tracer_errors(&errors);
             process::exit(1);
           }
           _ => (),
@@ -168,8 +191,10 @@ async fn main() -> color_eyre::Result<()> {
       tracer_event_args,
       tui_args,
       debugger_args,
+      otel_args,
     } => {
       let modifier_args = modifier_args.processed();
+      let otel_config = OtelConfig::from_cli_and_config(otel_args, otel_config.unwrap_or_default());
       // Disable owo-colors when running TUI
       owo_colors::control::set_should_colorize(false);
       log::debug!(
@@ -213,10 +238,11 @@ async fn main() -> color_eyre::Result<()> {
         .seccomp_bpf(ptrace_args.seccomp_bpf)
         .ptrace_polling_delay(ptrace_args.tracer_delay)
         .printer_from_cli(&tracing_args)
+        .otel(otel_config)?
         .build_ptrace()?;
-      let tracer = Arc::new(tracer);
 
       let frame_rate = tui_args.frame_rate.unwrap_or(60.);
+      let (tracer, tracer_thread) = tracer.spawn(cmd, None, token)?;
       let mut app = App::new(
         Some(PTracer {
           tracer: tracer.clone(),
@@ -228,7 +254,6 @@ async fn main() -> color_eyre::Result<()> {
         baseline,
         pty_master,
       )?;
-      let tracer_thread = tracer.spawn(cmd, None, token);
       let mut tui = tui::Tui::new()?.frame_rate(frame_rate);
       tui.enter(tracer_rx)?;
       app.run(&mut tui).await?;
@@ -250,9 +275,11 @@ async fn main() -> color_eyre::Result<()> {
       pretty,
       foreground,
       no_foreground,
+      otel_args,
     } => {
       let modifier_args = modifier_args.processed();
-      let mut output = Cli::get_output(output, cli.color)?;
+      let otel_config = OtelConfig::from_cli_and_config(otel_args, otel_config.unwrap_or_default());
+      let mut output = Cli::get_output(output, cli.color, false)?;
       let tracing_args = LogModeArgs {
         show_cmdline: false,
         show_argv: true,
@@ -278,10 +305,12 @@ async fn main() -> color_eyre::Result<()> {
         .seccomp_bpf(ptrace_args.seccomp_bpf)
         .ptrace_polling_delay(ptrace_args.tracer_delay)
         .printer_from_cli(&tracing_args)
+        .otel(otel_config)?
         .build_ptrace()?;
-      let tracer = Arc::new(tracer);
-      let tracer_thread = tracer.spawn(cmd, None, token);
+      let (_tracer, tracer_thread) = tracer.spawn(cmd, None, token)?;
+      let mut errors = Vec::new();
       match format {
+        ExportFormat::OpenTelemetry => todo!(),
         ExportFormat::Json => {
           let mut json = export::Json {
             meta: JsonMetaData::new(baseline),
@@ -298,6 +327,7 @@ async fn main() -> color_eyre::Result<()> {
                 serialize_json_to_output(&mut output, &json, pretty)?;
                 output.write_all(b"\n")?;
                 output.flush()?;
+                handle_tracer_errors(&errors);
                 process::exit(exit_code);
               }
               Some(TracerMessage::Event(TracerEvent {
@@ -306,10 +336,14 @@ async fn main() -> color_eyre::Result<()> {
               })) => {
                 json.events.push(JsonExecEvent::new(id, *exec));
               }
+              Some(TracerMessage::Error(e)) => {
+                errors.push(e);
+              }
               // channel closed abnormally.
               None | Some(TracerMessage::FatalError(_)) => {
                 tracing::debug!("Waiting for tracer thread to exit");
                 tracer_thread.await??;
+                handle_tracer_errors(&errors);
                 process::exit(1);
               }
               _ => (),
@@ -326,6 +360,7 @@ async fn main() -> color_eyre::Result<()> {
               })) => {
                 tracing::debug!("Waiting for tracer thread to exit");
                 tracer_thread.await??;
+                handle_tracer_errors(&errors);
                 process::exit(exit_code);
               }
               Some(TracerMessage::Event(TracerEvent {
@@ -337,10 +372,14 @@ async fn main() -> color_eyre::Result<()> {
                 output.write_all(b"\n")?;
                 output.flush()?;
               }
+              Some(TracerMessage::Error(e)) => {
+                errors.push(e);
+              }
               // channel closed abnormally.
               None | Some(TracerMessage::FatalError(_)) => {
                 tracing::debug!("Waiting for tracer thread to exit");
                 tracer_thread.await??;
+                handle_tracer_errors(&errors);
                 process::exit(1);
               }
               _ => (),

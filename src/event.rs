@@ -1,4 +1,5 @@
 use std::{
+  borrow::Cow,
   collections::BTreeMap,
   fmt::Debug,
   sync::{Arc, atomic::AtomicU64},
@@ -49,6 +50,7 @@ pub enum TracerMessage {
   /// A state update is any event that doesn't need to show in logs or having
   /// its own line in event list.
   StateUpdate(ProcessStateUpdateEvent),
+  Error(Vec<Cow<'static, str>>),
   FatalError(String),
 }
 

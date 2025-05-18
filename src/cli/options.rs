@@ -37,6 +37,7 @@ pub enum ExportFormat {
   // https://jsonlines.org/
   JsonStream,
   Json,
+  OpenTelemetry,
   // https://clang.llvm.org/docs/JSONCompilationDatabase.html
   // CompileCommands,
 }

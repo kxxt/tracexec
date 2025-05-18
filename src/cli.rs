@@ -3,7 +3,7 @@ use std::{
   path::PathBuf,
 };
 
-use args::{DebuggerArgs, PtraceArgs, TuiModeArgs};
+use args::{DebuggerArgs, OpenTelemetryArgs, PtraceArgs, TuiModeArgs};
 use clap::{CommandFactory, Parser, Subcommand};
 use config::Config;
 use options::ExportFormat;
@@ -67,6 +67,8 @@ pub enum CliCommand {
     ptrace_args: PtraceArgs,
     #[clap(flatten)]
     tracer_event_args: TracerEventArgs,
+    #[clap(flatten)]
+    otel_args: OpenTelemetryArgs,
     #[clap(
       short,
       long,
@@ -85,6 +87,8 @@ pub enum CliCommand {
     #[clap(flatten)]
     tracer_event_args: TracerEventArgs,
     #[clap(flatten)]
+    otel_args: OpenTelemetryArgs,
+    #[clap(flatten)]
     tui_args: TuiModeArgs,
     #[clap(flatten)]
     debugger_args: DebuggerArgs,
@@ -101,16 +105,14 @@ pub enum CliCommand {
     #[clap(flatten)]
     modifier_args: ModifierArgs,
     #[clap(flatten)]
+    otel_args: OpenTelemetryArgs,
+    #[clap(flatten)]
     ptrace_args: PtraceArgs,
     #[clap(short = 'F', long, help = "the format for exported exec events")]
     format: ExportFormat,
     #[clap(short, long, help = "prettify the output if supported")]
     pretty: bool,
-    #[clap(
-      short,
-      long,
-      help = "Output, stderr by default. A single hyphen '-' represents stdout."
-    )]
+    #[clap(short, long, help = "Output, stdout by default.")]
     output: Option<PathBuf>,
     #[clap(
       long,
@@ -203,9 +205,14 @@ pub enum EbpfCommand {
 }
 
 impl Cli {
-  pub fn get_output(path: Option<PathBuf>, color: Color) -> std::io::Result<Box<PrinterOut>> {
+  pub fn get_output(
+    path: Option<PathBuf>,
+    color: Color,
+    default_stderr: bool,
+  ) -> std::io::Result<Box<PrinterOut>> {
     Ok(match path {
-      None => Box::new(stderr()),
+      None if default_stderr => Box::new(stderr()),
+      None => Box::new(stdout()),
       Some(ref x) if x.as_os_str() == "-" => Box::new(stdout()),
       Some(path) => {
         let file = std::fs::OpenOptions::new()

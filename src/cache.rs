@@ -15,6 +15,10 @@ impl ArcStr {
   pub fn as_str(&self) -> &str {
     &self.0
   }
+
+  pub fn clone_inner(&self) -> Arc<str> {
+    self.0.clone()
+  }
 }
 
 impl Deref for ArcStr {

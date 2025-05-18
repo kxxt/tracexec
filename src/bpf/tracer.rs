@@ -213,8 +213,8 @@ impl EbpfTracer {
             if self.filter.intersects(TracerEventDetailsKind::Exec) {
               let id = TracerEvent::allocate_id();
               let parent_tracker = tracker.parent_tracker_mut(pid).unwrap();
-              let parent = parent_tracker.update_last_exec(id, event.ret == 0);
-              let event = TracerEventDetails::Exec(Box::new(ExecEvent {
+              let (parent, parent_ctx) = parent_tracker.update_last_exec(id, event.ret == 0);
+              let exec = Box::new(ExecEvent {
                 timestamp: exec_data.timestamp,
                 pid,
                 cwd: exec_data.cwd.clone(),
@@ -232,8 +232,8 @@ impl EbpfTracer {
                 result: event.ret,
                 fdinfo: exec_data.fdinfo.clone(),
                 parent,
-              }))
-              .into_event_with_id(id);
+              });
+              let event = TracerEventDetails::Exec(exec).into_event_with_id(id);
               if follow_forks {
                 tracker.associate_events(pid, [event.id])
               } else {
