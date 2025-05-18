@@ -41,7 +41,7 @@ use crate::{
   event::{Event, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEventDetails, TracerMessage},
   printer::PrinterArgs,
   proc::BaselineInfo,
-  ptrace::Tracer,
+  ptrace::RunningTracer,
   pty::{PtySize, UnixMasterPty},
   tui::{error_popup::InfoPopupState, query::QueryKind},
 };
@@ -78,7 +78,7 @@ pub struct App {
   pub should_handle_internal_resize: bool,
   pub popup: Vec<ActivePopup>,
   pub active_experiments: Vec<&'static str>,
-  tracer: Option<Arc<Tracer>>,
+  tracer: Option<RunningTracer>,
   query_builder: Option<QueryBuilder>,
   breakpoint_manager: Option<BreakPointManagerState>,
   hit_manager_state: Option<HitManagerState>,
@@ -86,7 +86,7 @@ pub struct App {
 }
 
 pub struct PTracer {
-  pub tracer: Arc<Tracer>,
+  pub tracer: RunningTracer,
   pub debugger_args: DebuggerArgs,
 }
 

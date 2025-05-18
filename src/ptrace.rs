@@ -10,5 +10,5 @@ pub use breakpoint::*;
 pub use engine::RecursivePtraceEngine;
 pub use guards::*;
 pub use inspect::InspectError;
-pub use tracer::Tracer;
+pub use tracer::RunningTracer;
 pub use waitpid::*;

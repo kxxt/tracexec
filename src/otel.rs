@@ -5,10 +5,7 @@ use nutype::nutype;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::cli::{
-    args::OpenTelemetryArgs,
-    config::OpenTelemetryConfig,
-  };
+use crate::cli::{args::OpenTelemetryArgs, config::OpenTelemetryConfig};
 
 mod exporter_mux;
 pub mod tracer;
@@ -45,7 +42,7 @@ pub enum OtelProtocolConfig {
 
 /// Final Otel configuration with comblined options
 /// from command line and config file.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct OtelConfig {
   pub enabled_protocol: Option<OtelProtocolConfig>,
   pub service_name: Option<String>,
@@ -81,10 +78,14 @@ impl OtelConfig {
     let enabled_protocol = (!cli.disable_otel)
       .then(|| match cli.enable_otel {
         Some(OtelProtocol::Http) => Some(OtelProtocolConfig::Http {
-          endpoint: cli.otel_endpoint.or(config.http.and_then(|v| v.endpoint)),
+          endpoint: cli
+            .otel_endpoint
+            .or_else(|| config.http.and_then(|v| v.endpoint)),
         }),
         Some(OtelProtocol::Grpc) => Some(OtelProtocolConfig::Grpc {
-          endpoint: cli.otel_endpoint.or(config.grpc.and_then(|v| v.endpoint)),
+          endpoint: cli
+            .otel_endpoint
+            .or_else(|| config.grpc.and_then(|v| v.endpoint)),
         }),
         None => None,
       })

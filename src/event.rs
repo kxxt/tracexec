@@ -1,5 +1,8 @@
 use std::{
-  borrow::Cow, collections::BTreeMap, fmt::Debug, sync::{atomic::AtomicU64, Arc}
+  borrow::Cow,
+  collections::BTreeMap,
+  fmt::Debug,
+  sync::{Arc, atomic::AtomicU64},
 };
 
 use crate::{cache::ArcStr, timestamp::Timestamp};

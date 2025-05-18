@@ -157,9 +157,7 @@ impl OtelTracer {
     ctx: Option<Ref<Context>>,
   ) -> Option<Rc<RefCell<Context>>> {
     let this = self.inner.borrow();
-    let Some(this) = this.as_ref() else {
-      return None;
-    };
+    let this = this.as_ref()?;
     let span_builder = this
       .tracer
       .span_builder(exec.filename.to_string())
