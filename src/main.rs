@@ -140,7 +140,7 @@ async fn main() -> color_eyre::Result<()> {
     } => {
       let modifier_args = modifier_args.processed();
       let otlp_config = OtlpConfig::from_cli_and_config(otlp_args, otlp_config.unwrap_or_default());
-      let output = Cli::get_output(output, cli.color)?;
+      let output = Cli::get_output(output, cli.color, true)?;
       let baseline = BaselineInfo::new()?;
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
       let (tracer, token) = TracerBuilder::new()
@@ -281,7 +281,7 @@ async fn main() -> color_eyre::Result<()> {
     } => {
       let modifier_args = modifier_args.processed();
       let otlp_config = OtlpConfig::from_cli_and_config(otlp_args, otlp_config.unwrap_or_default());
-      let mut output = Cli::get_output(output, cli.color)?;
+      let mut output = Cli::get_output(output, cli.color, false)?;
       let tracing_args = LogModeArgs {
         show_cmdline: false,
         show_argv: true,
@@ -363,6 +363,7 @@ async fn main() -> color_eyre::Result<()> {
               })) => {
                 tracing::debug!("Waiting for tracer thread to exit");
                 tracer_thread.await??;
+                handle_tracer_errors(&errors);
                 process::exit(exit_code);
               }
               Some(TracerMessage::Event(TracerEvent {
@@ -374,10 +375,14 @@ async fn main() -> color_eyre::Result<()> {
                 output.write_all(b"\n")?;
                 output.flush()?;
               }
+              Some(TracerMessage::Error(e)) => {
+                errors.push(e);
+              }
               // channel closed abnormally.
               None | Some(TracerMessage::FatalError(_)) => {
                 tracing::debug!("Waiting for tracer thread to exit");
                 tracer_thread.await??;
+                handle_tracer_errors(&errors);
                 process::exit(1);
               }
               _ => (),

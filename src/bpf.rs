@@ -6,7 +6,7 @@ use std::{
   sync::{Arc, LazyLock, RwLock, atomic::Ordering},
 };
 
-use crate::{cache::ArcStr, tracer::TracerBuilder};
+use crate::{cache::ArcStr, handle_tracer_errors, tracer::TracerBuilder};
 use color_eyre::{Section, eyre::eyre};
 use enumflags2::BitFlag;
 use nix::unistd::User;
@@ -63,11 +63,12 @@ pub async fn main(
     } => {
       let modifier_args = modifier_args.processed();
       let baseline = Arc::new(BaselineInfo::new()?);
-      let output = Cli::get_output(output, color)?;
+      let output = Cli::get_output(output, color, true)?;
       let printer = Printer::new(
         PrinterArgs::from_cli(&log_args, &modifier_args),
         baseline.clone(),
       );
+      let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
       let tracer = TracerBuilder::new()
         .mode(TracerMode::Log {
           foreground: log_args.foreground(),
@@ -77,10 +78,38 @@ pub async fn main(
         .baseline(baseline)
         .user(user)
         .modifier(modifier_args)
+        .tracer_tx(tracer_tx)
         .build_ebpf();
-      let running_tracer = tracer.spawn(&cmd, obj, Some(output))?;
-      running_tracer.run_until_exit();
-      Ok(())
+      let tracer_thread = spawn_blocking(move || {
+        let running_tracer = tracer.spawn(&cmd, obj, Some(output))?;
+        running_tracer.run_until_exit();
+        Ok::<(), color_eyre::Report>(())
+      });
+      let mut errors = Vec::new();
+      loop {
+        match tracer_rx.recv().await {
+          Some(TracerMessage::Event(TracerEvent {
+            details: TracerEventDetails::TraceeExit { exit_code, .. },
+            ..
+          })) => {
+            tracing::debug!("Waiting for tracer thread to exit");
+            tracer_thread.await??;
+            handle_tracer_errors(&errors);
+            process::exit(exit_code);
+          }
+          Some(TracerMessage::Error(e)) => {
+            errors.push(e);
+          }
+          // channel closed abnormally.
+          None | Some(TracerMessage::FatalError(_)) => {
+            tracing::debug!("Waiting for tracer thread to exit");
+            tracer_thread.await??;
+            handle_tracer_errors(&errors);
+            process::exit(1);
+          }
+          _ => (),
+        }
+      }
     }
     EbpfCommand::Tui {
       cmd,
@@ -182,7 +211,7 @@ pub async fn main(
     } => {
       let modifier_args = modifier_args.processed();
       let baseline = Arc::new(BaselineInfo::new()?);
-      let mut output = Cli::get_output(output, color)?;
+      let mut output = Cli::get_output(output, color, false)?;
       let log_args = LogModeArgs {
         show_cmdline: false,
         show_argv: true,
@@ -213,6 +242,7 @@ pub async fn main(
       let tracer_thread = spawn_blocking(move || {
         running_tracer.run_until_exit();
       });
+      let mut errors = Vec::new();
       match format {
         ExportFormat::OpenTelemetry => todo!(),
         ExportFormat::Json => {
@@ -231,6 +261,7 @@ pub async fn main(
                 serialize_json_to_output(&mut output, &json, pretty)?;
                 output.write_all(b"\n")?;
                 output.flush()?;
+                handle_tracer_errors(&errors);
                 process::exit(exit_code);
               }
               Some(TracerMessage::Event(TracerEvent {
@@ -239,10 +270,14 @@ pub async fn main(
               })) => {
                 json.events.push(JsonExecEvent::new(id, *exec));
               }
+              Some(TracerMessage::Error(e)) => {
+                errors.push(e);
+              }
               // channel closed abnormally.
               None | Some(TracerMessage::FatalError(_)) => {
                 tracing::debug!("Waiting for tracer thread to exit");
                 tracer_thread.await?;
+                handle_tracer_errors(&errors);
                 process::exit(1);
               }
               _ => (),
@@ -263,6 +298,7 @@ pub async fn main(
               })) => {
                 tracing::debug!("Waiting for tracer thread to exit");
                 tracer_thread.await?;
+                handle_tracer_errors(&errors);
                 process::exit(exit_code);
               }
               Some(TracerMessage::Event(TracerEvent {
@@ -274,10 +310,14 @@ pub async fn main(
                 output.write_all(b"\n")?;
                 output.flush()?;
               }
+              Some(TracerMessage::Error(e)) => {
+                errors.push(e);
+              }
               // channel closed abnormally.
               None | Some(TracerMessage::FatalError(_)) => {
                 tracing::debug!("Waiting for tracer thread to exit");
                 tracer_thread.await?;
+                handle_tracer_errors(&errors);
                 process::exit(1);
               }
               _ => (),
