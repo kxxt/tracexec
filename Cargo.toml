@@ -77,7 +77,9 @@ libbpf-rs = { version = "0.25.0-beta.1", optional = true, default-features = fal
 # libbpf-sys exists here because we want to control its features
 libbpf-sys = { version = "1", optional = true, default-features = false }
 libseccomp = "0.4.0"
-weak-table = { version = "0.3.2", default-features = false, features = ["ahash"] }
+weak-table = { version = "0.3.2", default-features = false, features = [
+    "ahash",
+] }
 rand = "0.9"
 hashbrown = "0.15.2"
 indexset = "0.12"
@@ -95,6 +97,7 @@ zstd = { version = "*" }
 [dependencies.opentelemetry-otlp]
 version = "0.29.0"
 default-features = false
+package = "tracexec-opentelemetry-otlp"
 features = [
     "trace", # We are not using metrics and logs
     # GRPC, use tonic and zstd compression with system trust roots
@@ -109,9 +112,6 @@ features = [
 ]
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
-
-[patch.'crates-io']
-opentelemetry-proto = { version = "0.29", path = "../opentelemetry-rust/opentelemetry-proto" }
 
 [dev-dependencies]
 assert_cmd = "2.0.14"
@@ -135,7 +135,9 @@ ebpf = ["dep:libbpf-rs", "dep:libbpf-sys"]
 # Either cargo doesn't rebuild and run build.rs on feature flag change,
 # or some logic is wrong in build.rs
 ebpf-debug = ["ebpf"]
-ebpf-no-rcu-kfuncs = ["ebpf"] # Avoid using rcu helpers. Necessary for kernel version < 6.2
+ebpf-no-rcu-kfuncs = [
+    "ebpf",
+] # Avoid using rcu helpers. Necessary for kernel version < 6.2
 static = ["libbpf-sys/static"]
 vendored = ["libbpf-sys/vendored", "vendored-libbpf"]
 vendored-libbpf = ["libbpf-sys/vendored-libbpf", "libbpf-cargo/default"]
