@@ -5,16 +5,15 @@ use std::{
   rc::Rc,
 };
 
-use itertools::{Itertools, chain};
-use nix::libc::ENOENT;
+use itertools::Itertools;
 use opentelemetry::{
   Context, InstrumentationScope, KeyValue, StringValue, Value,
-  global::{BoxedSpan, BoxedTracer, ObjectSafeTracer, ObjectSafeTracerProvider},
-  trace::{Span, SpanBuilder, Status, TraceContextExt, Tracer},
+  global::{BoxedSpan, BoxedTracer, ObjectSafeTracerProvider},
+  trace::{Span, SpanBuilder, TraceContextExt, Tracer},
 };
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
-  Resource,
+  error::OTelSdkResult,
   trace::{SdkTracerProvider, SpanLimits},
 };
 
@@ -31,29 +30,24 @@ pub struct OtlpTracer {
   inner: RefCell<Option<OtlpTracerInner>>,
   export: OtlpExport,
   span_end_at: OtlpSpanEndAt,
-  root_ctx: Option<Rc<RefCell<Context>>>,
 }
 
 #[derive(Debug)]
+/// The [`OtlpTracerInner`] needs manual shutdown.
+///
+/// It is not implemented with [`Drop`] because
+/// in drop we cannot properly handle the error.
 pub struct OtlpTracerInner {
   provider: SdkTracerProvider,
   tracer: BoxedTracer,
+  root_ctx: Rc<RefCell<Context>>,
 }
 
-impl Drop for OtlpTracer {
-  fn drop(&mut self) {
-    if let Some(ctx) = &self.root_ctx {
-      ctx.borrow_mut().span().end();
-    }
-  }
-}
-
-impl Drop for OtlpTracerInner {
-  fn drop(&mut self) {
-    self
-      .provider
-      .shutdown()
-      .expect("Failed to shutdown OpenTelemetry provider")
+impl OtlpTracerInner {
+  fn shutdown(&self) -> OTelSdkResult {
+    self.root_ctx.borrow().span().end();
+    self.provider.shutdown()?;
+    Ok(())
   }
 }
 
@@ -86,7 +80,6 @@ impl OtlpTracer {
           inner: RefCell::new(None),
           export: config.export,
           span_end_at: config.span_end_at,
-          root_ctx: None,
         });
       }
     };
@@ -122,10 +115,13 @@ impl OtlpTracer {
     span.set_attributes(Self::env_attrs(&baseline.env));
 
     Ok(Self {
-      inner: RefCell::new(Some(OtlpTracerInner { provider, tracer })),
+      inner: RefCell::new(Some(OtlpTracerInner {
+        provider,
+        tracer,
+        root_ctx: Rc::new(RefCell::new(Context::current_with_span(span))),
+      })),
       export: config.export,
       span_end_at: config.span_end_at,
-      root_ctx: Some(Rc::new(RefCell::new(Context::current_with_span(span)))),
     })
   }
 
@@ -147,8 +143,11 @@ impl OtlpTracer {
     }
   }
 
-  pub fn finalize(&self) {
-    drop(self.inner.borrow_mut().take());
+  pub fn finalize(&self) -> OTelSdkResult {
+    if let Some(inner) = self.inner.borrow_mut().take() {
+      inner.shutdown()?;
+    }
+    Ok(())
   }
 
   /// Create a new exec context, optionally with a parent context
@@ -157,9 +156,6 @@ impl OtlpTracer {
     exec: &ExecEvent,
     ctx: Option<Ref<Context>>,
   ) -> Option<Rc<RefCell<Context>>> {
-    if ctx.is_none() {
-      panic!("Should have a parent");
-    }
     let this = self.inner.borrow();
     let Some(this) = this.as_ref() else {
       return None;
@@ -207,13 +203,7 @@ impl OtlpTracer {
       if let Ok(argv) = exec.argv.as_ref() {
         span.set_attribute(KeyValue::new(
           "exec.argv",
-          Value::Array(
-            argv
-              .iter()
-              .map(|v| StringValue::from(v))
-              .collect_vec()
-              .into(),
-          ),
+          Value::Array(argv.iter().map(StringValue::from).collect_vec().into()),
         ));
       } else {
         span.set_attribute(KeyValue::new("warning.argv", "Failed to inspect"));
@@ -240,10 +230,9 @@ impl OtlpTracer {
             .iter()
             .map(|k| KeyValue::new(format!("exec.env_diff.removed.{k}"), true)),
         );
-      } else {
       }
     }
-    if self.export.fd_diff {}
+
     // span.set_attribute(KeyValue::new(
     //   "_service.name",
     //   exec
@@ -261,7 +250,7 @@ impl OtlpTracer {
   }
 
   pub fn root_ctx(&self) -> Option<Rc<RefCell<Context>>> {
-    self.root_ctx.clone()
+    self.inner.borrow().as_ref().map(|e| e.root_ctx.clone())
   }
 }
 
@@ -298,10 +287,10 @@ impl From<&ArcStr> for opentelemetry::Value {
 impl Interpreter {
   pub fn as_trace(&self) -> StringValue {
     match self {
-      Interpreter::None => "none".into(),
-      Interpreter::Shebang(arc_str) => arc_str.clone_inner().into(),
-      Interpreter::ExecutableUnaccessible => "err: inaccessible".into(),
-      Interpreter::Error(arc_str) => format!("err: {arc_str}").into(),
+      Self::None => "none".into(),
+      Self::Shebang(arc_str) => arc_str.clone_inner().into(),
+      Self::ExecutableUnaccessible => "err: inaccessible".into(),
+      Self::Error(arc_str) => format!("err: {arc_str}").into(),
     }
   }
 }

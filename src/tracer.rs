@@ -98,7 +98,7 @@ impl TracerBuilder {
   pub fn otlp(mut self, otlp: OtlpConfig) -> color_eyre::Result<Self> {
     self.otlp = OtlpTracer::new(
       otlp,
-      &self
+      self
         .baseline
         .as_ref()
         .expect("baseline needs to be set before setting otlp"),

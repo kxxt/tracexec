@@ -36,7 +36,7 @@ mod tracee;
 mod tracer;
 mod tui;
 
-use std::{io, os::unix::ffi::OsStrExt, process, sync::Arc};
+use std::{fmt::Display, io, os::unix::ffi::OsStrExt, process, sync::Arc};
 
 use atoi::atoi;
 use clap::Parser;
@@ -50,7 +50,8 @@ use color_eyre::eyre::{OptionExt, bail};
 
 use export::{JsonExecEvent, JsonMetaData};
 use nix::unistd::{Uid, User};
-use otlp::{OtlpConfig, tracer::OtlpTracer};
+use otlp::OtlpConfig;
+use owo_colors::OwoColorize;
 use serde::Serialize;
 use tokio::sync::mpsc;
 use tracer::TracerBuilder;
@@ -65,6 +66,14 @@ use crate::{
   tracer::TracerMode,
   tui::app::App,
 };
+
+fn handle_tracer_errors(errors: &[Vec<impl Display>]) {
+  for error in errors {
+    for line in error {
+      eprintln!("{}: {}", "error".red().bold(), line.white().bold());
+    }
+  }
+}
 
 #[tokio::main(worker_threads = 2)]
 async fn main() -> color_eyre::Result<()> {
@@ -150,6 +159,7 @@ async fn main() -> color_eyre::Result<()> {
         .build_ptrace()?;
       let tracer = Arc::new(tracer);
       let tracer_thread = tracer.spawn(cmd, Some(output), token);
+      let mut errors = Vec::new();
       loop {
         match tracer_rx.recv().await {
           Some(TracerMessage::Event(TracerEvent {
@@ -158,12 +168,17 @@ async fn main() -> color_eyre::Result<()> {
           })) => {
             tracing::debug!("Waiting for tracer thread to exit");
             tracer_thread.await??;
+            handle_tracer_errors(&errors);
             process::exit(exit_code);
+          }
+          Some(TracerMessage::Error(e)) => {
+            errors.push(e);
           }
           // channel closed abnormally.
           None | Some(TracerMessage::FatalError(_)) => {
             tracing::debug!("Waiting for tracer thread to exit");
             tracer_thread.await??;
+            handle_tracer_errors(&errors);
             process::exit(1);
           }
           _ => (),
@@ -296,6 +311,7 @@ async fn main() -> color_eyre::Result<()> {
         .build_ptrace()?;
       let tracer = Arc::new(tracer);
       let tracer_thread = tracer.spawn(cmd, None, token);
+      let mut errors = Vec::new();
       match format {
         ExportFormat::OpenTelemetry => todo!(),
         ExportFormat::Json => {
@@ -314,6 +330,7 @@ async fn main() -> color_eyre::Result<()> {
                 serialize_json_to_output(&mut output, &json, pretty)?;
                 output.write_all(b"\n")?;
                 output.flush()?;
+                handle_tracer_errors(&errors);
                 process::exit(exit_code);
               }
               Some(TracerMessage::Event(TracerEvent {
@@ -322,10 +339,14 @@ async fn main() -> color_eyre::Result<()> {
               })) => {
                 json.events.push(JsonExecEvent::new(id, *exec));
               }
+              Some(TracerMessage::Error(e)) => {
+                errors.push(e);
+              }
               // channel closed abnormally.
               None | Some(TracerMessage::FatalError(_)) => {
                 tracing::debug!("Waiting for tracer thread to exit");
                 tracer_thread.await??;
+                handle_tracer_errors(&errors);
                 process::exit(1);
               }
               _ => (),

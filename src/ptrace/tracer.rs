@@ -26,6 +26,7 @@ use nix::{
   sys::{ptrace::AddressType, stat::fstat, wait::WaitPidFlag},
   unistd::{Gid, Pid, Uid, User, getpid, tcsetpgrp},
 };
+use opentelemetry_sdk::error::OTelSdkError;
 use state::{PendingDetach, Syscall};
 use tokio::{
   select,
@@ -384,6 +385,14 @@ impl Tracer {
     root_child: Pid,
     pending_guards: &mut HashMap<Pid, PtraceStopGuard<'a>>,
   ) -> color_eyre::Result<ControlFlow<()>> {
+    let send_otel_tracer_shutdown_err_msg =
+      |tx: &UnboundedSender<TracerMessage>, e: OTelSdkError| {
+        tx.send(TracerMessage::Error(vec![
+          "Failed to shutdown OpenTelemetry tracer.".into(),
+          "The collected otel trace maybe incomplete.".into(),
+          format!("Error details: {e}").into(),
+        ]))
+      };
     let mut counter = 0;
     loop {
       let status = engine.next_event(Some(WaitPidFlag::__WALL | WaitPidFlag::WNOHANG))?;
@@ -594,13 +603,17 @@ impl Tracer {
               )?;
             }
             if pid == root_child {
+              if let Err(e) = self.otlp.finalize() {
+                // This should be before TraceeExit as the whole process might exit
+                // once we get there.
+                send_otel_tracer_shutdown_err_msg(&self.msg_tx, e)?;
+              }
               filterable_event!(TraceeExit {
                 timestamp,
                 signal: Some(sig),
                 exit_code: 128 + sig.as_raw(),
               })
               .send_if_match(&self.msg_tx, self.filter)?;
-              self.otlp.finalize();
               return Ok(ControlFlow::Break(()));
             }
           }
@@ -628,13 +641,17 @@ impl Tracer {
               )?;
             }
             let should_exit = if pid == root_child {
+              if let Err(e) = self.otlp.finalize() {
+                // This should be before TraceeExit as the whole process might exit
+                // once we get there.
+                send_otel_tracer_shutdown_err_msg(&self.msg_tx, e)?;
+              }
               filterable_event!(TraceeExit {
                 timestamp,
                 signal: None,
                 exit_code: code,
               })
               .send_if_match(&self.msg_tx, self.filter)?;
-              self.otlp.finalize();
               true
             } else {
               false

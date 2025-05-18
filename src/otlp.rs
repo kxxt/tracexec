@@ -1,24 +1,14 @@
-use std::{borrow::Cow, time::SystemTime};
+use std::borrow::Cow;
 
-use chrono::Utc;
 use clap::ValueEnum;
 use nutype::nutype;
-use opentelemetry::{
-  Context, KeyValue, global,
-  trace::{Span, SpanBuilder, TraceContextExt, Tracer},
-};
-use opentelemetry_otlp::{Protocol, WithExportConfig};
-use opentelemetry_sdk::Resource;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::{
-  cli::{
+use crate::cli::{
     args::OpenTelemetryArgs,
-    config::{OpenTelemetryConfig, OtelExportConfig},
-  },
-  export,
-};
+    config::OpenTelemetryConfig,
+  };
 
 mod exporter_mux;
 pub mod tracer;

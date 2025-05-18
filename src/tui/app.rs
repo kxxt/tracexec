@@ -425,6 +425,14 @@ impl App {
                   self.event_list.update(update);
                 }
               }
+              TracerMessage::Error(e) => {
+                action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
+                  InfoPopupState::error(
+                    "ERROR".to_string(),
+                    e.into_iter().map(|x| x.into()).collect(),
+                  ),
+                )));
+              }
               TracerMessage::FatalError(e) => {
                 action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
                   InfoPopupState::error(
