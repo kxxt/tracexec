@@ -11,7 +11,7 @@ use std::{
 use crate::{
   cache::ArcStr,
   event::ParentEventId,
-  otlp::tracer::OtlpTracer,
+  otel::tracer::OtelTracer,
   timestamp::Timestamp,
   tracee,
   tracer::{ExecData, ProcessExit, TracerBuilder, TracerMode},
@@ -104,7 +104,7 @@ pub struct Tracer {
   breakpoints: RwLock<BTreeMap<u32, BreakPoint>>,
   req_tx: UnboundedSender<PendingRequest>,
   delay: Duration,
-  otlp: OtlpTracer,
+  otel: OtelTracer,
 }
 
 unsafe impl Sync for Tracer {}
@@ -173,7 +173,7 @@ impl TracerBuilder {
             .unwrap_or(default)
         },
         mode: self.mode.unwrap(),
-        otlp: self.otlp,
+        otel: self.otel,
       },
       SpawnToken { req_rx, req_tx },
     ))
@@ -586,7 +586,7 @@ impl Tracer {
           debug!("signaled: {pid}, {:?}", sig);
           let mut store = self.store.write().unwrap();
           if let Some(state) = store.get_current_mut(pid) {
-            state.teriminate_otlp_span(timestamp);
+            state.teriminate_otel_span(timestamp);
             state.status = ProcessStatus::Exited(ProcessExit::Signal(sig));
             let associated_events = state.associated_events.clone();
             if !associated_events.is_empty() {
@@ -603,7 +603,7 @@ impl Tracer {
               )?;
             }
             if pid == root_child {
-              if let Err(e) = self.otlp.finalize() {
+              if let Err(e) = self.otel.finalize() {
                 // This should be before TraceeExit as the whole process might exit
                 // once we get there.
                 send_otel_tracer_shutdown_err_msg(&self.msg_tx, e)?;
@@ -624,7 +624,7 @@ impl Tracer {
           trace!("exited: pid {}, code {:?}", pid, code);
           let mut store = self.store.write().unwrap();
           if let Some(state) = store.get_current_mut(pid) {
-            state.teriminate_otlp_span(timestamp);
+            state.teriminate_otel_span(timestamp);
             state.status = ProcessStatus::Exited(ProcessExit::Code(code));
             let associated_events = state.associated_events.clone();
             if !associated_events.is_empty() {
@@ -641,7 +641,7 @@ impl Tracer {
               )?;
             }
             let should_exit = if pid == root_child {
-              if let Err(e) = self.otlp.finalize() {
+              if let Err(e) = self.otel.finalize() {
                 // This should be before TraceeExit as the whole process might exit
                 // once we get there.
                 send_otel_tracer_shutdown_err_msg(&self.msg_tx, e)?;
@@ -887,7 +887,7 @@ impl Tracer {
         if self.filter.intersects(TracerEventDetailsKind::Exec) {
           let id = TracerEvent::allocate_id();
           let (parent, parent_ctx) = p.parent_tracker.update_last_exec(id, exec_result == 0);
-          let parent_ctx = parent_ctx.or_else(|| self.otlp.root_ctx());
+          let parent_ctx = parent_ctx.or_else(|| self.otel.root_ctx());
           let exec = Self::collect_exec_event(
             &self.baseline.env,
             p,
@@ -897,17 +897,17 @@ impl Tracer {
           );
           if exec.result == 0 {
             let ctx = self
-              .otlp
+              .otel
               .new_exec_ctx(&exec, parent_ctx.as_ref().map(|v| v.borrow()));
-            if !self.otlp.span_could_end_at_exec() {
+            if !self.otel.span_could_end_at_exec() {
               if let Some(ctx) = ctx.clone() {
-                p.otlp_ctxs.push(ctx);
+                p.otel_ctxs.push(ctx);
               }
             }
             p.parent_tracker.update_last_exec_ctx(
               ctx,
               exec.timestamp,
-              self.otlp.span_could_end_at_exec(),
+              self.otel.span_could_end_at_exec(),
             );
           } else {
             // TODO: generate an event on parent span

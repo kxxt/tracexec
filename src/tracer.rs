@@ -9,7 +9,7 @@ use crate::{
     options::SeccompBpf,
   },
   event::{TracerEventDetailsKind, TracerMessage},
-  otlp::{OtlpConfig, tracer::OtlpTracer},
+  otel::{OtelConfig, tracer::OtelTracer},
   printer::{Printer, PrinterArgs},
   proc::BaselineInfo,
   ptrace::InspectError,
@@ -30,7 +30,7 @@ pub struct TracerBuilder {
   pub(crate) mode: Option<TracerMode>,
   pub(crate) filter: Option<BitFlags<TracerEventDetailsKind>>,
   pub(crate) tx: Option<UnboundedSender<TracerMessage>>,
-  pub(crate) otlp: OtlpTracer,
+  pub(crate) otel: OtelTracer,
   // TODO: remove this.
   pub(crate) printer: Option<Printer>,
   pub(crate) baseline: Option<Arc<BaselineInfo>>,
@@ -95,13 +95,13 @@ impl TracerBuilder {
     self
   }
 
-  pub fn otlp(mut self, otlp: OtlpConfig) -> color_eyre::Result<Self> {
-    self.otlp = OtlpTracer::new(
-      otlp,
+  pub fn otel(mut self, otel: OtelConfig) -> color_eyre::Result<Self> {
+    self.otel = OtelTracer::new(
+      otel,
       self
         .baseline
         .as_ref()
-        .expect("baseline needs to be set before setting otlp"),
+        .expect("baseline needs to be set before setting otel"),
     )?;
     Ok(self)
   }

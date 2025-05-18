@@ -68,7 +68,7 @@ pub enum CliCommand {
     #[clap(flatten)]
     tracer_event_args: TracerEventArgs,
     #[clap(flatten)]
-    otlp_args: OpenTelemetryArgs,
+    otel_args: OpenTelemetryArgs,
     #[clap(
       short,
       long,
@@ -87,7 +87,7 @@ pub enum CliCommand {
     #[clap(flatten)]
     tracer_event_args: TracerEventArgs,
     #[clap(flatten)]
-    otlp_args: OpenTelemetryArgs,
+    otel_args: OpenTelemetryArgs,
     #[clap(flatten)]
     tui_args: TuiModeArgs,
     #[clap(flatten)]
@@ -105,7 +105,7 @@ pub enum CliCommand {
     #[clap(flatten)]
     modifier_args: ModifierArgs,
     #[clap(flatten)]
-    otlp_args: OpenTelemetryArgs,
+    otel_args: OpenTelemetryArgs,
     #[clap(flatten)]
     ptrace_args: PtraceArgs,
     #[clap(short = 'F', long, help = "the format for exported exec events")]

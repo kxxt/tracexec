@@ -23,27 +23,27 @@ use crate::{
   proc::{BaselineInfo, FileDescriptorInfoCollection, Interpreter},
 };
 
-use super::{OtlpConfig, OtlpExport, OtlpProtocolConfig, OtlpSpanEndAt};
+use super::{OtelConfig, OtelExport, OtelProtocolConfig, OtelSpanEndAt};
 
 #[derive(Debug, Default)]
-pub struct OtlpTracer {
-  inner: RefCell<Option<OtlpTracerInner>>,
-  export: OtlpExport,
-  span_end_at: OtlpSpanEndAt,
+pub struct OtelTracer {
+  inner: RefCell<Option<OtelTracerInner>>,
+  export: OtelExport,
+  span_end_at: OtelSpanEndAt,
 }
 
 #[derive(Debug)]
-/// The [`OtlpTracerInner`] needs manual shutdown.
+/// The [`OtelTracerInner`] needs manual shutdown.
 ///
 /// It is not implemented with [`Drop`] because
 /// in drop we cannot properly handle the error.
-pub struct OtlpTracerInner {
+pub struct OtelTracerInner {
   provider: SdkTracerProvider,
   tracer: BoxedTracer,
   root_ctx: Rc<RefCell<Context>>,
 }
 
-impl OtlpTracerInner {
+impl OtelTracerInner {
   fn shutdown(&self) -> OTelSdkResult {
     self.root_ctx.borrow().span().end();
     self.provider.shutdown()?;
@@ -51,11 +51,11 @@ impl OtlpTracerInner {
   }
 }
 
-impl OtlpTracer {
-  pub fn new(config: OtlpConfig, baseline: &BaselineInfo) -> color_eyre::Result<Self> {
+impl OtelTracer {
+  pub fn new(config: OtelConfig, baseline: &BaselineInfo) -> color_eyre::Result<Self> {
     let exporter = opentelemetry_otlp::SpanExporter::builder();
     let exporter = match config.enabled_protocol {
-      Some(OtlpProtocolConfig::Grpc { endpoint }) => {
+      Some(OtelProtocolConfig::Grpc { endpoint }) => {
         let exporter = exporter.with_tonic();
         if let Some(endpoint) = endpoint {
           exporter.with_endpoint(endpoint)
@@ -64,7 +64,7 @@ impl OtlpTracer {
         }
         .build()?
       }
-      Some(OtlpProtocolConfig::Http { endpoint }) => {
+      Some(OtelProtocolConfig::Http { endpoint }) => {
         let exporter = exporter
           .with_http()
           .with_protocol(opentelemetry_otlp::Protocol::HttpBinary);
@@ -115,7 +115,7 @@ impl OtlpTracer {
     span.set_attributes(Self::env_attrs(&baseline.env));
 
     Ok(Self {
-      inner: RefCell::new(Some(OtlpTracerInner {
+      inner: RefCell::new(Some(OtelTracerInner {
         provider,
         tracer,
         root_ctx: Rc::new(RefCell::new(Context::current_with_span(span))),
@@ -246,7 +246,7 @@ impl OtlpTracer {
   }
 
   pub fn span_could_end_at_exec(&self) -> bool {
-    self.span_end_at == OtlpSpanEndAt::Exec
+    self.span_end_at == OtelSpanEndAt::Exec
   }
 
   pub fn root_ctx(&self) -> Option<Rc<RefCell<Context>>> {

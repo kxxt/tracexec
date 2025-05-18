@@ -5,7 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
-use crate::{otlp::OtlpSpanEndAt, timestamp::TimestampFormat, tui::app::AppLayout};
+use crate::{otel::OtelSpanEndAt, timestamp::TimestampFormat, tui::app::AppLayout};
 
 use super::options::{ActivePane, SeccompBpf};
 
@@ -16,7 +16,7 @@ pub struct Config {
   pub modifier: Option<ModifierConfig>,
   pub ptrace: Option<PtraceConfig>,
   pub debugger: Option<DebuggerConfig>,
-  pub otlp: Option<OpenTelemetryConfig>,
+  pub otel: Option<OpenTelemetryConfig>,
 }
 
 #[derive(Debug, Error)]
@@ -125,7 +125,7 @@ pub struct OpenTelemetryConfig {
   pub enable: Option<bool>,
   pub protocol: Option<String>,
   pub service_name: Option<String>,
-  pub span_end_at: Option<OtlpSpanEndAt>,
+  pub span_end_at: Option<OtelSpanEndAt>,
   pub http: Option<OtelHttpConfig>,
   pub grpc: Option<OtelGrpcConfig>,
   pub export: Option<OtelExportConfig>,

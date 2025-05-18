@@ -7,7 +7,7 @@ use enumflags2::BitFlags;
 use crate::{
   cli::config::{ColorLevel, EnvDisplay, FileDescriptorDisplay},
   event::TracerEventDetailsKind,
-  otlp::{OtlpProtocol, OtlpSpanEndAt},
+  otel::{OtelProtocol, OtelSpanEndAt},
   ptrace::BreakPoint,
   timestamp::TimestampFormat,
   tui::app::AppLayout,
@@ -498,69 +498,69 @@ pub struct OpenTelemetryArgs {
     short = 'X',
     help = "Enable OpenTelemetry exporter with the specified protocol"
   )]
-  pub enable_otlp: Option<OtlpProtocol>,
+  pub enable_otel: Option<OtelProtocol>,
   #[clap(long, help = "Disable OpenTelemetry exporter")]
-  pub disable_otlp: bool,
+  pub disable_otel: bool,
   #[clap(long, help = "Set the endpoint URI for OpenTelemetry collector")]
-  pub otlp_endpoint: Option<String>,
+  pub otel_endpoint: Option<String>,
   #[clap(long, help = "Set the service name to use for OpenTelemetry")]
-  pub otlp_service_name: Option<String>,
+  pub otel_service_name: Option<String>,
   // TODO: we need a better name for this
   #[clap(long, help = "Set the possible span end point for OpenTelemetry")]
-  pub otlp_span_end_at: Option<OtlpSpanEndAt>,
+  pub otel_span_end_at: Option<OtelSpanEndAt>,
   // Boolean flags
   #[clap(long, help = "Export values of environment variables to OpenTelemetry")]
-  pub otlp_export_env: bool,
+  pub otel_export_env: bool,
   #[clap(long, help = "Export environment variable diff to OpenTelemetry")]
-  pub otlp_export_env_diff: bool,
+  pub otel_export_env_diff: bool,
   #[clap(
     long,
     help = "Export information about file descriptors to OpenTelemetry"
   )]
-  pub otlp_export_fd: bool,
+  pub otel_export_fd: bool,
   #[clap(long, help = "Export file descriptor diff to OpenTelemetry")]
-  pub otlp_export_fd_diff: bool,
+  pub otel_export_fd_diff: bool,
   #[clap(long, help = "Export commandline to OpenTelemetry")]
-  pub otlp_export_cmdline: bool,
+  pub otel_export_cmdline: bool,
   #[clap(long, help = "Export argv to OpenTelemetry")]
-  pub otlp_export_argv: bool,
+  pub otel_export_argv: bool,
   // Negation of boolean flags
   #[clap(
     long,
     help = "Export values of environment variables to OpenTelemetry",
-    conflicts_with = "otlp_export_env"
+    conflicts_with = "otel_export_env"
   )]
-  pub otlp_no_export_env: bool,
+  pub otel_no_export_env: bool,
   #[clap(
     long,
     help = "Export environment variable diff to OpenTelemetry",
-    conflicts_with = "otlp_export_env_diff"
+    conflicts_with = "otel_export_env_diff"
   )]
-  pub otlp_no_export_env_diff: bool,
+  pub otel_no_export_env_diff: bool,
   #[clap(
     long,
     help = "Export information about file descriptors to OpenTelemetry",
-    conflicts_with = "otlp_export_fd"
+    conflicts_with = "otel_export_fd"
   )]
-  pub otlp_no_export_fd: bool,
+  pub otel_no_export_fd: bool,
   #[clap(
     long,
     help = "Export file descriptor diff to OpenTelemetry",
-    conflicts_with = "otlp_export_fd_diff"
+    conflicts_with = "otel_export_fd_diff"
   )]
-  pub otlp_no_export_fd_diff: bool,
+  pub otel_no_export_fd_diff: bool,
   #[clap(
     long,
     help = "Export commandline to OpenTelemetry",
-    conflicts_with = "otlp_export_cmdline"
+    conflicts_with = "otel_export_cmdline"
   )]
-  pub otlp_no_export_cmdline: bool,
+  pub otel_no_export_cmdline: bool,
   #[clap(
     long,
     help = "Export argv to OpenTelemetry",
-    conflicts_with = "otlp_export_argv"
+    conflicts_with = "otel_export_argv"
   )]
-  pub otlp_no_export_argv: bool,
+  pub otel_no_export_argv: bool,
 }
 
 impl TuiModeArgs {

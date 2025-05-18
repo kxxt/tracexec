@@ -81,9 +81,9 @@ pub struct ParentTracker {
   parent_last_exec: Option<EventId>,
   /// The last exec event of this process
   last_exec: Option<EventId>,
-  /// OTLP context for the parent event recorded at fork time,
+  /// OTEL trace context for the parent event recorded at fork time,
   parent_last_exec_ctx: Option<Rc<RefCell<Context>>>,
-  /// OTLP context for the last exec event
+  /// OTEL trace context for the last exec event
   last_exec_ctx: Option<Rc<RefCell<Context>>>,
 }
 
@@ -102,7 +102,7 @@ impl ParentTracker {
   }
 
   /// Updates parent tracker with an exec event
-  /// and returns the parent event id and otlp context of this exec event
+  /// and returns the parent event id and otel context of this exec event
   pub fn update_last_exec(
     &mut self,
     id: EventId,
