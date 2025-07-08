@@ -69,7 +69,7 @@ let
 
   initialRamdisk = makeInitrdNG {
     compressor = "gzip";
-    strip = false;
+    #strip = false;
     contents =
       map
         (path: {
