@@ -32,18 +32,16 @@ static LOG_ENV: LazyLock<String> =
   LazyLock::new(|| concat!(env!("CARGO_CRATE_NAME"), "_LOGLEVEL").to_uppercase());
 
 pub fn get_data_dir() -> PathBuf {
-  let directory = if let Some(s) =
-    std::env::var(concat!(env!("CARGO_CRATE_NAME"), "_DATA").to_uppercase())
-      .ok()
-      .map(PathBuf::from)
+  if let Some(s) = std::env::var(concat!(env!("CARGO_CRATE_NAME"), "_DATA").to_uppercase())
+    .ok()
+    .map(PathBuf::from)
   {
     s
   } else if let Some(proj_dirs) = project_directory() {
     proj_dirs.data_local_dir().to_path_buf()
   } else {
     PathBuf::from(".").join(".data")
-  };
-  directory
+  }
 }
 
 pub fn initialize_logging() -> Result<()> {

@@ -76,9 +76,9 @@ impl BreakPointPattern {
   pub fn to_editable(&self) -> String {
     match self {
       Self::ArgvRegex(regex) => format!("argv-regex:{}", regex.editable),
-      Self::InFilename(filename) => format!("in-filename:{}", filename),
+      Self::InFilename(filename) => format!("in-filename:{filename}"),
       Self::ExactFilename(filename) => {
-        format!("exact-filename:{}", filename)
+        format!("exact-filename:{filename}")
       }
     }
   }

@@ -132,7 +132,7 @@ impl super::TracerEventDetails {
         ts_formatter(*timestamp),
         Some(ppid.to_string().set_style(THEME.pid_success)),
         event_status.map(|s| <&'static str>::from(s).into()),
-        Some(format!("<{}>", pcomm).set_style(THEME.comm)),
+        Some(format!("<{pcomm}>").set_style(THEME.comm)),
         Some(": ".into()),
         Some("new child ".set_style(THEME.tracer_event)),
         Some(pid.to_string().set_style(THEME.new_child_pid)),
@@ -168,7 +168,7 @@ impl super::TracerEventDetails {
                 THEME.pid_failure
               })),
               event_status.map(|s| <&'static str>::from(s).into()),
-              Some(format!("<{}>", comm).set_style(THEME.comm)),
+              Some(format!("<{comm}>").set_style(THEME.comm)),
               Some(": ".into()),
               Some("env".set_style(THEME.tracer_event)),
             ]
@@ -278,18 +278,12 @@ impl super::TracerEventDetails {
         timestamp,
       } => chain!(
         ts_formatter(*timestamp),
-        Some(
-          format!(
-            "tracee exit: signal: {:?}, exit_code: {}",
-            signal, exit_code
-          )
-          .into()
-        )
+        Some(format!("tracee exit: signal: {signal:?}, exit_code: {exit_code}").into())
       )
       .collect(),
       Self::TraceeSpawn { pid, timestamp } => chain!(
         ts_formatter(*timestamp),
-        Some(format!("tracee spawned: {}", pid).into())
+        Some(format!("tracee spawned: {pid}").into())
       )
       .collect(),
     };
@@ -378,7 +372,7 @@ impl super::TracerEventDetails {
     }
     // Other targets are only available for Exec events
     let Self::Exec(event) = self else {
-      panic!("Copy target {:?} is only available for Exec events", target);
+      panic!("Copy target {target:?} is only available for Exec events");
     };
     let mut modifier_args = ModifierArgs::default();
     match target {
@@ -428,7 +422,7 @@ impl super::TracerEventDetails {
       CopyTarget::Env => match event.envp.as_ref() {
         Ok(envp) => envp
           .iter()
-          .map(|(k, v)| format!("{}={}", k, v))
+          .map(|(k, v)| format!("{k}={v}"))
           .join("\n")
           .into(),
         Err(e) => format!("[failed to read envp: {e}]").into(),
@@ -440,7 +434,7 @@ impl super::TracerEventDetails {
         let mut result = String::new();
         result.push_str("# Added:\n");
         for (k, v) in env_diff.added.iter() {
-          result.push_str(&format!("{}={}\n", k, v));
+          result.push_str(&format!("{k}={v}\n"));
         }
         result.push_str("# Modified: (original first)\n");
         for (k, v) in env_diff.modified.iter() {
@@ -493,7 +487,7 @@ impl super::TracerEventDetails {
           if idx != 0 {
             list_printer.comma(&mut result).unwrap();
           }
-          write!(result, "{}", interpreter).unwrap();
+          write!(result, "{interpreter}").unwrap();
         }
         list_printer.end(&mut result).unwrap();
       }
@@ -506,7 +500,7 @@ impl super::TracerEventDetails {
 impl Display for EventStatus {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     let icon: &str = <&'static str>::from(*self);
-    write!(f, "{} ", icon)?;
+    write!(f, "{icon} ")?;
     use EventStatus::*;
     match self {
       ExecENOENT | ExecFailure => write!(
@@ -521,8 +515,8 @@ impl Display for EventStatus {
       ProcessKilled => write!(f, "Killed")?,
       ProcessInterrupted => write!(f, "Interrupted")?,
       ProcessExitedNormally => write!(f, "Exited(0)")?,
-      ProcessExitedAbnormally(code) => write!(f, "Exited({})", code)?,
-      ProcessSignaled(signal) => write!(f, "Signaled({})", signal)?,
+      ProcessExitedAbnormally(code) => write!(f, "Exited({code})")?,
+      ProcessSignaled(signal) => write!(f, "Signaled({signal})")?,
       ProcessPaused => write!(f, "Paused due to breakpoint hit")?,
       ProcessDetached => write!(f, "Detached from tracexec")?,
       InternalError => write!(f, "An internal error occurred in tracexec")?,
