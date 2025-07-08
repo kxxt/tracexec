@@ -168,9 +168,9 @@ impl EventList {
           let event = e.borrow();
           if let TracerEventDetails::Exec(_) = event.details.as_ref() {
             drop(event);
-            action_tx.send(Action::SetActivePopup(ActivePopup::Backtrace(
+            action_tx.send(Action::SetActivePopup(ActivePopup::Backtrace(Box::new(
               BacktracePopupState::new(e, self),
-            )));
+            ))));
           } else {
             action_tx.send(Action::SetActivePopup(ActivePopup::InfoPopup(
               InfoPopupState::info(

@@ -161,13 +161,13 @@ impl Drop for DeferredWarnings {
             .unwrap();
           }
           DeferredWarningKind::FailedReadingArgv(e) => {
-            write!(out, "Failed to read argv: {}", e).unwrap();
+            write!(out, "Failed to read argv: {e}").unwrap();
           }
           DeferredWarningKind::FailedReadingFilename(e) => {
-            write!(out, "Failed to read filename: {}", e).unwrap();
+            write!(out, "Failed to read filename: {e}").unwrap();
           }
           DeferredWarningKind::FailedReadingEnvp(e) => {
-            write!(out, "Failed to read envp: {}", e).unwrap();
+            write!(out, "Failed to read envp: {e}").unwrap();
           }
         };
         writeln!(out).unwrap();
@@ -209,13 +209,13 @@ impl ListPrinter {
     self.begin(out)?;
     if let Some((last, rest)) = list.split_last() {
       if rest.is_empty() {
-        write!(out, "{}", last)?;
+        write!(out, "{last}")?;
       } else {
         for s in rest {
-          write!(out, "{}", s)?;
+          write!(out, "{s}")?;
           self.comma(out)?;
         }
-        write!(out, "{}", last)?;
+        write!(out, "{last}")?;
       }
     }
     self.end(out)
@@ -239,7 +239,7 @@ impl ListPrinter {
     for (k, v) in env.iter() {
       write_separator(out)?;
       // TODO: Maybe stylize error
-      write!(out, "{}={}", k, v)?;
+      write!(out, "{k}={v}")?;
     }
     self.end(out)
   }
@@ -496,7 +496,7 @@ impl Printer {
                 if idx != 0 {
                   list_printer.comma(out)?;
                 }
-                write!(out, "{}", interpreter)?;
+                write!(out, "{interpreter}")?;
               }
               list_printer.end(out)?;
             }

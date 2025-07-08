@@ -100,7 +100,7 @@ pub enum SupportedShell {
 #[derive(Debug)]
 pub enum ActivePopup {
   Help,
-  Backtrace(BacktracePopupState),
+  Backtrace(Box<BacktracePopupState>),
   ViewDetails(DetailsPopupState),
   CopyTargetSelection(CopyPopupState),
   InfoPopup(InfoPopupState),

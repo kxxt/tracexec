@@ -233,7 +233,7 @@ impl Display for Interpreter {
   fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
     match self {
       Self::None => write!(f, "{}", "none".bold()),
-      Self::Shebang(s) => write!(f, "{:?}", s),
+      Self::Shebang(s) => write!(f, "{s:?}"),
       Self::ExecutableUnaccessible => {
         write!(f, "{}", "executable unaccessible".red().bold())
       }

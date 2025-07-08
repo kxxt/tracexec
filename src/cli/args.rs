@@ -182,8 +182,7 @@ fn tracer_event_filter_parser(filter: &str) -> Result<BitFlags<TracerEventDetail
     let kind = TracerEventDetailsKind::from_str(f, false)?;
     if result.contains(kind) {
       return Err(format!(
-        "Event kind '{}' is already included in the filter",
-        kind
+        "Event kind '{kind}' is already included in the filter"
       ));
     }
     result |= kind;

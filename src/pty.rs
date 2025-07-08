@@ -189,7 +189,7 @@ impl From<std::process::ExitStatus> for ExitStatus {
       if let Some(signal) = status.signal() {
         let signame = unsafe { libc::strsignal(signal) };
         let signal = if signame.is_null() {
-          format!("Signal {}", signal)
+          format!("Signal {signal}")
         } else {
           let signame = unsafe { std::ffi::CStr::from_ptr(signame) };
           signame.to_string_lossy().to_string()
@@ -217,7 +217,7 @@ impl std::fmt::Display for ExitStatus {
       write!(fmt, "Success")
     } else {
       match &self.signal {
-        Some(sig) => write!(fmt, "Terminated by {}", sig),
+        Some(sig) => write!(fmt, "Terminated by {sig}"),
         None => write!(fmt, "Exited with code {}", self.code),
       }
     }

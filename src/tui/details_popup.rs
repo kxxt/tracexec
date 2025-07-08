@@ -280,7 +280,7 @@ impl DetailsPopupState {
           env
         }
         Err(e) => {
-          vec![Line::from(format!("Failed to read envp: {}", e))]
+          vec![Line::from(format!("Failed to read envp: {e}"))]
         }
       };
       let mut fdinfo = vec![];
@@ -291,7 +291,7 @@ impl DetailsPopupState {
         fdinfo.push(
           vec![
             " File Descriptor ".set_style(THEME.fd_label),
-            format!(" {} ", fd).set_style(THEME.fd_number_label),
+            format!(" {fd} ").set_style(THEME.fd_number_label),
           ]
           .into(),
         );

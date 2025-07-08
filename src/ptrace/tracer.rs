@@ -943,7 +943,7 @@ impl Tracer {
             TracerEventDetails::Warning(TracerEventMessage {
               timestamp: self.timestamp_now(),
               pid: Some(pid),
-              msg: format!("Failed to read argv: {:?}", e),
+              msg: format!("Failed to read argv: {e:?}"),
             })
             .into_tracer_msg(),
           )?;
@@ -964,7 +964,7 @@ impl Tracer {
           TracerEventDetails::Warning(TracerEventMessage {
             timestamp: self.timestamp_now(),
             pid: Some(pid),
-            msg: format!("Failed to read envp: {:?}", e),
+            msg: format!("Failed to read envp: {e:?}"),
           })
           .into_tracer_msg(),
         )?;
@@ -984,7 +984,7 @@ impl Tracer {
           TracerEventDetails::Warning(TracerEventMessage {
             timestamp: self.timestamp_now(),
             pid: Some(pid),
-            msg: format!("Failed to read filename: {:?}", e),
+            msg: format!("Failed to read filename: {e:?}"),
           })
           .into_tracer_msg(),
         )?;

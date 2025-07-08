@@ -188,8 +188,7 @@ async fn tracer_emits_exec_event(
       for interp in exec.interpreter.unwrap().iter() {
         assert!(
           !matches!(interp, Interpreter::Error(_)),
-          "error: {:?}",
-          interp
+          "error: {interp:?}"
         );
       }
       return;
