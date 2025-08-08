@@ -84,11 +84,10 @@ pub struct ModifierArgs {
 impl PtraceArgs {
   pub fn merge_config(&mut self, config: PtraceConfig) {
     // seccomp-bpf
-    if let Some(setting) = config.seccomp_bpf {
-      if self.seccomp_bpf == SeccompBpf::Auto {
+    if let Some(setting) = config.seccomp_bpf
+      && self.seccomp_bpf == SeccompBpf::Auto {
         self.seccomp_bpf = setting;
       }
-    }
   }
 }
 

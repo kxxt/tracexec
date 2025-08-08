@@ -382,8 +382,8 @@ impl Tracer {
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::SignalDelivery(guard)) => {
           if guard.signal() == SENTINEL_SIGNAL {
             let mut store = self.store.write().unwrap();
-            if let Some(state) = store.get_current_mut(guard.pid()) {
-              if let Some(detach) = state.pending_detach.take() {
+            if let Some(state) = store.get_current_mut(guard.pid())
+              && let Some(detach) = state.pending_detach.take() {
                 // This is a sentinel signal
                 self.proprgate_operation_error(
                   detach.hit,
@@ -397,7 +397,6 @@ impl Tracer {
                 )?;
                 continue;
               }
-            }
           }
           let signal = guard.signal();
           let pid = guard.pid();
@@ -958,8 +957,8 @@ impl Tracer {
     envp: &Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>,
     pid: Pid,
   ) -> color_eyre::Result<()> {
-    if self.filter.intersects(TracerEventDetailsKind::Warning) {
-      if let Err(e) = envp.as_ref() {
+    if self.filter.intersects(TracerEventDetailsKind::Warning)
+      && let Err(e) = envp.as_ref() {
         self.msg_tx.send(
           TracerEventDetails::Warning(TracerEventMessage {
             timestamp: self.timestamp_now(),
@@ -969,7 +968,6 @@ impl Tracer {
           .into_tracer_msg(),
         )?;
       }
-    }
     Ok(())
   }
 
@@ -978,8 +976,8 @@ impl Tracer {
     filename: &Result<ArcStr, InspectError>,
     pid: Pid,
   ) -> color_eyre::Result<()> {
-    if self.filter.intersects(TracerEventDetailsKind::Warning) {
-      if let Err(e) = filename.as_deref() {
+    if self.filter.intersects(TracerEventDetailsKind::Warning)
+      && let Err(e) = filename.as_deref() {
         self.msg_tx.send(
           TracerEventDetails::Warning(TracerEventMessage {
             timestamp: self.timestamp_now(),
@@ -989,7 +987,6 @@ impl Tracer {
           .into_tracer_msg(),
         )?;
       }
-    }
     Ok(())
   }
 

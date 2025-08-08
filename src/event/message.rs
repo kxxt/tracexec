@@ -211,7 +211,7 @@ impl OutputMsg {
     }
   }
 
-  pub fn tui_styled(&self, style: Style) -> Span {
+  pub fn tui_styled(&self, style: Style) -> Span<'_> {
     match self {
       Self::Ok(s) => (*s).set_style(style),
       Self::PartialOk(s) => (*s).set_style(THEME.inline_tracer_error),

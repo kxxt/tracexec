@@ -307,7 +307,7 @@ impl BreakPointManagerState {
     None
   }
 
-  pub fn help(&self) -> impl Iterator<Item = Span> {
+  pub fn help(&self) -> impl Iterator<Item = Span<'_>> {
     chain!(
       [
         help_item!("Q", "Close Mgr"),

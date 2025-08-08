@@ -133,7 +133,7 @@ impl HitManagerState {
     self.editing = None;
   }
 
-  pub fn help(&self) -> impl Iterator<Item = Span> {
+  pub fn help(&self) -> impl Iterator<Item = Span<'_>> {
     if self.editing.is_none() {
       Either::Left(chain!(
         [
@@ -281,13 +281,12 @@ impl HitManagerState {
         }
         _ => {}
       }
-    } else if key.code == KeyCode::Enter && key.modifiers == KeyModifiers::ALT {
-      if let Some(selected) = self.list_state.selected {
+    } else if key.code == KeyCode::Enter && key.modifiers == KeyModifiers::ALT
+      && let Some(selected) = self.list_state.selected {
         self.editing = Some(EditingTarget::CustomCommand {
           selection: selected,
         });
       }
-    }
     None
   }
 

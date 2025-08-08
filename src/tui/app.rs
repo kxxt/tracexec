@@ -210,11 +210,10 @@ impl App {
                 self.breakpoint_manager = None;
               }
               // Cancel hit manager
-              if let Some(h) = self.hit_manager_state.as_mut() {
-                if h.visible {
+              if let Some(h) = self.hit_manager_state.as_mut()
+                && h.visible {
                   h.hide();
                 }
-              }
               // action_tx.send(Action::Render)?;
             } else {
               trace!("TUI: Active pane: {}", self.active_pane);
@@ -250,14 +249,13 @@ impl App {
                 }
 
                 // Handle hit manager
-                if let Some(h) = self.hit_manager_state.as_mut() {
-                  if h.visible {
+                if let Some(h) = self.hit_manager_state.as_mut()
+                  && h.visible {
                     if let Some(action) = h.handle_key_event(ke) {
                       action_tx.send(action);
                     }
                     continue;
                   }
-                }
 
                 // Handle breakpoint manager
                 if let Some(breakpoint_manager) = self.breakpoint_manager.as_mut() {
