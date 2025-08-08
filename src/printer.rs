@@ -479,8 +479,8 @@ impl Printer {
 
       // Interpreter
 
-      if self.args.trace_interpreter && result == 0 {
-        if let Some(interpreters) = exec_data.interpreters.as_ref() {
+      if self.args.trace_interpreter && result == 0
+        && let Some(interpreters) = exec_data.interpreters.as_ref() {
           // FIXME: show interpreter for errnos other than ENOENT
           write!(out, " {} ", "interpreter".purple(),)?;
           match interpreters.len() {
@@ -502,7 +502,6 @@ impl Printer {
             }
           }
         }
-      }
 
       // File descriptors
 

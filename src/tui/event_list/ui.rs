@@ -152,7 +152,7 @@ impl Widget for &mut EventList {
 }
 
 impl EventList {
-  pub fn statistics(&self) -> Line {
+  pub fn statistics(&self) -> Line<'_> {
     let id = self.selection_index().unwrap_or(0);
     Line::raw(format!(
       "{}/{}──",

@@ -124,11 +124,10 @@ impl Widget for &mut App {
       BreakPointManager.render_ref(rest_area, buf, breakpoint_mgr_state);
     }
 
-    if let Some(h) = self.hit_manager_state.as_mut() {
-      if h.visible {
+    if let Some(h) = self.hit_manager_state.as_mut()
+      && h.visible {
         HitManager.render(rest_area, buf, h);
       }
-    }
 
     // popups
     for popup in self.popup.iter_mut() {
@@ -211,15 +210,14 @@ impl App {
       items.extend(help_item!("Q", "Quit"));
     } else {
       // Terminal
-      if let Some(h) = self.hit_manager_state.as_ref() {
-        if h.count() > 0 {
+      if let Some(h) = self.hit_manager_state.as_ref()
+        && h.count() > 0 {
           items.extend([
             help_key("Ctrl+S,\u{00a0}Z"),
             fancy_help_desc(format!("Hits({})", h.count())),
             "\u{200b}".into(),
           ]);
         }
-      }
     };
 
     let line = Line::default().spans(items);

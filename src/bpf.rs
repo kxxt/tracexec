@@ -288,7 +288,7 @@ pub async fn main(
   }
 }
 
-fn utf8_lossy_cow_from_bytes_with_nul(data: &[u8]) -> Cow<str> {
+fn utf8_lossy_cow_from_bytes_with_nul(data: &[u8]) -> Cow<'_, str> {
   String::from_utf8_lossy(CStr::from_bytes_until_nul(data).unwrap().to_bytes())
 }
 

@@ -106,7 +106,7 @@ impl QueryResult {
     self.selection
   }
 
-  pub fn statistics(&self) -> Line {
+  pub fn statistics(&self) -> Line<'_> {
     if self.indices.is_empty() {
       "No match".set_style(THEME.query_no_match).into()
     } else {
@@ -209,7 +209,7 @@ impl QueryBuilder {
 }
 
 impl QueryBuilder {
-  pub fn help(&self) -> Vec<Span> {
+  pub fn help(&self) -> Vec<Span<'_>> {
     if self.editing {
       [
         help_item!("Esc", "Cancel\u{00a0}Search"),

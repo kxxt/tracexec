@@ -11,7 +11,7 @@ homepage = "https://github.com/kxxt/tracexec"
 keywords = ["trace", "ptrace", "exec", "execve", "utility"]
 categories = ["command-line-utilities", "development-tools::debugging"]
 default-run = "tracexec"
-rust-version = "1.85"
+rust-version = "1.88"
 exclude = ["/casts", "/screenshots"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

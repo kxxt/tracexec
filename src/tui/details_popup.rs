@@ -511,11 +511,10 @@ impl DetailsPopupState {
           action_tx.send(Action::CancelCurrentPopup);
         }
         KeyCode::Char('c') => {
-          if self.active_tab() == "Info" {
-            if let Some(clipboard) = clipboard {
+          if self.active_tab() == "Info"
+            && let Some(clipboard) = clipboard {
               clipboard.set_text(self.selected())?;
             }
-          }
         }
         KeyCode::Char('u') if ke.modifiers == KeyModifiers::NONE => {
           if self.env.is_none() {
@@ -631,7 +630,7 @@ impl DetailsPopup {
     }
   }
 
-  fn info_paragraph(&self, state: &DetailsPopupState) -> Paragraph {
+  fn info_paragraph(&self, state: &DetailsPopupState) -> Paragraph<'_> {
     let text = state
       .details
       .iter()
@@ -641,12 +640,12 @@ impl DetailsPopup {
     Paragraph::new(text).wrap(Wrap { trim: false })
   }
 
-  fn env_paragraph(&self, state: &DetailsPopupState) -> Paragraph {
+  fn env_paragraph(&self, state: &DetailsPopupState) -> Paragraph<'_> {
     let text = state.env.clone().unwrap();
     Paragraph::new(text).wrap(Wrap { trim: false })
   }
 
-  fn fd_paragraph(&self, state: &DetailsPopupState) -> Paragraph {
+  fn fd_paragraph(&self, state: &DetailsPopupState) -> Paragraph<'_> {
     let text = state.fdinfo.clone().unwrap();
     Paragraph::new(text).wrap(Wrap { trim: false })
   }

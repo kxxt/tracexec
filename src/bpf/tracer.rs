@@ -327,8 +327,8 @@ impl EbpfTracer {
               header.pid, event.code, event.sig
             );
             let pid = Pid::from_raw(header.pid);
-            if let Some(associated) = tracker.maybe_associated_events(pid) {
-              if !associated.is_empty() {
+            if let Some(associated) = tracker.maybe_associated_events(pid)
+              && !associated.is_empty() {
                 self
                   .tx
                   .as_ref()
@@ -354,7 +354,6 @@ impl EbpfTracer {
                   .transpose()
                   .unwrap();
               }
-            }
             if unsafe { event.is_root_tracee.assume_init() } {
               self
                 .tx

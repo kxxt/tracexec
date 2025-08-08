@@ -103,7 +103,7 @@ impl CopyPopupState {
     }
   }
 
-  pub fn help_items(&self) -> impl Iterator<Item = Span> {
+  pub fn help_items(&self) -> impl Iterator<Item = Span<'_>> {
     self.available_targets.iter().flat_map(|&key| {
       help_item!(
         key.to_ascii_uppercase().to_string(),

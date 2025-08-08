@@ -275,17 +275,15 @@ impl Cli {
         if let Some(c) = config.ptrace {
           ptrace_args.merge_config(c);
         }
-        if let Some(c) = config.log {
-          if (!*foreground) && (!*no_foreground) {
-            if let Some(x) = c.foreground {
+        if let Some(c) = config.log
+          && (!*foreground) && (!*no_foreground)
+            && let Some(x) = c.foreground {
               if x {
                 *foreground = true;
               } else {
                 *no_foreground = true;
               }
             }
-          }
-        }
       }
       _ => (),
     }

@@ -458,12 +458,11 @@ impl EventList {
     for i in update.ids {
       if let Some((storage, e)) = self.event_map.get_mut(&i) {
         let mut e = e.borrow_mut();
-        if let TracerEventDetails::Exec(exec) = e.details.as_ref() {
-          if exec.result != 0 {
+        if let TracerEventDetails::Exec(exec) = e.details.as_ref()
+          && exec.result != 0 {
             // Don't update the status for failed exec events
             continue;
           }
-        }
         e.status = pstate_update_to_status(&update.update);
         if let Some(ts) = update.update.termination_timestamp() {
           e.elapsed = Some(ts - e.details.timestamp().unwrap())
