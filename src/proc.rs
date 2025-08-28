@@ -225,7 +225,7 @@ fn get_mountinfo_by_mnt_id(pid: Pid, mnt_id: c_int) -> color_eyre::Result<ArcStr
 pub enum Interpreter {
   None,
   Shebang(ArcStr),
-  ExecutableUnaccessible,
+  ExecutableInaccessible,
   Error(ArcStr),
 }
 
@@ -234,8 +234,8 @@ impl Display for Interpreter {
     match self {
       Self::None => write!(f, "{}", "none".bold()),
       Self::Shebang(s) => write!(f, "{s:?}"),
-      Self::ExecutableUnaccessible => {
-        write!(f, "{}", "executable unaccessible".red().bold())
+      Self::ExecutableInaccessible => {
+        write!(f, "{}", "executable inaccessible".red().bold())
       }
       Self::Error(e) => write!(f, "({}: {})", "err".red().bold(), e.red().bold()),
     }
@@ -266,7 +266,7 @@ pub fn read_interpreter_recursive(exe: impl AsRef<Path>) -> Vec<Interpreter> {
 pub fn read_interpreter(exe: &Path) -> Interpreter {
   fn err_to_interpreter(e: io::Error) -> Interpreter {
     if e.kind() == io::ErrorKind::PermissionDenied || e.kind() == io::ErrorKind::NotFound {
-      Interpreter::ExecutableUnaccessible
+      Interpreter::ExecutableInaccessible
     } else {
       let mut cache = CACHE.write().unwrap();
       let e = cache.get_or_insert_owned(e.to_string());
