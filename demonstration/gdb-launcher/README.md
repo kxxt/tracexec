@@ -23,7 +23,7 @@ In order to allow gdb to attach to the detached and stopped tracees, you probabl
 echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
 ```
 
-On a machinne with Wayland/X11 display, assuming you have konsole installed(if not, please change the default-external-command), run
+On a machine with Wayland/X11 display, assuming you have konsole installed(if not, please change the default-external-command), run
 
 ```bash
 tracexec tui -t -b sysexit:in-filename:/a -b sysexit:in-filename:/b --default-external-command "konsole -e gdb -ex cont -ex cont -p {{PID}}" -- ./shell-script
