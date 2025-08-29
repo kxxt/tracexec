@@ -3,6 +3,8 @@ use std::{borrow::Cow, num::ParseFloatError};
 use clap::{Args, ValueEnum};
 use color_eyre::eyre::bail;
 use enumflags2::BitFlags;
+use snafu::{ResultExt, Snafu};
+use tracing_subscriber::field::display;
 
 use crate::{
   cli::config::{ColorLevel, EnvDisplay, FileDescriptorDisplay},
@@ -85,9 +87,10 @@ impl PtraceArgs {
   pub fn merge_config(&mut self, config: PtraceConfig) {
     // seccomp-bpf
     if let Some(setting) = config.seccomp_bpf
-      && self.seccomp_bpf == SeccompBpf::Auto {
-        self.seccomp_bpf = setting;
-      }
+      && self.seccomp_bpf == SeccompBpf::Auto
+    {
+      self.seccomp_bpf = setting;
+    }
   }
 }
 
@@ -514,11 +517,13 @@ impl DebuggerArgs {
 }
 
 fn frame_rate_parser(s: &str) -> Result<f64, ParseFrameRateError> {
-  let v = s.parse::<f64>()?;
+  let v = s.parse::<f64>().with_context(|_| ParseFloatSnafu {
+    value: s.to_string(),
+  })?;
   if v < 0.0 || v.is_nan() || v.is_infinite() {
-    Err(ParseFrameRateError::InvalidFrameRate)
+    Err(ParseFrameRateError::Invalid)
   } else if v < 5.0 {
-    Err(ParseFrameRateError::FrameRateTooLow)
+    Err(ParseFrameRateError::TooLow)
   } else {
     Ok(v)
   }
@@ -528,18 +533,15 @@ fn breakpoint_parser(s: &str) -> Result<BreakPoint, Cow<'static, str>> {
   BreakPoint::try_from(s)
 }
 
-#[derive(thiserror::Error, Debug)]
+#[derive(Snafu, Debug)]
 enum ParseFrameRateError {
-  #[error("Failed to parse frame rate {0} as a floating point number")]
-  ParseFloatError(ParseFloatError),
-  #[error("Invalid frame rate")]
-  InvalidFrameRate,
-  #[error("Frame rate too low, must be at least 5.0")]
-  FrameRateTooLow,
-}
-
-impl From<ParseFloatError> for ParseFrameRateError {
-  fn from(e: ParseFloatError) -> Self {
-    Self::ParseFloatError(e)
-  }
+  #[snafu(display("Failed to parse frame rate {value} as a floating point number"))]
+  ParseFloat {
+    source: ParseFloatError,
+    value: String,
+  },
+  #[snafu(display("Invalid frame rate"))]
+  Invalid,
+  #[snafu(display("Frame rate too low, must be at least 5.0"))]
+  TooLow,
 }

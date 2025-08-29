@@ -57,7 +57,6 @@ arboard = { version = "3.3.2", default-features = false, features = [
     "wayland-data-control",
 ] }
 tui-popup = "0.6.0"
-thiserror = "2"
 tui-scrollview = "0.5.0"
 bitflags = "2.5.0"
 tui-prompts = "0.5.0"
@@ -84,6 +83,7 @@ indexset = "0.12"
 chrono = "0.4.40"
 nutype = { version = "0.6.1", features = ["serde"] }
 humantime = "2.2.0"
+snafu = { version = "0.8.8", features = ["rust_1_81", "backtrace"] }
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 
