@@ -120,6 +120,10 @@ opt-level = 1
 [profile.release]
 lto = true
 
+[profile.profiling]
+inherits = "release"
+debug = true
+
 [[bin]]
 name = "exec-file"
 path = "fixtures/exec-file.rs"
