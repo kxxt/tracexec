@@ -180,7 +180,7 @@ impl FilterableTracerEventDetails {
     self,
     tx: &mpsc::UnboundedSender<TracerMessage>,
     filter: BitFlags<TracerEventDetailsKind>,
-  ) -> color_eyre::Result<()> {
+  ) -> Result<(), mpsc::error::SendError<TracerMessage>> {
     if let Some(evt) = self.filter_and_take(filter) {
       tx.send(TracerMessage::from(TracerEvent::from(evt)))?;
     }
