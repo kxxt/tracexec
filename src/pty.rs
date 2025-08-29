@@ -465,9 +465,10 @@ fn close_random_fds() {
         .map(|e| e.file_name())
         .and_then(|s| s.into_string().ok())
         .and_then(|n| n.parse::<libc::c_int>().ok())
-        && num > 2 {
-          fds.push(num);
-        }
+        && num > 2
+      {
+        fds.push(num);
+      }
     }
     for fd in fds {
       let _ = nix::unistd::close(fd);

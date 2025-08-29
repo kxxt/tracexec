@@ -145,8 +145,7 @@ async fn main() -> color_eyre::Result<()> {
         )
         .printer_from_cli(&tracing_args)
         .build_ptrace()?;
-      let tracer = Arc::new(tracer);
-      let tracer_thread = tracer.spawn(cmd, Some(output), token);
+      let (_tracer, tracer_thread) = tracer.spawn(cmd, Some(output), token)?;
       loop {
         match tracer_rx.recv().await {
           Some(TracerMessage::Event(TracerEvent {
@@ -226,12 +225,12 @@ async fn main() -> color_eyre::Result<()> {
         )
         .printer_from_cli(&tracing_args)
         .build_ptrace()?;
-      let tracer = Arc::new(tracer);
 
       let frame_rate = tui_args.frame_rate.unwrap_or(60.);
+      let (tracer, tracer_thread) = tracer.spawn(cmd, None, token)?;
       let mut app = App::new(
         Some(PTracer {
-          tracer: tracer.clone(),
+          tracer,
           debugger_args,
         }),
         &tracing_args,
@@ -240,7 +239,6 @@ async fn main() -> color_eyre::Result<()> {
         baseline,
         pty_master,
       )?;
-      let tracer_thread = tracer.spawn(cmd, None, token);
       let mut tui = tui::Tui::new()?.frame_rate(frame_rate);
       tui.enter(tracer_rx)?;
       app.run(&mut tui).await?;
@@ -297,8 +295,7 @@ async fn main() -> color_eyre::Result<()> {
         )
         .printer_from_cli(&tracing_args)
         .build_ptrace()?;
-      let tracer = Arc::new(tracer);
-      let tracer_thread = tracer.spawn(cmd, None, token);
+      let (_tracer, tracer_thread) = tracer.spawn(cmd, None, token)?;
       match format {
         ExportFormat::Json => {
           let mut json = export::Json {

@@ -512,9 +512,10 @@ impl DetailsPopupState {
         }
         KeyCode::Char('c') => {
           if self.active_tab() == "Info"
-            && let Some(clipboard) = clipboard {
-              clipboard.set_text(self.selected())?;
-            }
+            && let Some(clipboard) = clipboard
+          {
+            clipboard.set_text(self.selected())?;
+          }
         }
         KeyCode::Char('u') if ke.modifiers == KeyModifiers::NONE => {
           if self.env.is_none() {
