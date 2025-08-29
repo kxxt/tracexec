@@ -174,8 +174,8 @@ Options:
           Set the format of inline timestamp. See https://docs.rs/chrono/latest/chrono/format/strftime/index.html for available options.
       --seccomp-bpf <SECCOMP_BPF>
           Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
-      --tracer-delay <TRACER_DELAY>
-          Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1.
+      --polling-interval <POLLING_INTERVAL>
+          Polling interval, in microseconds. -1(default) disables polling.
       --show-all-events
           Set the default filter to show all events. This option can be used in combination with --filter-exclude to exclude some unwanted events.
       --filter <FILTER>
@@ -294,8 +294,8 @@ Options:
           Set the format of inline timestamp. See https://docs.rs/chrono/latest/chrono/format/strftime/index.html for available options.
       --seccomp-bpf <SECCOMP_BPF>
           Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
-      --tracer-delay <TRACER_DELAY>
-          Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1.
+      --polling-interval <POLLING_INTERVAL>
+          Polling interval, in microseconds. -1(default) disables polling.
       --show-all-events
           Set the default filter to show all events. This option can be used in combination with --filter-exclude to exclude some unwanted events.
       --filter <FILTER>
@@ -344,8 +344,8 @@ Options:
           Set the format of inline timestamp. See https://docs.rs/chrono/latest/chrono/format/strftime/index.html for available options.
       --seccomp-bpf <SECCOMP_BPF>
           Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
-      --tracer-delay <TRACER_DELAY>
-          Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1.
+      --polling-interval <POLLING_INTERVAL>
+          Polling interval, in microseconds. -1(default) disables polling.
   -F, --format <FORMAT>
           the format for exported exec events [possible values: json-stream, json]
   -p, --pretty
