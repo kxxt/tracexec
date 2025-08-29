@@ -307,7 +307,7 @@ impl Tracer {
     loop {
       select! {
         _ = collect_interval.tick() => {
-          let action = self.handle_waitpid_events(&engine, root_child, &mut pending_guards)?;
+          let action = self.handle_waitpid_events(&engine, root_child, &mut pending_guards, false)?;
           match action {
             ControlFlow::Break(_) => {
               break Ok(());
@@ -353,10 +353,15 @@ impl Tracer {
     engine: &'a RecursivePtraceEngine,
     root_child: Pid,
     pending_guards: &mut HashMap<Pid, PtraceStopGuard<'a>>,
+    blocking: bool,
   ) -> color_eyre::Result<ControlFlow<()>> {
     let mut counter = 0;
+    let mut waitpid_flags = WaitPidFlag::__WALL;
+    if !blocking {
+      waitpid_flags |= WaitPidFlag::WNOHANG;
+    }
     loop {
-      let status = engine.next_event(Some(WaitPidFlag::__WALL | WaitPidFlag::WNOHANG))?;
+      let status = engine.next_event(Some(waitpid_flags))?;
       if !matches!(status, PtraceWaitPidEvent::StillAlive) {
         counter += 1;
       }
@@ -383,7 +388,8 @@ impl Tracer {
           if guard.signal() == SENTINEL_SIGNAL {
             let mut store = self.store.write().unwrap();
             if let Some(state) = store.get_current_mut(guard.pid())
-              && let Some(detach) = state.pending_detach.take() {
+              && let Some(detach) = state.pending_detach.take()
+            {
                 // This is a sentinel signal
                 self.proprgate_operation_error(
                   detach.hit,
@@ -612,7 +618,7 @@ impl Tracer {
         PtraceWaitPidEvent::Continued(_) => unreachable!(),
         PtraceWaitPidEvent::StillAlive => break,
       }
-      if counter > 100 {
+      if !blocking && counter > 100 {
         // Give up if we have handled 100 events, so that we have a chance to handle other events
         debug!("yielding after 100 events");
         break;
@@ -958,7 +964,8 @@ impl Tracer {
     pid: Pid,
   ) -> color_eyre::Result<()> {
     if self.filter.intersects(TracerEventDetailsKind::Warning)
-      && let Err(e) = envp.as_ref() {
+      && let Err(e) = envp.as_ref()
+    {
         self.msg_tx.send(
           TracerEventDetails::Warning(TracerEventMessage {
             timestamp: self.timestamp_now(),
