@@ -2,7 +2,7 @@ use std::{io, path::PathBuf};
 
 use directories::ProjectDirs;
 use serde::{Deserialize, Deserializer, Serialize};
-use thiserror::Error;
+use snafu::{ResultExt, Snafu};
 use tracing::warn;
 
 use crate::{timestamp::TimestampFormat, tui::app::AppLayout};
@@ -18,20 +18,20 @@ pub struct Config {
   pub debugger: Option<DebuggerConfig>,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Snafu)]
 pub enum ConfigLoadError {
-  #[error("Config file not found.")]
+  #[snafu(display("Config file not found."))]
   NotFound,
-  #[error("Failed to load config file.")]
-  IoError(#[from] io::Error),
-  #[error("Failed to parse config file.")]
-  TomlError(#[from] toml::de::Error),
+  #[snafu(display("Failed to load config file."))]
+  IoError { source: io::Error },
+  #[snafu(display("Failed to parse config file."))]
+  TomlError { source: toml::de::Error },
 }
 
 impl Config {
   pub fn load(path: Option<PathBuf>) -> Result<Self, ConfigLoadError> {
     let config_text = match path {
-      Some(path) => std::fs::read_to_string(path)?, // if manually specified config doesn't exist, return a hard error
+      Some(path) => std::fs::read_to_string(path).context(IoSnafu)?, // if manually specified config doesn't exist, return a hard error
       None => {
         let Some(project_dirs) = project_directory() else {
           warn!("No valid home directory found! Not loading config.toml.");
@@ -42,12 +42,12 @@ impl Config {
 
         std::fs::read_to_string(config_path).map_err(|e| match e.kind() {
           io::ErrorKind::NotFound => ConfigLoadError::NotFound,
-          _ => ConfigLoadError::from(e),
+          _ => ConfigLoadError::IoError { source: e },
         })?
       }
     };
 
-    let config: Self = toml::from_str(&config_text)?;
+    let config: Self = toml::from_str(&config_text).context(TomlSnafu)?;
     Ok(config)
   }
 }
