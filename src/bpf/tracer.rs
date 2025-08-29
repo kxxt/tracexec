@@ -328,32 +328,33 @@ impl EbpfTracer {
             );
             let pid = Pid::from_raw(header.pid);
             if let Some(associated) = tracker.maybe_associated_events(pid)
-              && !associated.is_empty() {
-                self
-                  .tx
-                  .as_ref()
-                  .map(|tx| {
-                    tx.send(
-                      ProcessStateUpdateEvent {
-                        update: ProcessStateUpdate::Exit {
-                          timestamp: ts_from_boot_ns(event.timestamp),
-                          status: match (event.sig, event.code) {
-                            (0, code) => ProcessExit::Code(code),
-                            (sig, _) => {
-                              // 0x80 bit indicates coredump
-                              ProcessExit::Signal(Signal::from_raw(sig as i32 & 0x7f))
-                            }
-                          },
+              && !associated.is_empty()
+            {
+              self
+                .tx
+                .as_ref()
+                .map(|tx| {
+                  tx.send(
+                    ProcessStateUpdateEvent {
+                      update: ProcessStateUpdate::Exit {
+                        timestamp: ts_from_boot_ns(event.timestamp),
+                        status: match (event.sig, event.code) {
+                          (0, code) => ProcessExit::Code(code),
+                          (sig, _) => {
+                            // 0x80 bit indicates coredump
+                            ProcessExit::Signal(Signal::from_raw(sig as i32 & 0x7f))
+                          }
                         },
-                        pid,
-                        ids: associated.to_owned(),
-                      }
-                      .into(),
-                    )
-                  })
-                  .transpose()
-                  .unwrap();
-              }
+                      },
+                      pid,
+                      ids: associated.to_owned(),
+                    }
+                    .into(),
+                  )
+                })
+                .transpose()
+                .unwrap();
+            }
             if unsafe { event.is_root_tracee.assume_init() } {
               self
                 .tx

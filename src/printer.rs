@@ -479,29 +479,31 @@ impl Printer {
 
       // Interpreter
 
-      if self.args.trace_interpreter && result == 0
-        && let Some(interpreters) = exec_data.interpreters.as_ref() {
-          // FIXME: show interpreter for errnos other than ENOENT
-          write!(out, " {} ", "interpreter".purple(),)?;
-          match interpreters.len() {
-            0 => {
-              write!(out, "{}", Interpreter::None)?;
-            }
-            1 => {
-              write!(out, "{}", interpreters[0])?;
-            }
-            _ => {
-              list_printer.begin(out)?;
-              for (idx, interpreter) in interpreters.iter().enumerate() {
-                if idx != 0 {
-                  list_printer.comma(out)?;
-                }
-                write!(out, "{interpreter}")?;
+      if self.args.trace_interpreter
+        && result == 0
+        && let Some(interpreters) = exec_data.interpreters.as_ref()
+      {
+        // FIXME: show interpreter for errnos other than ENOENT
+        write!(out, " {} ", "interpreter".purple(),)?;
+        match interpreters.len() {
+          0 => {
+            write!(out, "{}", Interpreter::None)?;
+          }
+          1 => {
+            write!(out, "{}", interpreters[0])?;
+          }
+          _ => {
+            list_printer.begin(out)?;
+            for (idx, interpreter) in interpreters.iter().enumerate() {
+              if idx != 0 {
+                list_printer.comma(out)?;
               }
-              list_printer.end(out)?;
+              write!(out, "{interpreter}")?;
             }
+            list_printer.end(out)?;
           }
         }
+      }
 
       // File descriptors
 

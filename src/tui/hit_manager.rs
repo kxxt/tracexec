@@ -1,7 +1,6 @@
 use std::{
   collections::{BTreeMap, HashMap},
   process::Stdio,
-  sync::Arc,
 };
 
 use color_eyre::{Section, eyre::eyre};
@@ -22,7 +21,7 @@ use tui_widget_list::{ListBuilder, ListView};
 
 use crate::{
   action::Action,
-  ptrace::{BreakPointHit, BreakPointStop, Tracer},
+  ptrace::{BreakPointHit, BreakPointStop, RunningTracer},
 };
 
 use super::{
@@ -95,7 +94,7 @@ enum EditingTarget {
 }
 
 pub struct HitManagerState {
-  tracer: Arc<Tracer>,
+  tracer: RunningTracer,
   counter: u64,
   hits: BTreeMap<u64, BreakPointHitEntry>,
   pending_detach_reactions: HashMap<u64, DetachReaction>,
@@ -108,7 +107,7 @@ pub struct HitManagerState {
 
 impl HitManagerState {
   pub fn new(
-    tracer: Arc<Tracer>,
+    tracer: RunningTracer,
     default_external_command: Option<String>,
   ) -> color_eyre::Result<Self> {
     Ok(Self {
@@ -281,12 +280,14 @@ impl HitManagerState {
         }
         _ => {}
       }
-    } else if key.code == KeyCode::Enter && key.modifiers == KeyModifiers::ALT
-      && let Some(selected) = self.list_state.selected {
-        self.editing = Some(EditingTarget::CustomCommand {
-          selection: selected,
-        });
-      }
+    } else if key.code == KeyCode::Enter
+      && key.modifiers == KeyModifiers::ALT
+      && let Some(selected) = self.list_state.selected
+    {
+      self.editing = Some(EditingTarget::CustomCommand {
+        selection: selected,
+      });
+    }
     None
   }
 

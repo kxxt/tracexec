@@ -40,7 +40,7 @@ fn true_executable() -> PathBuf {
 fn tracer(
   #[default(Default::default())] modifier_args: ModifierArgs,
   #[default(Default::default())] seccomp_bpf: SeccompBpf,
-) -> (Arc<Tracer>, UnboundedReceiver<TracerMessage>, SpawnToken) {
+) -> (Tracer, UnboundedReceiver<TracerMessage>, SpawnToken) {
   let tracer_mod = TracerMode::Log { foreground: false };
   let tracing_args = LogModeArgs::default();
   let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -54,16 +54,16 @@ fn tracer(
     .seccomp_bpf(seccomp_bpf)
     .build_ptrace()
     .unwrap();
-  (Arc::new(tracer), msg_rx, token)
+  (tracer, msg_rx, token)
 }
 
 async fn run_exe_and_collect_msgs(
-  tracer: Arc<Tracer>,
+  tracer: Tracer,
   mut rx: UnboundedReceiver<TracerMessage>,
   token: SpawnToken,
   argv: Vec<String>,
 ) -> Vec<TracerMessage> {
-  let tracer_thread = tracer.spawn(argv, None, token);
+  let (_tracer, tracer_thread) = tracer.spawn(argv, None, token).unwrap();
   tracer_thread.await.unwrap().unwrap();
 
   async {
@@ -76,7 +76,7 @@ async fn run_exe_and_collect_msgs(
   .await
 }
 
-type TracerFixture = (Arc<Tracer>, UnboundedReceiver<TracerMessage>, SpawnToken);
+type TracerFixture = (Tracer, UnboundedReceiver<TracerMessage>, SpawnToken);
 
 #[traced_test]
 #[rstest]

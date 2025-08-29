@@ -125,9 +125,10 @@ impl Widget for &mut App {
     }
 
     if let Some(h) = self.hit_manager_state.as_mut()
-      && h.visible {
-        HitManager.render(rest_area, buf, h);
-      }
+      && h.visible
+    {
+      HitManager.render(rest_area, buf, h);
+    }
 
     // popups
     for popup in self.popup.iter_mut() {
@@ -211,13 +212,14 @@ impl App {
     } else {
       // Terminal
       if let Some(h) = self.hit_manager_state.as_ref()
-        && h.count() > 0 {
-          items.extend([
-            help_key("Ctrl+S,\u{00a0}Z"),
-            fancy_help_desc(format!("Hits({})", h.count())),
-            "\u{200b}".into(),
-          ]);
-        }
+        && h.count() > 0
+      {
+        items.extend([
+          help_key("Ctrl+S,\u{00a0}Z"),
+          fancy_help_desc(format!("Hits({})", h.count())),
+          "\u{200b}".into(),
+        ]);
+      }
     };
 
     let line = Line::default().spans(items);
