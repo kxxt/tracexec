@@ -4,7 +4,6 @@ use clap::{Args, ValueEnum};
 use color_eyre::eyre::bail;
 use enumflags2::BitFlags;
 use snafu::{ResultExt, Snafu};
-use tracing_subscriber::field::display;
 
 use crate::{
   cli::config::{ColorLevel, EnvDisplay, FileDescriptorDisplay},
@@ -28,9 +27,9 @@ pub struct PtraceArgs {
   pub seccomp_bpf: SeccompBpf,
   #[clap(
     long,
-    help = "Delay between polling, in microseconds. The default is 500 when seccomp-bpf is enabled, otherwise 1."
+    help = "Polling interval, in microseconds. -1(default) disables polling."
   )]
-  pub tracer_delay: Option<u64>,
+  pub polling_interval: Option<i64>,
 }
 
 #[derive(Args, Debug, Default, Clone)]

@@ -35,6 +35,7 @@ pub struct TracerBuilder {
   // --- ptrace specific ---
   pub(crate) seccomp_bpf: SeccompBpf,
   pub(crate) ptrace_polling_delay: Option<u64>,
+  pub(crate) ptrace_blocking: Option<bool>,
 }
 
 impl TracerBuilder {
@@ -43,10 +44,28 @@ impl TracerBuilder {
     Default::default()
   }
 
+  /// Use blocking waitpid calls instead of polling.
+  ///
+  /// This mode conflicts with ptrace polling delay option
+  /// This option is not used in eBPF tracer.
+  pub fn ptrace_blocking(mut self, enable: bool) -> Self {
+    if self.ptrace_polling_delay.is_some() && enable {
+      panic!(
+        "Cannot enable blocking mode when ptrace polling delay implicitly specifys polling mode"
+      );
+    }
+    self.ptrace_blocking = Some(enable);
+    self
+  }
+
   /// Sets ptrace polling delay (in microseconds)
+  /// This options conflicts with ptrace blocking mode.
   ///
   /// This option is not used in eBPF tracer.
   pub fn ptrace_polling_delay(mut self, ptrace_polling_delay: Option<u64>) -> Self {
+    if Some(true) == self.ptrace_blocking && ptrace_polling_delay.is_some() {
+      panic!("Cannot set ptrace_polling_delay when operating in blocking mode")
+    }
     self.ptrace_polling_delay = ptrace_polling_delay;
     self
   }

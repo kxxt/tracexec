@@ -4,7 +4,10 @@ use std::{
   io::{self, Read, Write, stdin},
   ops::ControlFlow,
   os::fd::{AsRawFd, FromRawFd, OwnedFd},
-  sync::{Arc, RwLock, atomic::AtomicU32},
+  sync::{
+    Arc, RwLock,
+    atomic::{AtomicU32, AtomicU64, Ordering},
+  },
   time::Duration,
 };
 
@@ -21,10 +24,18 @@ use enumflags2::BitFlags;
 use inspect::{read_arcstr, read_output_msg_array};
 use nix::{
   errno::Errno,
-  libc::{self, AT_EMPTY_PATH, S_ISGID, S_ISUID, c_int, pthread_self, pthread_setname_np},
-  sys::{ptrace::AddressType, stat::fstat, wait::WaitPidFlag},
+  libc::{
+    self, AT_EMPTY_PATH, S_ISGID, S_ISUID, c_int, pthread_kill, pthread_self, pthread_setname_np,
+  },
+  sys::{
+    ptrace::AddressType,
+    signal::{SaFlags, SigAction, SigSet, sigaction},
+    stat::fstat,
+    wait::WaitPidFlag,
+  },
   unistd::{Gid, Pid, Uid, User, getpid, tcsetpgrp},
 };
+use snafu::{ResultExt, Snafu};
 use state::{PendingDetach, Syscall};
 use tokio::{
   select,
@@ -71,6 +82,7 @@ use crate::cli::options::SeccompBpf;
 use crate::seccomp;
 
 pub struct Tracer {
+  tid: AtomicU64,
   with_tty: bool,
   mode: TracerMode,
   pub store: RwLock<ProcessStateStore>,
@@ -83,7 +95,7 @@ pub struct Tracer {
   user: Option<User>,
   breakpoints: RwLock<BTreeMap<u32, BreakPoint>>,
   req_tx: UnboundedSender<PendingRequest>,
-  delay: Duration,
+  polling_interval: Option<Duration>,
 }
 
 pub struct SpawnToken {
@@ -115,6 +127,7 @@ impl TracerBuilder {
     let (req_tx, req_rx) = unbounded_channel();
     Ok((
       Tracer {
+        tid: AtomicU64::new(0),
         with_tty,
         store: RwLock::new(ProcessStateStore::new()),
         seccomp_bpf,
@@ -138,16 +151,22 @@ impl TracerBuilder {
         baseline: self.baseline.unwrap(),
         breakpoints: RwLock::new(BTreeMap::new()),
         req_tx: req_tx.clone(),
-        delay: {
-          let default = if seccomp_bpf == SeccompBpf::On {
-            Duration::from_micros(500)
+        polling_interval: {
+          if self.ptrace_blocking == Some(true) {
+            None
           } else {
-            Duration::from_micros(1)
-          };
-          self
-            .ptrace_polling_delay
-            .map(Duration::from_micros)
-            .unwrap_or(default)
+            let default = if seccomp_bpf == SeccompBpf::On {
+              Duration::from_micros(500)
+            } else {
+              Duration::from_micros(1)
+            };
+            Some(
+              self
+                .ptrace_polling_delay
+                .map(Duration::from_micros)
+                .unwrap_or(default),
+            )
+          }
         },
         mode: self.mode.unwrap(),
       },
@@ -166,6 +185,19 @@ pub enum PendingRequest {
   SuspendSeccompBpf(Pid),
 }
 
+#[derive(Debug, Snafu)]
+enum WaitpidHandlerError {
+  #[snafu(display("waitpid interrupted by signal"))]
+  Interrupted,
+  #[snafu(display("OS error"))]
+  OS { source: Errno },
+  #[snafu(display("channel error"))]
+  Channel { source: SendError<TracerMessage> },
+  #[snafu(display("{source}"))]
+  Other { source: color_eyre::eyre::Report },
+}
+extern "C" fn empty_sighandler(_arg: c_int) {}
+
 impl Tracer {
   pub fn spawn(
     self: Arc<Self>,
@@ -181,7 +213,22 @@ impl Tracer {
       move || {
         unsafe {
           let current_thread = pthread_self();
+          self.tid.store(current_thread, Ordering::SeqCst);
           pthread_setname_np(current_thread, c"tracer".as_ptr());
+        }
+        if self.blocking() {
+          // setup empty signal handler for breaking out of waitpid
+          // we do not set SA_RESTART so interrupted syscalls are not restarted.
+          unsafe {
+            let _ = sigaction(
+              nix::sys::signal::SIGUSR1,
+              &SigAction::new(
+                nix::sys::signal::SigHandler::Handler(empty_sighandler),
+                SaFlags::SA_SIGINFO,
+                SigSet::empty(),
+              ),
+            )?;
+          }
         }
         let tx = self.msg_tx.clone();
         let result = tokio::runtime::Handle::current().block_on(async move {
@@ -300,48 +347,88 @@ impl Tracer {
     tracer_fd.write_all(b"go")?;
     drop(tracer_fd);
     trace!("Wrote message to tracee");
-
-    let mut collect_interval = tokio::time::interval(self.delay);
     let mut pending_guards = HashMap::new();
-
-    loop {
-      select! {
-        _ = collect_interval.tick() => {
-          let action = self.handle_waitpid_events(&engine, root_child, &mut pending_guards, false)?;
-          match action {
-            ControlFlow::Break(_) => {
-              break Ok(());
-            }
-            ControlFlow::Continue(_) => {}
+    // This is a macro instead of a function only to please the borrow checker
+    macro_rules! request_handler {
+      ($req:ident, $pending_guards:ident) => {
+        match $req {
+          PendingRequest::ResumeProcess(hit) => {
+            let mut store = self.store.write().unwrap();
+            let state = store.get_current_mut(hit.pid).unwrap();
+            self.proprgate_operation_error(
+              hit,
+              true,
+              self.resume_process(state, hit.stop, &mut $pending_guards),
+            )?;
           }
-        }
-        Some(req) = req_rx.recv() => {
-          match req {
-            PendingRequest::ResumeProcess(hit) => {
-              let mut store = self.store.write().unwrap();
-              let state = store.get_current_mut(hit.pid).unwrap();
-              self.proprgate_operation_error(hit, true, self.resume_process(state, hit.stop, &mut pending_guards))?;
-            }
-            PendingRequest::DetachProcess { hit, signal, hid } => {
-              let mut store = self.store.write().unwrap();
-              let state = store.get_current_mut(hit.pid).unwrap();
-              if let Some(signal) = signal {
-                if let Err(e) = self.prepare_to_detach_with_signal(state, hit, signal, hid, &mut pending_guards) {
-                  self.msg_tx.send(ProcessStateUpdateEvent {
+          PendingRequest::DetachProcess { hit, signal, hid } => {
+            let mut store = self.store.write().unwrap();
+            let state = store.get_current_mut(hit.pid).unwrap();
+            if let Some(signal) = signal {
+              if let Err(e) =
+                self.prepare_to_detach_with_signal(state, hit, signal, hid, &mut $pending_guards)
+              {
+                self.msg_tx.send(
+                  ProcessStateUpdateEvent {
                     update: ProcessStateUpdate::DetachError { hit, error: e },
                     pid: hit.pid,
                     ids: vec![],
-                  }.into())?;
-                }
-              } else {
-                self.proprgate_operation_error(hit, false, self.detach_process_internal(state, None, hid, &mut pending_guards))?;
+                  }
+                  .into(),
+                )?;
               }
+            } else {
+              self.proprgate_operation_error(
+                hit,
+                false,
+                self.detach_process_internal(state, None, hid, &mut $pending_guards),
+              )?;
             }
-            PendingRequest::SuspendSeccompBpf(pid) => {
-              let _err = self.suspend_seccomp_bpf(pid).inspect_err(|e| {
-                error!("Failed to suspend seccomp-bpf for {pid}: {e}");
-              });
+          }
+          PendingRequest::SuspendSeccompBpf(pid) => {
+            let _err = self.suspend_seccomp_bpf(pid).inspect_err(|e| {
+              error!("Failed to suspend seccomp-bpf for {pid}: {e}");
+            });
+          }
+        }
+      };
+    }
+
+    if let Some(interval) = self.polling_interval {
+      // Async mode
+      let mut collect_interval = tokio::time::interval(interval);
+
+      loop {
+        select! {
+          _ = collect_interval.tick() => {
+            let action = self.handle_waitpid_events(&engine, root_child, &mut pending_guards, false)?;
+            match action {
+              ControlFlow::Break(_) => {
+                break Ok(());
+              }
+              ControlFlow::Continue(_) => {}
             }
+          }
+          Some(req) = req_rx.recv() => {
+            request_handler!(req, pending_guards);
+          }
+        }
+      }
+    } else {
+      loop {
+        match self.handle_waitpid_events(&engine, root_child, &mut pending_guards, true) {
+          Ok(ControlFlow::Break(_)) => {
+            break Ok(());
+          }
+          Ok(ControlFlow::Continue(_)) => {}
+          Err(WaitpidHandlerError::Interrupted) => {
+            // handle all possible requests
+            while let Ok(req) = req_rx.try_recv() {
+              request_handler!(req, pending_guards);
+            }
+          }
+          Err(e) => {
+            return Err(e.into());
           }
         }
       }
@@ -354,14 +441,22 @@ impl Tracer {
     root_child: Pid,
     pending_guards: &mut HashMap<Pid, PtraceStopGuard<'a>>,
     blocking: bool,
-  ) -> color_eyre::Result<ControlFlow<()>> {
+  ) -> Result<ControlFlow<()>, WaitpidHandlerError> {
     let mut counter = 0;
     let mut waitpid_flags = WaitPidFlag::__WALL;
     if !blocking {
       waitpid_flags |= WaitPidFlag::WNOHANG;
     }
     loop {
-      let status = engine.next_event(Some(waitpid_flags))?;
+      let status = engine.next_event(Some(waitpid_flags));
+      if matches!(status, Err(Errno::EINTR)) {
+        if blocking {
+          return Err(WaitpidHandlerError::Interrupted);
+        } else {
+          continue;
+        }
+      }
+      let status = status.context(OSSnafu)?;
       if !matches!(status, PtraceWaitPidEvent::StillAlive) {
         counter += 1;
       }
@@ -376,13 +471,19 @@ impl Tracer {
             .unwrap()
             .presyscall;
           if presyscall {
-            self.on_syscall_enter(Either::Left(guard), pending_guards)?;
+            self
+              .on_syscall_enter(Either::Left(guard), pending_guards)
+              .context(OtherSnafu)?;
           } else {
-            self.on_syscall_exit(guard, pending_guards)?;
+            self
+              .on_syscall_exit(guard, pending_guards)
+              .context(OtherSnafu)?;
           }
         }
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Seccomp(guard)) => {
-          self.on_syscall_enter(Either::Right(guard), pending_guards)?;
+          self
+            .on_syscall_enter(Either::Right(guard), pending_guards)
+            .context(OtherSnafu)?;
         }
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::SignalDelivery(guard)) => {
           if guard.signal() == SENTINEL_SIGNAL {
@@ -390,8 +491,9 @@ impl Tracer {
             if let Some(state) = store.get_current_mut(guard.pid())
               && let Some(detach) = state.pending_detach.take()
             {
-                // This is a sentinel signal
-                self.proprgate_operation_error(
+              // This is a sentinel signal
+              self
+                .proprgate_operation_error(
                   detach.hit,
                   false,
                   self.detach_process_internal(
@@ -400,15 +502,18 @@ impl Tracer {
                     detach.hid,
                     pending_guards,
                   ),
-                )?;
-                continue;
-              }
+                )
+                .context(OtherSnafu)?;
+              continue;
+            }
           }
           let signal = guard.signal();
           let pid = guard.pid();
           trace!("other signal: {pid}, sig {:?}", signal);
           // Just deliver the signal to tracee
-          guard.seccomp_aware_deliver_cont_syscall(true)?;
+          guard
+            .seccomp_aware_deliver_cont_syscall(true)
+            .context(OSSnafu)?;
         }
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Exec(guard)) => {
           trace!("exec event");
@@ -424,9 +529,9 @@ impl Tracer {
           // Exec event comes first before our special SENTINEL_SIGNAL is sent to tracee! (usually happens on syscall-enter)
           if p.pending_detach.is_none() {
             // Don't use seccomp_aware_cont here because that will skip the next syscall exit stop
-            guard.cont_syscall(true)?;
+            guard.cont_syscall(true).context(OSSnafu)?;
           } else {
-            guard.cont_syscall(true)?;
+            guard.cont_syscall(true).context(OSSnafu)?;
             trace!("pending detach, continuing so that signal can be delivered");
           }
         }
@@ -443,7 +548,7 @@ impl Tracer {
               if state.status == ProcessStatus::PtraceForkEventReceived {
                 trace!("sigstop event received after ptrace fork event, pid: {pid}");
                 state.status = ProcessStatus::Running;
-                guard.seccomp_aware_cont_syscall(true)?;
+                guard.seccomp_aware_cont_syscall(true).context(OSSnafu)?;
                 handled = true;
               } else if state.status == ProcessStatus::Initialized {
                 // Manually inserted process state. (root child)
@@ -455,7 +560,7 @@ impl Tracer {
               } else {
                 handled = true;
                 trace!("bogus clone child event, ignoring");
-                guard.seccomp_aware_cont_syscall(true)?;
+                guard.seccomp_aware_cont_syscall(true).context(OSSnafu)?;
               }
             } else {
               pending_guards.insert(pid, guard.into());
@@ -465,7 +570,7 @@ impl Tracer {
               trace!(
                 "sigstop event received before ptrace fork event, pid: {pid}, pid_reuse: {pid_reuse}"
               );
-              let mut state = ProcessState::new(pid)?;
+              let mut state = ProcessState::new(pid).context(OtherSnafu)?;
               state.status = ProcessStatus::SigstopReceived;
               store.insert(state);
 
@@ -476,7 +581,7 @@ impl Tracer {
         }
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::CloneParent(guard)) => {
           let timestamp = Local::now();
-          let new_child = guard.child()?;
+          let new_child = guard.child().context(OSSnafu)?;
           let pid = guard.pid();
           trace!("ptrace fork/clone event, pid: {pid}, child: {new_child}");
           if self.filter.intersects(TracerEventDetailsKind::NewChild) {
@@ -488,10 +593,11 @@ impl Tracer {
               pcomm: parent.comm.clone(),
               pid: new_child,
             });
-            self.msg_tx.send(event.into())?;
+            self.msg_tx.send(event.into()).context(ChannelSnafu)?;
             self
               .printer
-              .print_new_child(parent.pid, &parent.comm, new_child)?;
+              .print_new_child(parent.pid, &parent.comm, new_child)
+              .context(OtherSnafu)?;
           }
           {
             let mut store = self.store.write().unwrap();
@@ -505,7 +611,8 @@ impl Tracer {
                 pending_guards
                   .remove(&new_child)
                   .unwrap()
-                  .seccomp_aware_cont_syscall(true)?;
+                  .seccomp_aware_cont_syscall(true)
+                  .context(OSSnafu)?;
                 handled = true;
               } else if state.status == ProcessStatus::Initialized {
                 // Manually inserted process state. (root child)
@@ -519,7 +626,7 @@ impl Tracer {
               trace!(
                 "ptrace fork event received before sigstop, pid: {pid}, child: {new_child}, pid_reuse: {pid_reuse}"
               );
-              let mut state = ProcessState::new(new_child)?;
+              let mut state = ProcessState::new(new_child).context(OtherSnafu)?;
               state.status = ProcessStatus::PtraceForkEventReceived;
               state.ppid = Some(pid);
               store.insert(state);
@@ -538,14 +645,14 @@ impl Tracer {
               );
             }
             // Resume parent
-            guard.seccomp_aware_cont_syscall(true)?;
+            guard.seccomp_aware_cont_syscall(true).context(OSSnafu)?;
           }
         }
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Group(guard)) => {
-          guard.listen(true)?;
+          guard.listen(true).context(OSSnafu)?;
         }
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Interrupt(guard)) => {
-          guard.seccomp_aware_cont_syscall(true)?;
+          guard.seccomp_aware_cont_syscall(true).context(OSSnafu)?;
         }
         PtraceWaitPidEvent::Signaled { pid, signal: sig } => {
           let timestamp = Local::now();
@@ -555,17 +662,20 @@ impl Tracer {
             state.status = ProcessStatus::Exited(ProcessExit::Signal(sig));
             let associated_events = state.associated_events.clone();
             if !associated_events.is_empty() {
-              self.msg_tx.send(
-                ProcessStateUpdateEvent {
-                  update: ProcessStateUpdate::Exit {
-                    timestamp,
-                    status: ProcessExit::Signal(sig),
-                  },
-                  pid,
-                  ids: associated_events,
-                }
-                .into(),
-              )?;
+              self
+                .msg_tx
+                .send(
+                  ProcessStateUpdateEvent {
+                    update: ProcessStateUpdate::Exit {
+                      timestamp,
+                      status: ProcessExit::Signal(sig),
+                    },
+                    pid,
+                    ids: associated_events,
+                  }
+                  .into(),
+                )
+                .context(ChannelSnafu)?;
             }
             if pid == root_child {
               filterable_event!(TraceeExit {
@@ -573,7 +683,8 @@ impl Tracer {
                 signal: Some(sig),
                 exit_code: 128 + sig.as_raw(),
               })
-              .send_if_match(&self.msg_tx, self.filter)?;
+              .send_if_match(&self.msg_tx, self.filter)
+              .context(ChannelSnafu)?;
               return Ok(ControlFlow::Break(()));
             }
           }
@@ -587,17 +698,20 @@ impl Tracer {
             state.status = ProcessStatus::Exited(ProcessExit::Code(code));
             let associated_events = state.associated_events.clone();
             if !associated_events.is_empty() {
-              self.msg_tx.send(
-                ProcessStateUpdateEvent {
-                  update: ProcessStateUpdate::Exit {
-                    status: ProcessExit::Code(code),
-                    timestamp,
-                  },
-                  pid,
-                  ids: associated_events,
-                }
-                .into(),
-              )?;
+              self
+                .msg_tx
+                .send(
+                  ProcessStateUpdateEvent {
+                    update: ProcessStateUpdate::Exit {
+                      status: ProcessExit::Code(code),
+                      timestamp,
+                    },
+                    pid,
+                    ids: associated_events,
+                  }
+                  .into(),
+                )
+                .context(ChannelSnafu)?;
             }
             let should_exit = if pid == root_child {
               filterable_event!(TraceeExit {
@@ -605,7 +719,8 @@ impl Tracer {
                 signal: None,
                 exit_code: code,
               })
-              .send_if_match(&self.msg_tx, self.filter)?;
+              .send_if_match(&self.msg_tx, self.filter)
+              .context(ChannelSnafu)?;
               true
             } else {
               false
@@ -966,15 +1081,15 @@ impl Tracer {
     if self.filter.intersects(TracerEventDetailsKind::Warning)
       && let Err(e) = envp.as_ref()
     {
-        self.msg_tx.send(
-          TracerEventDetails::Warning(TracerEventMessage {
-            timestamp: self.timestamp_now(),
-            pid: Some(pid),
-            msg: format!("Failed to read envp: {e:?}"),
-          })
-          .into_tracer_msg(),
-        )?;
-      }
+      self.msg_tx.send(
+        TracerEventDetails::Warning(TracerEventMessage {
+          timestamp: self.timestamp_now(),
+          pid: Some(pid),
+          msg: format!("Failed to read envp: {e:?}"),
+        })
+        .into_tracer_msg(),
+      )?;
+    }
     Ok(())
   }
 
@@ -984,16 +1099,17 @@ impl Tracer {
     pid: Pid,
   ) -> color_eyre::Result<()> {
     if self.filter.intersects(TracerEventDetailsKind::Warning)
-      && let Err(e) = filename.as_deref() {
-        self.msg_tx.send(
-          TracerEventDetails::Warning(TracerEventMessage {
-            timestamp: self.timestamp_now(),
-            pid: Some(pid),
-            msg: format!("Failed to read filename: {e:?}"),
-          })
-          .into_tracer_msg(),
-        )?;
-      }
+      && let Err(e) = filename.as_deref()
+    {
+      self.msg_tx.send(
+        TracerEventDetails::Warning(TracerEventMessage {
+          timestamp: self.timestamp_now(),
+          pid: Some(pid),
+          msg: format!("Failed to read filename: {e:?}"),
+        })
+        .into_tracer_msg(),
+      )?;
+    }
     Ok(())
   }
 
@@ -1033,7 +1149,7 @@ static BREAKPOINT_ID: AtomicU32 = AtomicU32::new(0);
 /// Breakpoint management
 impl Tracer {
   pub fn add_breakpoint(&self, breakpoint: BreakPoint) -> u32 {
-    let id = BREAKPOINT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let id = BREAKPOINT_ID.fetch_add(1, Ordering::SeqCst);
     let mut bs = self.breakpoints.write().unwrap();
     bs.insert(id, breakpoint);
     id
@@ -1193,6 +1309,15 @@ impl Tracer {
     Ok(())
   }
 
+  fn blocking_mode_notify_tracer(&self) -> Result<(), Errno> {
+    let tid = self.tid.load(Ordering::Relaxed);
+    let r = unsafe { pthread_kill(tid, nix::sys::signal::SIGUSR1 as c_int) };
+    if r != 0 {
+      return Err(nix::errno::Errno::from_raw(r));
+    }
+    Ok(())
+  }
+
   pub fn request_process_detach(
     &self,
     hit: BreakPointHit,
@@ -1202,11 +1327,17 @@ impl Tracer {
     self
       .req_tx
       .send(PendingRequest::DetachProcess { hit, signal, hid })?;
+    if self.blocking() {
+      self.blocking_mode_notify_tracer()?;
+    }
     Ok(())
   }
 
   pub fn request_process_resume(&self, hit: BreakPointHit) -> color_eyre::Result<()> {
     self.req_tx.send(PendingRequest::ResumeProcess(hit))?;
+    if self.blocking() {
+      self.blocking_mode_notify_tracer()?;
+    }
     Ok(())
   }
 
@@ -1231,6 +1362,9 @@ impl Tracer {
   pub fn request_suspend_seccomp_bpf(&self, pid: Pid) -> color_eyre::Result<()> {
     trace!("received request to suspend {pid}'s seccomp-bpf filter");
     self.req_tx.send(PendingRequest::SuspendSeccompBpf(pid))?;
+    if self.blocking() {
+      self.blocking_mode_notify_tracer()?;
+    }
     Ok(())
   }
 
@@ -1249,5 +1383,9 @@ impl Tracer {
     } else {
       None
     }
+  }
+
+  fn blocking(&self) -> bool {
+    self.polling_interval.is_none()
   }
 }

@@ -136,7 +136,13 @@ async fn main() -> color_eyre::Result<()> {
         .baseline(Arc::new(baseline))
         .filter(tracer_event_args.filter()?)
         .seccomp_bpf(ptrace_args.seccomp_bpf)
-        .ptrace_polling_delay(ptrace_args.tracer_delay)
+        .ptrace_blocking(ptrace_args.polling_interval.is_none_or(|v| v < 0))
+        .ptrace_polling_delay(
+          ptrace_args
+            .polling_interval
+            .filter(|&v| v > 0)
+            .map(|v| v as u64),
+        )
         .printer_from_cli(&tracing_args)
         .build_ptrace()?;
       let tracer = Arc::new(tracer);
@@ -211,7 +217,13 @@ async fn main() -> color_eyre::Result<()> {
         .baseline(baseline.clone())
         .filter(tracer_event_args.filter()?)
         .seccomp_bpf(ptrace_args.seccomp_bpf)
-        .ptrace_polling_delay(ptrace_args.tracer_delay)
+        .ptrace_blocking(ptrace_args.polling_interval.is_none_or(|v| v < 0))
+        .ptrace_polling_delay(
+          ptrace_args
+            .polling_interval
+            .filter(|&v| v > 0)
+            .map(|v| v as u64),
+        )
         .printer_from_cli(&tracing_args)
         .build_ptrace()?;
       let tracer = Arc::new(tracer);
@@ -276,7 +288,13 @@ async fn main() -> color_eyre::Result<()> {
         .baseline(Arc::new(baseline.clone()))
         .filter(TracerEventArgs::all().filter()?)
         .seccomp_bpf(ptrace_args.seccomp_bpf)
-        .ptrace_polling_delay(ptrace_args.tracer_delay)
+        .ptrace_blocking(ptrace_args.polling_interval.is_none_or(|v| v < 0))
+        .ptrace_polling_delay(
+          ptrace_args
+            .polling_interval
+            .filter(|&v| v > 0)
+            .map(|v| v as u64),
+        )
         .printer_from_cli(&tracing_args)
         .build_ptrace()?;
       let tracer = Arc::new(tracer);
