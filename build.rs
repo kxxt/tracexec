@@ -43,11 +43,13 @@ fn main() {
     if cfg!(feature = "ebpf-no-rcu-kfuncs") {
       clang_args.push(OsStr::new("-DNO_RCU_KFUNCS"));
     }
-    SkeletonBuilder::new()
-      .source(bpf_src)
-      .clang_args(clang_args)
-      .build_and_generate(&skel_out)
-      .unwrap();
+    let mut builder = SkeletonBuilder::new();
+    builder.source(bpf_src).clang_args(clang_args);
+    if let Some(path) = std::env::var_os("CLANG") {
+      builder.clang(path);
+    }
+    builder.build_and_generate(&skel_out).unwrap();
+    println!("cargo:rerun-if-env-changed=CLANG");
     println!("cargo:rerun-if-changed={BPF_SRC}");
     println!("cargo:rerun-if-changed=src/bpf/common.h");
     println!("cargo:rerun-if-changed=src/bpf/interface.h");

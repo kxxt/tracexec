@@ -26,6 +26,8 @@ To install from source, the following dependencies are needed:
   - `build-essential` `autopoint` `gettext` for Debian based distros
   - `base-devel` for Arch Linux
 - `clang` for compiling eBPF program.
+  - By default, `clang` from `PATH` is used. `CLANG` environment variable
+    could be used to specify the **full** path to the desired clang compiler.
 
 ### Library Linkage
 
