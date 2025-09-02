@@ -1,5 +1,48 @@
 # Changelog
 
+## v0.13.0
+
+### Notice
+
+The experimental eBPF backend may fail to load with "BPF program is too large."
+error when compiled with clang 20/21.
+This appears to be a regression in clang. I am still investigating this bug.
+In case you need the experimental eBPF backend, please use `CLANG` environment
+variable to specify the **full** path to an older version of clang when building tracexec.
+
+(clang 18/19 is known to be good)
+
+### Breaking Changes
+
+`--tracer-delay` option is now replaced with `--polling-interval`.
+The naming of this option was not intuitive. This should not break
+most use cases as this option is not widely used.
+We apologize for potential breakages.
+
+Previous versions of tracexec uses polling in ptrace backend,
+which is less reactive to ptrace events than blocking and could introduce
+noticeable delays when `--tracer-delay` is not adjusted for exec-heavy workloads.
+
+In order to work towards making tracexec a build system profiler,
+starting from v0.13.0, tracexec by default no longer uses polling in ptrace
+backend. Instead, we are now relying on blocking syscalls and signals.
+This way, we can achieve higher throughput by default.
+
+To revert to the previous behavior of polling, specify a positive polling interval
+with `--polling-interval`. A negative value would disable polling.
+
+### Fixes
+
+- Fix typos (by @Xeonacid)
+
+### Misc
+
+- Bump MSRV to 1.88
+- Update UKCI
+- Refactor to use `snafu` instead of `thiserror`
+- Add `profiling` cargo profile
+- Refactor ptrace tracer to use type state pattern.
+
 ## v0.12.0
 
 ### New Features
