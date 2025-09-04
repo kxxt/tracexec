@@ -1052,6 +1052,28 @@ err_out:
   return 0;
 }
 
+static int read_fs_info(struct fd_event *fd_event, struct vfsmount *vfsmnt) {
+  if (fd_event == NULL) {
+    return 0;
+  }
+  struct mount *mount = container_of(vfsmnt, struct mount, mnt);
+  long ret = bpf_core_read(&fd_event->mnt_id, sizeof(fd_event->mnt_id),
+                      &mount->mnt_id);
+  if (ret < 0)
+    fd_event->header.flags |= MNTID_READ_ERR;
+  const char *fstype_name = BPF_CORE_READ(vfsmnt, mnt_sb, s_type, name);
+  if (fstype_name == NULL)
+    goto fstype_err_out;
+  ret = bpf_probe_read_kernel_str(&fd_event->fstype, sizeof(fd_event->fstype),
+                                  fstype_name);
+  if (ret < 0)
+    goto fstype_err_out;
+  return 0;
+fstype_err_out:
+  fill_field_with_unknown(fd_event->fstype);
+  return 0; // soft fail
+}
+
 // Read all dentry path segments up to mnt_root,
 // and then read all ancestor mount entries to reconstruct
 // an absolute path.
@@ -1095,6 +1117,9 @@ static int read_send_path(const struct path *path,
   }
   // Get vfsmount and mnt_root
   struct vfsmount *vfsmnt = path->mnt;
+  if (fd_event != NULL) {
+    read_fs_info(fd_event, vfsmnt);
+  }
   ret = bpf_core_read(&segment_ctx.mnt_root, sizeof(void *), &vfsmnt->mnt_root);
   if (ret < 0) {
     debug("failed to read vfsmnt->mnt_root");
@@ -1116,23 +1141,6 @@ static int read_send_path(const struct path *path,
       // Reuse the above segment_ctx to save stack space
       .segment_ctx = &segment_ctx,
   };
-  if (fd_event != NULL) {
-    ret = bpf_core_read(&fd_event->mnt_id, sizeof(fd_event->mnt_id),
-                        &mount->mnt_id);
-    if (ret < 0)
-      fd_event->header.flags |= MNTID_READ_ERR;
-    const char *fstype_name = BPF_CORE_READ(vfsmnt, mnt_sb, s_type, name);
-    if (fstype_name == NULL)
-      goto fstype_err_out;
-    ret = bpf_probe_read_kernel_str(&fd_event->fstype, sizeof(fd_event->fstype),
-                                    fstype_name);
-    if (ret < 0)
-      goto fstype_err_out;
-    goto fstype_out;
-  fstype_err_out:
-    fill_field_with_unknown(fd_event->fstype);
-  fstype_out:;
-  }
   ret = bpf_loop(PATH_DEPTH_MAX, read_send_mount_segments, &ctx, 0);
   if (ret < 0) {
     goto loop_err;
