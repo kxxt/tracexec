@@ -123,7 +123,7 @@ static int read_send_path(const struct path *path,
 #ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
 #else
-#define debug(...) bpf_printk("");
+#define debug(...)
 #endif
 
 bool should_trace(pid_t old_tgid) {
