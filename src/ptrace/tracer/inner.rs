@@ -2,10 +2,10 @@ use std::{
   cell::RefCell,
   collections::{BTreeMap, HashMap},
   fs::File,
-  io::{self, Read, Write, stdin},
+  io::{self, stdin, Read, Write},
   marker::PhantomData,
   ops::ControlFlow,
-  os::fd::{AsRawFd, FromRawFd, OwnedFd},
+  os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd},
   sync::{Arc, RwLock},
   time::Duration,
 };
@@ -188,7 +188,7 @@ impl TracerInner {
       if let Some(user) = &user {
         // First, read set(u|g)id info from stat
         let file = std::fs::File::open(program_path)?;
-        let stat = fstat(file.as_raw_fd())?;
+        let stat = fstat(file.as_fd())?;
         drop(file);
         // setuid binary
         let euid = if stat.st_mode & S_ISUID > 0 {

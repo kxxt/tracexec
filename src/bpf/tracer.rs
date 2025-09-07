@@ -123,7 +123,7 @@ impl EbpfTracer {
           "data too short: {data:?}"
         );
         let header: &tracexec_event_header = unsafe { &*(data.as_ptr() as *const _) };
-        match unsafe { header.r#type.assume_init() } {
+        match header.r#type {
           event_type::SYSENTER_EVENT => unreachable!(),
           event_type::SYSEXIT_EVENT => {
             #[allow(clippy::comparison_chain)]
@@ -400,6 +400,9 @@ impl EbpfTracer {
             }
             debug!("{} forked {}", event.parent_tgid, header.pid);
           }
+          _ => {
+            unreachable!()
+          }
         }
         0
       }
@@ -438,7 +441,8 @@ impl EbpfTracer {
     bump_memlock_rlimit()?;
     let mut open_skel = skel_builder.open(object)?;
     let ncpu = num_possible_cpus()?.try_into().expect("Too many cores!");
-    open_skel.maps.rodata_data.tracexec_config.max_num_cpus = ncpu;
+    let rodata = open_skel.maps.rodata_data.as_deref_mut().unwrap();
+    rodata.tracexec_config.max_num_cpus = ncpu;
     open_skel.maps.cache.set_max_entries(ncpu)?;
     // tracexec runs in the same pid namespace with the tracee
     let pid_ns_ino = std::fs::metadata("/proc/self/ns/pid")?.ino();
@@ -497,9 +501,9 @@ impl EbpfTracer {
           r => r?,
         }
       }
-      open_skel.maps.rodata_data.tracexec_config.follow_fork = MaybeUninit::new(true);
-      open_skel.maps.rodata_data.tracexec_config.tracee_pid = child.as_raw();
-      open_skel.maps.rodata_data.tracexec_config.tracee_pidns_inum = pid_ns_ino as u32;
+      rodata.tracexec_config.follow_fork = MaybeUninit::new(true);
+      rodata.tracexec_config.tracee_pid = child.as_raw();
+      rodata.tracexec_config.tracee_pidns_inum = pid_ns_ino as u32;
       let mut skel = open_skel.load()?;
       skel.attach()?;
       match waitpid(child, Some(WaitPidFlag::WSTOPPED))? {

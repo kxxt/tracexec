@@ -34,6 +34,7 @@ use std::ffi::{CStr, CString, OsStr};
 
 use std::fs::File;
 use std::io::{Read, Write};
+use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::process::CommandExt;
@@ -559,9 +560,15 @@ fn spawn_command_from_pty_fd(
     nix::unistd::ForkResult::Parent { child } => Ok(child),
     nix::unistd::ForkResult::Child => {
       if let Some(pty) = pty {
-        dup2(pty.as_raw_fd(), 0).unwrap();
-        dup2(pty.as_raw_fd(), 1).unwrap();
-        dup2(pty.as_raw_fd(), 2).unwrap();
+        let mut stdin = unsafe { OwnedFd::from_raw_fd(0) };
+        let mut stdout = unsafe { OwnedFd::from_raw_fd(1) };
+        let mut stderr = unsafe { OwnedFd::from_raw_fd(2) };
+        dup2(pty.as_fd(), &mut stdin).unwrap();
+        dup2(pty.as_fd(), &mut stdout).unwrap();
+        dup2(pty.as_fd(), &mut stderr).unwrap();
+        std::mem::forget(stdin);
+        std::mem::forget(stdout);
+        std::mem::forget(stderr);
       }
 
       // Clean up a few things before we exec the program
