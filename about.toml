@@ -3,13 +3,13 @@ ignore-build-dependencies = true
 ignore-dev-dependencies = true
 
 accepted = [
-    "GPL-2.0",
+    "GPL-2.0-or-later",
     "MPL-2.0",
     "Apache-2.0",
     "MIT",
     "ISC",
     "BSL-1.0",
-    "LGPL-2.1",
+    "LGPL-2.1-only",
     "BSD-2-Clause",
     "Zlib"
 ]
