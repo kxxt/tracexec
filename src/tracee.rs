@@ -1,6 +1,9 @@
 //! Common operations to run in tracee process
 
-use std::{ffi::CString, os::fd::AsRawFd};
+use std::{
+  ffi::CString,
+  os::fd::{AsFd, FromRawFd, OwnedFd},
+};
 
 use nix::{
   errno::Errno,
@@ -10,9 +13,15 @@ use nix::{
 
 pub fn nullify_stdio() -> Result<(), std::io::Error> {
   let dev_null = std::fs::File::open("/dev/null")?;
-  dup2(dev_null.as_raw_fd(), 0)?;
-  dup2(dev_null.as_raw_fd(), 1)?;
-  dup2(dev_null.as_raw_fd(), 2)?;
+  let mut stdin = unsafe { OwnedFd::from_raw_fd(0) };
+  let mut stdout = unsafe { OwnedFd::from_raw_fd(1) };
+  let mut stderr = unsafe { OwnedFd::from_raw_fd(2) };
+  dup2(dev_null.as_fd(), &mut stdin)?;
+  dup2(dev_null.as_fd(), &mut stdout)?;
+  dup2(dev_null.as_fd(), &mut stderr)?;
+  std::mem::forget(stdin);
+  std::mem::forget(stdout);
+  std::mem::forget(stderr);
   Ok(())
 }
 

@@ -32,6 +32,7 @@ use crate::{
   tui::{self, app::App},
 };
 
+#[allow(clippy::use_self)] // remove after https://github.com/libbpf/libbpf-rs/pull/1231 is merged
 pub mod skel {
   include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
