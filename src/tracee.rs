@@ -12,7 +12,10 @@ use nix::{
 };
 
 pub fn nullify_stdio() -> Result<(), std::io::Error> {
-  let dev_null = std::fs::File::open("/dev/null")?;
+  let dev_null = std::fs::File::options()
+    .read(true)
+    .write(true)
+    .open("/dev/null")?;
   let mut stdin = unsafe { OwnedFd::from_raw_fd(0) };
   let mut stdout = unsafe { OwnedFd::from_raw_fd(1) };
   let mut stderr = unsafe { OwnedFd::from_raw_fd(2) };
