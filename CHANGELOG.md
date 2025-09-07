@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.13.1
+
+### Fixes
+
+- eBPF: fix load failure when compiled with clang >= 20.1
+- eBPF: drop old printk hack
+- Fix cargo-about failure introduced by breaking changes in `cargo-about` v0.8 (by @hatch01)
+- Ensure that when not using pty, open `/dev/null` with `O_RDWR` so that stderr/stdout is writable by tracee.
+
+### Misc
+
+- Upgrade dependencies
+
 ## v0.13.0
 
 ### Notice
