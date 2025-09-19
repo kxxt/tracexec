@@ -115,7 +115,7 @@ impl EbpfTracer {
       let should_exit = should_exit.clone();
       move |data| {
         assert!(
-          data.as_ptr() as usize % 8 == 0,
+          (data.as_ptr() as usize).is_multiple_of(8),
           "data is not 8 byte aligned!"
         );
         assert!(
