@@ -97,6 +97,7 @@ pub fn read_cstring_array(
   read_null_ended_array(pid, address, is_32bit, read_cstring)
 }
 
+#[allow(unused)]
 pub fn read_string_array(
   pid: Pid,
   address: AddressType,
@@ -149,8 +150,9 @@ pub fn read_env(
   pid: Pid,
   mut address: AddressType,
   is_32bit: bool,
-) -> Result<BTreeMap<OutputMsg, OutputMsg>, InspectError> {
+) -> Result<(bool, BTreeMap<OutputMsg, OutputMsg>), InspectError> {
   let mut res = BTreeMap::new();
+  let mut has_dash_env = false;
   // FIXME: alignment
   let word_size = if is_32bit { 4 } else { 8 };
   loop {
@@ -168,9 +170,12 @@ pub fn read_env(
       }
     };
     if ptr == 0 {
-      return Ok(res);
+      return Ok((has_dash_env, res));
     } else {
       let (k, v) = read_single_env_entry(pid, ptr as AddressType);
+      if k.as_ref().starts_with('-') {
+        has_dash_env = true;
+      }
       res.insert(k, v);
     }
     address = unsafe { address.add(word_size) };

@@ -715,6 +715,7 @@ impl Printer {
             // envp warning is already handled
             if let Ok(envp) = exec_data.envp.as_ref() {
               let diff = diff_env(env, envp);
+              let need_env_argument_separator = diff.need_env_argument_separator();
               // Now we have the tracee removed entries in env
               for k in diff.removed.into_iter() {
                 if self.args.color >= ColorLevel::Normal {
@@ -727,6 +728,9 @@ impl Printer {
                 } else {
                   write!(out, " -u {}", k.bash_escaped())?;
                 }
+              }
+              if need_env_argument_separator {
+                write!(out, " --")?;
               }
               if self.args.color >= ColorLevel::Normal {
                 for (k, v) in diff.added.into_iter() {

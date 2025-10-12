@@ -211,6 +211,10 @@ impl super::TracerEventDetails {
                 spans.push("-u ".set_style(THEME.deleted_env_var));
                 spans.push(k.tui_bash_escaped_with_style(THEME.deleted_env_var));
               }
+              if env_diff.need_env_argument_separator() {
+                spans.push(space.clone());
+                spans.push("--".into());
+              }
               for (k, v) in env_diff.added.iter() {
                 // Added env vars
                 spans.push(space.clone());
@@ -228,7 +232,7 @@ impl super::TracerEventDetails {
             }
           } else if let Ok(envp) = &**envp {
             spans.push(space.clone());
-            spans.push("-i".into()); // TODO: style
+            spans.push("-i --".into()); // TODO: style
             for (k, v) in envp.iter() {
               spans.push(space.clone());
               spans.push(k.tui_bash_escaped_with_style(THEME.unchanged_env_key));

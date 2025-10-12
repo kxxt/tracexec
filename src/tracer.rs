@@ -139,6 +139,7 @@ pub struct ExecData {
   pub filename: OutputMsg,
   pub argv: Arc<Result<Vec<OutputMsg>, InspectError>>,
   pub envp: Arc<Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>>,
+  pub has_dash_env: bool,
   pub cwd: OutputMsg,
   pub interpreters: Option<Vec<Interpreter>>,
   pub fdinfo: Arc<FileDescriptorInfoCollection>,
@@ -146,10 +147,12 @@ pub struct ExecData {
 }
 
 impl ExecData {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     filename: OutputMsg,
     argv: Result<Vec<OutputMsg>, InspectError>,
     envp: Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>,
+    has_dash_env: bool,
     cwd: OutputMsg,
     interpreters: Option<Vec<Interpreter>>,
     fdinfo: FileDescriptorInfoCollection,
@@ -159,6 +162,7 @@ impl ExecData {
       filename,
       argv: Arc::new(argv),
       envp: Arc::new(envp),
+      has_dash_env,
       cwd,
       interpreters,
       fdinfo: Arc::new(fdinfo),

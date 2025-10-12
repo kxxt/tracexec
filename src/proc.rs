@@ -342,36 +342,29 @@ pub fn parse_env_entry(item: &str) -> (&str, &str) {
   (head, &tail[1..])
 }
 
-pub fn parse_envp(envp: Vec<String>) -> BTreeMap<OutputMsg, OutputMsg> {
-  envp
-    .into_iter()
-    .map(|entry| {
-      let (key, value) = parse_env_entry(&entry);
-      let mut cache = CACHE.write().unwrap();
-      (
-        OutputMsg::Ok(cache.get_or_insert(key)),
-        OutputMsg::Ok(cache.get_or_insert(value)),
-      )
-    })
-    .collect()
-}
-
-pub fn parse_failiable_envp(envp: Vec<OutputMsg>) -> BTreeMap<OutputMsg, OutputMsg> {
-  envp
-    .into_iter()
-    .map(|entry| {
-      if let OutputMsg::Ok(s) | OutputMsg::PartialOk(s) = entry {
-        let (key, value) = parse_env_entry(&s);
-        let mut cache = CACHE.write().unwrap();
-        (
-          OutputMsg::Ok(cache.get_or_insert(key)),
-          OutputMsg::Ok(cache.get_or_insert(value)),
-        )
-      } else {
-        (entry.clone(), entry)
-      }
-    })
-    .collect()
+pub fn parse_failiable_envp(envp: Vec<OutputMsg>) -> (BTreeMap<OutputMsg, OutputMsg>, bool) {
+  let mut has_dash_var = false;
+  (
+    envp
+      .into_iter()
+      .map(|entry| {
+        if let OutputMsg::Ok(s) | OutputMsg::PartialOk(s) = entry {
+          let (key, value) = parse_env_entry(&s);
+          let mut cache = CACHE.write().unwrap();
+          if key.starts_with('-') {
+            has_dash_var = true;
+          }
+          (
+            OutputMsg::Ok(cache.get_or_insert(key)),
+            OutputMsg::Ok(cache.get_or_insert(value)),
+          )
+        } else {
+          (entry.clone(), entry)
+        }
+      })
+      .collect(),
+    has_dash_var,
+  )
 }
 
 pub fn cached_str(s: &str) -> ArcStr {
@@ -386,6 +379,7 @@ pub fn cached_string(s: String) -> ArcStr {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EnvDiff {
+  has_added_or_modified_keys_starting_with_dash: bool,
   pub added: BTreeMap<OutputMsg, OutputMsg>,
   pub removed: BTreeSet<OutputMsg>,
   pub modified: BTreeMap<OutputMsg, OutputMsg>,
@@ -394,6 +388,11 @@ pub struct EnvDiff {
 impl EnvDiff {
   pub fn is_modified_or_removed(&self, key: &OutputMsg) -> bool {
     self.modified.contains_key(key) || self.removed.contains(key)
+  }
+
+  /// Whether we need to use `--` to prevent argument injection
+  pub fn need_env_argument_separator(&self) -> bool {
+    self.has_added_or_modified_keys_starting_with_dash
   }
 }
 
@@ -405,19 +404,27 @@ pub fn diff_env(
   let mut modified = BTreeMap::<OutputMsg, OutputMsg>::new();
   // Use str to avoid cloning all env vars
   let mut removed: HashSet<OutputMsg> = original.keys().cloned().collect();
+  let mut has_added_or_modified_keys_starting_with_dash = false;
   for (key, value) in envp.iter() {
     // Too bad that we still don't have if- and while-let-chains
     // https://github.com/rust-lang/rust/issues/53667
     if let Some(orig_v) = original.get(key) {
       if orig_v != value {
         modified.insert(key.clone(), value.clone());
+        if key.as_ref().starts_with('-') {
+          has_added_or_modified_keys_starting_with_dash = true;
+        }
       }
       removed.remove(key);
     } else {
       added.insert(key.clone(), value.clone());
+      if key.as_ref().starts_with('-') {
+        has_added_or_modified_keys_starting_with_dash = true;
+      }
     }
   }
   EnvDiff {
+    has_added_or_modified_keys_starting_with_dash,
     added,
     removed: removed.into_iter().collect(),
     modified,
