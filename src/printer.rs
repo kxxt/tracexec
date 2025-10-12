@@ -725,7 +725,7 @@ impl Printer {
                     k.cli_bash_escaped_with_style(THEME.removed_env_key)
                   )?;
                 } else {
-                  write!(out, " -u={}", k.bash_escaped())?;
+                  write!(out, " -u {}", k.bash_escaped())?;
                 }
               }
               if self.args.color >= ColorLevel::Normal {
