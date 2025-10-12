@@ -134,6 +134,8 @@ pub struct ExecEvent {
   pub filename: OutputMsg,
   pub argv: Arc<Result<Vec<OutputMsg>, InspectError>>,
   pub envp: Arc<Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>>,
+  /// There are env var(s) whose key starts with dash
+  pub has_dash_env: bool,
   pub interpreter: Option<Vec<Interpreter>>,
   pub env_diff: Result<EnvDiff, InspectError>,
   pub fdinfo: Arc<FileDescriptorInfoCollection>,

@@ -188,10 +188,12 @@ impl EbpfTracer {
                 }
               }
             };
+            let (envp, has_dash_env) = parse_failiable_envp(envp);
             let exec_data = ExecData::new(
               filename,
               Ok(argv),
-              Ok(parse_failiable_envp(envp)),
+              Ok(envp),
+              has_dash_env,
               cwd,
               None,
               storage.fdinfo_map,
@@ -222,6 +224,7 @@ impl EbpfTracer {
                 filename: exec_data.filename.clone(),
                 argv: exec_data.argv.clone(),
                 envp: exec_data.envp.clone(),
+                has_dash_env,
                 interpreter: exec_data.interpreters.clone(),
                 env_diff: exec_data
                   .envp

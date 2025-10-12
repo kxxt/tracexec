@@ -2,7 +2,7 @@ use std::{
   cell::RefCell,
   collections::{BTreeMap, HashMap},
   fs::File,
-  io::{self, stdin, Read, Write},
+  io::{self, Read, Write, stdin},
   marker::PhantomData,
   ops::ControlFlow,
   os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd},
@@ -18,7 +18,7 @@ use crate::{
   ptrace::{
     BreakPoint, BreakPointHit, BreakPointStop, InspectError, Tracer,
     engine::{PhantomUnsend, PhantomUnsync},
-    inspect::{read_string, read_string_array},
+    inspect::read_string,
     tracer::{
       PendingRequest,
       state::{ProcessState, ProcessStateStore, ProcessStatus},
@@ -57,8 +57,8 @@ use crate::{
   },
   printer::{Printer, PrinterOut},
   proc::{
-    BaselineInfo, cached_string, diff_env, parse_envp, read_comm, read_cwd, read_exe, read_fd,
-    read_fds, read_interpreter_recursive,
+    BaselineInfo, cached_string, diff_env, read_comm, read_cwd, read_exe, read_fd, read_fds,
+    read_interpreter_recursive,
   },
   ptrace::inspect::{self, read_env},
   ptrace::{
@@ -737,10 +737,12 @@ impl TracerInner {
         Ok(s) => OutputMsg::Ok(s),
         Err(e) => OutputMsg::Err(crate::event::FriendlyError::InspectError(e)),
       };
+      let has_dash_env = envp.as_ref().map(|v| v.0).unwrap_or_default();
       p.exec_data = Some(ExecData::new(
         filename,
         argv,
-        envp,
+        envp.map(|v| v.1),
+        has_dash_env,
         OutputMsg::Ok(read_cwd(pid)?),
         Some(interpreters),
         read_fds(pid)?,
@@ -754,8 +756,7 @@ impl TracerInner {
       self.warn_for_filename(&filename, pid)?;
       let argv = read_output_msg_array(pid, regs.syscall_arg(1, is_32bit) as AddressType, is_32bit);
       self.warn_for_argv(&argv, pid)?;
-      let envp = read_string_array(pid, regs.syscall_arg(2, is_32bit) as AddressType, is_32bit)
-        .map(parse_envp);
+      let envp = read_env(pid, regs.syscall_arg(2, is_32bit) as AddressType, is_32bit);
       self.warn_for_envp(&envp, pid)?;
       let interpreters = if self.printer.args.trace_interpreter && filename.is_ok() {
         read_interpreter_recursive(filename.as_deref().unwrap())
@@ -766,10 +767,12 @@ impl TracerInner {
         Ok(s) => OutputMsg::Ok(s),
         Err(e) => OutputMsg::Err(crate::event::FriendlyError::InspectError(e)),
       };
+      let has_dash_env = envp.as_ref().map(|v| v.0).unwrap_or_default();
       p.exec_data = Some(ExecData::new(
         filename,
         argv,
-        envp,
+        envp.map(|v| v.1),
+        has_dash_env,
         OutputMsg::Ok(read_cwd(pid)?),
         Some(interpreters),
         read_fds(pid)?,
@@ -939,6 +942,7 @@ impl TracerInner {
       cwd: exec_data.cwd.clone(),
       comm: state.comm.clone(),
       filename: exec_data.filename.clone(),
+      has_dash_env: exec_data.has_dash_env,
       argv: exec_data.argv.clone(),
       envp: exec_data.envp.clone(),
       interpreter: exec_data.interpreters.clone(),
@@ -1149,11 +1153,7 @@ impl TracerInner {
     Ok(())
   }
 
-  fn warn_for_envp(
-    &self,
-    envp: &Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>,
-    pid: Pid,
-  ) -> color_eyre::Result<()> {
+  fn warn_for_envp<T>(&self, envp: &Result<T, InspectError>, pid: Pid) -> color_eyre::Result<()> {
     if self.filter.intersects(TracerEventDetailsKind::Warning)
       && let Err(e) = envp.as_ref()
     {
