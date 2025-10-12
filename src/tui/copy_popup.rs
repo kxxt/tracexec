@@ -33,6 +33,7 @@ pub struct CopyPopupState {
 static KEY_MAP: LazyLock<BTreeMap<char, (&'static str, &'static str)>> = LazyLock::new(|| {
   [
     ('c', ("(C)ommand line", "Cmdline")),
+    ('o', ("C(o)mmand line with full env", "Cmdline with full env")),
     ('s', ("Command line with (S)tdio", "Cmdline with stdio")),
     (
       'f',
@@ -82,6 +83,7 @@ impl CopyPopupState {
     let key = self.available_targets[id];
     match key {
       'c' => CopyTarget::Commandline(Bash),
+      'o' => CopyTarget::CommandlineWithFullEnv(Bash),
       's' => CopyTarget::CommandlineWithStdio(Bash),
       'f' => CopyTarget::CommandlineWithFds(Bash),
       'e' => CopyTarget::Env,

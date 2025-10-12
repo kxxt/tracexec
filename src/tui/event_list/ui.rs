@@ -36,6 +36,7 @@ impl Event {
       self.status,
       true,
       extra_prefix,
+      false,
     )
   }
 }

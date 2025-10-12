@@ -81,6 +81,7 @@ impl Action {
 pub enum CopyTarget {
   Line,
   Commandline(SupportedShell),
+  CommandlineWithFullEnv(SupportedShell),
   CommandlineWithStdio(SupportedShell),
   CommandlineWithFds(SupportedShell),
   Env,
