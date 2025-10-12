@@ -39,6 +39,7 @@ impl super::TracerEventDetails {
         event_status,
         false,
         None,
+        false,
       )
       .line
   }
@@ -56,6 +57,7 @@ impl super::TracerEventDetails {
     event_status: Option<EventStatus>,
     enable_mask: bool,
     extra_prefix: Option<Span<'static>>,
+    full_env: bool,
   ) -> EventLine {
     let mut env_range = None;
     let mut cwd_range = None;
@@ -151,6 +153,7 @@ impl super::TracerEventDetails {
           env_diff,
           result,
           fdinfo,
+          envp,
           ..
         } = exec.as_ref();
         let mut spans = extra_prefix
@@ -200,28 +203,40 @@ impl super::TracerEventDetails {
         }
         if rt_modifier_effective.show_env {
           env_range = Some((spans.len(), 0));
-          if let Ok(env_diff) = env_diff {
-            // Handle env diff
-            for k in env_diff.removed.iter() {
-              spans.push(space.clone());
-              spans.push("-u ".set_style(THEME.deleted_env_var));
-              spans.push(k.tui_bash_escaped_with_style(THEME.deleted_env_var));
+          if !full_env {
+            if let Ok(env_diff) = env_diff {
+              // Handle env diff
+              for k in env_diff.removed.iter() {
+                spans.push(space.clone());
+                spans.push("-u ".set_style(THEME.deleted_env_var));
+                spans.push(k.tui_bash_escaped_with_style(THEME.deleted_env_var));
+              }
+              for (k, v) in env_diff.added.iter() {
+                // Added env vars
+                spans.push(space.clone());
+                spans.push(k.tui_bash_escaped_with_style(THEME.added_env_var));
+                spans.push("=".set_style(THEME.added_env_var));
+                spans.push(v.tui_bash_escaped_with_style(THEME.added_env_var));
+              }
+              for (k, v) in env_diff.modified.iter() {
+                // Modified env vars
+                spans.push(space.clone());
+                spans.push(k.tui_bash_escaped_with_style(THEME.modified_env_var));
+                spans.push("=".set_style(THEME.modified_env_var));
+                spans.push(v.tui_bash_escaped_with_style(THEME.modified_env_var));
+              }
             }
-            for (k, v) in env_diff.added.iter() {
-              // Added env vars
+          } else if let Ok(envp) = &**envp {
+            spans.push(space.clone());
+            spans.push("-i".into()); // TODO: style
+            for (k, v) in envp.iter() {
               spans.push(space.clone());
-              spans.push(k.tui_bash_escaped_with_style(THEME.added_env_var));
-              spans.push("=".set_style(THEME.added_env_var));
-              spans.push(v.tui_bash_escaped_with_style(THEME.added_env_var));
-            }
-            for (k, v) in env_diff.modified.iter() {
-              // Modified env vars
-              spans.push(space.clone());
-              spans.push(k.tui_bash_escaped_with_style(THEME.modified_env_var));
-              spans.push("=".set_style(THEME.modified_env_var));
-              spans.push(v.tui_bash_escaped_with_style(THEME.modified_env_var));
+              spans.push(k.tui_bash_escaped_with_style(THEME.unchanged_env_key));
+              spans.push("=".set_style(THEME.unchanged_env_key));
+              spans.push(v.tui_bash_escaped_with_style(THEME.unchanged_env_val));
             }
           }
+
           if let Some(r) = env_range.as_mut() {
             r.1 = spans.len();
           }
@@ -366,6 +381,7 @@ impl super::TracerEventDetails {
           None,
           false,
           None,
+          false,
         )
         .to_string()
         .into();
@@ -385,6 +401,20 @@ impl super::TracerEventDetails {
           None,
           false,
           None,
+          false,
+        )
+        .to_string()
+        .into(),
+      CopyTarget::CommandlineWithFullEnv(_) => self
+        .to_event_line(
+          baseline,
+          true,
+          &modifier_args,
+          Default::default(),
+          None,
+          false,
+          None,
+          true,
         )
         .to_string()
         .into(),
@@ -399,6 +429,7 @@ impl super::TracerEventDetails {
             None,
             false,
             None,
+            false,
           )
           .to_string()
           .into()
@@ -415,6 +446,7 @@ impl super::TracerEventDetails {
             None,
             false,
             None,
+            false,
           )
           .to_string()
           .into()
