@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.14.0
+
+### Security fix
+
+- Fix [`env` command argument injection via environment variables starting with dash in traced exec events](https://github.com/kxxt/tracexec/security/advisories/GHSA-6fgx-x7m2-74qm).
+  See the linked security advisory for more details.
+
+### New Feature
+
+- TUI: the copy dialog now offers a new option for copying the command line with full environment variables.
+
 ## v0.13.1
 
 ### Fixes
