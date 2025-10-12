@@ -21,40 +21,40 @@ localFlake:
           sources = [
             {
               name = "6.1lts";
-              tag = "6.1.149";
+              tag = "6.1.155";
               source = "mirror";
               test_exe = "tracexec_no_rcu_kfuncs";
-              sha256 = "sha256-xOkGuNOaWGbSXgY3HU3kRU+/qutnl5oE5BN+gHh3vjk=";
+              sha256 = "sha256-wpOHru4IX7y9kSNiJLnfgFBjusQ2Fedc6ixrKWBKXHM=";
             }
             {
               name = "6.6lts";
-              tag = "6.6.103";
+              tag = "6.6.110";
               source = "mirror";
               test_exe = "tracexec";
-              sha256 = "sha256-0ojdOMPmK6V2ums60qhM+6Zc1DtwL2xQ0fcBrulCsY4=";
+              sha256 = "sha256-G/INr1VDuHWfMl5V+w2kkTcV5odBYnoTOA5mqvIZ+x0=";
             }
             {
               name = "6.12lts";
-              tag = "6.12.44";
+              tag = "6.12.51";
               source = "mirror";
               test_exe = "tracexec";
-              sha256 = "sha256-tlAhDtMCeyJJadFIqjd0Uqmq065/KFGr7dMa3+8Wva4=";
-            }
-            {
-              name = "6.16";
-              tag = "6.16.4";
-              version = "6.16.4";
-              source = "mirror";
-              test_exe = "tracexec";
-              sha256 = "sha256-1qXjxxoQtTOnViUTh8yL9Iu9XHbYQrpelX2LHDFqtiI=";
+              sha256 = "sha256-LVWtFJyn2e+CWVxmlDBlADDL+a+760LlzZtLo8waciE=";
             }
             {
               name = "6.17";
-              tag = "v6.17-rc3";
-              version = "6.17.0-rc3";
+              tag = "6.17.1";
+              version = "6.17.1";
+              source = "mirror";
+              test_exe = "tracexec";
+              sha256 = "sha256-pT2+P0FJGSKmHxfFzFUeiPVE1UEa6xyMZcQCeVxPTaA=";
+            }
+            {
+              name = "6.18";
+              tag = "v6.18-rc1";
+              version = "6.18.0-rc1";
               source = "linus";
               test_exe = "tracexec";
-              sha256 = "sha256-xtzo2vBTOdhIzTJuiab6XXx9oE4xKBsSW/PkPJ79mCs=";
+              sha256 = "sha256-gjUci2a2qtu3DkOTr2ZbHYW6LPssBVErC7tLXPwnaa8=";
             }
           ];
           nixpkgs = localFlake.nixpkgs;
