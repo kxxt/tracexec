@@ -6,6 +6,7 @@ use std::{
   collections::{BTreeMap, BTreeSet, HashSet},
   ffi::CString,
   fmt::{Display, Formatter},
+  fs,
   io::{self, BufRead, BufReader, Read},
   os::raw::c_int,
   path::{Path, PathBuf},
@@ -57,6 +58,90 @@ pub fn read_exe(pid: Pid) -> std::io::Result<ArcStr> {
   let filename = format!("/proc/{pid}/exe");
   let buf = std::fs::read_link(filename)?;
   Ok(cached_str(&buf.to_string_lossy()))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcStatus {
+  pub uid_real: u32,
+  pub uid_effective: u32,
+  pub uid_saved_set: u32,
+  pub uid_fs: u32,
+  pub gid_real: u32,
+  pub gid_effective: u32,
+  pub gid_saved_set: u32,
+  pub gid_fs: u32,
+}
+
+pub fn read_status(pid: Pid) -> std::io::Result<ProcStatus> {
+  let filename = format!("/proc/{pid}/status");
+  let contents = fs::read_to_string(filename)?;
+  parse_status_contents(&contents)
+}
+
+fn parse_status_contents(contents: &str) -> std::io::Result<ProcStatus> {
+  let mut uid = None;
+  let mut gid = None;
+
+  fn parse_ids(s: &str) -> std::io::Result<[u32; 4]> {
+    let mut iter = s.trim_ascii().split_ascii_whitespace().take(4).map(|v| {
+      v.parse()
+        .map_err(|_| std::io::Error::new(io::ErrorKind::InvalidData, "non numeric uid/gid"))
+    });
+    Ok([
+      iter
+        .next()
+        .transpose()?
+        .ok_or_else(|| std::io::Error::new(io::ErrorKind::InvalidData, "not enough uid/gid(s)"))?,
+      iter
+        .next()
+        .transpose()?
+        .ok_or_else(|| std::io::Error::new(io::ErrorKind::InvalidData, "not enough uid/gid(s)"))?,
+      iter
+        .next()
+        .transpose()?
+        .ok_or_else(|| std::io::Error::new(io::ErrorKind::InvalidData, "not enough uid/gid(s)"))?,
+      iter
+        .next()
+        .transpose()?
+        .ok_or_else(|| std::io::Error::new(io::ErrorKind::InvalidData, "not enough uid/gid(s)"))?,
+    ])
+  }
+
+  for line in contents.lines() {
+    if let Some(rest) = line.strip_prefix("Uid:") {
+      uid = Some(parse_ids(rest)?);
+    } else if let Some(rest) = line.strip_prefix("Gid:") {
+      gid = Some(parse_ids(rest)?);
+    }
+
+    if uid.is_some() && gid.is_some() {
+      break;
+    }
+  }
+
+  let Some([uid_real, uid_effective, uid_saved_set, uid_fs]) = uid else {
+    return Err(std::io::Error::new(
+      io::ErrorKind::InvalidData,
+      "status output does not contain uids",
+    ));
+  };
+  let Some([gid_real, gid_effective, gid_saved_set, gid_fs]) = gid else {
+    return Err(std::io::Error::new(
+      io::ErrorKind::InvalidData,
+      "status output does not contain gids",
+    ));
+  };
+
+  Ok(ProcStatus {
+    uid_real,
+    uid_effective,
+    uid_saved_set,
+    uid_fs,
+    gid_real,
+    gid_effective,
+    gid_saved_set,
+    gid_fs,
+  })
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -472,3 +557,41 @@ impl BaselineInfo {
 
 static CACHE: LazyLock<Arc<RwLock<StringCache>>> =
   LazyLock::new(|| Arc::new(RwLock::new(StringCache::new())));
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_parse_status_contents_valid() {
+    let sample = "\
+Name:\ttestproc
+State:\tR (running)
+Uid:\t1000\t1001\t1002\t1003
+Gid:\t2000\t2001\t2002\t2003
+Threads:\t1
+";
+
+    let status = parse_status_contents(sample).unwrap();
+    assert_eq!(
+      status,
+      ProcStatus {
+        uid_real: 1000,
+        uid_effective: 1001,
+        uid_saved_set: 1002,
+        uid_fs: 1003,
+        gid_real: 2000,
+        gid_effective: 2001,
+        gid_saved_set: 2002,
+        gid_fs: 2003,
+      }
+    );
+  }
+
+  #[test]
+  fn test_parse_status_contents_missing_gid() {
+    let sample = "Uid:\t1\t2\t3\t4\n";
+    let e = parse_status_contents(sample).unwrap_err();
+    assert_eq!(e.kind(), std::io::ErrorKind::InvalidData);
+  }
+}

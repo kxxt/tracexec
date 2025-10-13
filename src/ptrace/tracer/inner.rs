@@ -15,6 +15,7 @@ use crate::{
   cache::ArcStr,
   cli::options::SeccompBpf,
   event::ParentEventId,
+  proc::read_status,
   ptrace::{
     BreakPoint, BreakPointHit, BreakPointStop, InspectError, Tracer,
     engine::{PhantomUnsend, PhantomUnsync},
@@ -855,6 +856,12 @@ impl TracerInner {
           guard.seccomp_aware_cont_syscall(true)?;
           return Ok(());
         }
+
+        p.is_exec_successful = false;
+
+        // Read creds during syscall exit
+        let _proc_status = read_status(p.pid);
+
         if self.filter.intersects(TracerEventDetailsKind::Exec) {
           let id = TracerEvent::allocate_id();
           let parent = p.parent_tracker.update_last_exec(id, exec_result == 0);
@@ -877,7 +884,6 @@ impl TracerInner {
             &self.baseline.cwd,
           )?;
         }
-        p.is_exec_successful = false;
 
         if let Some(exec_data) = &p.exec_data {
           let mut hit = None;
