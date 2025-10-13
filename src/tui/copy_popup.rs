@@ -33,7 +33,10 @@ pub struct CopyPopupState {
 static KEY_MAP: LazyLock<BTreeMap<char, (&'static str, &'static str)>> = LazyLock::new(|| {
   [
     ('c', ("(C)ommand line", "Cmdline")),
-    ('o', ("C(o)mmand line with full env", "Cmdline with full env")),
+    (
+      'o',
+      ("C(o)mmand line with full env", "Cmdline with full env"),
+    ),
     ('s', ("Command line with (S)tdio", "Cmdline with stdio")),
     (
       'f',
