@@ -62,6 +62,11 @@ pub fn read_exe(pid: Pid) -> std::io::Result<ArcStr> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProcStatus {
+  pub cred: Cred,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cred {
   pub uid_real: u32,
   pub uid_effective: u32,
   pub uid_saved_set: u32,
@@ -133,14 +138,16 @@ fn parse_status_contents(contents: &str) -> std::io::Result<ProcStatus> {
   };
 
   Ok(ProcStatus {
-    uid_real,
-    uid_effective,
-    uid_saved_set,
-    uid_fs,
-    gid_real,
-    gid_effective,
-    gid_saved_set,
-    gid_fs,
+    cred: Cred {
+      uid_real,
+      uid_effective,
+      uid_saved_set,
+      uid_fs,
+      gid_real,
+      gid_effective,
+      gid_saved_set,
+      gid_fs,
+    },
   })
 }
 
@@ -576,14 +583,16 @@ Threads:\t1
     assert_eq!(
       status,
       ProcStatus {
-        uid_real: 1000,
-        uid_effective: 1001,
-        uid_saved_set: 1002,
-        uid_fs: 1003,
-        gid_real: 2000,
-        gid_effective: 2001,
-        gid_saved_set: 2002,
-        gid_fs: 2003,
+        cred: Cred {
+          uid_real: 1000,
+          uid_effective: 1001,
+          uid_saved_set: 1002,
+          uid_fs: 1003,
+          gid_real: 2000,
+          gid_effective: 2001,
+          gid_saved_set: 2002,
+          gid_fs: 2003,
+        }
       }
     );
   }

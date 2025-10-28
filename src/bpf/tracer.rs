@@ -25,6 +25,7 @@ use super::skel::{
 use super::{event::EventStorage, skel::TracexecSystemSkelBuilder};
 use crate::{
   bpf::{BpfError, cached_cow, utf8_lossy_cow_from_bytes_with_nul},
+  proc::Cred,
   timestamp::ts_from_boot_ns,
   tracee,
   tracer::TracerBuilder,
@@ -33,7 +34,7 @@ use chrono::Local;
 use color_eyre::Section;
 use enumflags2::{BitFlag, BitFlags};
 use libbpf_rs::{
-  ErrorKind, OpenObject, RingBuffer, RingBufferBuilder, num_possible_cpus,
+  OpenObject, RingBuffer, RingBufferBuilder, num_possible_cpus,
   skel::{OpenSkel, Skel, SkelBuilder},
 };
 use nix::{
@@ -189,11 +190,26 @@ impl EbpfTracer {
               }
             };
             let (envp, has_dash_env) = parse_failiable_envp(envp);
+            let cred = if eflags.contains(BpfEventFlags::CRED_READ_ERR) {
+              Err(std::io::Error::other("failed to read cred"))
+            } else {
+              Ok(Cred {
+                uid_real: event.uid,
+                uid_effective: event.euid,
+                uid_saved_set: event.suid,
+                uid_fs: event.fsuid,
+                gid_real: event.gid,
+                gid_effective: event.egid,
+                gid_saved_set: event.sgid,
+                gid_fs: event.fsgid,
+              })
+            };
             let exec_data = ExecData::new(
               filename,
               Ok(argv),
               Ok(envp),
               has_dash_env,
+              cred,
               cwd,
               None,
               storage.fdinfo_map,
@@ -545,7 +561,7 @@ impl RunningEbpfTracer<'_> {
       match self.rb.poll(Duration::from_millis(100)) {
         Ok(_) => continue,
         Err(e) => {
-          if e.kind() == ErrorKind::Interrupted {
+          if e.kind() == libbpf_rs::ErrorKind::Interrupted {
             continue;
           } else {
             panic!("Failed to poll ringbuf: {e}");
