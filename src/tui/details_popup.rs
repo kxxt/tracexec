@@ -178,9 +178,13 @@ impl DetailsPopupState {
         let p = inner.borrow();
         details.push((
           label,
-          event
-            .details
-            .to_tui_line(&list.baseline, true, &modifier_args, rt_modifier, None),
+          p.details.to_tui_line(
+            &list.baseline,
+            true,
+            &modifier_args,
+            rt_modifier,
+            None,
+          ),
         ));
         Some(p.id)
       } else {
