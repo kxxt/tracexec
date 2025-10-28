@@ -35,4 +35,8 @@ pub enum BpfEventFlags {
   MNTID_READ_ERR = 32768,
   // filename read failure
   FILENAME_READ_ERR = 65536,
+  // file->pos read failure
+  POS_READ_ERR = 131072,
+  // cred read failure
+  CRED_READ_ERR = 262144,
 }

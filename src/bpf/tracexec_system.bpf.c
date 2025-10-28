@@ -1,5 +1,6 @@
 #include "common.h"
 #include "interface.h"
+#include "x86/vmlinux.h"
 #include <asm-generic/errno.h>
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_helpers.h>
@@ -482,7 +483,28 @@ int __always_inline tp_sys_exit_exec(int sysret) {
   event->ret = sysret;
   event->header.type = SYSEXIT_EVENT;
   debug("execve result: %d PID %d\n", sysret, pid);
-  long ret = bpf_ringbuf_output(&events, event, sizeof(struct exec_event), 0);
+  // Read creds in exec syscall exit
+  struct task_struct *current = (void *)bpf_get_current_task();
+  struct cred *cred;
+  long ret = bpf_core_read(&cred, sizeof(void *), &current->cred);
+  if (ret < 0) {
+    debug("Failed to read current->cred");
+    event->header.flags |= CRED_READ_ERR;
+  } else {
+    ret |= bpf_core_read(&event->uid, sizeof(uid_t), &cred->uid.val);
+    ret |= bpf_core_read(&event->gid, sizeof(gid_t), &cred->gid.val);
+    ret |= bpf_core_read(&event->suid, sizeof(uid_t), &cred->suid.val);
+    ret |= bpf_core_read(&event->sgid, sizeof(gid_t), &cred->sgid.val);
+    ret |= bpf_core_read(&event->euid, sizeof(uid_t), &cred->euid.val);
+    ret |= bpf_core_read(&event->egid, sizeof(gid_t), &cred->egid.val);
+    ret |= bpf_core_read(&event->fsuid, sizeof(uid_t), &cred->fsuid.val);
+    ret |= bpf_core_read(&event->fsgid, sizeof(gid_t), &cred->fsgid.val);
+    if (ret < 0) {
+      debug("Failed to read uid/gid");
+      event->header.flags |= CRED_READ_ERR;
+    }
+  }
+  ret = bpf_ringbuf_output(&events, event, sizeof(struct exec_event), 0);
   if (ret != 0) {
 #ifdef EBPF_DEBUG
     u64 avail = bpf_ringbuf_query(&events, BPF_RB_AVAIL_DATA);
@@ -1058,7 +1080,7 @@ static int read_fs_info(struct fd_event *fd_event, struct vfsmount *vfsmnt) {
   }
   struct mount *mount = container_of(vfsmnt, struct mount, mnt);
   long ret = bpf_core_read(&fd_event->mnt_id, sizeof(fd_event->mnt_id),
-                      &mount->mnt_id);
+                           &mount->mnt_id);
   if (ret < 0)
     fd_event->header.flags |= MNTID_READ_ERR;
   const char *fstype_name = BPF_CORE_READ(vfsmnt, mnt_sb, s_type, name);
