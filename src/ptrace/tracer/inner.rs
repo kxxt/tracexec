@@ -744,6 +744,10 @@ impl TracerInner {
         argv,
         envp.map(|v| v.1),
         has_dash_env,
+        Err(std::io::Error::new(
+          std::io::ErrorKind::InvalidData,
+          "not available",
+        )),
         OutputMsg::Ok(read_cwd(pid)?),
         Some(interpreters),
         read_fds(pid)?,
@@ -774,6 +778,10 @@ impl TracerInner {
         argv,
         envp.map(|v| v.1),
         has_dash_env,
+        Err(std::io::Error::new(
+          std::io::ErrorKind::InvalidData,
+          "not available",
+        )),
         OutputMsg::Ok(read_cwd(pid)?),
         Some(interpreters),
         read_fds(pid)?,
@@ -860,7 +868,7 @@ impl TracerInner {
         p.is_exec_successful = false;
 
         // Read creds during syscall exit
-        let _proc_status = read_status(p.pid);
+        p.exec_data.as_mut().unwrap().cred = read_status(p.pid).map(|s| s.cred);
 
         if self.filter.intersects(TracerEventDetailsKind::Exec) {
           let id = TracerEvent::allocate_id();
