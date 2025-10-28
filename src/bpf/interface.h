@@ -76,7 +76,9 @@ enum exec_event_flags {
   // filename read failure
   FILENAME_READ_ERR = 65536,
   // file->pos read failure
-  POS_READ_ERR = 131072
+  POS_READ_ERR = 131072,
+  // cred read failure
+  CRED_READ_ERR = 262144,
 };
 
 enum event_type {
@@ -103,8 +105,14 @@ struct tracexec_event_header {
 struct exec_event {
   struct tracexec_event_header header;
   pid_t tgid;
-  uid_t uid;
-  uid_t gid;
+  uid_t uid; // real
+  gid_t gid;
+  uid_t suid; // saved
+  gid_t sgid;
+  uid_t euid; // effective
+  gid_t egid;
+  uid_t fsuid; // fs
+  gid_t fsgid;
   bool is_execveat;
   bool is_compat;
   s64 ret;
