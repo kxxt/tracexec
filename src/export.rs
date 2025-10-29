@@ -1,7 +1,7 @@
 //! Data structures for export command
 use std::{error::Error, sync::Arc};
 
-use crate::{cache::ArcStr, event::EventId};
+use crate::{cache::ArcStr, event::EventId, proc::Cred};
 use nix::libc::pid_t;
 use serde::Serialize;
 
@@ -38,6 +38,7 @@ pub struct JsonExecEvent {
   pub env: JsonResult<EnvDiff>,
   pub fdinfo: FileDescriptorInfoCollection,
   pub timestamp: u64,
+  pub cred: JsonResult<Cred>,
 }
 
 impl JsonExecEvent {
@@ -57,6 +58,7 @@ impl JsonExecEvent {
       filename: event.filename,
       argv: JsonResult::from_result(Arc::unwrap_or_clone(event.argv)),
       env: JsonResult::from_result(event.env_diff),
+      cred: JsonResult::from_result(event.cred),
       fdinfo: Arc::unwrap_or_clone(event.fdinfo),
       timestamp: event
         .timestamp
