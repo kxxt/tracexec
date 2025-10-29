@@ -23,6 +23,7 @@ use nix::{
   unistd::{Pid, getpid},
 };
 use serde::{Serialize, Serializer, ser::SerializeSeq};
+use snafu::Snafu;
 use tracing::warn;
 
 use crate::{cache::StringCache, event::OutputMsg, pty::UnixSlavePty};
@@ -75,6 +76,14 @@ pub struct Cred {
   pub gid_effective: u32,
   pub gid_saved_set: u32,
   pub gid_fs: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Snafu)]
+pub enum CredInspectError {
+  #[snafu(display("Failed to read credential info: {kind}"))]
+  Io { kind: std::io::ErrorKind },
+  #[snafu(display("Failed to inspect credential info from kernel"))]
+  Inspect,
 }
 
 pub fn read_status(pid: Pid) -> std::io::Result<ProcStatus> {
