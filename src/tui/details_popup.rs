@@ -2,8 +2,13 @@ use std::ops::{Deref, DerefMut};
 
 use arboard::Clipboard;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use hashbrown::HashMap;
 use itertools::{Itertools, chain};
-use nix::{errno::Errno, fcntl::OFlag};
+use nix::{
+  errno::Errno,
+  fcntl::OFlag,
+  unistd::{Group, User},
+};
 use ratatui::{
   buffer::Buffer,
   layout::{Alignment::Center, Rect, Size},
@@ -91,6 +96,76 @@ impl DetailsPopupState {
               .into()
           }
         }),
+        (
+          " Real UID / Effective UID / Saved UID / FS UID ",
+          match &exec.cred {
+            Ok(cred) => {
+              let mut map = HashMap::new();
+              let mut spans = Vec::new();
+              for (i, uid) in [
+                cred.uid_real,
+                cred.uid_effective,
+                cred.uid_saved_set,
+                cred.uid_fs,
+              ]
+              .into_iter()
+              .enumerate()
+              {
+                if !map.contains_key(&uid)
+                  && let Some(user) = User::from_uid(uid.into()).ok().flatten()
+                {
+                  map.insert(uid, user.name);
+                }
+                if let Some(name) = map.get(&uid) {
+                  spans.push(name.to_string().set_style(THEME.uid_gid_name));
+                  spans.push(format!("({uid})").set_style(THEME.uid_gid_value));
+                } else {
+                  spans.push(format!("{uid}").set_style(THEME.uid_gid_value));
+                }
+                if i < 3 {
+                  spans.push(" / ".into());
+                }
+              }
+              spans.into()
+            }
+            Err(e) => vec![e.to_string().set_style(THEME.inline_tracer_error)].into(),
+          },
+        ),
+        (
+          " Real GID / Effective GID / Saved UID / FS UID ",
+          match &exec.cred {
+            Ok(cred) => {
+              let mut map = HashMap::new();
+              let mut spans = Vec::new();
+              for (i, gid) in [
+                cred.gid_real,
+                cred.gid_effective,
+                cred.gid_saved_set,
+                cred.gid_fs,
+              ]
+              .into_iter()
+              .enumerate()
+              {
+                if !map.contains_key(&gid)
+                  && let Some(user) = Group::from_gid(gid.into()).ok().flatten()
+                {
+                  map.insert(gid, user.name);
+                }
+                if let Some(name) = map.get(&gid) {
+                  spans.push(name.to_string().set_style(THEME.uid_gid_name));
+                  spans.push(format!("({gid})").set_style(THEME.uid_gid_value));
+                } else {
+                  spans.push(format!("{gid}").set_style(THEME.uid_gid_value));
+                }
+                if i < 3 {
+                  spans.push(" / ".into());
+                }
+              }
+              spans.into()
+            }
+            Err(e) => vec![e.to_string().set_style(THEME.inline_tracer_error)].into(),
+          },
+        ),
         (" Process Status ", {
           let formatted = event.status.unwrap().to_string();
           match event.status.unwrap() {
@@ -178,13 +253,8 @@ impl DetailsPopupState {
         let p = inner.borrow();
         details.push((
           label,
-          p.details.to_tui_line(
-            &list.baseline,
-            true,
-            &modifier_args,
-            rt_modifier,
-            None,
-          ),
+          p.details
+            .to_tui_line(&list.baseline, true, &modifier_args, rt_modifier, None),
         ));
         Some(p.id)
       } else {
