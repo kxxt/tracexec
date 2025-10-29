@@ -4,7 +4,11 @@ use std::{
   sync::{Arc, atomic::AtomicU64},
 };
 
-use crate::{cache::ArcStr, timestamp::Timestamp};
+use crate::{
+  cache::ArcStr,
+  proc::{Cred, CredInspectError},
+  timestamp::Timestamp,
+};
 use chrono::{DateTime, Local};
 use clap::ValueEnum;
 use crossterm::event::KeyEvent;
@@ -136,6 +140,7 @@ pub struct ExecEvent {
   pub envp: Arc<Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>>,
   /// There are env var(s) whose key starts with dash
   pub has_dash_env: bool,
+  pub cred: Result<Cred, CredInspectError>,
   pub interpreter: Option<Vec<Interpreter>>,
   pub env_diff: Result<EnvDiff, InspectError>,
   pub fdinfo: Arc<FileDescriptorInfoCollection>,

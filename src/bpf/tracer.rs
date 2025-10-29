@@ -25,7 +25,7 @@ use super::skel::{
 use super::{event::EventStorage, skel::TracexecSystemSkelBuilder};
 use crate::{
   bpf::{BpfError, cached_cow, utf8_lossy_cow_from_bytes_with_nul},
-  proc::Cred,
+  proc::{Cred, CredInspectError},
   timestamp::ts_from_boot_ns,
   tracee,
   tracer::TracerBuilder,
@@ -191,7 +191,7 @@ impl EbpfTracer {
             };
             let (envp, has_dash_env) = parse_failiable_envp(envp);
             let cred = if eflags.contains(BpfEventFlags::CRED_READ_ERR) {
-              Err(std::io::Error::other("failed to read cred"))
+              Err(CredInspectError::Inspect)
             } else {
               Ok(Cred {
                 uid_real: event.uid,
@@ -241,6 +241,7 @@ impl EbpfTracer {
                 argv: exec_data.argv.clone(),
                 envp: exec_data.envp.clone(),
                 has_dash_env,
+                cred: exec_data.cred,
                 interpreter: exec_data.interpreters.clone(),
                 env_diff: exec_data
                   .envp

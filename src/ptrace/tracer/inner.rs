@@ -15,7 +15,7 @@ use crate::{
   cache::ArcStr,
   cli::options::SeccompBpf,
   event::ParentEventId,
-  proc::read_status,
+  proc::{CredInspectError, read_status},
   ptrace::{
     BreakPoint, BreakPointHit, BreakPointStop, InspectError, Tracer,
     engine::{PhantomUnsend, PhantomUnsync},
@@ -744,10 +744,7 @@ impl TracerInner {
         argv,
         envp.map(|v| v.1),
         has_dash_env,
-        Err(std::io::Error::new(
-          std::io::ErrorKind::InvalidData,
-          "not available",
-        )),
+        Err(CredInspectError::Inspect),
         OutputMsg::Ok(read_cwd(pid)?),
         Some(interpreters),
         read_fds(pid)?,
@@ -778,10 +775,7 @@ impl TracerInner {
         argv,
         envp.map(|v| v.1),
         has_dash_env,
-        Err(std::io::Error::new(
-          std::io::ErrorKind::InvalidData,
-          "not available",
-        )),
+        Err(CredInspectError::Inspect),
         OutputMsg::Ok(read_cwd(pid)?),
         Some(interpreters),
         read_fds(pid)?,
@@ -868,7 +862,9 @@ impl TracerInner {
         p.is_exec_successful = false;
 
         // Read creds during syscall exit
-        p.exec_data.as_mut().unwrap().cred = read_status(p.pid).map(|s| s.cred);
+        p.exec_data.as_mut().unwrap().cred = read_status(p.pid)
+          .map(|s| s.cred)
+          .map_err(|e| CredInspectError::Io { kind: e.kind() });
 
         if self.filter.intersects(TracerEventDetailsKind::Exec) {
           let id = TracerEvent::allocate_id();
@@ -957,6 +953,7 @@ impl TracerInner {
       comm: state.comm.clone(),
       filename: exec_data.filename.clone(),
       has_dash_env: exec_data.has_dash_env,
+      cred: exec_data.cred.clone(),
       argv: exec_data.argv.clone(),
       envp: exec_data.envp.clone(),
       interpreter: exec_data.interpreters.clone(),
