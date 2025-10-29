@@ -66,7 +66,7 @@ pub struct ProcStatus {
   pub cred: Cred,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Cred {
   pub uid_real: u32,
   pub uid_effective: u32,
