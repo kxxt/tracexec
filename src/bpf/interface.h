@@ -20,6 +20,8 @@
 // ceil(ARG_MAX/9)
 //   each pointer takes 8 bytes and each arg contains at least one NUL byte
 #define ARGC_MAX 233017
+// https://elixir.bootlin.com/linux/v6.1.157/source/include/uapi/linux/limits.h#L7
+#define NGROUPS_MAX 65536
 
 // The limit for filename
 // https://elixir.bootlin.com/linux/v6.10.3/source/include/uapi/linux/limits.h#L13
@@ -90,8 +92,11 @@ enum event_type {
   PATH_EVENT,
   EXIT_EVENT,
   FORK_EVENT,
+  GROUPS_EVENT,
 };
 
+// Search for `struct tracexec_event_header` before changing this struct to avoid
+// invalidating the subtle size calc.
 struct tracexec_event_header {
   pid_t pid;
   u32 flags;
@@ -171,6 +176,11 @@ struct exit_event {
   u64 timestamp;
 };
 
+struct groups_event {
+  struct tracexec_event_header header;
+  gid_t groups[NGROUPS_MAX];
+};
+
 union cache_item {
   struct string_event string;
   struct fd_event fd;
@@ -178,5 +188,6 @@ union cache_item {
   struct path_segment_event segment;
   struct fork_event fork;
   struct exit_event exit;
+  struct groups_event group;
 };
 #endif
