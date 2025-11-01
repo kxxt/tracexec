@@ -48,6 +48,7 @@ pub struct Theme {
   pub query_match_current_no: Style,
   pub query_match_total_cnt: Style,
   // Details Popup
+  pub empty_field: Style,
   pub uid_gid_name: Style,
   pub uid_gid_value: Style,
   pub exec_result_success: Style,
@@ -179,6 +180,7 @@ impl Default for Theme {
       query_match_current_no: Style::default().light_cyan(),
       query_match_total_cnt: Style::default().white(),
       // -- Details Popup --
+      empty_field: Style::default().bold(),
       uid_gid_name: Style::default().white().bold(),
       uid_gid_value: Style::default().italic(),
       exec_result_success: Style::default().green(),
