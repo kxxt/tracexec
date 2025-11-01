@@ -84,6 +84,7 @@ chrono = "0.4.40"
 nutype = { version = "0.6.1", features = ["serde"] }
 humantime = "2.2.0"
 snafu = { version = "0.8.8", features = ["rust_1_81", "backtrace"] }
+bytemuck = "1.24.0"
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 

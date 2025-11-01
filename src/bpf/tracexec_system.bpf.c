@@ -486,6 +486,7 @@ int __always_inline tp_sys_exit_exec(int sysret) {
   // Read creds in exec syscall exit
   struct task_struct *current = (void *)bpf_get_current_task();
   struct cred *cred;
+  struct group_info *group_info;
   long ret = bpf_core_read(&cred, sizeof(void *), &current->cred);
   if (ret < 0) {
     debug("Failed to read current->cred");
@@ -499,9 +500,59 @@ int __always_inline tp_sys_exit_exec(int sysret) {
     ret |= bpf_core_read(&event->egid, sizeof(gid_t), &cred->egid.val);
     ret |= bpf_core_read(&event->fsuid, sizeof(uid_t), &cred->fsuid.val);
     ret |= bpf_core_read(&event->fsgid, sizeof(gid_t), &cred->fsgid.val);
+    ret |= bpf_core_read(&group_info, sizeof(void *), &cred->group_info);
     if (ret < 0) {
       debug("Failed to read uid/gid");
       event->header.flags |= CRED_READ_ERR;
+    } else {
+      // read and send supplemental groups
+
+      // get the number of groups needed
+      int ngroups;
+      ret = bpf_core_read(&ngroups, sizeof group_info->ngroups,
+                          &group_info->ngroups);
+      if (ret < 0 || ngroups < 0) {
+        event->header.flags |= CRED_READ_ERR;
+        goto groups_out;
+      }
+      u32 entry_index = bpf_get_smp_processor_id();
+      if (entry_index > tracexec_config.max_num_cpus) {
+        debug("Too many cores!");
+        event->header.flags |= CRED_READ_ERR;
+        goto groups_out;
+        return 1;
+      }
+      // initialize groups_event struct
+      struct groups_event *entry = bpf_map_lookup_elem(&cache, &entry_index);
+      if (entry == NULL) {
+        debug("This should not happen!");
+        event->header.flags |= CRED_READ_ERR;
+        goto groups_out;
+      }
+      entry->header.type = GROUPS_EVENT;
+      entry->header.pid = event->header.pid;
+      entry->header.eid = event->header.eid;
+      entry->header.id = 0;
+      entry->header.flags = 0;
+      // Read groups
+      size_t size = ngroups * sizeof(kgid_t);
+      if (size >= NGROUPS_MAX * sizeof(kgid_t)) {
+        size = NGROUPS_MAX * sizeof(kgid_t);
+        debug("Too many groups!");
+      }
+      ret = bpf_probe_read_kernel(&entry->groups[0], size, &group_info->gid[0]);
+      if (ret < 0) {
+        debug("Failed to read supplemental group list!");
+        event->header.flags |= CRED_READ_ERR;
+        goto groups_out;
+      }
+      ret = bpf_ringbuf_output(&events, entry,
+                               sizeof(struct tracexec_event_header) + size,
+                               BPF_RB_FORCE_WAKEUP);
+      if (ret < 0) {
+        debug("Failed to send groups event!");
+      }
+    groups_out:;
     }
   }
   ret = bpf_ringbuf_output(&events, event, sizeof(struct exec_event), 0);
@@ -857,6 +908,7 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   entry->header.pid = event->header.pid;
   entry->header.eid = event->header.eid;
   entry->header.id = index + ctx->index * event->count[0];
+  entry->header.flags = 0;
   s64 bytes_read =
       bpf_probe_read_user_str(entry->data, sizeof(entry->data), argp);
   if (bytes_read < 0) {
