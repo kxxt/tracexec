@@ -194,6 +194,7 @@ impl EbpfTracer {
               && !eflags.contains(BpfEventFlags::CRED_READ_ERR)
             {
               Ok(Cred {
+                groups,
                 uid_real: event.uid,
                 uid_effective: event.euid,
                 uid_saved_set: event.suid,
