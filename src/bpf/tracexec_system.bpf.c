@@ -79,7 +79,7 @@ struct {
   // considering the space taken by path segments) so on a machine with 64
   // cores, there can be at most 64 execs happening in parallel, taking at most
   // 128MiB space in a burst. We haven't considered the rate at which the
-  // userspace code consumes event, 256MiB is used as a heruistic for now
+  // userspace code consumes event, 256MiB is used as a heuristic for now
   __uint(max_entries, 268435456);
 } events SEC(".maps");
 
