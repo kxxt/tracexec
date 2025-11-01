@@ -19,7 +19,7 @@ use owo_colors::OwoColorize;
 
 use nix::{
   fcntl::OFlag,
-  libc::AT_FDCWD,
+  libc::{AT_FDCWD, gid_t},
   unistd::{Pid, getpid},
 };
 use serde::{Serialize, Serializer, ser::SerializeSeq};
@@ -66,8 +66,9 @@ pub struct ProcStatus {
   pub cred: Cred,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Cred {
+  pub groups: Vec<gid_t>,
   pub uid_real: u32,
   pub uid_effective: u32,
   pub uid_saved_set: u32,
@@ -95,6 +96,7 @@ pub fn read_status(pid: Pid) -> std::io::Result<ProcStatus> {
 fn parse_status_contents(contents: &str) -> std::io::Result<ProcStatus> {
   let mut uid = None;
   let mut gid = None;
+  let mut groups = None;
 
   fn parse_ids(s: &str) -> std::io::Result<[u32; 4]> {
     let mut iter = s.trim_ascii().split_ascii_whitespace().take(4).map(|v| {
@@ -126,9 +128,19 @@ fn parse_status_contents(contents: &str) -> std::io::Result<ProcStatus> {
       uid = Some(parse_ids(rest)?);
     } else if let Some(rest) = line.strip_prefix("Gid:") {
       gid = Some(parse_ids(rest)?);
+    } else if let Some(rest) = line.strip_prefix("Groups:") {
+      let r: Result<Vec<_>, _> = rest
+        .trim_ascii()
+        .split_ascii_whitespace()
+        .map(|v| {
+          v.parse()
+            .map_err(|_| std::io::Error::new(io::ErrorKind::InvalidData, "non numeric group id"))
+        })
+        .collect();
+      groups = Some(r?);
     }
 
-    if uid.is_some() && gid.is_some() {
+    if uid.is_some() && gid.is_some() && groups.is_some() {
       break;
     }
   }
@@ -145,9 +157,16 @@ fn parse_status_contents(contents: &str) -> std::io::Result<ProcStatus> {
       "status output does not contain gids",
     ));
   };
+  let Some(groups) = groups else {
+    return Err(std::io::Error::new(
+      io::ErrorKind::InvalidData,
+      "status output does not contain groups",
+    ));
+  };
 
   Ok(ProcStatus {
     cred: Cred {
+      groups,
       uid_real,
       uid_effective,
       uid_saved_set,
@@ -586,6 +605,7 @@ State:\tR (running)
 Uid:\t1000\t1001\t1002\t1003
 Gid:\t2000\t2001\t2002\t2003
 Threads:\t1
+Groups:\t0\t1\t2
 ";
 
     let status = parse_status_contents(sample).unwrap();
@@ -593,6 +613,7 @@ Threads:\t1
       status,
       ProcStatus {
         cred: Cred {
+          groups: vec![0, 1, 2],
           uid_real: 1000,
           uid_effective: 1001,
           uid_saved_set: 1002,
@@ -608,7 +629,14 @@ Threads:\t1
 
   #[test]
   fn test_parse_status_contents_missing_gid() {
-    let sample = "Uid:\t1\t2\t3\t4\n";
+    let sample = "Uid:\t1\t2\t3\t4\nGroups:\t0\n";
+    let e = parse_status_contents(sample).unwrap_err();
+    assert_eq!(e.kind(), std::io::ErrorKind::InvalidData);
+  }
+
+  #[test]
+  fn test_parse_status_contents_missing_groups() {
+    let sample = "Uid:\t1\t2\t3\t4\nGid:\t0\t1\t2\t3\n";
     let e = parse_status_contents(sample).unwrap_err();
     assert_eq!(e.kind(), std::io::ErrorKind::InvalidData);
   }
