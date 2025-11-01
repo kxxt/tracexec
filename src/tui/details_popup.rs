@@ -7,7 +7,7 @@ use itertools::{Itertools, chain};
 use nix::{
   errno::Errno,
   fcntl::OFlag,
-  unistd::{Group, User},
+  unistd::{Gid, Group, User},
 };
 use ratatui::{
   buffer::Buffer,
@@ -162,6 +162,29 @@ impl DetailsPopupState {
                 }
               }
               spans.into()
+            }
+            Err(e) => vec![e.to_string().set_style(THEME.inline_tracer_error)].into(),
+          },
+        ),
+        (
+          " Supplemental Groups ",
+          match &exec.cred {
+            Ok(cred) => {
+              if !cred.groups.is_empty() {
+                let mut spans = Vec::new();
+                for &gid in cred.groups.iter() {
+                  if let Some(group) = Group::from_gid(Gid::from_raw(gid)).ok().flatten() {
+                    spans.push(group.name.set_style(THEME.uid_gid_name));
+                    spans.push(format!("({gid})").set_style(THEME.uid_gid_value));
+                  } else {
+                    spans.push(format!("{gid}").set_style(THEME.uid_gid_value));
+                  }
+                  spans.push(" ".into())
+                }
+                spans.into()
+              } else {
+                vec!["[ empty ]".set_style(THEME.empty_field)].into()
+              }
             }
             Err(e) => vec![e.to_string().set_style(THEME.inline_tracer_error)].into(),
           },
