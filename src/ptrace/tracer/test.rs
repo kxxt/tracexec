@@ -147,7 +147,6 @@ async fn tracer_emits_exec_event(
   #[with(Default::default(), seccomp_bpf)] tracer: TracerFixture,
   true_executable: PathBuf,
 ) {
-  // TODO: don't assume FHS
   let (tracer, rx, req_rx) = tracer;
   let true_executable = true_executable.to_string_lossy().to_string();
   let events = run_exe_and_collect_msgs(tracer, rx, req_rx, vec![true_executable.clone()]).await;

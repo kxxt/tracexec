@@ -556,8 +556,6 @@ impl EbpfTracer {
   }
 }
 
-// TODO: we should start polling the ringbuffer before program load
-
 pub struct RunningEbpfTracer<'obj> {
   rb: RingBuffer<'obj>,
   pub should_exit: Arc<AtomicBool>,

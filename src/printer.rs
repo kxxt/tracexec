@@ -238,7 +238,6 @@ impl ListPrinter {
     };
     for (k, v) in env.iter() {
       write_separator(out)?;
-      // TODO: Maybe stylize error
       write!(out, "{k}={v}")?;
     }
     self.end(out)
@@ -515,8 +514,6 @@ impl Printer {
         Ok(envp) => {
           match self.args.trace_env {
             EnvPrintFormat::Diff => {
-              // TODO: make it faster
-              //       This is mostly a proof of concept
               write!(out, " {} ", "with".purple())?;
               list_printer.begin(out)?;
               let env = env.clone();
@@ -759,7 +756,6 @@ impl Printer {
             }
             write!(out, " {}", exec_data.filename.bash_escaped())?;
             for arg in argv.iter().skip(1) {
-              // TODO: don't escape err msg
               write!(out, " {}", arg.bash_escaped())?;
             }
           }
