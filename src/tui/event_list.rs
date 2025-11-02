@@ -213,7 +213,6 @@ impl EventList {
     self.window
   }
 
-  // TODO: this is ugly due to borrow checking.
   pub fn window<'a, T>(items: (&'a [T], &'a [T]), window: (usize, usize)) -> (&'a [T], &'a [T]) {
     let end = window.1.min(items.0.len() + items.1.len());
     let separation = items.0.len();

@@ -87,7 +87,6 @@ impl From<TracerEventDetails> for TracerEvent {
   fn from(details: TracerEventDetails) -> Self {
     Self {
       details,
-      // TODO: Maybe we can use a weaker ordering here
       id: Self::allocate_id(),
     }
   }
