@@ -21,40 +21,40 @@ localFlake:
           sources = [
             {
               name = "6.1lts";
-              tag = "6.1.155";
+              tag = "6.1.158";
               source = "mirror";
               test_exe = "tracexec_no_rcu_kfuncs";
-              sha256 = "sha256-wpOHru4IX7y9kSNiJLnfgFBjusQ2Fedc6ixrKWBKXHM=";
+              sha256 = "sha256-rQaL/bYE7A9PfeOFyOerlEAIqnikruypT1Mgbmcmv9o=";
             }
             {
               name = "6.6lts";
-              tag = "6.6.110";
+              tag = "6.6.116";
               source = "mirror";
               test_exe = "tracexec";
-              sha256 = "sha256-G/INr1VDuHWfMl5V+w2kkTcV5odBYnoTOA5mqvIZ+x0=";
+              sha256 = "sha256-qaWXQsKb4oTCBdyHy+mwZflohIgTLI9aYFelU5IwpR0=";
             }
             {
               name = "6.12lts";
-              tag = "6.12.51";
+              tag = "6.12.58";
               source = "mirror";
               test_exe = "tracexec";
-              sha256 = "sha256-LVWtFJyn2e+CWVxmlDBlADDL+a+760LlzZtLo8waciE=";
+              sha256 = "sha256-XxxMVGZgpqgQRv36YZUwa60sjRfA1ph23BAKha1GE6w=";
             }
             {
               name = "6.17";
-              tag = "6.17.1";
-              version = "6.17.1";
+              tag = "6.17.8";
+              version = "6.17.8";
               source = "mirror";
               test_exe = "tracexec";
-              sha256 = "sha256-pT2+P0FJGSKmHxfFzFUeiPVE1UEa6xyMZcQCeVxPTaA=";
+              sha256 = "sha256-Wo3mSnX8pwbAHGwKd891p0YYQ52xleJfHwJor2svsdo=";
             }
             {
               name = "6.18";
-              tag = "v6.18-rc1";
-              version = "6.18.0-rc1";
+              tag = "v6.18-rc5";
+              version = "6.18.0-rc5";
               source = "linus";
               test_exe = "tracexec";
-              sha256 = "sha256-gjUci2a2qtu3DkOTr2ZbHYW6LPssBVErC7tLXPwnaa8=";
+              sha256 = "sha256-gozH1MrFNBJPzFOxoX4Q+y6INB1xy7MU/R81URkWUqM=";
             }
           ];
           nixpkgs = localFlake.nixpkgs;
