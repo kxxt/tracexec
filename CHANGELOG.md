@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.15.0
+
+### New Features
+
+- Show UID, GID and supplemental groups in TUI.
+- Expose UID, GID and supplemental groups in collect command.
+
+### Bug Fixes
+
+- TUI: Fix parent cmdline in details popup. When this feature was introduced,
+  it incorrectly shows the event's own cmdline.
+
+### Internal Changes
+
+- Update UKCI.
+- Typo fixes.
+
+
 ## v0.14.0
 
 ### Security fix
