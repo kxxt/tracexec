@@ -1,6 +1,5 @@
 #include "common.h"
 #include "interface.h"
-#include "x86/vmlinux.h"
 #include <asm-generic/errno.h>
 #include <bpf/bpf_core_read.h>
 #include <bpf/bpf_helpers.h>
