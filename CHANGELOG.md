@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.15.1
+
+This patch release fixes a bug that might cause tracexec's eBPF backend to
+misbehave on architectures other than x86_64. It is caused by clangd
+auto-inserting a x86-specific header include.
+
 ## v0.15.0
 
 ### New Features
