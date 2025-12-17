@@ -5,6 +5,7 @@ use rand::{Rng, distr::Alphanumeric};
 
 // A stress test.
 // It will exec itself with random strings as arguments for n times
+#[allow(unreachable_code)]
 fn main() {
   let mut args = std::env::args().skip(1);
   let n: u64 = args
@@ -30,4 +31,5 @@ fn main() {
     )
   }));
   execv(c"/proc/self/exe", &rand_args).unwrap();
+  unreachable!()
 }
