@@ -29,7 +29,6 @@ macro_rules! escape_str_for_bash {
   }};
 }
 
-pub(crate) use escape_str_for_bash;
 #[derive(Debug, Clone, Copy)]
 pub enum EnvPrintFormat {
   Diff,
