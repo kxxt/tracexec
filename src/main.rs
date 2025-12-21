@@ -24,6 +24,7 @@ mod cmdbuilder;
 mod event;
 mod export;
 mod log;
+mod perfetto;
 mod primitives;
 mod printer;
 mod proc;
