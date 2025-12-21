@@ -1,6 +1,6 @@
 mod json;
 
-use std::io::Write;
+use std::{io::Write, sync::Arc};
 
 pub use json::*;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -8,7 +8,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use crate::{event::TracerMessage, proc::BaselineInfo};
 
 pub struct ExporterMetadata {
-  pub(super) baseline: BaselineInfo,
+  pub(super) baseline: Arc<BaselineInfo>,
   pub(super) pretty: bool,
 }
 

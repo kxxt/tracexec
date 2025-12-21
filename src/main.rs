@@ -48,7 +48,6 @@ use cli::{
 };
 use color_eyre::eyre::{OptionExt, bail};
 
-use export::{JsonExecEvent, JsonMetaData};
 use nix::unistd::{Uid, User};
 use tokio::sync::mpsc;
 use tracer::TracerBuilder;
@@ -57,7 +56,7 @@ use tui::app::PTracer;
 use crate::{
   cli::{CliCommand, args::LogModeArgs, options::Color},
   event::{TracerEvent, TracerEventDetails, TracerMessage},
-  export::{Exporter, ExporterMetadata, JsonExporter, serialize_json_to_output},
+  export::{Exporter, ExporterMetadata, JsonExporter, JsonStreamExporter},
   log::initialize_panic_handler,
   proc::BaselineInfo,
   pty::{PtySize, PtySystem, native_pty_system},
@@ -263,7 +262,7 @@ async fn main() -> color_eyre::Result<()> {
       no_foreground,
     } => {
       let modifier_args = modifier_args.processed();
-      let mut output = Cli::get_output(output, cli.color)?;
+      let output = Cli::get_output(output, cli.color)?;
       let tracing_args = LogModeArgs {
         show_cmdline: false,
         show_argv: true,
@@ -275,8 +274,8 @@ async fn main() -> color_eyre::Result<()> {
         no_foreground,
         ..Default::default()
       };
-      let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
-      let baseline = BaselineInfo::new()?;
+      let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
+      let baseline = Arc::new(BaselineInfo::new()?);
       let (tracer, token) = TracerBuilder::new()
         .mode(TracerMode::Log {
           foreground: tracing_args.foreground(),
@@ -284,7 +283,7 @@ async fn main() -> color_eyre::Result<()> {
         .modifier(modifier_args)
         .user(user)
         .tracer_tx(tracer_tx)
-        .baseline(Arc::new(baseline.clone()))
+        .baseline(baseline.clone())
         .filter(TracerEventArgs::all().filter()?)
         .seccomp_bpf(ptrace_args.seccomp_bpf)
         .ptrace_blocking(ptrace_args.polling_interval.is_none_or(|v| v < 0))
@@ -297,10 +296,7 @@ async fn main() -> color_eyre::Result<()> {
         .printer_from_cli(&tracing_args)
         .build_ptrace()?;
       let (_tracer, tracer_thread) = tracer.spawn(cmd, None, token)?;
-      let meta = ExporterMetadata {
-        baseline: baseline.clone(),
-        pretty,
-      };
+      let meta = ExporterMetadata { baseline, pretty };
       match format {
         ExportFormat::Json => {
           let exporter = JsonExporter::new(output, meta, tracer_rx)?;
@@ -309,35 +305,10 @@ async fn main() -> color_eyre::Result<()> {
           process::exit(exit_code);
         }
         ExportFormat::JsonStream => {
-          serialize_json_to_output(&mut output, &JsonMetaData::new(baseline), pretty)?;
-          loop {
-            match tracer_rx.recv().await {
-              Some(TracerMessage::Event(TracerEvent {
-                details: TracerEventDetails::TraceeExit { exit_code, .. },
-                ..
-              })) => {
-                tracing::debug!("Waiting for tracer thread to exit");
-                tracer_thread.await??;
-                process::exit(exit_code);
-              }
-              Some(TracerMessage::Event(TracerEvent {
-                details: TracerEventDetails::Exec(exec),
-                id,
-              })) => {
-                let json_event = JsonExecEvent::new(id, *exec);
-                serialize_json_to_output(&mut output, &json_event, pretty)?;
-                output.write_all(b"\n")?;
-                output.flush()?;
-              }
-              // channel closed abnormally.
-              None | Some(TracerMessage::FatalError(_)) => {
-                tracing::debug!("Waiting for tracer thread to exit");
-                tracer_thread.await??;
-                process::exit(1);
-              }
-              _ => (),
-            }
-          }
+          let exporter = JsonStreamExporter::new(output, meta, tracer_rx)?;
+          let exit_code = exporter.run().await?;
+          tracer_thread.await??;
+          process::exit(exit_code);
         }
       }
     }
