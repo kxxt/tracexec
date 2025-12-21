@@ -1,0 +1,1 @@
+pub use perfetto_trace_proto::*;
