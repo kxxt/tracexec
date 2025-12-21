@@ -16,41 +16,46 @@ use crate::{
   proc::{BaselineInfo, EnvDiff, FileDescriptorInfoCollection},
 };
 
-pub struct JsonExporter {
+struct JsonExporterInner {
   output: Box<dyn std::io::Write + Send + Sync + 'static>,
   stream: UnboundedReceiver<crate::event::TracerMessage>,
   meta: ExporterMetadata,
 }
 
-impl Exporter for JsonExporter {
-  type Error = color_eyre::eyre::Error;
-
+impl JsonExporterInner {
   fn new(
     output: Box<dyn std::io::Write + Send + Sync + 'static>,
     meta: super::ExporterMetadata,
     stream: UnboundedReceiver<crate::event::TracerMessage>,
-  ) -> Result<Self, Self::Error> {
-    Ok(Self {
+  ) -> Self {
+    Self {
       output,
       meta,
       stream,
-    })
+    }
   }
+}
+
+pub struct JsonExporter(JsonExporterInner);
+pub struct JsonStreamExporter(JsonExporterInner);
+
+impl Exporter for JsonExporter {
+  type Error = color_eyre::eyre::Error;
 
   async fn run(mut self) -> Result<i32, Self::Error> {
     let mut json = Json {
-      meta: JsonMetaData::new(self.meta.baseline),
+      meta: JsonMetaData::new(self.0.meta.baseline),
       events: Vec::new(),
     };
     loop {
-      match self.stream.recv().await {
+      match self.0.stream.recv().await {
         Some(TracerMessage::Event(TracerEvent {
           details: TracerEventDetails::TraceeExit { exit_code, .. },
           ..
         })) => {
-          serialize_json_to_output(&mut self.output, &json, self.meta.pretty)?;
-          self.output.write_all(b"\n")?;
-          self.output.flush()?;
+          serialize_json_to_output(&mut self.0.output, &json, self.0.meta.pretty)?;
+          self.0.output.write_all(b"\n")?;
+          self.0.output.flush()?;
           return Ok(exit_code);
         }
         Some(TracerMessage::Event(TracerEvent {
@@ -66,6 +71,58 @@ impl Exporter for JsonExporter {
         _ => (),
       }
     }
+  }
+
+  fn new(
+    output: Box<dyn io::Write + Send + Sync + 'static>,
+    meta: ExporterMetadata,
+    stream: UnboundedReceiver<TracerMessage>,
+  ) -> Result<Self, Self::Error> {
+    Ok(Self(JsonExporterInner::new(output, meta, stream)))
+  }
+}
+
+impl Exporter for JsonStreamExporter {
+  type Error = color_eyre::eyre::Error;
+
+  async fn run(mut self) -> Result<i32, Self::Error> {
+    serialize_json_to_output(
+      &mut self.0.output,
+      &JsonMetaData::new(self.0.meta.baseline),
+      self.0.meta.pretty,
+    )?;
+    loop {
+      match self.0.stream.recv().await {
+        Some(TracerMessage::Event(TracerEvent {
+          details: TracerEventDetails::TraceeExit { exit_code, .. },
+          ..
+        })) => {
+          return Ok(exit_code);
+        }
+        Some(TracerMessage::Event(TracerEvent {
+          details: TracerEventDetails::Exec(exec),
+          id,
+        })) => {
+          let json_event = JsonExecEvent::new(id, *exec);
+          serialize_json_to_output(&mut self.0.output, &json_event, self.0.meta.pretty)?;
+          self.0.output.write_all(b"\n")?;
+          self.0.output.flush()?;
+        }
+        // channel closed abnormally.
+        None | Some(TracerMessage::FatalError(_)) => {
+          return Ok(1);
+        }
+        _ => (),
+      }
+    }
+  }
+
+  fn new(
+    output: Box<dyn io::Write + Send + Sync + 'static>,
+    meta: ExporterMetadata,
+    stream: UnboundedReceiver<TracerMessage>,
+  ) -> Result<Self, Self::Error> {
+    Ok(Self(JsonExporterInner::new(output, meta, stream)))
   }
 }
 
@@ -132,11 +189,11 @@ pub struct JsonMetaData {
   /// version of tracexec that generates this json
   pub version: &'static str,
   pub generator: &'static str,
-  pub baseline: BaselineInfo,
+  pub baseline: Arc<BaselineInfo>,
 }
 
 impl JsonMetaData {
-  pub fn new(baseline: BaselineInfo) -> Self {
+  pub fn new(baseline: Arc<BaselineInfo>) -> Self {
     Self {
       version: env!("CARGO_PKG_VERSION"),
       generator: env!("CARGO_CRATE_NAME"),

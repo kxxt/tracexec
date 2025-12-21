@@ -6,7 +6,11 @@ use std::{
   sync::{Arc, LazyLock, RwLock, atomic::Ordering},
 };
 
-use crate::{cache::ArcStr, tracer::TracerBuilder};
+use crate::{
+  cache::ArcStr,
+  export::{Exporter, ExporterMetadata, JsonExporter, JsonStreamExporter},
+  tracer::TracerBuilder,
+};
 use color_eyre::{Section, eyre::eyre};
 use enumflags2::BitFlag;
 use nix::unistd::User;
@@ -22,12 +26,10 @@ use crate::{
     args::LogModeArgs,
     options::{Color, ExportFormat},
   },
-  event::{TracerEvent, TracerEventDetails, TracerEventDetailsKind, TracerMessage},
-  export::{self, JsonExecEvent, JsonMetaData},
+  event::TracerEventDetailsKind,
   printer::{Printer, PrinterArgs},
   proc::BaselineInfo,
   pty::{PtySize, PtySystem, native_pty_system},
-  serialize_json_to_output,
   tracer::TracerMode,
   tui::{self, app::App},
 };
@@ -183,7 +185,7 @@ pub async fn main(
     } => {
       let modifier_args = modifier_args.processed();
       let baseline = Arc::new(BaselineInfo::new()?);
-      let mut output = Cli::get_output(output, color)?;
+      let output = Cli::get_output(output, color)?;
       let log_args = LogModeArgs {
         show_cmdline: false,
         show_argv: true,
@@ -199,7 +201,7 @@ pub async fn main(
         PrinterArgs::from_cli(&log_args, &modifier_args),
         baseline.clone(),
       );
-      let (tx, mut rx) = mpsc::unbounded_channel();
+      let (tx, rx) = mpsc::unbounded_channel();
       let tracer = TracerBuilder::new()
         .mode(TracerMode::Log {
           foreground: log_args.foreground(),
@@ -214,75 +216,22 @@ pub async fn main(
       let tracer_thread = spawn_blocking(move || {
         running_tracer.run_until_exit();
       });
+      let meta = ExporterMetadata {
+        baseline: baseline.clone(),
+        pretty,
+      };
       match format {
         ExportFormat::Json => {
-          let mut json = export::Json {
-            meta: JsonMetaData::new(baseline.as_ref().to_owned()),
-            events: Vec::new(),
-          };
-          loop {
-            match rx.recv().await {
-              Some(TracerMessage::Event(TracerEvent {
-                details: TracerEventDetails::TraceeExit { exit_code, .. },
-                ..
-              })) => {
-                tracing::debug!("Waiting for tracer thread to exit");
-                tracer_thread.await?;
-                serialize_json_to_output(&mut output, &json, pretty)?;
-                output.write_all(b"\n")?;
-                output.flush()?;
-                process::exit(exit_code);
-              }
-              Some(TracerMessage::Event(TracerEvent {
-                details: TracerEventDetails::Exec(exec),
-                id,
-              })) => {
-                json.events.push(JsonExecEvent::new(id, *exec));
-              }
-              // channel closed abnormally.
-              None | Some(TracerMessage::FatalError(_)) => {
-                tracing::debug!("Waiting for tracer thread to exit");
-                tracer_thread.await?;
-                process::exit(1);
-              }
-              _ => (),
-            }
-          }
+          let exporter = JsonExporter::new(output, meta, rx)?;
+          let exit_code = exporter.run().await?;
+          tracer_thread.await?;
+          process::exit(exit_code);
         }
         ExportFormat::JsonStream => {
-          serialize_json_to_output(
-            &mut output,
-            &JsonMetaData::new(baseline.as_ref().to_owned()),
-            pretty,
-          )?;
-          loop {
-            match rx.recv().await {
-              Some(TracerMessage::Event(TracerEvent {
-                details: TracerEventDetails::TraceeExit { exit_code, .. },
-                ..
-              })) => {
-                tracing::debug!("Waiting for tracer thread to exit");
-                tracer_thread.await?;
-                process::exit(exit_code);
-              }
-              Some(TracerMessage::Event(TracerEvent {
-                details: TracerEventDetails::Exec(exec),
-                id,
-              })) => {
-                let json_event = JsonExecEvent::new(id, *exec);
-                serialize_json_to_output(&mut output, &json_event, pretty)?;
-                output.write_all(b"\n")?;
-                output.flush()?;
-              }
-              // channel closed abnormally.
-              None | Some(TracerMessage::FatalError(_)) => {
-                tracing::debug!("Waiting for tracer thread to exit");
-                tracer_thread.await?;
-                process::exit(1);
-              }
-              _ => (),
-            }
-          }
+          let exporter = JsonStreamExporter::new(output, meta, rx)?;
+          let exit_code = exporter.run().await?;
+          tracer_thread.await?;
+          process::exit(exit_code);
         }
       }
     }
