@@ -24,7 +24,6 @@ mod cmdbuilder;
 mod event;
 mod export;
 mod log;
-mod perfetto;
 mod primitives;
 mod printer;
 mod proc;
@@ -56,7 +55,7 @@ use tui::app::PTracer;
 use crate::{
   cli::{CliCommand, args::LogModeArgs, options::Color},
   event::{TracerEvent, TracerEventDetails, TracerMessage},
-  export::{Exporter, ExporterMetadata, JsonExporter, JsonStreamExporter},
+  export::{Exporter, ExporterMetadata, JsonExporter, JsonStreamExporter, PerfettoExporter},
   log::initialize_panic_handler,
   proc::BaselineInfo,
   pty::{PtySize, PtySystem, native_pty_system},
@@ -306,6 +305,12 @@ async fn main() -> color_eyre::Result<()> {
         }
         ExportFormat::JsonStream => {
           let exporter = JsonStreamExporter::new(output, meta, tracer_rx)?;
+          let exit_code = exporter.run().await?;
+          tracer_thread.await??;
+          process::exit(exit_code);
+        }
+        ExportFormat::Perfetto => {
+          let exporter = PerfettoExporter::new(output, meta, tracer_rx)?;
           let exit_code = exporter.run().await?;
           tracer_thread.await??;
           process::exit(exit_code);

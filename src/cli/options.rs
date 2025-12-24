@@ -39,4 +39,5 @@ pub enum ExportFormat {
   Json,
   // https://clang.llvm.org/docs/JSONCompilationDatabase.html
   // CompileCommands,
+  Perfetto
 }

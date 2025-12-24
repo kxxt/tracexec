@@ -1,8 +1,10 @@
 mod json;
+mod perfetto;
 
 use std::{io::Write, sync::Arc};
 
 pub use json::*;
+pub use perfetto::PerfettoExporter;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::{event::TracerMessage, proc::BaselineInfo};

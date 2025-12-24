@@ -1,8 +1,5 @@
-mod protos;
-
 use bytes::BufMut;
-pub use protos::*;
-
+use perfetto_trace_proto::TracePacket;
 use prost::Message;
 
 pub struct PerfettoTraceRecorder<W: std::io::Write> {
@@ -25,10 +22,11 @@ impl<W: std::io::Write> PerfettoTraceRecorder<W> {
     // The MSB(Sign bit) is zero since we only use one byte
     // The next 4 bits represent the field number, which is 1 according to trace.proto
     // The last 3 bits represent the wire type, which is LEN in our case. (LEN=2)
+    #[allow(clippy::unusual_byte_groupings)]
     self.buf.put_u8(0b0_0001_010);
 
     // Write Length and Value
-    if let Err(_) = trace.encode_length_delimited(&mut self.buf) {
+    if trace.encode_length_delimited(&mut self.buf).is_err() {
       // Flush the buffer to get free space
       self.flush()?;
       // Try again
