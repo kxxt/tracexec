@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
   cache::ArcStr,
-  export::{Exporter, ExporterMetadata, JsonExporter, JsonStreamExporter},
+  export::{Exporter, ExporterMetadata, JsonExporter, JsonStreamExporter, PerfettoExporter},
   tracer::TracerBuilder,
 };
 use color_eyre::{Section, eyre::eyre};
@@ -229,6 +229,12 @@ pub async fn main(
         }
         ExportFormat::JsonStream => {
           let exporter = JsonStreamExporter::new(output, meta, rx)?;
+          let exit_code = exporter.run().await?;
+          tracer_thread.await?;
+          process::exit(exit_code);
+        }
+        ExportFormat::Perfetto => {
+          let exporter = PerfettoExporter::new(output, meta, rx)?;
           let exit_code = exporter.run().await?;
           tracer_thread.await?;
           process::exit(exit_code);

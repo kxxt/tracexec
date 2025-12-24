@@ -87,6 +87,7 @@ snafu = { version = "0.8.8", features = ["rust_1_81", "backtrace"] }
 bytemuck = "1.24.0"
 prost = "0.14.1"
 perfetto-trace-proto = { path = "crates/perfetto-trace-proto" }
+priority-queue = "2.7.0"
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 
