@@ -30,7 +30,7 @@ use crate::{
   tracee,
   tracer::{ExecData, ProcessExit, TracerMode},
 };
-use chrono::Local;
+use chrono::{DateTime, Local};
 use either::Either;
 use enumflags2::BitFlags;
 use inspect::{read_arcstr, read_output_msg_array};
@@ -363,6 +363,7 @@ impl TracerInner {
       if !matches!(status, PtraceWaitPidEvent::StillAlive) {
         counter += 1;
       }
+      let timestamp = Local::now();
       // trace!("waitpid: {:?}", status);
       match status {
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Syscall(guard)) => {
@@ -374,17 +375,17 @@ impl TracerInner {
             .presyscall;
           if presyscall {
             self
-              .on_syscall_enter(Either::Left(guard), pending_guards)
+              .on_syscall_enter(Either::Left(guard), pending_guards, timestamp)
               .context(OtherSnafu)?;
           } else {
             self
-              .on_syscall_exit(guard, pending_guards)
+              .on_syscall_exit(guard, pending_guards, timestamp)
               .context(OtherSnafu)?;
           }
         }
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Seccomp(guard)) => {
           self
-            .on_syscall_enter(Either::Right(guard), pending_guards)
+            .on_syscall_enter(Either::Right(guard), pending_guards, timestamp)
             .context(OtherSnafu)?;
         }
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::SignalDelivery(guard)) => {
@@ -482,7 +483,6 @@ impl TracerInner {
           }
         }
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::CloneParent(guard)) => {
-          let timestamp = Local::now();
           let new_child = guard.child().context(OSSnafu)?;
           let pid = guard.pid();
           trace!("ptrace fork/clone event, pid: {pid}, child: {new_child}");
@@ -557,7 +557,6 @@ impl TracerInner {
           guard.seccomp_aware_cont_syscall(true).context(OSSnafu)?;
         }
         PtraceWaitPidEvent::Signaled { pid, signal: sig } => {
-          let timestamp = Local::now();
           debug!("signaled: {pid}, {:?}", sig);
           let mut store = self.store.borrow_mut();
           if let Some(state) = store.get_current_mut(pid) {
@@ -593,7 +592,6 @@ impl TracerInner {
         }
         PtraceWaitPidEvent::Exited { pid, code } => {
           // pid could also be a not traced subprocess.
-          let timestamp = Local::now();
           trace!("exited: pid {}, code {:?}", pid, code);
           let mut store = self.store.borrow_mut();
           if let Some(state) = store.get_current_mut(pid) {
@@ -648,8 +646,8 @@ impl TracerInner {
     &self,
     guard: Either<PtraceSyscallStopGuard<'a>, PtraceSeccompStopGuard<'a>>,
     pending_guards: &mut HashMap<Pid, PtraceStopGuard<'a>>,
+    timestamp: DateTime<Local>,
   ) -> color_eyre::Result<()> {
-    let timestamp = chrono::Local::now();
     let pid = guard.pid();
     let mut store = self.store.borrow_mut();
     let p = store.get_current_mut(pid).unwrap();
@@ -832,6 +830,7 @@ impl TracerInner {
     &self,
     guard: PtraceSyscallStopGuard<'a>,
     pending_guards: &mut HashMap<Pid, PtraceStopGuard<'a>>,
+    timestamp: DateTime<Local>,
   ) -> color_eyre::Result<()> {
     // SYSCALL EXIT
     // trace!("post syscall {}", p.syscall);
@@ -873,7 +872,7 @@ impl TracerInner {
             &self.baseline.env,
             p,
             exec_result,
-            p.exec_data.as_ref().unwrap().timestamp,
+            timestamp,
             parent,
           ))
           .into_event_with_id(id);
