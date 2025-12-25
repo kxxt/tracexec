@@ -1,13 +1,12 @@
 //! Abstractions for creating Perfetto trace packet for tracexec events
 
-use std::sync::Arc;
+use std::{num::NonZeroUsize, sync::Arc};
 
 use chrono::{DateTime, Local};
 use perfetto_trace_proto::{
-  ClockSnapshot, DebugAnnotation, InternedData, TracePacket, TracePacketDefaults, TrackDescriptor,
-  TrackEvent,
+  ClockSnapshot, EventName, InternedData, InternedString, TracePacket, TracePacketDefaults,
+  TrackDescriptor, TrackEvent,
   clock_snapshot::clock::BuiltinClocks,
-  debug_annotation,
   trace_packet::{Data, OptionalTrustedPacketSequenceId, SequenceFlags},
   track_event::{self, NameField},
 };
@@ -16,7 +15,10 @@ use crate::{
   action::{CopyTarget, SupportedShell},
   cli::args::ModifierArgs,
   event::{ExecEvent, RuntimeModifier, TracerEventDetails},
-  export::perfetto::{intern::DebugAnnotationInternId, producer::TrackUuid},
+  export::perfetto::{
+    intern::{DebugAnnotationInternId, ValueInterner, da_interned_string},
+    producer::TrackUuid,
+  },
   proc::BaselineInfo,
   tracer::ProcessExit,
 };
@@ -27,6 +29,8 @@ const TRUSTED_PKT_SEQ_ID: OptionalTrustedPacketSequenceId =
 pub struct TracePacketCreator {
   baseline: Arc<BaselineInfo>,
   modifier_args: ModifierArgs,
+  da_string_interner: ValueInterner,
+  event_name_interner: ValueInterner,
 }
 
 impl TracePacketCreator {
@@ -56,6 +60,8 @@ impl TracePacketCreator {
     (
       Self {
         modifier_args: ModifierArgs::default(),
+        da_string_interner: ValueInterner::new(NonZeroUsize::new(114_514).unwrap()),
+        event_name_interner: ValueInterner::new(NonZeroUsize::new(1024).unwrap()),
         baseline,
       },
       packet,
@@ -77,7 +83,7 @@ impl TracePacketCreator {
   }
 
   pub fn begin_exec_slice(
-    &self,
+    &mut self,
     // We need to refactor this TracerEventDetails mess.
     // Technically we only need to use ExecEvent but since we only implemented `text_for_copy`
     // on TracerEventDetails we currently must pass a TracerEventDetails here.
@@ -94,24 +100,32 @@ impl TracePacketCreator {
         .timestamp_nanos_opt()
         .expect("date out of range") as u64,
     );
+    let mut da_interned_strings: Vec<InternedString> = Vec::new();
+    let mut interned_eventname: Option<EventName> = None;
     let debug_annotations = vec![
-      DebugAnnotationInternId::Argv.with_array(
-        event
-          .argv
-          .as_deref()
-          .ok()
-          .map(|v| {
-            v.iter()
-              .map(|a| DebugAnnotation {
-                value: Some(debug_annotation::Value::StringValue(a.to_string())),
-                ..Default::default()
-              })
-              .collect()
-          })
-          .unwrap_or_default(),
+      DebugAnnotationInternId::Argv.with_array(if let Some(argv) = event.argv.as_deref().ok() {
+        let mut result = vec![];
+        for arg in argv {
+          result.push(da_interned_string(
+            self
+              .da_string_interner
+              .intern_with(arg.as_ref(), &mut da_interned_strings),
+          ));
+        }
+        result
+      } else {
+        Vec::new()
+      }),
+      DebugAnnotationInternId::Filename.with_interned_string(
+        self
+          .da_string_interner
+          .intern_with(event.filename.as_ref(), &mut da_interned_strings),
       ),
-      DebugAnnotationInternId::Filename.with_string(event.filename.to_string()),
-      DebugAnnotationInternId::Cwd.with_string(event.cwd.to_string()),
+      DebugAnnotationInternId::Cwd.with_interned_string(
+        self
+          .da_string_interner
+          .intern_with(event.cwd.as_ref(), &mut da_interned_strings),
+      ),
       DebugAnnotationInternId::SyscallRet.with_int(event.result),
       DebugAnnotationInternId::Cmdline.with_string(
         event_details
@@ -132,14 +146,23 @@ impl TracePacketCreator {
       track_uuid: Some(track_uuid.into_inner()),
 
       debug_annotations,
-      name_field: Some(NameField::Name(
-        event
-          .argv
-          .as_deref()
-          .ok()
-          .and_then(|v| v.first())
-          .unwrap_or(&event.filename)
-          .to_string(),
+      name_field: Some(NameField::NameIid(
+        match self.event_name_interner.intern(
+          event
+            .argv
+            .as_deref()
+            .ok()
+            .and_then(|v| v.first())
+            .unwrap_or(&event.filename)
+            .as_ref(),
+        ) {
+          Ok(iid) => iid,
+          Err(value) => {
+            let iid = value.iid;
+            interned_eventname = Some(value.into());
+            iid
+          }
+        },
       )),
       // category_iids: todo!(),
       // log_message: todo!(),
@@ -149,6 +172,13 @@ impl TracePacketCreator {
       ..Default::default()
     };
     packet.data = Some(Data::TrackEvent(track_event));
+    if !da_interned_strings.is_empty() || interned_eventname.is_some() {
+      packet.interned_data = Some(InternedData {
+        event_names: interned_eventname.into_iter().collect(),
+        debug_annotation_string_values: da_interned_strings,
+        ..Default::default()
+      });
+    }
     Ok(packet)
   }
 
