@@ -256,7 +256,7 @@ async fn main() -> color_eyre::Result<()> {
       output,
       modifier_args,
       ptrace_args,
-      pretty,
+      exporter_args,
       foreground,
       no_foreground,
     } => {
@@ -295,7 +295,7 @@ async fn main() -> color_eyre::Result<()> {
         .printer_from_cli(&tracing_args)
         .build_ptrace()?;
       let (_tracer, tracer_thread) = tracer.spawn(cmd, None, token)?;
-      let meta = ExporterMetadata { baseline, pretty };
+      let meta = ExporterMetadata { baseline, exporter_args };
       match format {
         ExportFormat::Json => {
           let exporter = JsonExporter::new(output, meta, tracer_rx)?;

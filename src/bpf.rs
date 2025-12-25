@@ -177,8 +177,8 @@ pub async fn main(
     EbpfCommand::Collect {
       cmd,
       modifier_args,
+      exporter_args,
       format,
-      pretty,
       output,
       foreground,
       no_foreground,
@@ -218,7 +218,7 @@ pub async fn main(
       });
       let meta = ExporterMetadata {
         baseline: baseline.clone(),
-        pretty,
+        exporter_args,
       };
       match format {
         ExportFormat::Json => {

@@ -7,11 +7,11 @@ pub use json::*;
 pub use perfetto::PerfettoExporter;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use crate::{event::TracerMessage, proc::BaselineInfo};
+use crate::{cli::args::ExporterArgs, event::TracerMessage, proc::BaselineInfo};
 
 pub struct ExporterMetadata {
   pub(super) baseline: Arc<BaselineInfo>,
-  pub(super) pretty: bool,
+  pub(super) exporter_args: ExporterArgs,
 }
 
 pub trait Exporter: Sized {

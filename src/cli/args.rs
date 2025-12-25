@@ -544,3 +544,9 @@ enum ParseFrameRateError {
   #[snafu(display("Frame rate too low, must be at least 5.0"))]
   TooLow,
 }
+
+#[derive(Args, Debug, Default, Clone)]
+pub struct ExporterArgs {
+  #[clap(short, long, help = "prettify the output if supported")]
+  pub pretty: bool,
+}
