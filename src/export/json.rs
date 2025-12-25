@@ -53,7 +53,7 @@ impl Exporter for JsonExporter {
           details: TracerEventDetails::TraceeExit { exit_code, .. },
           ..
         })) => {
-          serialize_json_to_output(&mut self.0.output, &json, self.0.meta.pretty)?;
+          serialize_json_to_output(&mut self.0.output, &json, self.0.meta.exporter_args.pretty)?;
           self.0.output.write_all(b"\n")?;
           self.0.output.flush()?;
           return Ok(exit_code);
@@ -89,7 +89,7 @@ impl Exporter for JsonStreamExporter {
     serialize_json_to_output(
       &mut self.0.output,
       &JsonMetaData::new(self.0.meta.baseline),
-      self.0.meta.pretty,
+      self.0.meta.exporter_args.pretty,
     )?;
     loop {
       match self.0.stream.recv().await {
@@ -104,7 +104,11 @@ impl Exporter for JsonStreamExporter {
           id,
         })) => {
           let json_event = JsonExecEvent::new(id, *exec);
-          serialize_json_to_output(&mut self.0.output, &json_event, self.0.meta.pretty)?;
+          serialize_json_to_output(
+            &mut self.0.output,
+            &json_event,
+            self.0.meta.exporter_args.pretty,
+          )?;
           self.0.output.write_all(b"\n")?;
           self.0.output.flush()?;
         }

@@ -9,7 +9,7 @@ use config::Config;
 use options::ExportFormat;
 use tracing::debug;
 
-use crate::printer::PrinterOut;
+use crate::{cli::args::ExporterArgs, printer::PrinterOut};
 
 use self::{
   args::{LogModeArgs, ModifierArgs, TracerEventArgs},
@@ -102,10 +102,10 @@ pub enum CliCommand {
     modifier_args: ModifierArgs,
     #[clap(flatten)]
     ptrace_args: PtraceArgs,
+    #[clap(flatten)]
+    exporter_args: ExporterArgs,
     #[clap(short = 'F', long, help = "the format for exported exec events")]
     format: ExportFormat,
-    #[clap(short, long, help = "prettify the output if supported")]
-    pretty: bool,
     #[clap(
       short,
       long,
@@ -179,8 +179,8 @@ pub enum EbpfCommand {
     modifier_args: ModifierArgs,
     #[clap(short = 'F', long, help = "the format for exported exec events")]
     format: ExportFormat,
-    #[clap(short, long, help = "prettify the output if supported")]
-    pretty: bool,
+    #[clap(flatten)]
+    exporter_args: ExporterArgs,
     #[clap(
       short,
       long,
