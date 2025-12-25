@@ -8,10 +8,10 @@ use crate::{
   },
 };
 
+mod intern;
 mod packet;
 mod producer;
 mod recorder;
-mod intern;
 
 pub struct PerfettoExporter {
   stream: UnboundedReceiver<crate::event::TracerMessage>,
@@ -35,7 +35,7 @@ impl Exporter for PerfettoExporter {
   }
 
   async fn run(mut self) -> Result<i32, Self::Error> {
-    let (mut producer, initial_packet) = TracePacketProducer::new();
+    let (mut producer, initial_packet) = TracePacketProducer::new(self.meta.baseline);
     self.recorder.record(initial_packet)?;
     while let Some(message) = self.stream.recv().await {
       match message {

@@ -15,6 +15,7 @@ pub enum DebugAnnotationInternId {
   EndReason,
   ExitCode,
   ExitSignal,
+  Cmdline,
 }
 
 impl DebugAnnotationInternId {

@@ -1,6 +1,11 @@
 //! Abstractions for converting tracer events into perfetto trace packets
 
-use std::{cell::RefCell, cmp::Reverse, rc::Rc, sync::atomic::AtomicU64};
+use std::{
+  cell::RefCell,
+  cmp::Reverse,
+  rc::Rc,
+  sync::{Arc, atomic::AtomicU64},
+};
 
 use hashbrown::{Equivalent, HashMap};
 use perfetto_trace_proto::{
@@ -15,6 +20,7 @@ use crate::{
     EventId, ParentEvent, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEvent, TracerMessage,
   },
   export::perfetto::packet::{SliceEndInfo, TracePacketCreator},
+  proc::BaselineInfo,
 };
 
 // We try to maintain as few tracks as possible for performance reasons.
@@ -238,9 +244,9 @@ fn allocate_track_id() -> TrackUuid {
 }
 
 impl TracePacketProducer {
-  pub fn new() -> (Self, TracePacket) {
+  pub fn new(baseline: Arc<BaselineInfo>) -> (Self, TracePacket) {
     let uuid = allocate_track_id();
-    let (creator, packet) = TracePacketCreator::new();
+    let (creator, packet) = TracePacketCreator::new(baseline);
     (
       Self {
         tracks: Track {
@@ -264,7 +270,7 @@ impl TracePacketProducer {
     // self.tracks.get();
     debug!("Processing message {message:#?}");
     Ok(match message {
-      TracerMessage::Event(TracerEvent { details, id }) => match details {
+      TracerMessage::Event(TracerEvent { details, id }) => match &details {
         crate::event::TracerEventDetails::Exec(exec_event) => {
           if exec_event.result != 0 {
             // TODO: Create a point instead of a slice for failures
@@ -280,7 +286,7 @@ impl TracePacketProducer {
             // Return a new slice begin trace packet
             return Ok(vec![
               self.creator.announce_track(exec_event.timestamp, desc),
-              self.creator.begin_exec_slice(&exec_event, track_uuid)?,
+              self.creator.begin_exec_slice(&details, track_uuid)?,
             ]);
           };
           // A child exec event
@@ -307,7 +313,7 @@ impl TracePacketProducer {
               )?);
 
               // Emit a slice begin event
-              packets.push(self.creator.begin_exec_slice(&exec_event, track_uuid)?);
+              packets.push(self.creator.begin_exec_slice(&details, track_uuid)?);
             }
             ParentEvent::Spawn(parent_event_id) => {
               // Get a child track and begin a new slice
@@ -342,7 +348,7 @@ impl TracePacketProducer {
               if let Some(desc) = desc {
                 packets.push(self.creator.announce_track(exec_event.timestamp, desc));
               }
-              packets.push(self.creator.begin_exec_slice(&exec_event, track_uuid)?);
+              packets.push(self.creator.begin_exec_slice(&details, track_uuid)?);
             }
           }
           packets
