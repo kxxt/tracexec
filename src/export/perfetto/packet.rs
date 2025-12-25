@@ -1,6 +1,6 @@
 //! Abstractions for creating Perfetto trace packet for tracexec events
 
-use std::marker::PhantomData;
+use std::sync::Arc;
 
 use chrono::{DateTime, Local};
 use perfetto_trace_proto::{
@@ -13,8 +13,11 @@ use perfetto_trace_proto::{
 };
 
 use crate::{
-  event::ExecEvent,
+  action::{CopyTarget, SupportedShell},
+  cli::args::ModifierArgs,
+  event::{ExecEvent, RuntimeModifier, TracerEventDetails},
   export::perfetto::{intern::DebugAnnotationInternId, producer::TrackUuid},
+  proc::BaselineInfo,
   tracer::ProcessExit,
 };
 
@@ -22,12 +25,13 @@ const TRUSTED_PKT_SEQ_ID: OptionalTrustedPacketSequenceId =
   OptionalTrustedPacketSequenceId::TrustedPacketSequenceId(114514);
 
 pub struct TracePacketCreator {
-  _private: PhantomData<()>,
+  baseline: Arc<BaselineInfo>,
+  modifier_args: ModifierArgs,
 }
 
 impl TracePacketCreator {
   /// Create a creator and the initial packet that needs to be sent first
-  pub fn new() -> (Self, TracePacket) {
+  pub fn new(baseline: Arc<BaselineInfo>) -> (Self, TracePacket) {
     let mut packet = Self::boilerplate();
     // sequence id related
     packet.sequence_flags = Some(SequenceFlags::SeqIncrementalStateCleared as u32);
@@ -51,7 +55,8 @@ impl TracePacketCreator {
     }));
     (
       Self {
-        _private: PhantomData,
+        modifier_args: ModifierArgs::default(),
+        baseline,
       },
       packet,
     )
@@ -73,9 +78,15 @@ impl TracePacketCreator {
 
   pub fn begin_exec_slice(
     &self,
-    event: &ExecEvent,
+    // We need to refactor this TracerEventDetails mess.
+    // Technically we only need to use ExecEvent but since we only implemented `text_for_copy`
+    // on TracerEventDetails we currently must pass a TracerEventDetails here.
+    event_details: &TracerEventDetails,
     track_uuid: TrackUuid,
   ) -> color_eyre::Result<TracePacket> {
+    let TracerEventDetails::Exec(event) = event_details else {
+      panic!("expected exec event");
+    };
     let mut packet = Self::boilerplate();
     packet.timestamp = Some(
       event
@@ -102,6 +113,19 @@ impl TracePacketCreator {
       DebugAnnotationInternId::Filename.with_string(event.filename.to_string()),
       DebugAnnotationInternId::Cwd.with_string(event.cwd.to_string()),
       DebugAnnotationInternId::SyscallRet.with_int(event.result),
+      DebugAnnotationInternId::Cmdline.with_string(
+        event_details
+          .text_for_copy(
+            &self.baseline,
+            CopyTarget::Commandline(SupportedShell::Bash),
+            &self.modifier_args,
+            RuntimeModifier {
+              show_env: true,
+              show_cwd: true,
+            },
+          )
+          .to_string(),
+      ),
     ];
     let track_event = TrackEvent {
       r#type: Some(track_event::Type::SliceBegin as i32),
