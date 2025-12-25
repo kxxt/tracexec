@@ -5,7 +5,7 @@ use std::{cell::RefCell, cmp::Reverse, rc::Rc, sync::atomic::AtomicU64};
 use hashbrown::{Equivalent, HashMap};
 use perfetto_trace_proto::{
   TracePacket, TrackDescriptor,
-  track_descriptor::{SiblingMergeBehavior, StaticOrDynamicName},
+  track_descriptor::{ChildTracksOrdering, SiblingMergeBehavior, StaticOrDynamicName},
 };
 use priority_queue::PriorityQueue;
 use tracing::debug;
@@ -135,7 +135,7 @@ fn allocate_track(
       // chrome_thread: todo!(),
       // counter: todo!(),
       disallow_merging_with_system_tracks: Some(true),
-      // child_ordering: todo!(),
+      child_ordering: Some(ChildTracksOrdering::Chronological as _),
       // sibling_order_rank: todo!(),
       sibling_merge_behavior: Some(SiblingMergeBehavior::None.into()),
       static_or_dynamic_name: Some(StaticOrDynamicName::Name(uuid.into_inner().to_string())),
