@@ -265,6 +265,50 @@ impl TracePacketProducer {
     )
   }
 
+  pub fn ensure_failure_track(&self) -> (TrackUuid, Option<TrackDescriptor>) {
+    // Note that we will just reuse the track uuid of the virtual track
+    // Since the virtual track is not included into the generated trace.
+    let uuid = self.tracks.uuid;
+    if self.tracks.inner.borrow().tracks.borrow().contains(&uuid) {
+      return (uuid, None);
+    }
+    self.tracks.inner.borrow_mut().tracks.borrow_mut().push(
+      Track {
+        uuid,
+        inner: Rc::new(RefCell::new(TrackInner {
+          uuid,
+          parent: None,
+          tracks: Rc::new(RefCell::new(TrackPriorityQueue::with_default_hasher())),
+        })),
+      },
+      Priority {
+        // Set it to occupied to avoid putting slices on it.
+        status: Status::Occupied,
+        id: Reverse(uuid),
+      },
+    );
+    (
+      uuid,
+      Some(TrackDescriptor {
+        uuid: Some(uuid.into_inner()),
+        parent_uuid: None,
+        // description: todo!(),
+        // process: todo!(),
+        // chrome_process: todo!(),
+        // thread: todo!(),
+        // chrome_thread: todo!(),
+        // counter: todo!(),
+        disallow_merging_with_system_tracks: Some(true),
+        child_ordering: Some(ChildTracksOrdering::Chronological as _),
+        // sibling_order_rank: todo!(),
+        sibling_merge_behavior: Some(SiblingMergeBehavior::None.into()),
+        static_or_dynamic_name: Some(StaticOrDynamicName::Name("Global Failures".to_string())),
+        // sibling_merge_key_field: todo!(),
+        ..Default::default()
+      }),
+    )
+  }
+
   /// Process a message from tracer and optionally produce some [`TracePacket`]s
   pub fn process(&mut self, message: TracerMessage) -> color_eyre::Result<Vec<TracePacket>> {
     // self.tracks.get();
@@ -273,8 +317,32 @@ impl TracePacketProducer {
       TracerMessage::Event(TracerEvent { details, id }) => match &details {
         crate::event::TracerEventDetails::Exec(exec_event) => {
           if exec_event.result != 0 {
-            // TODO: Create a point instead of a slice for failures
-            return Ok(Vec::new());
+            // In ptrace mode, a failed exec event must have a parent, except the root one.
+            // But even for the root one, we won't reach here because the failure of the root one will cause tracer to terminate
+            // In eBPF mode with system-wide tracing, it is possible when an existing process gets exec failures.
+            let Some(parent) = exec_event.parent else {
+              // TODO: We should find a free track for this failure event and put the
+              // possible future exec success event on the same track.
+              // But we don't want failure events to occupy the track for too long
+              // as there might not be a following success event at all.
+
+              // Currently put failures on a dedicated track for simplicity.
+              let (uuid, desc) = self.ensure_failure_track();
+              let packet = self.creator.add_exec_failure(&details, uuid)?;
+              let mut packets = Vec::new();
+              if let Some(desc) = desc {
+                packets.push(self.creator.announce_track(exec_event.timestamp, desc));
+              }
+              packets.push(packet);
+              return Ok(packets);
+            };
+            // Attach exec failure to parent slice.
+            let parent: EventId = parent.into();
+            // SAFETY: the parent slice hasn't ended yet.
+            let track_uuid = *self.inflight.get(&parent).unwrap();
+            debug!("Add exec failure of {} to parent {:?}'s track {:?}", exec_event.filename, parent, track_uuid);
+            let packet = self.creator.add_exec_failure(&details, track_uuid)?;
+            return Ok(vec![packet]);
           }
           let Some(parent) = exec_event.parent else {
             // Top level event. We do not attempt to re-use tracks for top-level events
@@ -409,7 +477,7 @@ impl TracePacketProducer {
           ProcessStateUpdate::DetachError { hit, error } => Vec::new(), // TODO: gracefully handle it
         }
       }
-      TracerMessage::FatalError(_) => todo!(),
+      TracerMessage::FatalError(_) => unreachable!(), // handled at recorder level
     })
   }
 }

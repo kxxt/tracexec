@@ -46,6 +46,11 @@ impl Exporter for PerfettoExporter {
           self.recorder.flush()?;
           return Ok(exit_code);
         }
+        TracerMessage::FatalError(_) => {
+          // Terminate exporter.
+          // Let the tracer thread tell the error when being joined.
+          return Ok(1);
+        }
         other => {
           for packet in producer.process(other)? {
             self.recorder.record(packet)?;
