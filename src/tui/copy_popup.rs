@@ -7,10 +7,13 @@ use std::{
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
   buffer::Buffer,
-  layout::{Alignment::Center, Rect},
+  layout::{Alignment, Rect},
   style::{Color, Modifier, Style},
   text::Span,
-  widgets::{Block, Borders, Clear, HighlightSpacing, List, ListState, StatefulWidgetRef, Widget},
+  widgets::{
+    Block, Borders, Clear, HighlightSpacing, List, ListState, StatefulWidget, StatefulWidgetRef,
+    Widget,
+  },
 };
 
 use crate::{
@@ -161,7 +164,7 @@ impl StatefulWidgetRef for CopyPopup {
     .block(
       Block::default()
         .title("Copy")
-        .title_alignment(Center)
+        .title_alignment(Alignment::Center)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::LightGreen)),
     )
@@ -175,7 +178,7 @@ impl StatefulWidgetRef for CopyPopup {
     .highlight_spacing(HighlightSpacing::Always);
     let popup_area = centered_popup_rect(38, list.len() as u16, area);
     Clear.render(popup_area, buf);
-    StatefulWidgetRef::render_ref(&list, popup_area, buf, &mut state.state);
+    StatefulWidget::render(&list, popup_area, buf, &mut state.state);
   }
 
   type State = CopyPopupState;

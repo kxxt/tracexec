@@ -7,7 +7,7 @@ use ratatui::{
   text::{Line, Span},
   widgets::{
     HighlightSpacing, List, ListItem, Scrollbar, ScrollbarOrientation, ScrollbarState,
-    StatefulWidget, StatefulWidgetRef, Widget,
+    StatefulWidget, Widget,
   },
 };
 
@@ -99,7 +99,7 @@ impl Widget for &mut EventList {
     // We can now render the item list
     // (look careful we are using StatefulWidget's render.)
     // ratatui::widgets::StatefulWidget::render as stateful_render
-    StatefulWidgetRef::render_ref(&self.list_cache, area, buf, &mut self.state);
+    StatefulWidget::render(&self.list_cache, area, buf, &mut self.state);
 
     // Render scrollbars
     if self.max_width + 1 > area.width as usize {

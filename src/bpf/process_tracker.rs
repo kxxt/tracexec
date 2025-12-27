@@ -55,7 +55,7 @@ impl ProcessTracker {
   ) -> [Option<&mut ParentTracker>; 2] {
     self
       .processes
-      .get_many_mut([&p1, &p2])
+      .get_disjoint_mut([&p1, &p2])
       .map(|x| x.map(|y| &mut y.parent_tracker))
   }
 
