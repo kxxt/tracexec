@@ -423,7 +423,7 @@ impl TracePacketProducer {
         }
         _ => Vec::new(),
       },
-      TracerMessage::StateUpdate(ProcessStateUpdateEvent { update, pid, ids }) => {
+      TracerMessage::StateUpdate(ProcessStateUpdateEvent { update, pid: _, ids }) => {
         let mut retrieve_matching_event = || {
           // Iterate through the ids in reverse order to find the matching exec event
           let Some((matching_event, track_uuid)) = ids
@@ -457,7 +457,7 @@ impl TracePacketProducer {
             track.borrow_mut().free();
             vec![packet]
           }
-          ProcessStateUpdate::Detached { hid, timestamp } => {
+          ProcessStateUpdate::Detached { hid: _, timestamp } => {
             let Some((matching_event, track_uuid)) = retrieve_matching_event() else {
               return Ok(Vec::new());
             };
@@ -471,10 +471,10 @@ impl TracePacketProducer {
             track.borrow_mut().free();
             vec![packet]
           }
-          ProcessStateUpdate::BreakPointHit(break_point_hit) => Vec::new(),
+          ProcessStateUpdate::BreakPointHit(_break_point_hit) => Vec::new(),
           ProcessStateUpdate::Resumed => Vec::new(),
-          ProcessStateUpdate::ResumeError { hit, error } => Vec::new(), // TODO: gracefully handle it
-          ProcessStateUpdate::DetachError { hit, error } => Vec::new(), // TODO: gracefully handle it
+          ProcessStateUpdate::ResumeError { hit: _, error: _ } => Vec::new(), // TODO: gracefully handle it
+          ProcessStateUpdate::DetachError { hit: _, error: _ } => Vec::new(), // TODO: gracefully handle it
         }
       }
       TracerMessage::FatalError(_) => unreachable!(), // handled at recorder level
