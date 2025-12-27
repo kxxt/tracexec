@@ -1516,7 +1516,9 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "perfetto-trace-proto"
-version = "0.1.0"
+version = "0.1.0+g4c6784a1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "861a291e835250417c2e3ee271d24b5599971ca073eca10a27b9c186fb7383e9"
 dependencies = [
  "prost",
  "prost-build",
