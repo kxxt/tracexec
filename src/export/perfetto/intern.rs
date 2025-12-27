@@ -6,7 +6,6 @@ use perfetto_trace_proto::{
 };
 use strum::{EnumIter, IntoEnumIterator, IntoStaticStr};
 
-
 #[repr(u64)]
 #[derive(Debug, Clone, Copy, IntoStaticStr, EnumIter)]
 #[strum(serialize_all = "snake_case")]
@@ -19,6 +18,9 @@ pub enum DebugAnnotationInternId {
   ExitCode,
   ExitSignal,
   Cmdline,
+  Env,
+  // Please add new entries before the end one
+  End
 }
 
 impl DebugAnnotationInternId {
@@ -53,6 +55,14 @@ impl DebugAnnotationInternId {
   pub fn with_array(self, value: Vec<DebugAnnotation>) -> DebugAnnotation {
     DebugAnnotation {
       array_values: value,
+      name_field: Some(NameField::NameIid(self as _)),
+      ..Default::default()
+    }
+  }
+
+  pub fn with_dict(self, value: Vec<DebugAnnotation>) -> DebugAnnotation {
+    DebugAnnotation {
+      dict_entries: value,
       name_field: Some(NameField::NameIid(self as _)),
       ..Default::default()
     }
@@ -93,6 +103,15 @@ impl From<InternedValue> for EventName {
   }
 }
 
+impl From<InternedValue> for DebugAnnotationName {
+  fn from(value: InternedValue) -> Self {
+    Self {
+      iid: Some(value.iid),
+      name: Some(value.value),
+    }
+  }
+}
+
 pub struct ValueInterner {
   /// The iid counter
   iid: InternedId,
@@ -101,9 +120,9 @@ pub struct ValueInterner {
 }
 
 impl ValueInterner {
-  pub fn new(max_cap: NonZeroUsize) -> Self {
+  pub fn new(max_cap: NonZeroUsize, start: InternedId) -> Self {
     Self {
-      iid: 1,
+      iid: start,
       cache: lru::LruCache::new(max_cap),
     }
   }
