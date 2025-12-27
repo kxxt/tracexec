@@ -194,6 +194,56 @@ impl TracePacketCreator {
           vec![]
         }
       }),
+      DebugAnnotationInternId::Fd.with_dict({
+        let fds = &event.fdinfo.as_ref().fdinfo;
+        let mut entries = Vec::new();
+        let mut buffer = itoa::Buffer::new();
+        for (k, v) in fds.iter() {
+          let fd_num_str = buffer.format(*k);
+          entries.push(DebugAnnotation {
+            name_field: Some(debug_annotation::NameField::NameIid(
+              self
+                .da_name_interner
+                .intern_with(fd_num_str, &mut da_interned_names),
+            )),
+            dict_entries: vec![
+              DebugAnnotationInternId::Path.with_interned_string(
+                self
+                  .da_string_interner
+                  .intern_with(v.path.as_ref(), &mut da_interned_strings),
+              ),
+              DebugAnnotationInternId::Flags.with_interned_string({
+                let mut flags = String::new();
+                bitflags::parser::to_writer(&v.flags, &mut flags).unwrap();
+                self
+                  .da_string_interner
+                  .intern_owned_with(flags, &mut da_interned_strings)
+              }),
+              DebugAnnotationInternId::Pos.with_uint(v.pos as _),
+              DebugAnnotationInternId::MountId.with_int(v.mnt_id as _),
+              DebugAnnotationInternId::Mount.with_interned_string(
+                self
+                  .da_string_interner
+                  .intern_with(v.mnt.as_ref(), &mut da_interned_strings),
+              ),
+              DebugAnnotationInternId::Extra.with_array({
+                let mut extras = vec![];
+                for extra in v.extra.iter() {
+                  extras.push(da_interned_string(
+                    self
+                      .da_string_interner
+                      .intern_with(extra.as_ref(), &mut da_interned_strings),
+                  ));
+                }
+                extras
+              }),
+              DebugAnnotationInternId::Inode.with_uint(v.ino),
+            ],
+            ..Default::default()
+          });
+        }
+        entries
+      }),
     ];
     let track_event = TrackEvent {
       r#type: Some(if event.result == 0 {

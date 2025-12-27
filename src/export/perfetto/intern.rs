@@ -19,8 +19,16 @@ pub enum DebugAnnotationInternId {
   ExitSignal,
   Cmdline,
   Env,
+  Fd,
+  Path,
+  Pos,
+  Flags,
+  Inode,
+  Mount,
+  MountId,
+  Extra,
   // Please add new entries before the end one
-  End
+  End,
 }
 
 impl DebugAnnotationInternId {
@@ -71,6 +79,14 @@ impl DebugAnnotationInternId {
   pub fn with_int(self, value: i64) -> DebugAnnotation {
     DebugAnnotation {
       value: Some(Value::IntValue(value)),
+      name_field: Some(NameField::NameIid(self as _)),
+      ..Default::default()
+    }
+  }
+
+  pub fn with_uint(self, value: u64) -> DebugAnnotation {
+    DebugAnnotation {
+      value: Some(Value::UintValue(value)),
       name_field: Some(NameField::NameIid(self as _)),
       ..Default::default()
     }
@@ -142,12 +158,40 @@ impl ValueInterner {
     }
   }
 
+  pub fn intern_owned(&mut self, msg: String) -> Result<InternedId, InternedValue> {
+    if let Some(v) = self.cache.get(&msg) {
+      Ok(*v)
+    } else {
+      let s = msg;
+      let iid = self.iid;
+      self.iid += 1;
+      // Unfortunately we must clone the string for inserting it into the intern table.
+      self.cache.put(s.clone(), iid);
+      Err(InternedValue { iid, value: s })
+    }
+  }
+
   pub fn intern_with(
     &mut self,
     msg: &str,
     table: &mut Vec<impl From<InternedValue>>,
   ) -> InternedId {
     match self.intern(msg) {
+      Ok(iid) => iid,
+      Err(value) => {
+        let iid = value.iid;
+        table.push(value.into());
+        iid
+      }
+    }
+  }
+
+  pub fn intern_owned_with(
+    &mut self,
+    msg: String,
+    table: &mut Vec<impl From<InternedValue>>,
+  ) -> InternedId {
+    match self.intern_owned(msg) {
       Ok(iid) => iid,
       Err(value) => {
         let iid = value.iid;
