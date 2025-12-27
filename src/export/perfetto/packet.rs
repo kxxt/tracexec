@@ -244,6 +244,17 @@ impl TracePacketCreator {
         }
         entries
       }),
+      DebugAnnotationInternId::Interpreter.with_array({
+        let mut intps = Vec::new();
+        for intp in event.interpreter.as_deref().unwrap_or_default().iter() {
+          intps.push(da_interned_string(
+            self
+              .da_string_interner
+              .intern_owned_with(intp.to_string(), &mut da_interned_strings),
+          ));
+        }
+        intps
+      }),
     ];
     let track_event = TrackEvent {
       r#type: Some(if event.result == 0 {
