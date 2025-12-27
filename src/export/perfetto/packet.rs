@@ -4,9 +4,10 @@ use std::{num::NonZeroUsize, sync::Arc};
 
 use chrono::{DateTime, Local};
 use perfetto_trace_proto::{
-  ClockSnapshot, EventName, InternedData, InternedString, TracePacket, TracePacketDefaults,
-  TrackDescriptor, TrackEvent,
+  ClockSnapshot, DebugAnnotation, DebugAnnotationName, EventName, InternedData, InternedString,
+  TracePacket, TracePacketDefaults, TrackDescriptor, TrackEvent,
   clock_snapshot::clock::BuiltinClocks,
+  debug_annotation,
   trace_packet::{Data, OptionalTrustedPacketSequenceId, SequenceFlags},
   track_event::{self, NameField},
 };
@@ -30,6 +31,7 @@ pub struct TracePacketCreator {
   baseline: Arc<BaselineInfo>,
   modifier_args: ModifierArgs,
   da_string_interner: ValueInterner,
+  da_name_interner: ValueInterner,
   event_name_interner: ValueInterner,
 }
 
@@ -60,8 +62,12 @@ impl TracePacketCreator {
     (
       Self {
         modifier_args: ModifierArgs::default(),
-        da_string_interner: ValueInterner::new(NonZeroUsize::new(114_514).unwrap()),
-        event_name_interner: ValueInterner::new(NonZeroUsize::new(1024).unwrap()),
+        da_string_interner: ValueInterner::new(NonZeroUsize::new(114_514).unwrap(), 1),
+        da_name_interner: ValueInterner::new(
+          NonZeroUsize::new(10240).unwrap(),
+          DebugAnnotationInternId::End as u64 + 1,
+        ),
+        event_name_interner: ValueInterner::new(NonZeroUsize::new(1024).unwrap(), 1),
         baseline,
       },
       packet,
@@ -125,6 +131,7 @@ impl TracePacketCreator {
         .expect("date out of range") as u64,
     );
     let mut da_interned_strings: Vec<InternedString> = Vec::new();
+    let mut da_interned_names: Vec<DebugAnnotationName> = Vec::new();
     let mut interned_eventname: Option<EventName> = None;
     let debug_annotations = vec![
       DebugAnnotationInternId::Argv.with_array(if let Ok(argv) = event.argv.as_deref() {
@@ -164,6 +171,29 @@ impl TracePacketCreator {
           )
           .to_string(),
       ),
+      DebugAnnotationInternId::Env.with_dict({
+        if let Ok(env) = event.envp.as_ref() {
+          let mut entries = Vec::new();
+          for (k, v) in env.iter() {
+            entries.push(DebugAnnotation {
+              name_field: Some(debug_annotation::NameField::NameIid(
+                self
+                  .da_name_interner
+                  .intern_with(k.as_ref(), &mut da_interned_names),
+              )),
+              value: Some(debug_annotation::Value::StringValueIid(
+                self
+                  .da_string_interner
+                  .intern_with(v.as_ref(), &mut da_interned_strings),
+              )),
+              ..Default::default()
+            });
+          }
+          entries
+        } else {
+          vec![]
+        }
+      }),
     ];
     let track_event = TrackEvent {
       r#type: Some(if event.result == 0 {
@@ -200,10 +230,14 @@ impl TracePacketCreator {
       ..Default::default()
     };
     packet.data = Some(Data::TrackEvent(track_event));
-    if !da_interned_strings.is_empty() || interned_eventname.is_some() {
+    if !da_interned_strings.is_empty()
+      || !da_interned_names.is_empty()
+      || interned_eventname.is_some()
+    {
       packet.interned_data = Some(InternedData {
         event_names: interned_eventname.into_iter().collect(),
         debug_annotation_string_values: da_interned_strings,
+        debug_annotation_names: da_interned_names,
         ..Default::default()
       });
     }
