@@ -374,6 +374,7 @@ pub enum SliceEndInfo {
   Exec,
   Detached,
   Exited(ProcessExit),
+  #[allow(unused)]
   Error,
 }
 
