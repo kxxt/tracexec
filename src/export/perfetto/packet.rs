@@ -14,7 +14,7 @@ use perfetto_trace_proto::{
 use crate::{
   action::{CopyTarget, SupportedShell},
   cli::args::ModifierArgs,
-  event::{ExecEvent, RuntimeModifier, TracerEventDetails},
+  event::{RuntimeModifier, TracerEventDetails},
   export::perfetto::{
     intern::{DebugAnnotationInternId, ValueInterner, da_interned_string},
     producer::TrackUuid,
@@ -84,6 +84,30 @@ impl TracePacketCreator {
 
   pub fn begin_exec_slice(
     &mut self,
+    event_details: &TracerEventDetails,
+    track_uuid: TrackUuid,
+  ) -> color_eyre::Result<TracePacket> {
+    let TracerEventDetails::Exec(event) = event_details else {
+      panic!("expected exec event");
+    };
+    assert_eq!(event.result, 0);
+    self.process_exec_event(event_details, track_uuid)
+  }
+
+  pub fn add_exec_failure(
+    &mut self,
+    event_details: &TracerEventDetails,
+    track_uuid: TrackUuid,
+  ) -> color_eyre::Result<TracePacket> {
+    let TracerEventDetails::Exec(event) = event_details else {
+      panic!("expected exec event");
+    };
+    assert_ne!(event.result, 0);
+    self.process_exec_event(event_details, track_uuid)
+  }
+
+  pub fn process_exec_event(
+    &mut self,
     // We need to refactor this TracerEventDetails mess.
     // Technically we only need to use ExecEvent but since we only implemented `text_for_copy`
     // on TracerEventDetails we currently must pass a TracerEventDetails here.
@@ -142,7 +166,11 @@ impl TracePacketCreator {
       ),
     ];
     let track_event = TrackEvent {
-      r#type: Some(track_event::Type::SliceBegin as i32),
+      r#type: Some(if event.result == 0 {
+        track_event::Type::SliceBegin
+      } else {
+        track_event::Type::Instant
+      } as i32),
       track_uuid: Some(track_uuid.into_inner()),
 
       debug_annotations,
@@ -216,14 +244,6 @@ impl TracePacketCreator {
     };
     packet.data = Some(Data::TrackEvent(track_event));
     Ok(packet)
-  }
-
-  pub fn exec_instant(
-    &self,
-    event: &ExecEvent,
-    track_uuid: TrackUuid,
-  ) -> color_eyre::Result<TracePacket> {
-    todo!()
   }
 }
 
