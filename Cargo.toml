@@ -90,6 +90,7 @@ perfetto-trace-proto = { path = "crates/perfetto-trace-proto" }
 priority-queue = "2.7.0"
 lru = "0.16.2"
 signal-hook-tokio = { version = "0.3.1", features = ["futures-v0_3"] }
+itoa = "1.0.16"
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 
