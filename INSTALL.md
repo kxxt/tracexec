@@ -25,6 +25,9 @@ To install from source, the following dependencies are needed:
 - If any library vendoring feature is enabled:
   - `build-essential` `autopoint` `gettext` for Debian based distros
   - `base-devel` for Arch Linux
+- `protoc` for compiling ProtoBuf `proto` files.
+  - By default, `protoc` from `PATH` is used. `PROTOC` environment variable
+    could be used to specify the **full** path to the desired protoc compiler.
 - `clang` for compiling eBPF program.
   - By default, `clang` from `PATH` is used. `CLANG` environment variable
     could be used to specify the **full** path to the desired clang compiler.
