@@ -145,6 +145,7 @@ pub enum PendingRequest {
     hid: u64,
   },
   SuspendSeccompBpf(Pid),
+  TerminateTracer,
 }
 
 extern "C" fn empty_sighandler(_arg: c_int) {}
@@ -294,6 +295,14 @@ impl RunningTracer {
   pub fn request_suspend_seccomp_bpf(&self, pid: Pid) -> color_eyre::Result<()> {
     trace!("received request to suspend {pid}'s seccomp-bpf filter");
     self.req_tx.send(PendingRequest::SuspendSeccompBpf(pid))?;
+    if self.blocking {
+      self.blocking_mode_notify_tracer()?;
+    }
+    Ok(())
+  }
+
+  pub fn request_termination(&self) -> color_eyre::Result<()> {
+    self.req_tx.send(PendingRequest::TerminateTracer)?;
     if self.blocking {
       self.blocking_mode_notify_tracer()?;
     }

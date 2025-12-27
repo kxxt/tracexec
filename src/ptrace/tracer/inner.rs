@@ -290,6 +290,10 @@ impl TracerInner {
               error!("Failed to suspend seccomp-bpf for {pid}: {e}");
             });
           }
+          PendingRequest::TerminateTracer => {
+            // Terminate the tracer, this should close the message channel
+            return Ok(());
+          }
         }
       };
     }

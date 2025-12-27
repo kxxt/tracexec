@@ -47,7 +47,10 @@ use cli::{
 };
 use color_eyre::eyre::{OptionExt, bail};
 
+use futures::StreamExt;
 use nix::unistd::{Uid, User};
+use signal_hook::consts::signal::*;
+use signal_hook_tokio::Signals;
 use tokio::sync::mpsc;
 use tracer::TracerBuilder;
 use tui::app::PTracer;
@@ -294,8 +297,25 @@ async fn main() -> color_eyre::Result<()> {
         )
         .printer_from_cli(&tracing_args)
         .build_ptrace()?;
-      let (_tracer, tracer_thread) = tracer.spawn(cmd, None, token)?;
-      let meta = ExporterMetadata { baseline, exporter_args };
+      let (tracer, tracer_thread) = tracer.spawn(cmd, None, token)?;
+      let signals = Signals::new([SIGTERM, SIGINT, SIGQUIT])?;
+      tokio::spawn(async move {
+        let mut signals = signals;
+        while let Some(signal) = signals.next().await {
+          match signal {
+            SIGTERM | SIGINT => {
+              tracer
+                .request_termination()
+                .expect("Failed to terminate tracer");
+            }
+            _ => unreachable!(),
+          }
+        }
+      });
+      let meta = ExporterMetadata {
+        baseline,
+        exporter_args,
+      };
       match format {
         ExportFormat::Json => {
           let exporter = JsonExporter::new(output, meta, tracer_rx)?;
