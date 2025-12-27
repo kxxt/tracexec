@@ -65,18 +65,14 @@ pub type ParentEventId = ParentEvent<EventId>;
 /// 1) for `spawns`(A spawns B), record the id of last exec event(Unknown ?> A) of the parent process(A) at fork time.
 /// 2) for `becomes`(C becomes D), record the id of last exec event(A becomes C)
 ///
-/// If the exec_count of a process after a exec is equal or greater than 2, then the parent event is `last_exec`
-/// If the exec_count of a process after a exec is 1, then the parent event is `parent_last_exec`
+/// If the process itself have successful execs, then the parent event is `last_successful_exec`
+/// Otherwise, the parent is the corresponding successful exec event of its parent process.
 #[derive(Debug, Clone, Default)]
 pub struct ParentTracker {
-  /// How many times do the process exec.
-  ///
-  /// We only need to check if it occurs more than once.
-  successful_exec_count: u8,
   /// The parent event recorded at fork time,
   parent_last_exec: Option<EventId>,
   /// The last exec event of this process
-  last_exec: Option<EventId>,
+  last_successful_exec: Option<EventId>,
 }
 
 impl ParentTracker {
@@ -85,19 +81,21 @@ impl ParentTracker {
   }
 
   pub fn save_parent_last_exec(&mut self, parent: &Self) {
-    self.parent_last_exec = parent.last_exec.or(parent.parent_last_exec);
+    self.parent_last_exec = parent.last_successful_exec.or(parent.parent_last_exec);
   }
 
   /// Updates parent tracker with an exec event
   /// and returns the parent event id of this exec event
   pub fn update_last_exec(&mut self, id: EventId, successful: bool) -> Option<ParentEventId> {
+    let has_successful_exec = self.last_successful_exec.is_some();
     let old_last_exec = if successful {
-      self.successful_exec_count += 1;
-      self.last_exec.replace(id)
+      self.last_successful_exec.replace(id)
     } else {
-      self.last_exec
+      self.last_successful_exec
     };
-    if self.successful_exec_count >= 2 {
+    // If a process has successful exec events, the parent should be the last successful exec,
+    // other wise it should point to the parent exec event
+    if has_successful_exec {
       // This is at least the second time of exec for this process
       old_last_exec.map(ParentEvent::Become)
     } else {
