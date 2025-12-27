@@ -256,6 +256,33 @@ impl TracePacketCreator {
         }
         intps
       }),
+      DebugAnnotationInternId::Cred.with_dict({
+        if let Ok(cred) = &event.cred {
+          vec![
+            DebugAnnotationInternId::RealUid.with_uint(cred.uid_real as _),
+            DebugAnnotationInternId::EffectiveUid.with_uint(cred.uid_effective as _),
+            DebugAnnotationInternId::SavedUid.with_uint(cred.uid_saved_set as _),
+            DebugAnnotationInternId::FsUid.with_uint(cred.uid_fs as _),
+            DebugAnnotationInternId::RealGid.with_uint(cred.gid_real as _),
+            DebugAnnotationInternId::EffectiveGid.with_uint(cred.gid_effective as _),
+            DebugAnnotationInternId::SavedGid.with_uint(cred.gid_saved_set as _),
+            DebugAnnotationInternId::FsGid.with_uint(cred.gid_fs as _),
+            DebugAnnotationInternId::Groups.with_array(
+              cred
+                .groups
+                .iter()
+                .copied()
+                .map(|g| DebugAnnotation {
+                  value: Some(debug_annotation::Value::UintValue(g as _)),
+                  ..Default::default()
+                })
+                .collect(),
+            ),
+          ]
+        } else {
+          Vec::new()
+        }
+      }),
     ];
     let track_event = TrackEvent {
       r#type: Some(if event.result == 0 {

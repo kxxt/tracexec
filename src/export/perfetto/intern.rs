@@ -29,6 +29,16 @@ pub enum DebugAnnotationInternId {
   Extra,
   Interpreter,
   Pid,
+  Cred,
+  RealUid,
+  EffectiveUid,
+  SavedUid,
+  FsUid,
+  RealGid,
+  EffectiveGid,
+  SavedGid,
+  FsGid,
+  Groups,
   // Please add new entries before the end one
   End,
 }
