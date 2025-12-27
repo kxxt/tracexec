@@ -11,12 +11,11 @@ use nix::{
 };
 use ratatui::{
   buffer::Buffer,
-  layout::{Alignment::Center, Rect, Size},
+  layout::{Alignment, Rect, Size},
   style::Styled,
   text::{Line, Span},
   widgets::{
-    Block, Borders, Clear, Paragraph, StatefulWidget, StatefulWidgetRef, Tabs, Widget, WidgetRef,
-    Wrap,
+    Block, Borders, Clear, Paragraph, StatefulWidget, StatefulWidgetRef, Tabs, Widget, Wrap,
   },
 };
 use tui_scrollview::{ScrollView, ScrollViewState};
@@ -664,7 +663,7 @@ impl StatefulWidgetRef for DetailsPopup {
     let block = Block::new()
       .title(" Details ")
       .borders(Borders::TOP | Borders::BOTTOM)
-      .title_alignment(Center);
+      .title_alignment(Alignment::Center);
     let inner = block.inner(area);
     block.render(area, buf);
 
@@ -682,7 +681,7 @@ impl StatefulWidgetRef for DetailsPopup {
       + 2 * state.available_tabs.len() as u16 // space
       + state.available_tabs.len().saturating_sub(1) as u16; // vertical bar
     let start = screen.right().saturating_sub(tabs_width);
-    tabs.render_ref(Rect::new(start, 0, tabs_width, 1), buf);
+    tabs.render(Rect::new(start, 0, tabs_width, 1), buf);
 
     // Tab Info
     let paragraph = match state.tab_index {
