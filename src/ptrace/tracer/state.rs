@@ -80,7 +80,7 @@ impl ProcessStateStore {
   }
 
   pub fn get_current_disjoint_mut(&mut self, p1: Pid, p2: Pid) -> [Option<&mut ProcessState>; 2] {
-    self.processes.get_many_mut([&p1, &p2])
+    self.processes.get_disjoint_mut([&p1, &p2])
   }
 }
 
