@@ -72,7 +72,7 @@ jobs:
       - name: Install native dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y libelf-dev zlib1g-dev build-essential
+          sudo apt-get install -y libelf-dev zlib1g-dev build-essential protobuf-compiler
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
       - name: Run clippy
@@ -170,7 +170,8 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y build-essential autopoint gettext libelf-dev zlib1g-dev \
-            libelf-dev:${{ matrix.os-arch }} zlib1g-dev:${{ matrix.os-arch }}
+            libelf-dev:${{ matrix.os-arch }} zlib1g-dev:${{ matrix.os-arch }} \
+            protobuf-compiler
           sudo apt-get install -y libseccomp-dev:${{ matrix.os-arch }}
           if ! [ "${{ matrix.static_libseccomp }}" = "true" ]; then
             sudo apt-get install -y libseccomp2:${{ matrix.os-arch }}
