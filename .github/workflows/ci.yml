@@ -57,7 +57,7 @@ jobs:
       - name: Check typos
         uses: crate-ci/typos@master
       - name: Lint dependencies
-        uses: EmbarkStudios/cargo-deny-action@v1
+        uses: EmbarkStudios/cargo-deny-action@v2.0.14
         with:
           rust-version: 1.88
   clippy:
