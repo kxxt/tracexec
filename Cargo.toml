@@ -44,7 +44,7 @@ crossterm = { version = "0.28", features = ["event-stream"] }
 tokio = { version = "1.37.0", features = ["full"] }
 tokio-util = "0.7.10"
 futures = "0.3.30"
-signal-hook = "0.3.17"
+signal-hook = { version = "0.3.17", default-features = false }
 better-panic = "0.3.0"
 itertools = "0.14.0"
 tui-term = "0.2.0"
@@ -89,6 +89,7 @@ prost = "0.14.1"
 perfetto-trace-proto = { path = "crates/perfetto-trace-proto" }
 priority-queue = "2.7.0"
 lru = "0.16.2"
+signal-hook-tokio = { version = "0.3.1", features = ["futures-v0_3"] }
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 

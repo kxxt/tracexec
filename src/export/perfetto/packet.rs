@@ -127,7 +127,7 @@ impl TracePacketCreator {
     let mut da_interned_strings: Vec<InternedString> = Vec::new();
     let mut interned_eventname: Option<EventName> = None;
     let debug_annotations = vec![
-      DebugAnnotationInternId::Argv.with_array(if let Some(argv) = event.argv.as_deref().ok() {
+      DebugAnnotationInternId::Argv.with_array(if let Ok(argv) = event.argv.as_deref() {
         let mut result = vec![];
         for arg in argv {
           result.push(da_interned_string(

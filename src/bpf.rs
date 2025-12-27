@@ -13,7 +13,10 @@ use crate::{
 };
 use color_eyre::{Section, eyre::eyre};
 use enumflags2::BitFlag;
+use futures::stream::StreamExt;
 use nix::unistd::User;
+use signal_hook::consts::signal::*;
+use signal_hook_tokio::Signals;
 use tokio::{
   sync::mpsc::{self},
   task::spawn_blocking,
@@ -213,6 +216,7 @@ pub async fn main(
         .user(user)
         .build_ebpf();
       let running_tracer = tracer.spawn(&cmd, obj, None)?;
+      let should_exit = running_tracer.should_exit.clone();
       let tracer_thread = spawn_blocking(move || {
         running_tracer.run_until_exit();
       });
@@ -220,6 +224,18 @@ pub async fn main(
         baseline: baseline.clone(),
         exporter_args,
       };
+      let signals = Signals::new([SIGTERM, SIGINT])?;
+      tokio::spawn(async move {
+        let mut signals = signals;
+        while let Some(signal) = signals.next().await {
+          match signal {
+            SIGTERM | SIGINT => {
+              should_exit.store(true, Ordering::Relaxed);
+            }
+            _ => unreachable!(),
+          }
+        }
+      });
       match format {
         ExportFormat::Json => {
           let exporter = JsonExporter::new(output, meta, rx)?;
