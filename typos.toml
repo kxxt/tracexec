@@ -10,5 +10,6 @@ extend-ignore-re = ["\\(L\\)ine", "\\(E\\)nvironment"]
 
 [files]
 extend-exclude = [
-    "include"
+    "include",
+    "crates/perfetto-trace-proto/perfetto"
 ]
