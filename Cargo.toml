@@ -39,15 +39,15 @@ tracing = { version = "0.1.40", features = ["release_max_level_info"] }
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 directories = "6"
-ratatui = { version = "0.29", features = ["unstable-rendered-line-info"] }
-crossterm = { version = "0.28", features = ["event-stream"] }
+ratatui = { version = "0.30", features = ["unstable-rendered-line-info", "unstable-widget-ref"] }
+crossterm = { version = "0.29", features = ["event-stream"] }
 tokio = { version = "1.37.0", features = ["full"] }
 tokio-util = "0.7.10"
 futures = "0.3.30"
 signal-hook = { version = "0.3.17", default-features = false }
 better-panic = "0.3.0"
 itertools = "0.14.0"
-tui-term = "0.2.0"
+tui-term = "0.3.0"
 filedescriptor = "0.8.2"
 vt100 = "0.15.2"
 bytes = "1.6.0"
@@ -56,17 +56,17 @@ enumflags2 = "0.7.9"
 arboard = { version = "3.3.2", default-features = false, features = [
     "wayland-data-control",
 ] }
-tui-popup = "0.6.0"
-tui-scrollview = "0.5.0"
+tui-popup = "0.7.2"
+tui-scrollview = "0.6.2"
 bitflags = "2.5.0"
-tui-prompts = "0.5.0"
+tui-prompts = "0.6.1"
 unicode-segmentation = "1.11.0"
-unicode-width = "0.2.0"
+unicode-width = "0.2.2"
 serial_test = { version = "3.1.1", features = ["file_locks"] }
 clap_complete = "4.5.2"
 regex-cursor = { version = "0.1.4", default-features = false }
 shell-words = "1.1.0"
-tui-widget-list = "0.13"
+tui-widget-list = "0.14"
 either = "1.12.0"
 serde = { version = "1.0.204", features = ["derive", "rc"] }
 toml = "0.9"
@@ -76,7 +76,9 @@ libbpf-rs = { version = "0.25", optional = true, default-features = false }
 # libbpf-sys exists here because we want to control its features
 libbpf-sys = { version = "1", optional = true, default-features = false }
 libseccomp = "0.4.0"
-weak-table = { version = "0.3.2", default-features = false, features = ["ahash"] }
+weak-table = { version = "0.3.2", default-features = false, features = [
+    "ahash",
+] }
 rand = "0.9"
 hashbrown = "0.16"
 indexset = "0.12"
@@ -116,7 +118,9 @@ ebpf = ["dep:libbpf-rs", "dep:libbpf-sys"]
 # Either cargo doesn't rebuild and run build.rs on feature flag change,
 # or some logic is wrong in build.rs
 ebpf-debug = ["ebpf"]
-ebpf-no-rcu-kfuncs = ["ebpf"] # Avoid using rcu helpers. Necessary for kernel version < 6.2
+ebpf-no-rcu-kfuncs = [
+    "ebpf",
+] # Avoid using rcu helpers. Necessary for kernel version < 6.2
 static = ["libbpf-sys/static"]
 vendored = ["libbpf-sys/vendored", "vendored-libbpf"]
 vendored-libbpf = ["libbpf-sys/vendored-libbpf", "libbpf-cargo/default"]

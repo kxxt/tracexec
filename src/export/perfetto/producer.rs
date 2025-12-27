@@ -340,7 +340,10 @@ impl TracePacketProducer {
             let parent: EventId = parent.into();
             // SAFETY: the parent slice hasn't ended yet.
             let track_uuid = *self.inflight.get(&parent).unwrap();
-            debug!("Add exec failure of {} to parent {:?}'s track {:?}", exec_event.filename, parent, track_uuid);
+            debug!(
+              "Add exec failure of {} to parent {:?}'s track {:?}",
+              exec_event.filename, parent, track_uuid
+            );
             let packet = self.creator.add_exec_failure(&details, track_uuid)?;
             return Ok(vec![packet]);
           }
@@ -423,7 +426,11 @@ impl TracePacketProducer {
         }
         _ => Vec::new(),
       },
-      TracerMessage::StateUpdate(ProcessStateUpdateEvent { update, pid: _, ids }) => {
+      TracerMessage::StateUpdate(ProcessStateUpdateEvent {
+        update,
+        pid: _,
+        ids,
+      }) => {
         let mut retrieve_matching_event = || {
           // Iterate through the ids in reverse order to find the matching exec event
           let Some((matching_event, track_uuid)) = ids

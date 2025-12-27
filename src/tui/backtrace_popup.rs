@@ -4,10 +4,10 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use ratatui::{
   buffer::Buffer,
-  layout::{Alignment::Center, Rect},
+  layout::{Alignment, Rect},
   style::Styled,
   text::Line,
-  widgets::{Block, Borders, Clear, StatefulWidgetRef, Widget, WidgetRef},
+  widgets::{Block, Borders, Clear, StatefulWidgetRef, Widget},
 };
 use tracing::debug;
 
@@ -110,7 +110,7 @@ impl StatefulWidgetRef for BacktracePopup {
     let screen = buf.area;
     let help_width = HELP.width() as u16;
     let start = screen.right().saturating_sub(help_width);
-    HELP.render_ref(Rect::new(start, 0, help_width, 1), buf);
+    (&*HELP).render(Rect::new(start, 0, help_width, 1), buf);
     let block = Block::new()
       .title(if !state.event_loss {
         " Backtrace "
@@ -118,7 +118,7 @@ impl StatefulWidgetRef for BacktracePopup {
         " Backtrace (incomplete) "
       })
       .borders(Borders::TOP | Borders::BOTTOM)
-      .title_alignment(Center);
+      .title_alignment(Alignment::Center);
     let inner = block.inner(area);
     block.render(area, buf);
     if state.should_resize {
