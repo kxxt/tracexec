@@ -2,6 +2,10 @@
 name = "perfetto-trace-proto"
 version = "0.1.0"
 edition = "2024"
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/kxxt/tracexec/tree/main/crates/perfetto-trace-proto"
+homepage = "https://github.com/kxxt/tracexec/tree/main/crates/perfetto-trace-proto"
 
 [dependencies]
 prost = "0.14.1"
