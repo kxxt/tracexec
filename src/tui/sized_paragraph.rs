@@ -1,9 +1,9 @@
 use ratatui::{
   buffer::Buffer,
   layout::Rect,
-  widgets::{Paragraph, WidgetRef},
+  widgets::{Paragraph, Widget, WidgetRef},
 };
-use tui_popup::SizedWidgetRef;
+use tui_popup::KnownSize;
 
 #[derive(Debug)]
 pub struct SizedParagraph<'a> {
@@ -20,7 +20,7 @@ impl<'a> SizedParagraph<'a> {
   }
 }
 
-impl SizedWidgetRef for SizedParagraph<'_> {
+impl KnownSize for SizedParagraph<'_> {
   fn width(&self) -> usize {
     self.width
   }
@@ -32,6 +32,12 @@ impl SizedWidgetRef for SizedParagraph<'_> {
 
 impl WidgetRef for SizedParagraph<'_> {
   fn render_ref(&self, area: Rect, buf: &mut Buffer) {
-    self.inner.render_ref(area, buf)
+    (&self.inner).render_ref(area, buf)
+  }
+}
+
+impl Widget for SizedParagraph<'_> {
+  fn render(self, area: Rect, buf: &mut Buffer) {
+    self.inner.render(area, buf)
   }
 }

@@ -4,7 +4,7 @@ use ratatui::{
   layout::Rect,
   style::{Style, Stylize},
   text::Line,
-  widgets::{Paragraph, StatefulWidget, WidgetRef, Wrap},
+  widgets::{Paragraph, StatefulWidget, Widget, Wrap},
 };
 use tui_popup::Popup;
 
@@ -59,7 +59,7 @@ impl StatefulWidget for InfoPopup {
     ))
     .title(Line::raw(state.title.as_str()).centered())
     .style(state.style);
-    popup.render_ref(area, buf);
+    Widget::render(popup, area, buf);
   }
 }
 

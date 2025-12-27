@@ -137,7 +137,7 @@ impl Widget for &mut App {
           let popup = Popup::new(help(rest_area))
             .title("Help")
             .style(THEME.help_popup);
-          popup.render(area, buf);
+          Widget::render(popup, area, buf);
         }
         ActivePopup::CopyTargetSelection(state) => {
           CopyPopup.render_ref(area, buf, state);
