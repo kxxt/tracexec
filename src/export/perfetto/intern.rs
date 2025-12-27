@@ -28,6 +28,7 @@ pub enum DebugAnnotationInternId {
   MountId,
   Extra,
   Interpreter,
+  Pid,
   // Please add new entries before the end one
   End,
 }

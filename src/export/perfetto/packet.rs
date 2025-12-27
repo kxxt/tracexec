@@ -158,6 +158,7 @@ impl TracePacketCreator {
           .intern_with(event.cwd.as_ref(), &mut da_interned_strings),
       ),
       DebugAnnotationInternId::SyscallRet.with_int(event.result),
+      DebugAnnotationInternId::Pid.with_uint(event.pid.as_raw() as _),
       DebugAnnotationInternId::Cmdline.with_string(
         event_details
           .text_for_copy(
