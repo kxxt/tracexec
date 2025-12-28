@@ -1,0 +1,30 @@
+[package]
+name = "tracexec-backend-ptrace"
+version = "0.1.0"
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+readme.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tracexec-core = { workspace = true }
+libseccomp = "0.4.0"
+cfg-if = { workspace = true }
+nix = { workspace = true }
+color-eyre = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+hashbrown = { workspace = true }
+either = { workspace = true }
+chrono = { workspace = true }
+enumflags2 = { workspace = true }
+snafu = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+tracing-test = { workspace = true }
+predicates = { workspace = true }
+serial_test = { workspace = true }

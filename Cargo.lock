@@ -133,21 +133,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
-name = "assert_cmd"
-version = "2.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcbb6924530aa9e0432442af08bbcafdad182db80d2e560da42a6d442535bf85"
-dependencies = [
- "anstyle",
- "bstr",
- "libc",
- "predicates",
- "predicates-core",
- "predicates-tree",
- "wait-timeout",
-]
-
-[[package]]
 name = "atoi"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1324,9 +1309,9 @@ checksum = "37c93d8daa9d8a012fd8ab92f088405fb202ea0b6ab73ee2482ae66af4f42091"
 
 [[package]]
 name = "libredox"
-version = "0.1.11"
+version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df15f6eac291ed1cf25865b1ee60399f57e7c227e7f51bdbd4c5270396a9ed50"
+checksum = "3d0b95e02c851351f877147b7deea7b1afb1df71b63aa5f8270716e0c5720616"
 dependencies = [
  "bitflags 2.10.0",
  "libc",
@@ -1758,8 +1743,6 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "perfetto-trace-proto"
 version = "0.1.0+g4c6784a1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "861a291e835250417c2e3ee271d24b5599971ca073eca10a27b9c186fb7383e9"
 dependencies = [
  "prost",
  "prost-build",
@@ -1939,16 +1922,6 @@ name = "predicates-core"
 version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "727e462b119fe9c93fd0eb1429a5f7647394014cf3c04ab2c0350eeb09095ffa"
-
-[[package]]
-name = "predicates-tree"
-version = "1.0.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72dd2d6d381dfb73a193c7fca536518d7caee39fc8503f74e7dc0be0531b425c"
-dependencies = [
- "predicates-core",
- "termtree",
-]
 
 [[package]]
 name = "prettyplease"
@@ -2683,12 +2656,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "termtree"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
-
-[[package]]
 name = "termwiz"
 version = "0.23.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2896,14 +2863,79 @@ checksum = "ab16f14aed21ee8bfd8ec22513f7287cd4a91aa92e44edfe2c17ddd004e92607"
 name = "tracexec"
 version = "0.15.1"
 dependencies = [
- "arboard",
- "assert_cmd",
  "atoi",
  "better-panic",
- "bitflags 2.10.0",
+ "clap",
+ "color-eyre",
+ "enumflags2",
+ "filedescriptor",
+ "futures",
+ "hashbrown 0.16.1",
+ "itertools 0.14.0",
+ "kxxt-owo-colors",
+ "nix 0.30.1",
+ "rand 0.9.2",
+ "serde",
+ "signal-hook 0.4.1",
+ "signal-hook-tokio",
+ "strum",
+ "tokio",
+ "tracexec-backend-ebpf",
+ "tracexec-backend-ptrace",
+ "tracexec-core",
+ "tracexec-exporter-json",
+ "tracexec-exporter-perfetto",
+ "tracexec-tui",
+ "tracing",
+ "tracing-error",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "tracexec-backend-ebpf"
+version = "0.1.0"
+dependencies = [
  "bytemuck",
- "bytes",
+ "chrono",
+ "color-eyre",
+ "enumflags2",
+ "hashbrown 0.16.1",
+ "libbpf-cargo",
+ "libbpf-rs",
+ "libbpf-sys",
+ "nix 0.30.1",
+ "tokio",
+ "tracexec-core",
+ "tracing",
+]
+
+[[package]]
+name = "tracexec-backend-ptrace"
+version = "0.1.0"
+dependencies = [
  "cfg-if",
+ "chrono",
+ "color-eyre",
+ "either",
+ "enumflags2",
+ "hashbrown 0.16.1",
+ "libseccomp",
+ "nix 0.30.1",
+ "predicates",
+ "rstest",
+ "serial_test",
+ "snafu",
+ "tokio",
+ "tracexec-core",
+ "tracing",
+ "tracing-test",
+]
+
+[[package]]
+name = "tracexec-core"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.10.0",
  "chrono",
  "clap",
  "clap_complete",
@@ -2914,45 +2946,83 @@ dependencies = [
  "enumflags2",
  "filedescriptor",
  "filterable-enum",
+ "itertools 0.14.0",
+ "kxxt-owo-colors",
+ "nix 0.30.1",
+ "nutype",
+ "paste",
+ "regex-cursor",
+ "serde",
+ "shell-quote",
+ "snafu",
+ "strum",
+ "tokio",
+ "toml",
+ "tracing",
+ "weak-table",
+]
+
+[[package]]
+name = "tracexec-exporter-json"
+version = "0.1.0"
+dependencies = [
+ "color-eyre",
+ "nix 0.30.1",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracexec-core",
+ "tracing",
+]
+
+[[package]]
+name = "tracexec-exporter-perfetto"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.10.0",
+ "bytes",
+ "chrono",
+ "color-eyre",
+ "hashbrown 0.16.1",
+ "itoa",
+ "lru",
+ "nutype",
+ "perfetto-trace-proto",
+ "priority-queue",
+ "prost",
+ "serde",
+ "strum",
+ "tokio",
+ "tracexec-core",
+ "tracexec-tui",
+ "tracing",
+]
+
+[[package]]
+name = "tracexec-tui"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "bitflags 2.10.0",
+ "bytes",
+ "chrono",
+ "color-eyre",
+ "crossterm",
+ "either",
  "futures",
  "hashbrown 0.16.1",
  "humantime",
  "indexset",
  "itertools 0.14.0",
- "itoa",
- "kxxt-owo-colors",
- "libbpf-cargo",
- "libbpf-rs",
- "libbpf-sys",
- "libseccomp",
- "lru",
  "nix 0.30.1",
- "nutype",
- "paste",
- "perfetto-trace-proto",
- "predicates",
- "priority-queue",
- "prost",
- "rand 0.9.2",
  "ratatui",
- "regex-cursor",
- "rstest",
- "serde",
- "serde_json",
- "serial_test",
  "shell-quote",
  "shell-words",
- "signal-hook 0.4.1",
- "signal-hook-tokio",
- "snafu",
- "strum",
  "tokio",
  "tokio-util",
- "toml",
+ "tracexec-backend-ptrace",
+ "tracexec-core",
  "tracing",
- "tracing-error",
- "tracing-subscriber",
- "tracing-test",
  "tui-popup",
  "tui-prompts",
  "tui-scrollview",
@@ -2961,7 +3031,6 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width 0.2.2",
  "vt100",
- "weak-table",
 ]
 
 [[package]]
@@ -3259,15 +3328,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6d9b2acfb050df409c972a37d3b8e08cdea3bddb0c09db9d53137e504cfabed0"
 dependencies = [
  "utf8parse",
-]
-
-[[package]]
-name = "wait-timeout"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09ac3b126d3914f9849036f826e054cbabdc8519970b8998ddaf3b5bd3c65f11"
-dependencies = [
- "libc",
 ]
 
 [[package]]

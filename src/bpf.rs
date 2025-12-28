@@ -1,16 +1,9 @@
 use std::{
-  borrow::Cow,
-  ffi::CStr,
   mem::MaybeUninit,
   process,
-  sync::{Arc, LazyLock, RwLock, atomic::Ordering},
+  sync::{Arc, atomic::Ordering},
 };
 
-use crate::{
-  cache::ArcStr,
-  export::{Exporter, ExporterMetadata, JsonExporter, JsonStreamExporter, PerfettoExporter},
-  tracer::TracerBuilder,
-};
 use color_eyre::{Section, eyre::eyre};
 use enumflags2::BitFlag;
 use futures::stream::StreamExt;
@@ -21,9 +14,13 @@ use tokio::{
   sync::mpsc::{self},
   task::spawn_blocking,
 };
+use tracexec_backend_ebpf::bpf::tracer::BuildEbpfTracer;
+use tracexec_core::{
+  export::{Exporter, ExporterMetadata},
+  tracer::TracerBuilder,
+};
 
-use crate::{
-  cache::StringCache,
+use tracexec_core::{
   cli::{
     Cli, EbpfCommand,
     args::LogModeArgs,
@@ -34,25 +31,11 @@ use crate::{
   proc::BaselineInfo,
   pty::{PtySize, PtySystem, native_pty_system},
   tracer::TracerMode,
-  tui::{self, app::App},
 };
 
-#[allow(clippy::use_self)] // remove after https://github.com/libbpf/libbpf-rs/pull/1231 is merged
-pub mod skel {
-  include!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/src/bpf/tracexec_system.skel.rs"
-  ));
-}
-
-pub mod interface {
-  include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bpf/interface.rs"));
-}
-
-mod event;
-mod process_tracker;
-mod tracer;
-pub use event::BpfError;
+use tracexec_exporter_json::{JsonExporter, JsonStreamExporter};
+use tracexec_exporter_perfetto::PerfettoExporter;
+use tracexec_tui::{self, app::App};
 
 pub async fn main(
   command: EbpfCommand,
@@ -161,7 +144,7 @@ pub async fn main(
       let tracer_thread = spawn_blocking(move || {
         running_tracer.run_until_exit();
       });
-      let mut tui = tui::Tui::new()?.frame_rate(frame_rate);
+      let mut tui = tracexec_tui::Tui::new()?.frame_rate(frame_rate);
       tui.enter(tracer_rx)?;
       app.run(&mut tui).await?;
       // Now when TUI exits, the tracer thread is still running.
@@ -170,7 +153,7 @@ pub async fn main(
       // 2. Terminate the root process so that the tracer thread exits.
       // 3. Kill the root process so that the tracer thread exits.
       app.exit()?;
-      tui::restore_tui()?;
+      tracexec_tui::restore_tui()?;
       if !follow_forks {
         should_exit.store(true, Ordering::Relaxed);
       }
@@ -259,16 +242,3 @@ pub async fn main(
     }
   }
 }
-
-fn utf8_lossy_cow_from_bytes_with_nul(data: &[u8]) -> Cow<'_, str> {
-  String::from_utf8_lossy(CStr::from_bytes_until_nul(data).unwrap().to_bytes())
-}
-
-fn cached_cow(cow: Cow<str>) -> ArcStr {
-  match cow {
-    Cow::Borrowed(s) => CACHE.write().unwrap().get_or_insert(s),
-    Cow::Owned(s) => CACHE.write().unwrap().get_or_insert_owned(s),
-  }
-}
-
-static CACHE: LazyLock<RwLock<StringCache>> = LazyLock::new(|| RwLock::new(StringCache::new()));

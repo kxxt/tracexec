@@ -1,0 +1,251 @@
+use chrono::{DateTime, Local};
+use enumflags2::BitFlags;
+use nix::{
+  errno::Errno,
+  libc::{SIGRTMIN, c_int},
+  unistd::User,
+};
+use tokio::sync::mpsc::UnboundedSender;
+
+use crate::{
+  cli::{
+    args::{LogModeArgs, ModifierArgs},
+    options::SeccompBpf,
+  },
+  event::{TracerEventDetailsKind, TracerMessage},
+  printer::{Printer, PrinterArgs},
+  proc::{BaselineInfo, Cred, CredInspectError},
+  pty::UnixSlavePty,
+};
+use std::{collections::BTreeMap, fmt::Display, sync::Arc};
+
+use crate::{
+  event::OutputMsg,
+  proc::{FileDescriptorInfoCollection, Interpreter},
+};
+
+pub type InspectError = Errno;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Signal {
+  Standard(nix::sys::signal::Signal),
+  Realtime(u8), // u8 is enough for Linux
+}
+
+impl Signal {
+  pub fn from_raw(raw: c_int) -> Self {
+    match nix::sys::signal::Signal::try_from(raw) {
+      Ok(sig) => Self::Standard(sig),
+      // libc might reserve some RT signals for itself.
+      // But from a tracer's perspective we don't need to care about it.
+      // So here no validation is done for the RT signal value.
+      Err(_) => Self::Realtime(raw as u8),
+    }
+  }
+
+  pub fn as_raw(self) -> i32 {
+    match self {
+      Self::Standard(signal) => signal as i32,
+      Self::Realtime(raw) => raw as i32,
+    }
+  }
+}
+
+impl From<nix::sys::signal::Signal> for Signal {
+  fn from(value: nix::sys::signal::Signal) -> Self {
+    Self::Standard(value)
+  }
+}
+
+impl Display for Signal {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Standard(signal) => signal.fmt(f),
+      Self::Realtime(sig) => {
+        let min = SIGRTMIN();
+        let delta = *sig as i32 - min;
+        match delta.signum() {
+          0 => write!(f, "SIGRTMIN"),
+          1 => write!(f, "SIGRTMIN+{delta}"),
+          -1 => write!(f, "SIGRTMIN{delta}"),
+          _ => unreachable!(),
+        }
+      }
+    }
+  }
+}
+
+#[derive(Default)]
+#[non_exhaustive]
+pub struct TracerBuilder {
+  pub user: Option<User>,
+  pub modifier: ModifierArgs,
+  pub mode: Option<TracerMode>,
+  pub filter: Option<BitFlags<TracerEventDetailsKind>>,
+  pub tx: Option<UnboundedSender<TracerMessage>>,
+  // TODO: remove this.
+  pub printer: Option<Printer>,
+  pub baseline: Option<Arc<BaselineInfo>>,
+  // --- ptrace specific ---
+  pub seccomp_bpf: SeccompBpf,
+  pub ptrace_polling_delay: Option<u64>,
+  pub ptrace_blocking: Option<bool>,
+}
+
+impl TracerBuilder {
+  /// Initialize a new [`TracerBuilder`]
+  pub fn new() -> Self {
+    Default::default()
+  }
+
+  /// Use blocking waitpid calls instead of polling.
+  ///
+  /// This mode conflicts with ptrace polling delay option
+  /// This option is not used in eBPF tracer.
+  pub fn ptrace_blocking(mut self, enable: bool) -> Self {
+    if self.ptrace_polling_delay.is_some() && enable {
+      panic!(
+        "Cannot enable blocking mode when ptrace polling delay implicitly specifys polling mode"
+      );
+    }
+    self.ptrace_blocking = Some(enable);
+    self
+  }
+
+  /// Sets ptrace polling delay (in microseconds)
+  /// This options conflicts with ptrace blocking mode.
+  ///
+  /// This option is not used in eBPF tracer.
+  pub fn ptrace_polling_delay(mut self, ptrace_polling_delay: Option<u64>) -> Self {
+    if Some(true) == self.ptrace_blocking && ptrace_polling_delay.is_some() {
+      panic!("Cannot set ptrace_polling_delay when operating in blocking mode")
+    }
+    self.ptrace_polling_delay = ptrace_polling_delay;
+    self
+  }
+
+  /// Sets seccomp-bpf mode for ptrace tracer
+  ///
+  /// Default to auto.
+  /// This option is not used in eBPF tracer.
+  pub fn seccomp_bpf(mut self, seccomp_bpf: SeccompBpf) -> Self {
+    self.seccomp_bpf = seccomp_bpf;
+    self
+  }
+
+  /// Sets the `User` used when spawning the command.
+  ///
+  /// Default to current user.
+  pub fn user(mut self, user: Option<User>) -> Self {
+    self.user = user;
+    self
+  }
+
+  pub fn modifier(mut self, modifier: ModifierArgs) -> Self {
+    self.modifier = modifier;
+    self
+  }
+
+  /// Sets the mode for the trace e.g. TUI or Log
+  pub fn mode(mut self, mode: TracerMode) -> Self {
+    self.mode = Some(mode);
+    self
+  }
+
+  /// Sets a filter for wanted tracer events.
+  pub fn filter(mut self, filter: BitFlags<TracerEventDetailsKind>) -> Self {
+    self.filter = Some(filter);
+    self
+  }
+
+  /// Passes the tx part of tracer event channel
+  ///
+  /// By default this is not set and tracer will not send events.
+  pub fn tracer_tx(mut self, tx: UnboundedSender<TracerMessage>) -> Self {
+    self.tx = Some(tx);
+    self
+  }
+
+  pub fn printer(mut self, printer: Printer) -> Self {
+    self.printer = Some(printer);
+    self
+  }
+
+  /// Create a printer from CLI options,
+  ///
+  /// Requires `modifier` and `baseline` to be set before calling.
+  pub fn printer_from_cli(mut self, tracing_args: &LogModeArgs) -> Self {
+    self.printer = Some(Printer::new(
+      PrinterArgs::from_cli(tracing_args, &self.modifier),
+      self.baseline.clone().unwrap(),
+    ));
+    self
+  }
+
+  pub fn baseline(mut self, baseline: Arc<BaselineInfo>) -> Self {
+    self.baseline = Some(baseline);
+    self
+  }
+}
+
+#[derive(Debug)]
+pub struct ExecData {
+  pub filename: OutputMsg,
+  pub argv: Arc<Result<Vec<OutputMsg>, InspectError>>,
+  pub envp: Arc<Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>>,
+  pub has_dash_env: bool,
+  pub cred: Result<Cred, CredInspectError>,
+  pub cwd: OutputMsg,
+  pub interpreters: Option<Vec<Interpreter>>,
+  pub fdinfo: Arc<FileDescriptorInfoCollection>,
+  pub timestamp: DateTime<Local>,
+}
+
+impl ExecData {
+  #[allow(clippy::too_many_arguments)]
+  pub fn new(
+    filename: OutputMsg,
+    argv: Result<Vec<OutputMsg>, InspectError>,
+    envp: Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>,
+    has_dash_env: bool,
+    cred: Result<Cred, CredInspectError>,
+    cwd: OutputMsg,
+    interpreters: Option<Vec<Interpreter>>,
+    fdinfo: FileDescriptorInfoCollection,
+    timestamp: DateTime<Local>,
+  ) -> Self {
+    Self {
+      filename,
+      argv: Arc::new(argv),
+      envp: Arc::new(envp),
+      has_dash_env,
+      cred,
+      cwd,
+      interpreters,
+      fdinfo: Arc::new(fdinfo),
+      timestamp,
+    }
+  }
+}
+
+pub enum TracerMode {
+  Tui(Option<UnixSlavePty>),
+  Log { foreground: bool },
+}
+
+impl PartialEq for TracerMode {
+  fn eq(&self, other: &Self) -> bool {
+    // I think a plain match is more readable here
+    #[allow(clippy::match_like_matches_macro)]
+    match (self, other) {
+      (Self::Log { foreground: a }, Self::Log { foreground: b }) => a == b,
+      _ => false,
+    }
+  }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProcessExit {
+  Code(i32),
+  Signal(Signal),
+}
