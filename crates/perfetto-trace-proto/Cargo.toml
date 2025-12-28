@@ -9,7 +9,7 @@ repository = "https://github.com/kxxt/tracexec/tree/main/crates/perfetto-trace-p
 homepage = "https://github.com/kxxt/tracexec/tree/main/crates/perfetto-trace-proto"
 
 [dependencies]
-prost = "0.14.1"
+prost = { workspace = true }
 
 [build-dependencies]
 prost-build = "0.14.1"

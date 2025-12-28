@@ -19,12 +19,13 @@
 use std::{path::PathBuf, sync::LazyLock};
 
 use color_eyre::eyre::Result;
+use tracexec_core::cli::config::project_directory;
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{self, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 pub use tracing::*;
 
-use crate::{cli::config::project_directory, tui::restore_tui};
+use tracexec_tui::restore_tui;
 
 const LOG_FILE: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
 

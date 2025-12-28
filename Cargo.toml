@@ -1,23 +1,35 @@
-[package]
-name = "tracexec"
-version = "0.15.1"
-edition = "2024"
-authors = ["Levi Zim <rsworktech@outlook.com>"]
-description = "Tracer for execve{,at} and pre-exec behavior, launcher for debuggers."
-license = "GPL-2.0-or-later"
-readme = "README.md"
+[workspace]
+resolver = "2"
+members = [
+    "crates/perfetto-trace-proto",
+    "crates/tracexec-backend-ebpf",
+    "crates/tracexec-backend-ptrace",
+    "crates/tracexec-core",
+    "crates/tracexec-exporter-json",
+    "crates/tracexec-exporter-perfetto",
+    "crates/tracexec-tui",
+]
+
+[workspace.package]
 repository = "https://github.com/kxxt/tracexec"
 homepage = "https://github.com/kxxt/tracexec"
 keywords = ["trace", "ptrace", "exec", "execve", "utility"]
-categories = ["command-line-utilities", "development-tools::debugging"]
-default-run = "tracexec"
+readme = "README.md"
+license = "GPL-2.0-or-later"
+edition = "2024"
 rust-version = "1.88"
-exclude = ["/casts", "/screenshots"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-clap = { version = "4.4.6", features = ["derive"] }
+[workspace.dependencies]
+perfetto-trace-proto = { path = "crates/perfetto-trace-proto", version = "0.1.0" }
+tracexec-backend-ptrace = { path = "crates/tracexec-backend-ptrace", version = "0.1.0" }
+tracexec-backend-ebpf = { path = "crates/tracexec-backend-ebpf", version = "0.1.0" }
+tracexec-exporter-json = { path = "crates/tracexec-exporter-json", version = "0.1.0" }
+tracexec-exporter-perfetto = { path = "crates/tracexec-exporter-perfetto", version = "0.1.0" }
+tracexec-core = { path = "crates/tracexec-core", version = "0.1.0" }
+tracexec-tui = { path = "crates/tracexec-tui", version = "0.1.0" }
+shell-quote = { version = "0.7.1" }
+serde = { version = "1.0.204", features = ["derive", "rc"] }
+tracing = { version = "0.1.40", features = ["release_max_level_info"] }
 color-eyre = "0.6.2"
 nix = { version = "0.30", features = [
     "ptrace",
@@ -28,102 +40,100 @@ nix = { version = "0.30", features = [
     "signal",
     "user",
 ] }
-strum = { version = "0.27.1", features = ["derive"] }
-cfg-if = "1.0.0"
+nutype = { version = "0.6.1", features = ["serde"] }
 owo-colors = { version = "4.0.0", package = "kxxt-owo-colors", features = [
     "global-colorized-control",
 ] }
-shell-quote = { version = "0.7.1" }
-atoi = "2.0.0"
-tracing = { version = "0.1.40", features = ["release_max_level_info"] }
-tracing-error = "0.2.0"
-tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
-directories = "6"
-ratatui = { version = "0.30", features = ["unstable-rendered-line-info", "unstable-widget-ref"] }
-crossterm = { version = "0.29", features = ["event-stream"] }
-tokio = { version = "1.37.0", features = ["full"] }
-tokio-util = "0.7.10"
-futures = "0.3.30"
-signal-hook = { version = "0.4", default-features = false }
-better-panic = "0.3.0"
-itertools = "0.14.0"
-tui-term = "0.3.0"
-filedescriptor = "0.8.2"
-vt100 = "0.15.2"
-bytes = "1.6.0"
-filterable-enum = { version = "0.1.1" }
-enumflags2 = "0.7.9"
-arboard = { version = "3.3.2", default-features = false, features = [
-    "wayland-data-control",
-] }
-tui-popup = "0.7.2"
-tui-scrollview = "0.6.2"
-bitflags = "2.5.0"
-tui-prompts = "0.6.1"
-unicode-segmentation = "1.11.0"
-unicode-width = "0.2.2"
-serial_test = { version = "3.1.1", features = ["file_locks"] }
-clap_complete = "4.5.2"
-regex-cursor = { version = "0.1.4", default-features = false }
-shell-words = "1.1.0"
-tui-widget-list = "0.14"
 either = "1.12.0"
-serde = { version = "1.0.204", features = ["derive", "rc"] }
-toml = "0.9"
-paste = "1.0.15"
-serde_json = "1.0.120"
-libbpf-rs = { version = "0.25", optional = true, default-features = false }
-# libbpf-sys exists here because we want to control its features
-libbpf-sys = { version = "1", optional = true, default-features = false }
-libseccomp = "0.4.0"
-weak-table = { version = "0.3.2", default-features = false, features = [
-    "ahash",
-] }
-rand = "0.9"
-hashbrown = "0.16"
-indexset = "0.12"
-chrono = "0.4.40"
-nutype = { version = "0.6.1", features = ["serde"] }
-humantime = "2.2.0"
 snafu = { version = "0.8.8", features = ["rust_1_81", "backtrace"] }
-bytemuck = "1.24.0"
+strum = { version = "0.27.1", features = ["derive"] }
+cfg-if = "1.0.0"
+chrono = "0.4.40"
+tokio = { version = "1.37.0", features = ["full"] }
+clap = { version = "4.4.6", features = ["derive"] }
+itertools = "0.14.0"
+hashbrown = "0.16"
+bytes = "1.6.0"
 prost = "0.14.1"
-perfetto-trace-proto = "0.1"
-priority-queue = "2.7.0"
-lru = "0.16.2"
-signal-hook-tokio = { version = "0.3.1", features = ["futures-v0_3"] }
-itoa = "1.0.16"
-# tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
-# tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
-
-[dev-dependencies]
+bitflags = "2.5.0"
+enumflags2 = "0.7.9"
+futures = "0.3.30"
+crossterm = { version = "0.29", features = ["event-stream"] }
+#
+# Dev Deps
+#
 assert_cmd = "2.0.14"
 predicates = "3.1.0"
-
 rstest = "0.26.0"
 tracing-test = "0.2.4"
+serial_test = { version = "3.1.1", features = ["file_locks"] }
 
-[build-dependencies]
-libbpf-cargo = { version = "0.25", default-features = false }
+[package]
+name = "tracexec"
+version = "0.15.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+authors = ["Levi Zim <rsworktech@outlook.com>"]
+description = "Tracer for execve{,at} and pre-exec behavior, launcher for debuggers."
+categories = ["command-line-utilities", "development-tools::debugging"]
+default-run = "tracexec"
+exclude = ["/casts", "/screenshots"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+color-eyre = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+nix = { workspace = true }
+clap = { workspace = true }
+owo-colors = { workspace = true }
+hashbrown = { workspace = true }
+itertools = { workspace = true }
+serde = { workspace = true }
+strum = { workspace = true }
+futures = { workspace = true }
+enumflags2 = { workspace = true }
+atoi = "2.0.0"
+tracing-error = "0.2.0"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+signal-hook = { version = "0.4", default-features = false }
+better-panic = "0.3.0"
+filedescriptor = "0.8.2"
+rand = "0.9"
+signal-hook-tokio = { version = "0.3.1", features = ["futures-v0_3"] }
+tracexec-exporter-json = { workspace = true }
+tracexec-exporter-perfetto = { workspace = true }
+tracexec-core = { workspace = true }
+tracexec-tui = { workspace = true }
+tracexec-backend-ptrace = { workspace = true }
+tracexec-backend-ebpf = { workspace = true, optional = true }
+
 
 
 [features]
 default = ["recommended", "vendored-libbpf"]
 recommended = ["ebpf"]
-ebpf = ["dep:libbpf-rs", "dep:libbpf-sys"]
+ebpf = ["dep:tracexec-backend-ebpf"]
 # The ebpf-debug feature is not meant for end users.
 # This feature also has a bug:
 # Building with --release after building --release -F ebpf-debug
 # produces binaries with ebpf-debug enabled!
 # Either cargo doesn't rebuild and run build.rs on feature flag change,
 # or some logic is wrong in build.rs
-ebpf-debug = ["ebpf"]
+ebpf-debug = ["ebpf", "tracexec-backend-ebpf/ebpf-debug"]
 ebpf-no-rcu-kfuncs = [
     "ebpf",
+    "tracexec-backend-ebpf/ebpf-no-rcu-kfuncs",
 ] # Avoid using rcu helpers. Necessary for kernel version < 6.2
-static = ["libbpf-sys/static"]
-vendored = ["libbpf-sys/vendored", "vendored-libbpf"]
-vendored-libbpf = ["libbpf-sys/vendored-libbpf", "libbpf-cargo/default"]
+static = ["tracexec-backend-ebpf?/static"]
+vendored = ["tracexec-backend-ebpf?/vendored"]
+vendored-libbpf = ["tracexec-backend-ebpf?/vendored-libbpf"]
 
 [profile.dev]
 opt-level = 1
@@ -146,7 +156,6 @@ path = "fixtures/empty-argv.rs"
 [[bin]]
 name = "corrupted-envp"
 path = "fixtures/corrupted-envp.rs"
-
 
 [[bin]]
 name = "exec-stress"
