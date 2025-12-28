@@ -1,0 +1,49 @@
+[package]
+name = "tracexec-tui"
+version = "0.1.0"
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+readme.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tracexec-core = { workspace = true }
+tracexec-backend-ptrace = { workspace = true }
+crossterm = { workspace = true }
+color-eyre = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+hashbrown = { workspace = true }
+itertools = { workspace = true }
+chrono = { workspace = true }
+bytes = { workspace = true }
+nix = { workspace = true }
+either = { workspace = true }
+futures = { workspace = true }
+bitflags = { workspace = true }
+shell-quote = { workspace = true }
+unicode-segmentation = "1.11.0"
+unicode-width = "0.2.2"
+shell-words = "1.1.0"
+vt100 = "0.15.2"
+
+tokio-util = "0.7.10"
+humantime = "2.2.0"
+ratatui = { version = "0.30", features = [
+    "unstable-rendered-line-info",
+    "unstable-widget-ref",
+] }
+tui-popup = "0.7.2"
+tui-scrollview = "0.6.2"
+tui-prompts = "0.6.1"
+tui-widget-list = "0.14"
+tui-term = "0.3.0"
+# tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
+# tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
+arboard = { version = "3.3.2", default-features = false, features = [
+    "wayland-data-control",
+] }
+indexset = "0.12"

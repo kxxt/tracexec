@@ -14,57 +14,42 @@
   clippy::non_send_fields_in_send_ty, // In bpf skel, maybe open an issue in libbpf-rs?
 )]
 
-mod action;
-mod arch;
 #[cfg(feature = "ebpf")]
 mod bpf;
-mod cache;
-mod cli;
-mod cmdbuilder;
-mod event;
-mod export;
 mod log;
-mod primitives;
-mod printer;
-mod proc;
-mod ptrace;
-mod pty;
-mod seccomp;
-mod timestamp;
-mod tracee;
-mod tracer;
-mod tui;
 
 use std::{os::unix::ffi::OsStrExt, process, sync::Arc};
 
 use atoi::atoi;
 use clap::Parser;
-use cli::{
-  Cli,
-  args::TracerEventArgs,
-  config::{Config, ConfigLoadError},
-  options::ExportFormat,
-};
 use color_eyre::eyre::{OptionExt, bail};
+use tracexec_exporter_json::{JsonExporter, JsonStreamExporter};
+use tracexec_exporter_perfetto::PerfettoExporter;
 
+use crate::log::initialize_panic_handler;
 use futures::StreamExt;
 use nix::unistd::{Uid, User};
 use signal_hook::consts::signal::*;
 use signal_hook_tokio::Signals;
 use tokio::sync::mpsc;
-use tracer::TracerBuilder;
-use tui::app::PTracer;
-
-use crate::{
-  cli::{CliCommand, args::LogModeArgs, options::Color},
+use tracexec_backend_ptrace::ptrace::BuildPtraceTracer;
+use tracexec_core::{
+  cli::{
+    Cli, CliCommand,
+    args::LogModeArgs,
+    args::TracerEventArgs,
+    config::{Config, ConfigLoadError},
+    options::Color,
+    options::ExportFormat,
+  },
   event::{TracerEvent, TracerEventDetails, TracerMessage},
-  export::{Exporter, ExporterMetadata, JsonExporter, JsonStreamExporter, PerfettoExporter},
-  log::initialize_panic_handler,
+  export::{Exporter, ExporterMetadata},
   proc::BaselineInfo,
   pty::{PtySize, PtySystem, native_pty_system},
-  tracer::TracerMode,
-  tui::app::App,
+  tracer::{TracerBuilder, TracerMode},
 };
+use tracexec_tui::app::App;
+use tracexec_tui::app::PTracer;
 
 #[tokio::main(worker_threads = 2)]
 async fn main() -> color_eyre::Result<()> {
@@ -241,7 +226,7 @@ async fn main() -> color_eyre::Result<()> {
         baseline,
         pty_master,
       )?;
-      let mut tui = tui::Tui::new()?.frame_rate(frame_rate);
+      let mut tui = tracexec_tui::Tui::new()?.frame_rate(frame_rate);
       tui.enter(tracer_rx)?;
       app.run(&mut tui).await?;
       // Now when TUI exits, the tracer thread is still running.
@@ -250,7 +235,7 @@ async fn main() -> color_eyre::Result<()> {
       // 2. Terminate the root process so that the tracer thread exits.
       // 3. Kill the root process so that the tracer thread exits.
       app.exit()?;
-      tui::restore_tui()?;
+      tracexec_tui::restore_tui()?;
       tracer_thread.await??;
     }
     CliCommand::Collect {

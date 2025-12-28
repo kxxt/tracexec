@@ -1,0 +1,29 @@
+[package]
+name = "tracexec-exporter-perfetto"
+version = "0.1.0"
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+readme.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lru = "0.16.2"
+itoa = "1.0.16"
+priority-queue = "2.7.0"
+tracexec-core = { workspace = true }
+tracexec-tui = { workspace = true }         # TODO: get rid of it
+perfetto-trace-proto = { workspace = true }
+strum = { workspace = true }
+chrono = { workspace = true }
+hashbrown = { workspace = true }
+color-eyre = { workspace = true }
+tracing = { workspace = true }
+nutype = { workspace = true }
+bitflags = { workspace = true }
+serde = { workspace = true }
+prost = { workspace = true }
+bytes = { workspace = true }
+tokio = { workspace = true }

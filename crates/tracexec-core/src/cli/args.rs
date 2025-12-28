@@ -1,0 +1,551 @@
+use std::{borrow::Cow, num::ParseFloatError};
+
+use clap::{Args, ValueEnum};
+use color_eyre::eyre::bail;
+use enumflags2::BitFlags;
+use snafu::{ResultExt, Snafu};
+
+use crate::{
+  breakpoint::BreakPoint,
+  cli::config::{ColorLevel, EnvDisplay, FileDescriptorDisplay},
+  event::TracerEventDetailsKind,
+  timestamp::TimestampFormat,
+};
+
+use super::options::{AppLayout, SeccompBpf};
+use super::{
+  config::{
+    DebuggerConfig, ExitHandling, LogModeConfig, ModifierConfig, PtraceConfig, TuiModeConfig,
+  },
+  options::ActivePane,
+};
+
+#[derive(Args, Debug, Default, Clone)]
+pub struct PtraceArgs {
+  #[clap(long, help = "Controls whether to enable seccomp-bpf optimization, which greatly improves performance", default_value_t = SeccompBpf::Auto)]
+  pub seccomp_bpf: SeccompBpf,
+  #[clap(
+    long,
+    help = "Polling interval, in microseconds. -1(default) disables polling."
+  )]
+  pub polling_interval: Option<i64>,
+}
+
+#[derive(Args, Debug, Default, Clone)]
+pub struct ModifierArgs {
+  #[clap(long, help = "Only show successful calls", default_value_t = false)]
+  pub successful_only: bool,
+  #[clap(
+    long,
+    help = "[Experimental] Try to reproduce file descriptors in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.",
+    default_value_t = false
+  )]
+  pub fd_in_cmdline: bool,
+  #[clap(
+    long,
+    help = "[Experimental] Try to reproduce stdio in commandline. This might result in an unexecutable cmdline if pipes, sockets, etc. are involved.",
+    default_value_t = false
+  )]
+  pub stdio_in_cmdline: bool,
+  #[clap(long, help = "Resolve /proc/self/exe symlink", default_value_t = false)]
+  pub resolve_proc_self_exe: bool,
+  #[clap(
+    long,
+    help = "Do not resolve /proc/self/exe symlink",
+    default_value_t = false,
+    conflicts_with = "resolve_proc_self_exe"
+  )]
+  pub no_resolve_proc_self_exe: bool,
+  #[clap(long, help = "Hide CLOEXEC fds", default_value_t = false)]
+  pub hide_cloexec_fds: bool,
+  #[clap(
+    long,
+    help = "Do not hide CLOEXEC fds",
+    default_value_t = false,
+    conflicts_with = "hide_cloexec_fds"
+  )]
+  pub no_hide_cloexec_fds: bool,
+  #[clap(long, help = "Show timestamp information", default_value_t = false)]
+  pub timestamp: bool,
+  #[clap(
+    long,
+    help = "Do not show timestamp information",
+    default_value_t = false,
+    conflicts_with = "timestamp"
+  )]
+  pub no_timestamp: bool,
+  #[clap(
+    long,
+    help = "Set the format of inline timestamp. See https://docs.rs/chrono/latest/chrono/format/strftime/index.html for available options."
+  )]
+  pub inline_timestamp_format: Option<TimestampFormat>,
+}
+
+impl PtraceArgs {
+  pub fn merge_config(&mut self, config: PtraceConfig) {
+    // seccomp-bpf
+    if let Some(setting) = config.seccomp_bpf
+      && self.seccomp_bpf == SeccompBpf::Auto
+    {
+      self.seccomp_bpf = setting;
+    }
+  }
+}
+
+impl ModifierArgs {
+  pub fn processed(mut self) -> Self {
+    self.stdio_in_cmdline = self.fd_in_cmdline || self.stdio_in_cmdline;
+    self.resolve_proc_self_exe = match (self.resolve_proc_self_exe, self.no_resolve_proc_self_exe) {
+      (true, false) => true,
+      (false, true) => false,
+      _ => true, // default
+    };
+    self.hide_cloexec_fds = match (self.hide_cloexec_fds, self.no_hide_cloexec_fds) {
+      (true, false) => true,
+      (false, true) => false,
+      _ => true, // default
+    };
+    self.timestamp = match (self.timestamp, self.no_timestamp) {
+      (true, false) => true,
+      (false, true) => false,
+      _ => false, // default
+    };
+    self.inline_timestamp_format = self
+      .inline_timestamp_format
+      .or_else(|| Some(TimestampFormat::try_new("%H:%M:%S").unwrap()));
+    self
+  }
+
+  pub fn merge_config(&mut self, config: ModifierConfig) {
+    // false by default flags
+    self.successful_only = self.successful_only || config.successful_only.unwrap_or_default();
+    self.fd_in_cmdline |= config.fd_in_cmdline.unwrap_or_default();
+    self.stdio_in_cmdline |= config.stdio_in_cmdline.unwrap_or_default();
+    // flags that have negation counterparts
+    if (!self.no_resolve_proc_self_exe) && (!self.resolve_proc_self_exe) {
+      self.resolve_proc_self_exe = config.resolve_proc_self_exe.unwrap_or_default();
+    }
+    if (!self.no_hide_cloexec_fds) && (!self.hide_cloexec_fds) {
+      self.hide_cloexec_fds = config.hide_cloexec_fds.unwrap_or_default();
+    }
+    if let Some(c) = config.timestamp {
+      if (!self.timestamp) && (!self.no_timestamp) {
+        self.timestamp = c.enable;
+      }
+      if self.inline_timestamp_format.is_none() {
+        self.inline_timestamp_format = c.inline_format;
+      }
+    }
+  }
+}
+
+#[derive(Args, Debug)]
+pub struct TracerEventArgs {
+  // TODO:
+  //   This isn't really compatible with logging mode
+  #[clap(
+    long,
+    help = "Set the default filter to show all events. This option can be used in combination with --filter-exclude to exclude some unwanted events.",
+    conflicts_with = "filter"
+  )]
+  pub show_all_events: bool,
+  #[clap(
+    long,
+    help = "Set the default filter for events.",
+    value_parser = tracer_event_filter_parser,
+    default_value = "warning,error,exec,tracee-exit"
+  )]
+  pub filter: BitFlags<TracerEventDetailsKind>,
+  #[clap(
+    long,
+    help = "Aside from the default filter, also include the events specified here.",
+    required = false,
+    value_parser = tracer_event_filter_parser,
+    default_value_t = BitFlags::empty()
+  )]
+  pub filter_include: BitFlags<TracerEventDetailsKind>,
+  #[clap(
+    long,
+    help = "Exclude the events specified here from the default filter.",
+    value_parser = tracer_event_filter_parser,
+    default_value_t = BitFlags::empty()
+  )]
+  pub filter_exclude: BitFlags<TracerEventDetailsKind>,
+}
+
+fn tracer_event_filter_parser(filter: &str) -> Result<BitFlags<TracerEventDetailsKind>, String> {
+  let mut result = BitFlags::empty();
+  if filter == "<empty>" {
+    return Ok(result);
+  }
+  for f in filter.split(',') {
+    let kind = TracerEventDetailsKind::from_str(f, false)?;
+    if result.contains(kind) {
+      return Err(format!(
+        "Event kind '{kind}' is already included in the filter"
+      ));
+    }
+    result |= kind;
+  }
+  Ok(result)
+}
+
+impl TracerEventArgs {
+  pub fn all() -> Self {
+    Self {
+      show_all_events: true,
+      filter: Default::default(),
+      filter_include: Default::default(),
+      filter_exclude: Default::default(),
+    }
+  }
+
+  pub fn filter(&self) -> color_eyre::Result<BitFlags<TracerEventDetailsKind>> {
+    let default_filter = if self.show_all_events {
+      BitFlags::all()
+    } else {
+      self.filter
+    };
+    if self.filter_include.intersects(self.filter_exclude) {
+      bail!("filter_include and filter_exclude cannot contain common events");
+    }
+    let mut filter = default_filter | self.filter_include;
+    filter.remove(self.filter_exclude);
+    Ok(filter)
+  }
+}
+
+#[derive(Args, Debug, Default, Clone)]
+pub struct LogModeArgs {
+  #[clap(long, help = "More colors", conflicts_with = "less_colors")]
+  pub more_colors: bool,
+  #[clap(long, help = "Less colors", conflicts_with = "more_colors")]
+  pub less_colors: bool,
+  // BEGIN ugly: https://github.com/clap-rs/clap/issues/815
+  #[clap(
+    long,
+    help = "Print commandline that (hopefully) reproduces what was executed. Note: file descriptors are not handled for now.",
+    conflicts_with_all = ["show_env", "diff_env", "show_argv", "no_show_cmdline"]
+  )]
+  pub show_cmdline: bool,
+  #[clap(
+    long,
+    help = "Don't print commandline that (hopefully) reproduces what was executed."
+  )]
+  pub no_show_cmdline: bool,
+  #[clap(
+    long,
+    help = "Try to show script interpreter indicated by shebang",
+    conflicts_with = "no_show_interpreter"
+  )]
+  pub show_interpreter: bool,
+  #[clap(
+    long,
+    help = "Do not show script interpreter indicated by shebang",
+    conflicts_with = "show_interpreter"
+  )]
+  pub no_show_interpreter: bool,
+  #[clap(
+    long,
+    help = "Set the terminal foreground process group to tracee. This option is useful when tracexec is used interactively. [default]",
+    conflicts_with = "no_foreground"
+  )]
+  pub foreground: bool,
+  #[clap(
+    long,
+    help = "Do not set the terminal foreground process group to tracee",
+    conflicts_with = "foreground"
+  )]
+  pub no_foreground: bool,
+  #[clap(
+    long,
+    help = "Diff file descriptors with the original std{in/out/err}",
+    conflicts_with = "no_diff_fd"
+  )]
+  pub diff_fd: bool,
+  #[clap(
+    long,
+    help = "Do not diff file descriptors",
+    conflicts_with = "diff_fd"
+  )]
+  pub no_diff_fd: bool,
+  #[clap(long, help = "Show file descriptors", conflicts_with = "diff_fd")]
+  pub show_fd: bool,
+  #[clap(
+    long,
+    help = "Do not show file descriptors",
+    conflicts_with = "show_fd"
+  )]
+  pub no_show_fd: bool,
+  #[clap(
+    long,
+    help = "Diff environment variables with the original environment",
+    conflicts_with = "no_diff_env",
+    conflicts_with = "show_env",
+    conflicts_with = "no_show_env"
+  )]
+  pub diff_env: bool,
+  #[clap(
+    long,
+    help = "Do not diff environment variables",
+    conflicts_with = "diff_env"
+  )]
+  pub no_diff_env: bool,
+  #[clap(
+    long,
+    help = "Show environment variables",
+    conflicts_with = "no_show_env",
+    conflicts_with = "diff_env"
+  )]
+  pub show_env: bool,
+  #[clap(
+    long,
+    help = "Do not show environment variables",
+    conflicts_with = "show_env"
+  )]
+  pub no_show_env: bool,
+  #[clap(long, help = "Show comm", conflicts_with = "no_show_comm")]
+  pub show_comm: bool,
+  #[clap(long, help = "Do not show comm", conflicts_with = "show_comm")]
+  pub no_show_comm: bool,
+  #[clap(long, help = "Show argv", conflicts_with = "no_show_argv")]
+  pub show_argv: bool,
+  #[clap(long, help = "Do not show argv", conflicts_with = "show_argv")]
+  pub no_show_argv: bool,
+  #[clap(long, help = "Show filename", conflicts_with = "no_show_filename")]
+  pub show_filename: bool,
+  #[clap(long, help = "Do not show filename", conflicts_with = "show_filename")]
+  pub no_show_filename: bool,
+  #[clap(long, help = "Show cwd", conflicts_with = "no_show_cwd")]
+  pub show_cwd: bool,
+  #[clap(long, help = "Do not show cwd", conflicts_with = "show_cwd")]
+  pub no_show_cwd: bool,
+  #[clap(long, help = "Decode errno values", conflicts_with = "no_decode_errno")]
+  pub decode_errno: bool,
+  #[clap(
+    long,
+    help = "Do not decode errno values",
+    conflicts_with = "decode_errno"
+  )]
+  pub no_decode_errno: bool,
+  // END ugly
+}
+
+impl LogModeArgs {
+  pub fn foreground(&self) -> bool {
+    match (self.foreground, self.no_foreground) {
+      (false, true) => false,
+      (true, false) => true,
+      _ => true,
+    }
+  }
+
+  pub fn merge_config(&mut self, config: LogModeConfig) {
+    /// fallback to config value if both --x and --no-x are not set
+    macro_rules! fallback {
+      ($x:ident) => {
+        ::paste::paste! {
+          if (!self.$x) && (!self.[<no_ $x>]) {
+            if let Some(x) = config.$x {
+              if x {
+                self.$x = true;
+              } else {
+                self.[<no_ $x>] = true;
+              }
+            }
+          }
+        }
+      };
+    }
+    fallback!(show_interpreter);
+    fallback!(foreground);
+    fallback!(show_comm);
+    fallback!(show_filename);
+    fallback!(show_cwd);
+    fallback!(decode_errno);
+    match config.fd_display {
+      Some(FileDescriptorDisplay::Show) => {
+        if (!self.no_show_fd) && (!self.diff_fd) {
+          self.show_fd = true;
+        }
+      }
+      Some(FileDescriptorDisplay::Diff) => {
+        if (!self.show_fd) && (!self.no_diff_fd) {
+          self.diff_fd = true;
+        }
+      }
+      Some(FileDescriptorDisplay::Hide) => {
+        if (!self.diff_fd) && (!self.show_fd) {
+          self.no_diff_fd = true;
+          self.no_show_fd = true;
+        }
+      }
+      _ => (),
+    }
+    fallback!(show_cmdline);
+    if !self.show_cmdline {
+      fallback!(show_argv);
+      tracing::warn!("{}", self.show_argv);
+      match config.env_display {
+        Some(EnvDisplay::Show) => {
+          if (!self.diff_env) && (!self.no_show_env) {
+            self.show_env = true;
+          }
+        }
+        Some(EnvDisplay::Diff) => {
+          if (!self.show_env) && (!self.no_diff_env) {
+            self.diff_env = true;
+          }
+        }
+        Some(EnvDisplay::Hide) => {
+          if (!self.show_env) && (!self.diff_env) {
+            self.no_diff_env = true;
+            self.no_show_env = true;
+          }
+        }
+        _ => (),
+      }
+    }
+    match config.color_level {
+      Some(ColorLevel::Less) => {
+        if !self.more_colors {
+          self.less_colors = true;
+        }
+      }
+      Some(ColorLevel::More) => {
+        if !self.less_colors {
+          self.more_colors = true;
+        }
+      }
+      _ => (),
+    }
+  }
+}
+
+#[derive(Args, Debug, Default, Clone)]
+pub struct TuiModeArgs {
+  #[clap(
+    long,
+    short,
+    help = "Allocate a pseudo terminal and show it alongside the TUI"
+  )]
+  pub tty: bool,
+  #[clap(long, short, help = "Keep the event list scrolled to the bottom")]
+  pub follow: bool,
+  #[clap(
+    long,
+    help = "Instead of waiting for the root child to exit, terminate when the TUI exits",
+    conflicts_with = "kill_on_exit"
+  )]
+  pub terminate_on_exit: bool,
+  #[clap(
+    long,
+    help = "Instead of waiting for the root child to exit, kill when the TUI exits"
+  )]
+  pub kill_on_exit: bool,
+  #[clap(
+    long,
+    short = 'A',
+    help = "Set the default active pane to use when TUI launches",
+    requires = "tty"
+  )]
+  pub active_pane: Option<ActivePane>,
+  #[clap(
+    long,
+    short = 'L',
+    help = "Set the layout of the TUI when it launches",
+    requires = "tty"
+  )]
+  pub layout: Option<AppLayout>,
+  #[clap(
+    long,
+    short = 'F',
+    help = "Set the frame rate of the TUI (60 by default)",
+    value_parser = frame_rate_parser
+  )]
+  pub frame_rate: Option<f64>,
+  #[clap(
+    long,
+    short = 'm',
+    help = "Max number of events to keep in TUI (0=unlimited)"
+  )]
+  pub max_events: Option<u64>,
+}
+
+#[derive(Args, Debug, Default, Clone)]
+pub struct DebuggerArgs {
+  #[clap(
+    long,
+    short = 'D',
+    help = "Set the default external command to run when using \"Detach, Stop and Run Command\" feature in Hit Manager"
+  )]
+  pub default_external_command: Option<String>,
+  #[clap(
+    long = "add-breakpoint",
+    short = 'b',
+    value_parser = breakpoint_parser,
+    help = "Add a new breakpoint to the tracer. This option can be used multiple times. The format is <syscall-stop>:<pattern-type>:<pattern>, where syscall-stop can be sysenter or sysexit, pattern-type can be argv-regex, in-filename or exact-filename. For example, sysexit:in-filename:/bash",
+  )]
+  pub breakpoints: Vec<BreakPoint>,
+}
+
+impl TuiModeArgs {
+  pub fn merge_config(&mut self, config: TuiModeConfig) {
+    self.active_pane = self.active_pane.or(config.active_pane);
+    self.layout = self.layout.or(config.layout);
+    self.frame_rate = self.frame_rate.or(config.frame_rate);
+    self.max_events = self.max_events.or(config.max_events);
+    self.follow |= config.follow.unwrap_or_default();
+    if (!self.terminate_on_exit) && (!self.kill_on_exit) {
+      match config.exit_handling {
+        Some(ExitHandling::Kill) => self.kill_on_exit = true,
+        Some(ExitHandling::Terminate) => self.terminate_on_exit = true,
+        _ => (),
+      }
+    }
+  }
+}
+
+impl DebuggerArgs {
+  pub fn merge_config(&mut self, config: DebuggerConfig) {
+    if self.default_external_command.is_none() {
+      self.default_external_command = config.default_external_command;
+    }
+  }
+}
+
+fn frame_rate_parser(s: &str) -> Result<f64, ParseFrameRateError> {
+  let v = s.parse::<f64>().with_context(|_| ParseFloatSnafu {
+    value: s.to_string(),
+  })?;
+  if v < 0.0 || v.is_nan() || v.is_infinite() {
+    Err(ParseFrameRateError::Invalid)
+  } else if v < 5.0 {
+    Err(ParseFrameRateError::TooLow)
+  } else {
+    Ok(v)
+  }
+}
+
+fn breakpoint_parser(s: &str) -> Result<BreakPoint, Cow<'static, str>> {
+  BreakPoint::try_from(s)
+}
+
+#[derive(Snafu, Debug)]
+enum ParseFrameRateError {
+  #[snafu(display("Failed to parse frame rate {value} as a floating point number"))]
+  ParseFloat {
+    source: ParseFloatError,
+    value: String,
+  },
+  #[snafu(display("Invalid frame rate"))]
+  Invalid,
+  #[snafu(display("Frame rate too low, must be at least 5.0"))]
+  TooLow,
+}
+
+#[derive(Args, Debug, Default, Clone)]
+pub struct ExporterArgs {
+  #[clap(short, long, help = "prettify the output if supported")]
+  pub pretty: bool,
+}
