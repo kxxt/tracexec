@@ -9,13 +9,17 @@ license.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+default = []
+protobuf-binding-from-source = ["dep:perfetto-trace-proto"]
+
 [dependencies]
 lru = "0.16.2"
 itoa = "1.0.16"
 priority-queue = "2.7.0"
 tracexec-core = { workspace = true }
-tracexec-tui = { workspace = true }         # TODO: get rid of it
-perfetto-trace-proto = { workspace = true }
+tracexec-tui = { workspace = true }                          # TODO: get rid of it
+perfetto-trace-proto = { workspace = true, optional = true }
 strum = { workspace = true }
 chrono = { workspace = true }
 hashbrown = { workspace = true }

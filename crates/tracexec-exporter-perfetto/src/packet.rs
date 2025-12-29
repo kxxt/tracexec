@@ -3,7 +3,7 @@
 use std::{num::NonZeroUsize, sync::Arc};
 
 use chrono::{DateTime, Local};
-use perfetto_trace_proto::{
+use crate::proto::{
   ClockSnapshot, DebugAnnotation, DebugAnnotationName, EventName, InternedData, InternedString,
   TracePacket, TracePacketDefaults, TrackDescriptor, TrackEvent,
   clock_snapshot::clock::BuiltinClocks,
