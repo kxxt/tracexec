@@ -2,7 +2,6 @@
 
 use std::{num::NonZeroUsize, sync::Arc};
 
-use chrono::{DateTime, Local};
 use crate::proto::{
   ClockSnapshot, DebugAnnotation, DebugAnnotationName, EventName, InternedData, InternedString,
   TracePacket, TracePacketDefaults, TrackDescriptor, TrackEvent,
@@ -11,6 +10,7 @@ use crate::proto::{
   trace_packet::{Data, OptionalTrustedPacketSequenceId, SequenceFlags},
   track_event::{self, NameField},
 };
+use chrono::{DateTime, Local};
 
 use tracexec_core::{
   cli::args::ModifierArgs,
