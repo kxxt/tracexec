@@ -87,7 +87,7 @@ impl RecursivePtraceEngine {
   /// This function will wait until the child is in the signal delivery stop of SIGSTOP.
   /// If any other signal is raised for the tracee, this function
   #[allow(unused)]
-  pub unsafe fn import_traceme_child(
+  unsafe fn import_traceme_child(
     &mut self,
     tracee: Pid,
     mut options: nix::sys::ptrace::Options, // TODO: we shouldn't expose this.

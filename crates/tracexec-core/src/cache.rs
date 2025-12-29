@@ -107,15 +107,14 @@ impl Default for ArcStr {
 
 static DEFAULT_ARCSTR: LazyLock<ArcStr> = LazyLock::new(|| "".into());
 
+#[derive(Default)]
 pub struct StringCache {
   inner: WeakHashSet<Weak<str>>,
 }
 
 impl StringCache {
   pub fn new() -> Self {
-    Self {
-      inner: WeakHashSet::new(),
-    }
+    Self::default()
   }
 
   pub fn get_or_insert(&mut self, s: &str) -> ArcStr {

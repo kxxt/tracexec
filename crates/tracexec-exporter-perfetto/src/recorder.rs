@@ -1,5 +1,5 @@
-use bytes::BufMut;
 use crate::proto::TracePacket;
+use bytes::BufMut;
 use prost::Message;
 
 pub struct PerfettoTraceRecorder<W: std::io::Write> {
