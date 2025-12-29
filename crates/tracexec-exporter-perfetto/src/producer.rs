@@ -8,7 +8,7 @@ use std::{
 };
 
 use hashbrown::{Equivalent, HashMap};
-use perfetto_trace_proto::{
+use crate::proto::{
   TracePacket, TrackDescriptor,
   track_descriptor::{ChildTracksOrdering, SiblingMergeBehavior, StaticOrDynamicName},
 };

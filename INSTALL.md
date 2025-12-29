@@ -25,7 +25,7 @@ To install from source, the following dependencies are needed:
 - If any library vendoring feature is enabled:
   - `build-essential` `autopoint` `gettext` for Debian based distros
   - `base-devel` for Arch Linux
-- `protoc` for compiling ProtoBuf `proto` files.
+- `protoc` for compiling ProtoBuf `proto` files if `protobuf-binding-from-source` feature is enabled.
   - By default, `protoc` from `PATH` is used. `PROTOC` environment variable
     could be used to specify the **full** path to the desired protoc compiler.
 - `clang` for compiling eBPF program.
@@ -49,6 +49,9 @@ To control whether to dynamically link to libbpf, libelf and zlib, consult the n
 - `vendored`: Vendoring libelf, zlib and libbpf, implies `static`.
 - `vendored-libbpf`: Vendoring libbpf and statically link to it.
 - `ebpf-no-rcu-kfuncs`: Enable this feature for eBPF backend to work on kernel versions less than `6.2`.
+- `protobuf-binding-from-source`: Enable this feature to build protobuf bindings from source.
+   By default, we use a vendored and stripped-down version of protobuf bindings.
+   Enable this feature would build the full set of protobuf bindings from source and requires `protoc` binary.
 
 By default, we enable the `recommended` and `vendored-libbpf` features. This means that we are dynamically linking zlib and libelf but statically linking libbpf. This choice is made because zlib and libelf are usually installed on most systems but libbpf is usually not.
 
