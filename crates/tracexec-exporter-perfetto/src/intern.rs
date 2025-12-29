@@ -1,6 +1,6 @@
 use std::num::NonZeroUsize;
 
-use perfetto_trace_proto::{
+use crate::proto::{
   DebugAnnotation, DebugAnnotationName, EventName, InternedString,
   debug_annotation::{NameField, Value},
 };

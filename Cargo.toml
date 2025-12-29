@@ -134,6 +134,7 @@ ebpf-no-rcu-kfuncs = [
 static = ["tracexec-backend-ebpf?/static"]
 vendored = ["tracexec-backend-ebpf?/vendored"]
 vendored-libbpf = ["tracexec-backend-ebpf?/vendored-libbpf"]
+protobuf-binding-from-source = ["tracexec-exporter-perfetto/protobuf-binding-from-source"]
 
 [profile.dev]
 opt-level = 1
