@@ -7,11 +7,11 @@ use std::{
   sync::{Arc, atomic::AtomicU64},
 };
 
-use hashbrown::{Equivalent, HashMap};
 use crate::proto::{
   TracePacket, TrackDescriptor,
   track_descriptor::{ChildTracksOrdering, SiblingMergeBehavior, StaticOrDynamicName},
 };
+use hashbrown::{Equivalent, HashMap};
 use priority_queue::PriorityQueue;
 use tracing::debug;
 

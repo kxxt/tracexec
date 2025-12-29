@@ -37,11 +37,11 @@ mod private {
 ///
 /// This trait provides methods that requires a stopped tracee
 pub trait PtraceStop: private::Sealed + Sized {
-  /// Inspect tracee's memory at `addr` as type `T`.
-  #[allow(unused)]
-  unsafe fn inspect<T>(&self, addr: AddressType) -> T {
-    todo!()
-  }
+  // /// Inspect tracee's memory at `addr` as type `T`.
+  // #[allow(unused)]
+  // unsafe fn inspect<T>(&self, addr: AddressType) -> T {
+  //   todo!()
+  // }
 
   fn get_general_registers(&self) -> Result<Regs, Errno> {
     // https://github.com/torvalds/linux/blob/v6.9/include/uapi/linux/elf.h#L378

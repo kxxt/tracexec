@@ -5,6 +5,7 @@ mod producer;
 mod recorder;
 
 #[cfg(not(feature = "protobuf-binding-from-source"))]
+#[allow(clippy::all)]
 mod proto;
 #[cfg(feature = "protobuf-binding-from-source")]
 mod proto {
