@@ -40,3 +40,6 @@ tokio = { workspace = true }
 clap = { workspace = true }
 crossterm = { workspace = true }
 internment = { version = "0.8.6", default-features = false, features = ["arc", "serde"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

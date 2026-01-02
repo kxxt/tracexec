@@ -3043,6 +3043,7 @@ dependencies = [
  "paste",
  "regex-cursor",
  "serde",
+ "serde_json",
  "shell-quote",
  "snafu",
  "strum",
