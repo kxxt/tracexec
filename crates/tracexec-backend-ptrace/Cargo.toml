@@ -29,3 +29,4 @@ rstest = { workspace = true }
 tracing-test = { workspace = true }
 predicates = { workspace = true }
 serial_test = { workspace = true }
+rusty-fork = "0.3.1"

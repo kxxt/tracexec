@@ -17,3 +17,29 @@ pub fn load_seccomp_filters() -> color_eyre::Result<()> {
   filter.load()?;
   Ok(())
 }
+
+#[cfg(test)]
+mod test {
+  use nix::errno::Errno;
+  use nix::fcntl::AtFlags;
+  use nix::fcntl::OFlag;
+  use nix::sys::stat::Mode;
+  use nix::unistd::execve;
+  use nix::unistd::execveat;
+  use rusty_fork::rusty_fork_test;
+
+  use crate::seccomp::load_seccomp_filters;
+
+  rusty_fork_test! {
+    #[test]
+    fn seccomp_filter_loads() {
+      // Load the filter
+      load_seccomp_filters().expect("Failed to load seccomp filter");
+      // Check if the syscall hits the filter.
+      // This should return ENOSYS as we don't attach a tracer to this subprocess
+      assert_eq!(execve(c"/", &[c""], &[c""]), Err(Errno::ENOSYS));
+      let fd = nix::fcntl::open("/", OFlag::O_PATH, Mode::empty()).unwrap();
+      assert_eq!(execveat(&fd, c"/", &[c""], &[c""], AtFlags::empty()), Err(Errno::ENOSYS));
+    }
+  }
+}
