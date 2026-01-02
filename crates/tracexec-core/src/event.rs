@@ -349,3 +349,137 @@ impl std::fmt::Display for EventStatus {
     Ok(())
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::cache::ArcStr;
+  use crate::timestamp::ts_from_boot_ns;
+  use chrono::Local;
+  use nix::unistd::Pid;
+  use std::collections::BTreeMap;
+  use std::sync::Arc;
+
+  #[test]
+  fn test_event_tracer_message_conversion() {
+    let te = TracerEvent {
+      details: TracerEventDetails::Info(TracerEventMessage {
+        pid: Some(Pid::from_raw(1)),
+        timestamp: Some(Local::now()),
+        msg: "info".into(),
+      }),
+      id: EventId::new(0),
+    };
+
+    let tm: TracerMessage = te.clone().into();
+    match tm {
+      TracerMessage::Event(ev) => assert_eq!(ev, te),
+      _ => panic!("Expected Event variant"),
+    }
+  }
+
+  #[test]
+  fn test_tracer_event_allocate_id_increments() {
+    let id1 = TracerEvent::allocate_id();
+    let id2 = TracerEvent::allocate_id();
+    assert!(id2.into_inner() > id1.into_inner());
+  }
+
+  #[test]
+  fn test_tracer_event_details_timestamp() {
+    let ts = ts_from_boot_ns(100000);
+    let msg = TracerEventMessage {
+      pid: Some(Pid::from_raw(1)),
+      timestamp: Some(Local::now()),
+      msg: "msg".into(),
+    };
+
+    let info_detail = TracerEventDetails::Info(msg.clone());
+    assert_eq!(info_detail.timestamp(), msg.timestamp);
+
+    let exec_event = ExecEvent {
+      pid: Pid::from_raw(2),
+      cwd: OutputMsg::Ok(ArcStr::from("/")),
+      comm: ArcStr::from("comm"),
+      filename: OutputMsg::Ok(ArcStr::from("file")),
+      argv: Arc::new(Ok(vec![])),
+      envp: Arc::new(Ok(BTreeMap::new())),
+      has_dash_env: false,
+      cred: Ok(Default::default()),
+      interpreter: None,
+      env_diff: Ok(EnvDiff::empty()),
+      fdinfo: Arc::new(FileDescriptorInfoCollection::default()),
+      result: 0,
+      timestamp: ts,
+      parent: None,
+    };
+    let exec_detail = TracerEventDetails::Exec(Box::new(exec_event.clone()));
+    assert_eq!(exec_detail.timestamp(), Some(ts));
+  }
+
+  #[test]
+  fn test_argv_to_string() {
+    let argv_ok = Ok(vec![
+      OutputMsg::Ok(ArcStr::from("arg1")),
+      OutputMsg::Ok(ArcStr::from("arg2")),
+    ]);
+    let argv_err: Result<Vec<OutputMsg>, InspectError> = Err(InspectError::EPERM);
+
+    let s = TracerEventDetails::argv_to_string(&argv_ok);
+    assert!(s.contains("arg1") && s.contains("arg2"));
+
+    let s_err = TracerEventDetails::argv_to_string(&argv_err);
+    assert_eq!(s_err, "[failed to read argv]");
+  }
+
+  #[test]
+  fn test_interpreters_to_string() {
+    let none: Vec<Interpreter> = vec![];
+    let one: Vec<Interpreter> = vec![Interpreter::None];
+    let many: Vec<Interpreter> = vec![Interpreter::None, Interpreter::None];
+
+    owo_colors::control::set_should_colorize(false);
+
+    let s_none = TracerEventDetails::interpreters_to_string(&none);
+    assert_eq!(s_none, "none");
+
+    let s_one = TracerEventDetails::interpreters_to_string(&one);
+    assert_eq!(s_one, "none");
+
+    let s_many = TracerEventDetails::interpreters_to_string(&many);
+    assert!(s_many.contains("none") && s_many.contains(","));
+  }
+
+  #[test]
+  fn test_process_state_update_termination_timestamp() {
+    let ts = ts_from_boot_ns(1000000);
+    let exit = ProcessStateUpdate::Exit {
+      status: ProcessExit::Code(0),
+      timestamp: ts,
+    };
+    let detached = ProcessStateUpdate::Detached {
+      hid: 1,
+      timestamp: ts,
+    };
+    let resumed = ProcessStateUpdate::Resumed;
+
+    assert_eq!(exit.termination_timestamp(), Some(ts));
+    assert_eq!(detached.termination_timestamp(), Some(ts));
+    assert_eq!(resumed.termination_timestamp(), None);
+  }
+
+  #[test]
+  fn test_event_status_display() {
+    let cases = [
+      (EventStatus::ExecENOENT, "⚠️ Exec failed"),
+      (EventStatus::ProcessRunning, "🟢 Running"),
+      (EventStatus::ProcessExitedNormally, "😇 Exited(0)"),
+      (EventStatus::ProcessSegfault, "💥 Segmentation fault"),
+    ];
+
+    for (status, prefix) in cases {
+      let s = format!("{}", status);
+      assert!(s.starts_with(prefix.split_whitespace().next().unwrap()));
+    }
+  }
+}

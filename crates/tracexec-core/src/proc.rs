@@ -64,7 +64,7 @@ pub struct ProcStatus {
   pub cred: Cred,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Cred {
   pub groups: Vec<gid_t>,
   pub uid_real: u32,
@@ -498,6 +498,16 @@ pub struct EnvDiff {
 }
 
 impl EnvDiff {
+  #[cfg(test)]
+  pub(crate) fn empty() -> Self {
+    Self {
+      has_added_or_modified_keys_starting_with_dash: Default::default(),
+      added: Default::default(),
+      removed: Default::default(),
+      modified: Default::default(),
+    }
+  }
+
   pub fn is_modified_or_removed(&self, key: &OutputMsg) -> bool {
     self.modified.contains_key(key) || self.removed.contains(key)
   }
