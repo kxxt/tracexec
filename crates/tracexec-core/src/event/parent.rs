@@ -105,3 +105,98 @@ impl ParentTracker {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_parent_event_map() {
+    let r#become: ParentEvent<u32> = ParentEvent::Become(10);
+    let spawn: ParentEvent<u32> = ParentEvent::Spawn(20);
+
+    let mapped_become = r#become.map(|x| x * 2);
+    let mapped_spawn = spawn.map(|x| x + 5);
+
+    match mapped_become {
+      ParentEvent::Become(v) => assert_eq!(v, 20),
+      _ => panic!("Expected Become variant"),
+    }
+    match mapped_spawn {
+      ParentEvent::Spawn(v) => assert_eq!(v, 25),
+      _ => panic!("Expected Spawn variant"),
+    }
+  }
+
+  #[test]
+  fn test_parent_event_transpose() {
+    let become_some: ParentEvent<Option<u32>> = ParentEvent::Become(Some(10));
+    let become_none: ParentEvent<Option<u32>> = ParentEvent::Become(None);
+    let spawn_some: ParentEvent<Option<u32>> = ParentEvent::Spawn(Some(5));
+    let spawn_none: ParentEvent<Option<u32>> = ParentEvent::Spawn(None);
+
+    let transposed_become_some = become_some.transpose();
+    let transposed_become_none = become_none.transpose();
+    let transposed_spawn_some = spawn_some.transpose();
+    let transposed_spawn_none = spawn_none.transpose();
+
+    assert_eq!(transposed_become_some, Some(ParentEvent::Become(10)));
+    assert_eq!(transposed_become_none, None);
+    assert_eq!(transposed_spawn_some, Some(ParentEvent::Spawn(5)));
+    assert_eq!(transposed_spawn_none, None);
+  }
+
+  #[test]
+  fn test_parent_tracker_save_and_update() {
+    let mut parent = ParentTracker::new();
+    let mut child = ParentTracker::new();
+
+    let parent_exec1 = EventId::new(1);
+    let parent_exec2 = EventId::new(2);
+
+    // First exec for parent
+    assert_eq!(parent.update_last_exec(parent_exec1, true), None);
+    // Second exec for parent
+    let parent_become = parent.update_last_exec(parent_exec2, true);
+    assert_eq!(parent_become.unwrap(), ParentEvent::Become(EventId::new(1)));
+
+    // Save parent's last successful exec to child
+    child.save_parent_last_exec(&parent);
+
+    let child_exec = EventId::new(10);
+    let parent_event = child.update_last_exec(child_exec, true);
+    // First exec in child should reference parent's last exec as Spawn
+    assert!(matches!(parent_event, Some(ParentEvent::Spawn(_))));
+  }
+
+  #[test]
+  fn test_parent_tracker_update_unsuccessful_exec() {
+    let mut tracker = ParentTracker::new();
+    let parent_id = EventId::new(5);
+    tracker.parent_last_exec = Some(parent_id);
+
+    let exec_id = EventId::new(10);
+    // unsuccessful exec does not update last_successful_exec
+    let parent_event = tracker.update_last_exec(exec_id, false);
+    assert!(matches!(parent_event, Some(ParentEvent::Spawn(_))));
+    assert_eq!(tracker.last_successful_exec, None);
+  }
+
+  #[test]
+  fn test_parent_tracker_multiple_execs() {
+    let mut tracker = ParentTracker::new();
+    let first_exec = EventId::new(1);
+    let second_exec = EventId::new(2);
+
+    // First successful exec
+    let parent_event1 = tracker.update_last_exec(first_exec, true);
+    assert!(parent_event1.is_none());
+    assert_eq!(tracker.last_successful_exec.unwrap().into_inner(), 1);
+
+    // Second successful exec
+    let parent_event2 = tracker.update_last_exec(second_exec, true);
+    // Should return Become of previous exec
+    assert_eq!(parent_event2.unwrap(), ParentEvent::Become(EventId::new(1)));
+    assert_eq!(tracker.last_successful_exec.unwrap().into_inner(), 2);
+  }
+}
