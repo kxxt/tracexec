@@ -396,6 +396,10 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
   let mut buf = [0u8; 2];
 
   if let Err(e) = reader.read_exact(&mut buf) {
+    if e.kind() == std::io::ErrorKind::UnexpectedEof {
+      // File is too short to contain a shebang
+      return Interpreter::None;
+    }
     let e = CACHE.get_or_insert_owned(e.to_string());
     return Interpreter::Error(e);
   };
@@ -450,7 +454,7 @@ pub fn parse_env_entry(item: &str) -> (&str, &str) {
       });
   }
   let (head, tail) = item.split_at(sep_loc);
-  (head, &tail[1..])
+  (head, { if tail.is_empty() { "" } else { &tail[1..] } })
 }
 
 pub fn parse_failiable_envp(envp: Vec<OutputMsg>) -> (BTreeMap<OutputMsg, OutputMsg>, bool) {
@@ -579,7 +583,7 @@ impl BaselineInfo {
 static CACHE: StringCache = StringCache;
 
 #[cfg(test)]
-mod tests {
+mod proc_status_tests {
   use super::*;
 
   #[test]
@@ -624,5 +628,326 @@ Groups:\t0\t1\t2
     let sample = "Uid:\t1\t2\t3\t4\nGid:\t0\t1\t2\t3\n";
     let e = parse_status_contents(sample).unwrap_err();
     assert_eq!(e.kind(), std::io::ErrorKind::InvalidData);
+  }
+
+  #[test]
+  fn test_parse_status_contents_non_numeric_uid() {
+    let sample = "\
+Uid:\ta\t2\t3\t4
+Gid:\t1\t2\t3\t4
+Groups:\t0
+";
+    let err = parse_status_contents(sample).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+  }
+
+  #[test]
+  fn test_parse_status_contents_not_enough_uids() {
+    let sample = "\
+Uid:\t1\t2
+Gid:\t1\t2\t3\t4
+Groups:\t0
+";
+    let err = parse_status_contents(sample).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+  }
+}
+
+#[cfg(test)]
+mod env_tests {
+  use crate::event::FriendlyError;
+
+  use super::*;
+
+  #[test]
+  fn test_parse_env_entry_normal() {
+    let (k, v) = parse_env_entry("KEY=value");
+    assert_eq!(k, "KEY");
+    assert_eq!(v, "value");
+  }
+
+  #[test]
+  fn test_parse_env_entry_missing_equal() {
+    let (k, v) = parse_env_entry("KEY");
+    assert_eq!(k, "KEY");
+    assert_eq!(v, "");
+  }
+
+  #[test]
+  fn test_parse_env_entry_leading_equal() {
+    let (k, v) = parse_env_entry("=value");
+    assert_eq!(k, "=value");
+    assert_eq!(v, "");
+  }
+
+  #[test]
+  fn test_parse_env_entry_multiple_equals() {
+    let (k, v) = parse_env_entry("A=B=C");
+    assert_eq!(k, "A");
+    assert_eq!(v, "B=C");
+  }
+
+  #[test]
+  fn test_parse_failiable_envp_basic() {
+    let envp = vec![OutputMsg::Ok("A=1".into()), OutputMsg::Ok("B=2".into())];
+
+    let (map, has_dash) = parse_failiable_envp(envp);
+
+    assert!(!has_dash);
+    assert_eq!(map.len(), 2);
+    assert_eq!(
+      map.get(&OutputMsg::Ok("A".into())).unwrap(),
+      &OutputMsg::Ok("1".into())
+    );
+  }
+
+  #[test]
+  fn test_parse_failiable_envp_dash_key() {
+    let envp = vec![OutputMsg::Ok("-X=1".into())];
+
+    let (_map, has_dash) = parse_failiable_envp(envp);
+
+    assert!(has_dash);
+  }
+
+  #[test]
+  fn test_parse_failiable_envp_error_passthrough() {
+    let envp = vec![OutputMsg::Err(FriendlyError::InspectError(
+      nix::errno::Errno::EAGAIN,
+    ))];
+
+    let (map, _) = parse_failiable_envp(envp);
+
+    assert!(matches!(
+      map.values().next().unwrap(),
+      OutputMsg::Err(FriendlyError::InspectError(nix::errno::Errno::EAGAIN))
+    ));
+  }
+}
+
+#[cfg(test)]
+mod env_diff_tests {
+  use std::collections::BTreeMap;
+
+  use crate::{event::OutputMsg, proc::diff_env};
+
+  #[test]
+  fn test_env_diff_added_removed_modified() {
+    let orig = BTreeMap::from([
+      (OutputMsg::Ok("A".into()), OutputMsg::Ok("1".into())),
+      (OutputMsg::Ok("B".into()), OutputMsg::Ok("2".into())),
+    ]);
+
+    let new = BTreeMap::from([
+      (OutputMsg::Ok("A".into()), OutputMsg::Ok("10".into())),
+      (OutputMsg::Ok("C".into()), OutputMsg::Ok("3".into())),
+    ]);
+
+    let diff = diff_env(&orig, &new);
+
+    assert_eq!(diff.modified.len(), 1);
+    assert_eq!(diff.added.len(), 1);
+    assert_eq!(diff.removed.len(), 1);
+
+    assert!(diff.modified.contains_key(&OutputMsg::Ok("A".into())));
+    assert!(diff.added.contains_key(&OutputMsg::Ok("C".into())));
+    assert!(diff.removed.contains(&OutputMsg::Ok("B".into())));
+  }
+
+  #[test]
+  fn test_env_diff_dash_key_requires_separator() {
+    let orig = BTreeMap::new();
+    let new = BTreeMap::from([(
+      OutputMsg::Ok("-LD_PRELOAD".into()),
+      OutputMsg::Ok("evil.so".into()),
+    )]);
+
+    let diff = diff_env(&orig, &new);
+
+    assert!(diff.need_env_argument_separator());
+  }
+}
+
+#[cfg(test)]
+mod fdinfo_tests {
+  use crate::proc::FileDescriptorInfo;
+
+  #[test]
+  fn test_fdinfo_same_file() {
+    let a = FileDescriptorInfo {
+      ino: 1,
+      mnt_id: 2,
+      ..Default::default()
+    };
+
+    let b = FileDescriptorInfo {
+      ino: 1,
+      mnt_id: 2,
+      ..Default::default()
+    };
+
+    assert!(a.same_file_as(&b));
+    assert!(!a.not_same_file_as(&b));
+  }
+
+  #[test]
+  fn test_fdinfo_not_same_file() {
+    let a = FileDescriptorInfo {
+      ino: 1,
+      mnt_id: 2,
+      ..Default::default()
+    };
+
+    let b = FileDescriptorInfo {
+      ino: 3,
+      mnt_id: 2,
+      ..Default::default()
+    };
+
+    assert!(a.not_same_file_as(&b));
+  }
+}
+
+#[cfg(test)]
+mod interpreter_test {
+  use std::{
+    fs::{self, File},
+    io::Write,
+    os::unix::fs::PermissionsExt,
+  };
+
+  use tempfile::tempdir;
+
+  use crate::proc::{Interpreter, cached_str, read_interpreter, read_interpreter_recursive};
+
+  #[test]
+  fn test_interpreter_display() {
+    let none = Interpreter::None;
+    assert!(none.to_string().contains("none"));
+
+    let err = Interpreter::Error(cached_str("boom"));
+    assert!(err.to_string().contains("err"));
+  }
+
+  #[test]
+  fn test_read_interpreter_none() {
+    let dir = tempdir().unwrap();
+    let exe = dir.path().join("binary");
+    File::create(&exe).unwrap();
+
+    let result = read_interpreter(&exe);
+    assert_eq!(result, Interpreter::None);
+    dir.close().unwrap();
+  }
+
+  #[test]
+  fn test_read_interpreter_shebang() {
+    let dir = tempdir().unwrap();
+
+    let target = dir.path().join("target");
+    File::create(&target).unwrap();
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let script = dir.path().join("script");
+    let mut f = File::create(&script).unwrap();
+    writeln!(f, "#!{}", target.display()).unwrap();
+
+    let result = read_interpreter(&script);
+    match result {
+      Interpreter::Shebang(s) => assert!(s.as_ref().ends_with("target")),
+      other => panic!("unexpected result: {other:?}"),
+    }
+    dir.close().unwrap();
+  }
+
+  #[test]
+  fn test_read_interpreter_inaccessible() {
+    let dir = tempdir().unwrap();
+    let exe = dir.path().join("noaccess");
+    File::create(&exe).unwrap();
+    fs::set_permissions(&exe, fs::Permissions::from_mode(0o000)).unwrap();
+
+    let result = read_interpreter(&exe);
+    assert_eq!(result, Interpreter::ExecutableInaccessible);
+    dir.close().unwrap();
+  }
+
+  #[test]
+  fn test_read_interpreter_empty_file() {
+    let dir = tempdir().unwrap();
+    let exe = dir.path().join("empty");
+    File::create(&exe).unwrap();
+
+    let result = read_interpreter(&exe);
+    assert_eq!(result, Interpreter::None);
+    dir.close().unwrap();
+  }
+
+  #[test]
+  fn test_read_interpreter_recursive_shebang_chain() {
+    use super::read_interpreter_recursive;
+    use std::fs::{self, File};
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+
+    // interpreter2: real binary (no shebang)
+    // Note: an edge case that the file length does not permit it to contain shebang thus EOF.
+    let interp2 = dir.path().join("interp2");
+    File::create(&interp2).unwrap();
+    fs::set_permissions(&interp2, fs::Permissions::from_mode(0o755)).unwrap();
+
+    // interpreter1: shebang -> interpreter2
+    let interp1 = dir.path().join("interp1");
+    {
+      let mut f = File::create(&interp1).unwrap();
+      writeln!(f, "#!{}", interp2.display()).unwrap();
+      f.flush().unwrap();
+    }
+    fs::set_permissions(&interp1, fs::Permissions::from_mode(0o755)).unwrap();
+
+    // script: shebang -> interpreter1
+    let script = dir.path().join("script");
+    {
+      let mut f = File::create(&script).unwrap();
+      writeln!(f, "#!{}", interp1.display()).unwrap();
+      f.flush().unwrap();
+    }
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let result = read_interpreter_recursive(&script);
+
+    assert_eq!(result.len(), 2);
+
+    match &result[0] {
+      Interpreter::Shebang(s) => {
+        assert!(s.as_ref().ends_with("interp1"));
+      }
+      other => panic!("unexpected interpreter: {other:?}"),
+    }
+
+    match &result[1] {
+      Interpreter::Shebang(s) => {
+        assert!(s.as_ref().ends_with("interp2"));
+      }
+      other => panic!("unexpected interpreter: {other:?}"),
+    }
+
+    dir.close().unwrap();
+  }
+
+  #[test]
+  fn test_read_interpreter_recursive_no_shebang() {
+    use std::fs::File;
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+    let exe = dir.path().join("binary");
+    File::create(&exe).unwrap();
+
+    let result = read_interpreter_recursive(&exe);
+    assert!(result.is_empty());
+    dir.close().unwrap();
   }
 }

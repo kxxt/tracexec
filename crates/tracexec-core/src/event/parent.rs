@@ -43,6 +43,7 @@ pub type ParentEventId = ParentEvent<EventId>;
 ///
 /// Consider the following two situations:
 ///
+/// ```ignore
 ///           pid 2
 ///          Proc A
 ///            │  fork   pid 3
@@ -60,6 +61,7 @@ pub type ParentEventId = ParentEvent<EventId>;
 /// |- A spawns B
 /// |- A becomes C
 ///    |- C becomes D
+/// ```
 ///
 /// To achieve this, we
 /// 1) for `spawns`(A spawns B), record the id of last exec event(Unknown ?> A) of the parent process(A) at fork time.

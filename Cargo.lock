@@ -3047,6 +3047,7 @@ dependencies = [
  "shell-quote",
  "snafu",
  "strum",
+ "tempfile",
  "tokio",
  "toml",
  "tracing",
