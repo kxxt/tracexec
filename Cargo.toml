@@ -65,6 +65,7 @@ predicates = "3.1.0"
 rstest = "0.26.0"
 tracing-test = "0.2.4"
 serial_test = { version = "3.1.1", features = ["file_locks"] }
+rusty-fork = "0.3.1"
 
 [package]
 name = "tracexec"

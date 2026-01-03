@@ -43,4 +43,5 @@ internment = { version = "0.8.6", default-features = false, features = ["arc", "
 
 [dev-dependencies]
 serde_json = { workspace = true }
+rusty-fork = { workspace = true }
 tempfile = "3.24.0"
