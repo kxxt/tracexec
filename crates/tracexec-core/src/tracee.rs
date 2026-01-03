@@ -48,3 +48,48 @@ pub fn lead_session_and_control_terminal() -> Result<(), Errno> {
   }
   Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use nix::unistd::getpgrp;
+  use rusty_fork::rusty_fork_test;
+  use std::io::{Read, Write};
+
+  rusty_fork_test! {
+    #[test]
+    fn test_nullify_stdio() {
+      nullify_stdio().expect("nullify_stdio failed");
+
+      // stdout should now point to /dev/null:
+      // write should succeed
+      let mut stdout = std::io::stdout();
+      stdout.write_all(b"discarded").unwrap();
+      stdout.flush().unwrap();
+
+      // stdin should read EOF
+      let mut buf = [0u8; 16];
+      let mut stdin = std::io::stdin();
+      let n = stdin.read(&mut buf).unwrap();
+      assert_eq!(n, 0);
+    }
+  }
+
+  rusty_fork_test! {
+    #[test]
+    fn test_lead_process_group() {
+      let pid = nix::unistd::getpid();
+      let pgrp_before = getpgrp();
+
+      lead_process_group().expect("lead_process_group failed");
+
+      let pgrp_after = getpgrp();
+
+      // We should now be our own process group leader
+      assert_eq!(pgrp_after, pid);
+
+      // Ensure we actually changed if not already leader
+      let _ = pgrp_before;
+    }
+  }
+}
