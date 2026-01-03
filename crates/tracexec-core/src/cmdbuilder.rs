@@ -247,3 +247,163 @@ pub struct Command {
   pub args: Vec<CString>,
   pub cwd: PathBuf,
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use rusty_fork::rusty_fork_test;
+  use std::ffi::{OsStr, OsString};
+  use std::fs::{self, File};
+  use std::os::unix::fs::PermissionsExt;
+  use std::path::PathBuf;
+  use tempfile::TempDir;
+
+  fn make_executable(dir: &TempDir, name: &str) -> PathBuf {
+    let path = dir.path().join(name);
+    File::create(&path).unwrap();
+    let mut perms = fs::metadata(&path).unwrap().permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(&path, perms).unwrap();
+    path
+  }
+
+  #[test]
+  fn test_new_builder() {
+    let b = CommandBuilder::new("echo");
+    assert_eq!(b.get_argv(), &vec![OsString::from("echo")]);
+    assert!(b.get_cwd().is_none());
+    assert!(b.get_controlling_tty());
+  }
+
+  #[test]
+  fn test_from_argv() {
+    let argv = vec![OsString::from("ls"), OsString::from("-l")];
+    let b = CommandBuilder::from_argv(argv.clone());
+    assert_eq!(b.get_argv(), &argv);
+  }
+
+  #[test]
+  fn test_default_prog() {
+    let b = CommandBuilder::new_default_prog();
+    assert!(b.is_default_prog());
+  }
+
+  #[test]
+  #[should_panic(expected = "attempted to add args to a default_prog builder")]
+  fn test_default_prog_panics_on_arg() {
+    let mut b = CommandBuilder::new_default_prog();
+    b.arg("ls");
+  }
+
+  #[test]
+  fn test_arg_and_args() {
+    let mut b = CommandBuilder::new("cmd");
+    b.arg("a");
+    b.args(["b", "c"]);
+    let argv: Vec<&OsStr> = b.get_argv().iter().map(|s| s.as_os_str()).collect();
+    assert_eq!(argv, ["cmd", "a", "b", "c"]);
+  }
+
+  #[test]
+  fn test_cwd_set_and_clear() {
+    let mut b = CommandBuilder::new("cmd");
+    let tmp = TempDir::new().unwrap();
+
+    b.cwd(tmp.path());
+    assert_eq!(b.get_cwd(), Some(tmp.path()));
+
+    b.clear_cwd();
+    assert!(b.get_cwd().is_none());
+  }
+
+  #[test]
+  fn test_controlling_tty_flag() {
+    let mut b = CommandBuilder::new("cmd");
+    assert!(b.get_controlling_tty());
+
+    b.set_controlling_tty(false);
+    assert!(!b.get_controlling_tty());
+  }
+
+  rusty_fork_test! {
+    #[test]
+    fn test_search_path_finds_executable_in_path() {
+      let dir = TempDir::new().unwrap();
+      let exe = make_executable(&dir, "mycmd");
+
+      unsafe {
+        // SAFETY: we do this in a separate subprocess.
+        std::env::set_var("PATH", dir.path());
+      }
+
+      let b = CommandBuilder::new("mycmd");
+      let resolved = b.search_path(OsStr::new("mycmd"), dir.path()).unwrap();
+
+      assert_eq!(resolved, exe);
+    }
+  }
+
+  #[test]
+  fn test_search_path_relative_to_cwd() {
+    let dir = TempDir::new().unwrap();
+    let exe = make_executable(&dir, "tool");
+
+    let b = CommandBuilder::new("./tool");
+    let resolved = b.search_path(OsStr::new("./tool"), dir.path()).unwrap();
+
+    assert_eq!(resolved, exe);
+  }
+
+  #[test]
+  fn test_search_path_missing_binary_fails() {
+    let dir = TempDir::new().unwrap();
+    let b = CommandBuilder::new("does_not_exist");
+
+    let err = b.search_path(OsStr::new("does_not_exist"), dir.path());
+    assert!(err.is_err());
+  }
+
+  rusty_fork_test! {
+
+    #[test]
+    fn test_build_sets_program_args_and_cwd() {
+      let dir = TempDir::new().unwrap();
+      let exe = make_executable(&dir, "echo");
+
+      unsafe {
+        // SAFETY: we do this in a separate subprocess.
+        std::env::set_var("PATH", dir.path());
+      }
+
+      let mut b = CommandBuilder::new("echo");
+      b.arg("hello");
+      b.cwd(dir.path());
+
+      let cmd = b.build().unwrap();
+
+      assert_eq!(cmd.program, exe);
+      assert_eq!(cmd.cwd, dir.path());
+
+      let args: Vec<&str> = cmd.args.iter().map(|c| c.to_str().unwrap()).collect();
+
+      assert_eq!(args, ["echo", "hello"]);
+      dir.close().unwrap()
+    }
+
+    #[test]
+    fn test_build_uses_current_dir_when_cwd_not_set() {
+      let dir = TempDir::new().unwrap();
+      let exe = make_executable(&dir, "cmd");
+
+      // SAFETY: we do this in a separate subprocess.
+      unsafe { std::env::set_var("PATH", dir.path()); }
+
+      let b = CommandBuilder::new("cmd");
+      let cmd = b.build().unwrap();
+
+      assert_eq!(cmd.program, exe);
+      assert_eq!(cmd.cwd, std::env::current_dir().unwrap());
+      dir.close().unwrap()
+    }
+  }
+}

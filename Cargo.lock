@@ -3042,6 +3042,7 @@ dependencies = [
  "nutype",
  "paste",
  "regex-cursor",
+ "rusty-fork",
  "serde",
  "serde_json",
  "shell-quote",
