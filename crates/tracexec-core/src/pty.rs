@@ -725,3 +725,122 @@ impl Write for UnixMasterWriter {
     self.fd.flush()
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use nix::sys::wait::waitpid;
+
+  use super::*;
+  use std::io::{Read, Write};
+  use std::time::Duration;
+
+  fn system() -> UnixPtySystem {
+    UnixPtySystem::default()
+  }
+
+  #[test]
+  fn test_ptysize_default() {
+    let s = PtySize::default();
+    assert_eq!(s.rows, 24);
+    assert_eq!(s.cols, 80);
+    assert_eq!(s.pixel_width, 0);
+    assert_eq!(s.pixel_height, 0);
+  }
+
+  #[test]
+  fn test_openpty_basic() {
+    let pty = system().openpty(PtySize::default()).unwrap();
+    assert!(pty.master.as_raw_fd().is_some());
+  }
+
+  #[test]
+  fn test_resize_and_get_size() {
+    let pty = system().openpty(PtySize::default()).unwrap();
+
+    let new_size = PtySize {
+      rows: 40,
+      cols: 100,
+      pixel_width: 0,
+      pixel_height: 0,
+    };
+
+    pty.master.resize(new_size).unwrap();
+    let got = pty.master.get_size().unwrap();
+
+    assert_eq!(got.rows, 40);
+    assert_eq!(got.cols, 100);
+  }
+
+  #[test]
+  fn test_master_slave_io() {
+    let pty = system().openpty(PtySize::default()).unwrap();
+
+    let mut writer = pty.master.take_writer().unwrap();
+    let mut reader = pty.master.try_clone_reader().unwrap();
+
+    writer.write_all(b"hello\n").unwrap();
+    writer.flush().unwrap();
+
+    let mut buf = [0u8; 64];
+    let n = reader.read(&mut buf).unwrap();
+
+    assert!(n > 0);
+    assert!(std::str::from_utf8(&buf[..n]).unwrap().contains("hello"));
+  }
+
+  #[test]
+  fn test_take_writer_only_once() {
+    let pty = system().openpty(PtySize::default()).unwrap();
+
+    let _w1 = pty.master.take_writer().unwrap();
+    let w2 = pty.master.take_writer();
+
+    assert!(w2.is_err());
+  }
+
+  #[test]
+  fn test_tty_name_present() {
+    let pty = system().openpty(PtySize::default()).unwrap();
+    let name = pty.master.tty_name();
+
+    // Some platforms may not expose a name, but Linux/macOS should
+    assert!(name.is_some());
+  }
+
+  #[test]
+  fn test_spawn_command_echo() {
+    let pty = system().openpty(PtySize::default()).unwrap();
+
+    let mut cmd = CommandBuilder::new("echo");
+    cmd.arg("hello");
+
+    let pid = pty.slave.spawn_command(cmd, |_| Ok(())).unwrap();
+
+    // read output
+    let mut reader = pty.master.try_clone_reader().unwrap();
+    let mut buf = [0; 256];
+
+    // give the child a moment to write
+    std::thread::sleep(Duration::from_millis(100));
+    reader.read(&mut buf);
+
+    eprintln!("buf: {}", String::from_utf8_lossy(&buf));
+
+    assert!(buf.windows(5).any(|w| w == b"hello".as_slice()));
+
+    // reap child
+    waitpid(pid, None).unwrap();
+  }
+
+  #[test]
+  fn test_exitstatus_helpers() {
+    let ok = ExitStatus::with_exit_code(0);
+    assert!(ok.success());
+    assert_eq!(ok.exit_code(), 0);
+    assert!(ok.signal().is_none());
+
+    let sig = ExitStatus::with_signal("SIGTERM");
+    assert!(!sig.success());
+    assert_eq!(sig.signal(), Some("SIGTERM"));
+  }
+}
