@@ -1,5 +1,4 @@
-// Disabled. TODO
-use assert_cmd::prelude::*;
+use assert_cmd::{cargo, prelude::*};
 use predicates::prelude::*;
 use serial_test::file_serial;
 use std::process::Command;
@@ -9,7 +8,7 @@ use std::process::Command;
 // tracexec is a subprocess of the test runner,
 // this might surprise the tracer of other tests because tracer doesn't expect other subprocesses.
 fn log_mode_without_args_works() -> Result<(), Box<dyn std::error::Error>> {
-  let mut cmd = Command::cargo_bin("tracexec")?;
+  let mut cmd = Command::new(cargo::cargo_bin!());
   cmd.arg("log").arg("--").arg("/proc/self/exe").arg("--help");
   cmd
     .assert()

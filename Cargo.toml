@@ -114,7 +114,10 @@ tracexec-tui = { workspace = true }
 tracexec-backend-ptrace = { workspace = true }
 tracexec-backend-ebpf = { workspace = true, optional = true }
 
-
+[dev-dependencies]
+assert_cmd = { workspace = true }
+serial_test = { workspace = true }
+predicates = { workspace = true }
 
 [features]
 default = ["recommended", "vendored-libbpf"]
@@ -134,7 +137,9 @@ ebpf-no-rcu-kfuncs = [
 static = ["tracexec-backend-ebpf?/static"]
 vendored = ["tracexec-backend-ebpf?/vendored"]
 vendored-libbpf = ["tracexec-backend-ebpf?/vendored-libbpf"]
-protobuf-binding-from-source = ["tracexec-exporter-perfetto/protobuf-binding-from-source"]
+protobuf-binding-from-source = [
+    "tracexec-exporter-perfetto/protobuf-binding-from-source",
+]
 
 [profile.dev]
 opt-level = 1
