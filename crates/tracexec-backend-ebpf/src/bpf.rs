@@ -13,10 +13,7 @@ pub mod tracer;
 
 #[allow(clippy::use_self)] // remove after https://github.com/libbpf/libbpf-rs/pull/1231 is merged
 pub mod skel {
-  include!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/src/bpf/tracexec_system.skel.rs"
-  ));
+  include!(concat!(env!("OUT_DIR"), "/tracexec_system.skel.rs"));
 }
 
 pub mod interface {
