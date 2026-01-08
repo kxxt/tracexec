@@ -1,0 +1,33 @@
+name: Release
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - v[0-9]+.*
+      - test-release.*
+
+jobs:
+  publish-crates:
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-release
+      - name: Install native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt update -y
+          sudo apt install -y {binutils,gcc}-{aarch64,riscv64}-linux-gnu \
+          build-essential autopoint gettext libelf-dev zlib1g-dev libseccomp-dev \
+          protobuf-compiler
+      - name: Publish to crates.io
+        run: |
+          cargo release -x --workspace --no-tag --no-push --allow-branch HEAD --exclude perfetto-trace-proto
