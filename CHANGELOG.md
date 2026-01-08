@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.16.0-beta.2
+
+### New Features
+
+Now it's possible to export detailed trace to perfetto trace format!
+The trace can be collected with `tracexec collect --format perfetto`
+and viewed in https://ui.perfetto.dev/.
+
+![TODO](TODO)
+
+This feature enables interesting new use cases such as build system profiling
+and examining the detailed exec traces in tree format using perfetto UI.
+
+### Bug Fixes
+
+- Ptrace backend: use timestamp produced at a single location.
+- Ptrace backend: fix parent tracking for exec failure events.
+- Collect command now handles SIGINT and SIGTERM gracefully.
+- eBPF backend:  don't write skel to src dir in build script
+
+### Internal Changes
+
+- tracexec is now split into multiple crates for better modularity and faster compilation.
+- Update dependencies. Notably ratatui is updated to 0.30 and lru is bumped for an unsoundness fix.
+- Update and refactor UKCI.
+- Add CodeRabbit configuration for AI powered code review.
+- Remove whitesource bolt bot from CI.
+
 ## v0.15.1
 
 This patch release fixes a bug that might cause tracexec's eBPF backend to
