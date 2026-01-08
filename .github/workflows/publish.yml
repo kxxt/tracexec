@@ -1,4 +1,4 @@
-name: Release
+name: Publish
 
 permissions:
   contents: write
@@ -30,4 +30,4 @@ jobs:
           protobuf-compiler
       - name: Publish to crates.io
         run: |
-          cargo release -x --workspace --no-tag --no-push --allow-branch HEAD --exclude perfetto-trace-proto
+          cargo release -x --no-confirm --workspace --no-tag --no-push --allow-branch HEAD --exclude perfetto-trace-proto
