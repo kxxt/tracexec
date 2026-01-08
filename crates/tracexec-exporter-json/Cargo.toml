@@ -1,5 +1,6 @@
 [package]
 name = "tracexec-exporter-json"
+description = "JSON exporter for tracexec [Internal implementation! DO NOT DEPEND ON!]"
 version.workspace = true
 repository.workspace = true
 homepage.workspace = true
