@@ -18,16 +18,16 @@ readme = "README.md"
 license = "GPL-2.0-or-later"
 edition = "2024"
 rust-version = "1.88"
-version = "0.16.0-beta.4"
+version = "0.16.0-beta.5"
 
 [workspace.dependencies]
 perfetto-trace-proto = { path = "crates/perfetto-trace-proto", version = "0.1.0" }
-tracexec-backend-ptrace = { path = "crates/tracexec-backend-ptrace", version = "=0.16.0-beta.4" }
-tracexec-backend-ebpf = { path = "crates/tracexec-backend-ebpf", version = "=0.16.0-beta.4" }
-tracexec-exporter-json = { path = "crates/tracexec-exporter-json", version = "=0.16.0-beta.4" }
-tracexec-exporter-perfetto = { path = "crates/tracexec-exporter-perfetto", version = "=0.16.0-beta.4" }
-tracexec-core = { path = "crates/tracexec-core", version = "=0.16.0-beta.4" }
-tracexec-tui = { path = "crates/tracexec-tui", version = "=0.16.0-beta.4" }
+tracexec-backend-ptrace = { path = "crates/tracexec-backend-ptrace", version = "=0.16.0-beta.5" }
+tracexec-backend-ebpf = { path = "crates/tracexec-backend-ebpf", version = "=0.16.0-beta.5" }
+tracexec-exporter-json = { path = "crates/tracexec-exporter-json", version = "=0.16.0-beta.5" }
+tracexec-exporter-perfetto = { path = "crates/tracexec-exporter-perfetto", version = "=0.16.0-beta.5" }
+tracexec-core = { path = "crates/tracexec-core", version = "=0.16.0-beta.5" }
+tracexec-tui = { path = "crates/tracexec-tui", version = "=0.16.0-beta.5" }
 shell-quote = { version = "0.7.1" }
 serde = { version = "1.0.204", features = ["derive", "rc"] }
 tracing = { version = "0.1.40", features = ["release_max_level_info"] }
