@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.16.0-beta.2
+## v0.16.0-beta.3
 
 ### New Features
 
