@@ -1,6 +1,6 @@
 [package]
 name = "tracexec-tui"
-version = "0.1.0"
+version.workspace = true
 repository.workspace = true
 homepage.workspace = true
 keywords.workspace = true
