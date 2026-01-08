@@ -1,5 +1,6 @@
 [package]
 name = "tracexec-core"
+description = "Core crate of tracexec [Internal implementation! DO NOT DEPEND ON!]"
 version.workspace = true
 repository.workspace = true
 homepage.workspace = true
