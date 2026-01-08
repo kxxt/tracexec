@@ -1,2 +1,2 @@
-/include/** linguist-generated=true
-/include/** linguist-vendored=true
+/crates/tracexec-backend-ebpf/include/** linguist-generated=true
+/crates/tracexec-backend-ebpf/include/** linguist-vendored=true
