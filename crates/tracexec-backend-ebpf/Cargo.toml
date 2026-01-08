@@ -1,6 +1,6 @@
 [package]
 name = "tracexec-backend-ebpf"
-version = "0.1.0"
+version.workspace = true
 repository.workspace = true
 homepage.workspace = true
 keywords.workspace = true
@@ -11,7 +11,8 @@ rust-version.workspace = true
 
 [features]
 ebpf-debug = []
-ebpf-no-rcu-kfuncs = [] # Avoid using rcu helpers. Necessary for kernel version < 6.2
+ebpf-no-rcu-kfuncs = [
+] # Avoid using rcu helpers. Necessary for kernel version < 6.2
 static = ["libbpf-sys/static"]
 vendored = ["libbpf-sys/vendored", "vendored-libbpf"]
 vendored-libbpf = ["libbpf-sys/vendored-libbpf", "libbpf-cargo/default"]
@@ -20,7 +21,9 @@ vendored-libbpf = ["libbpf-sys/vendored-libbpf", "libbpf-cargo/default"]
 [dependencies]
 nix = { workspace = true }
 enumflags2 = { workspace = true }
-tracexec-core = { workspace = true, features = ["ebpf"] }
+tracexec-core = { workspace = true, features = [
+    "ebpf",
+] }
 hashbrown = { workspace = true }
 color-eyre = { workspace = true }
 chrono = { workspace = true }
