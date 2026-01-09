@@ -30,10 +30,11 @@ const volatile struct {
 };
 
 struct {
-  __uint(type, BPF_MAP_TYPE_HASH);
-  __uint(max_entries, 1024);
-  __type(key, pid_t);
+  __uint(type, BPF_MAP_TYPE_TASK_STORAGE);
+  __uint(max_entries, 0);
+  __type(key, u32);
   __type(value, struct exec_event);
+  __uint(map_flags, BPF_F_NO_PREALLOC);
 } execs SEC(".maps");
 
 struct {
@@ -239,15 +240,15 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   // config.tracee_pid); Create event
   if (!ctx)
     return 0;
-  if (bpf_map_update_elem(&execs, &pid, &empty_event, BPF_NOEXIST)) {
-    // Cannot allocate new event, map is full!
+  struct exec_event *event =
+      bpf_task_storage_get(&execs, (struct task_struct *)bpf_get_current_task_btf(),
+                           NULL, BPF_LOCAL_STORAGE_GET_F_CREATE);
+  if (!event) {
+    // Cannot allocate new event!
     debug("Failed to allocate new event!");
     drop_counter++;
     return 0;
   }
-  struct exec_event *event = bpf_map_lookup_elem(&execs, &pid);
-  if (!event)
-    return 0;
   // Initialize event
   event->timestamp = timestamp;
   event->header.pid = pid;
@@ -464,7 +465,8 @@ int BPF_PROG(sys_execveat, struct pt_regs *regs, int ret) {
   };
   trace_exec_common(common_ctx);
   pid_t pid = (pid_t)bpf_get_current_pid_tgid();
-  struct exec_event *event = bpf_map_lookup_elem(&execs, &pid);
+  struct exec_event *event = bpf_task_storage_get(
+      &execs, (struct task_struct *)bpf_get_current_task_btf(), NULL, BPF_ANY);
   if (!event || !ctx)
     return 0;
 
@@ -479,8 +481,10 @@ int __always_inline tp_sys_exit_exec(int sysret) {
   pid = (pid_t)tmp;
   tgid = tmp >> 32;
   // debug("sysexit: pid=%d, tgid=%d, ret=%d", pid, tgid, ctx->ret);
-  struct exec_event *event;
-  event = bpf_map_lookup_elem(&execs, &pid);
+  struct task_struct *current_task =
+      (struct task_struct *)bpf_get_current_task_btf();
+  struct exec_event *event =
+      bpf_task_storage_get(&execs, current_task, NULL, BPF_ANY);
   if (event == NULL) {
     debug("Failed to lookup exec_event on sysexit");
     drop_counter += 1;
@@ -488,7 +492,7 @@ int __always_inline tp_sys_exit_exec(int sysret) {
   }
   // Use the old tgid. If the exec is successful, tgid is already set to pid.
   if (!should_trace(event->tgid)) {
-    if (0 != bpf_map_delete_elem(&execs, &pid)) {
+    if (0 != bpf_task_storage_delete(&execs, current_task)) {
       debug("Failed to del element from execs map");
     }
     return 0;
@@ -568,14 +572,15 @@ int __always_inline tp_sys_exit_exec(int sysret) {
       bpf_map_delete_elem(&cache, &key);
     }
   }
-  ret = bpf_ringbuf_output(&events, event, sizeof(struct exec_event), BPF_RB_FORCE_WAKEUP);
+  ret = bpf_ringbuf_output(&events, event, sizeof(struct exec_event),
+                           BPF_RB_FORCE_WAKEUP);
   if (ret != 0) {
 #ifdef EBPF_DEBUG
     u64 avail = bpf_ringbuf_query(&events, BPF_RB_AVAIL_DATA);
     debug("Failed to write exec event to ringbuf: %d, avail: %lu", ret, avail);
 #endif
   }
-  if (0 != bpf_map_delete_elem(&execs, &pid)) {
+  if (0 != bpf_task_storage_delete(&execs, current_task)) {
     debug("Failed to del element from execs map");
   }
   return 0;
@@ -615,7 +620,8 @@ int BPF_PROG(compat_sys_execveat, struct pt_regs *regs, int ret) {
   };
   trace_exec_common(common_ctx);
   pid_t pid = (pid_t)bpf_get_current_pid_tgid();
-  struct exec_event *event = bpf_map_lookup_elem(&execs, &pid);
+  struct exec_event *event = bpf_task_storage_get(
+      &execs, (struct task_struct *)bpf_get_current_task_btf(), NULL, BPF_ANY);
   if (!event || !ctx)
     return 0;
 
