@@ -17,13 +17,11 @@ static u32 drop_counter = 0;
 // about this for BPF.
 static pid_t tracee_tgid = 0;
 const volatile struct {
-  u32 max_num_cpus;
   u32 nofile;
   bool follow_fork;
   pid_t tracee_pid;
   unsigned int tracee_pidns_inum;
 } tracexec_config = {
-    .max_num_cpus = MAX_CPUS,
     // https://www.kxxt.dev/blog/max-possible-value-of-rlimit-nofile/
     .nofile = 2147483584,
     .follow_fork = false,
@@ -63,14 +61,23 @@ struct {
 } exec_args_alloc SEC(".maps");
 
 // A staging area for writing variable length strings
-// I cannot really use a percpu array due to size limit:
-// https://github.com/iovisor/bcc/issues/2519
+// We cannot use per-cpu trick as bpf could be preempted.
+// Note that we update the max_entries in userspace before load.
+// key:
+//   Hi32: event type
+//   Lo32: pid
+// This design is based on that even preemptation happens,
+// (pid, event type) should still be unique.
 struct {
-  __uint(type, BPF_MAP_TYPE_ARRAY);
+  __uint(type, BPF_MAP_TYPE_HASH);
   __uint(max_entries, MAX_CPUS);
-  __type(key, u32);
+  __type(key, u64);
   __type(value, union cache_item);
+  // We prealloc the entries for performance
+  // __uint(map_flags, BPF_F_NO_PREALLOC);
 } cache SEC(".maps");
+
+const union cache_item cache_item_initializer;
 
 struct {
   __uint(type, BPF_MAP_TYPE_RINGBUF);
@@ -329,12 +336,13 @@ int trace_fork(u64 *ctx) {
   }
   if (should_trace(parent_tgid)) {
     add_tgid_to_closure(pid);
-    u32 entry_index = bpf_get_smp_processor_id();
-    if (entry_index > tracexec_config.max_num_cpus) {
-      debug("Too many cores!");
+    u64 key = ((u64)FORK_EVENT << 32) + (u32)pid;
+    ret = bpf_map_update_elem(&cache, &key, &cache_item_initializer, BPF_ANY);
+    if (ret < 0) {
+      debug("Failed to init new fork_event in cache: %d!", ret);
       return 1;
     }
-    struct fork_event *entry = bpf_map_lookup_elem(&cache, &entry_index);
+    struct fork_event *entry = bpf_map_lookup_elem(&cache, &key);
     if (entry == NULL) {
       debug("This should not happen!");
       return 1;
@@ -345,6 +353,7 @@ int trace_fork(u64 *ctx) {
     entry->parent_tgid = parent_tgid;
     ret =
         bpf_ringbuf_output(&events, entry, sizeof(*entry), BPF_RB_FORCE_WAKEUP);
+    bpf_map_delete_elem(&cache, &key);
     if (ret < 0) {
       // TODO: find a better way to ensure userspace receives fork event
       debug("Failed to send fork event!");
@@ -373,12 +382,13 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
   // remove tgid from closure
   bpf_map_delete_elem(&tgid_closure, &tgid);
 
-  u32 entry_index = bpf_get_smp_processor_id();
-  if (entry_index > tracexec_config.max_num_cpus) {
-    debug("Too many cores!");
+  u64 key = ((u64)EXIT_EVENT << 32) + (u32)pid;
+  ret = bpf_map_update_elem(&cache, &key, &cache_item_initializer, BPF_ANY);
+  if (ret < 0) {
+    debug("Failed to init new exit_event in cache: %d!", ret);
     return 1;
   }
-  struct exit_event *entry = bpf_map_lookup_elem(&cache, &entry_index);
+  struct exit_event *entry = bpf_map_lookup_elem(&cache, &key);
   if (entry == NULL) {
     debug("This should not happen!");
     return 1;
@@ -401,12 +411,14 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
   ret = bpf_core_read(&exit_code, sizeof(exit_code), &current->exit_code);
   if (ret < 0) {
     debug("Failed to read exit code!");
+    bpf_map_delete_elem(&cache, &key);
     return 0;
   }
   entry->code = exit_code >> 8;
   entry->sig = exit_code & 0xFF;
   entry->timestamp = timestamp;
   ret = bpf_ringbuf_output(&events, entry, sizeof(*entry), BPF_RB_FORCE_WAKEUP);
+  bpf_map_delete_elem(&cache, &key);
   if (ret < 0) {
     // TODO: find a better way to ensure userspace receives exit event
     debug("Failed to send exit event!");
@@ -514,15 +526,14 @@ int __always_inline tp_sys_exit_exec(int sysret) {
         event->header.flags |= CRED_READ_ERR;
         goto groups_out;
       }
-      u32 entry_index = bpf_get_smp_processor_id();
-      if (entry_index > tracexec_config.max_num_cpus) {
-        debug("Too many cores!");
-        event->header.flags |= CRED_READ_ERR;
-        goto groups_out;
-        return 1;
-      }
       // initialize groups_event struct
-      struct groups_event *entry = bpf_map_lookup_elem(&cache, &entry_index);
+      u64 key = ((u64)GROUPS_EVENT << 32) + (u32)pid;
+      ret = bpf_map_update_elem(&cache, &key, &cache_item_initializer, BPF_ANY);
+      if (ret < 0) {
+        debug("Failed to init new groups_event in cache: %d!", ret);
+        goto groups_out;
+      }
+      struct groups_event *entry = bpf_map_lookup_elem(&cache, &key);
       if (entry == NULL) {
         debug("This should not happen!");
         event->header.flags |= CRED_READ_ERR;
@@ -552,6 +563,7 @@ int __always_inline tp_sys_exit_exec(int sysret) {
         debug("Failed to send groups event!");
       }
     groups_out:;
+      bpf_map_delete_elem(&cache, &key);
     }
   }
   ret = bpf_ringbuf_output(&events, event, sizeof(struct exec_event), 0);
@@ -810,12 +822,13 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
   if (event == NULL)
     return 1;
   event->fd_count++;
-  u32 entry_index = bpf_get_smp_processor_id();
-  if (entry_index > tracexec_config.max_num_cpus) {
-    debug("Too many cores!");
+  u64 key = ((u64)FD_EVENT << 32) + (u32)bpf_get_current_pid_tgid();
+  int ret = bpf_map_update_elem(&cache, &key, &cache_item_initializer, BPF_ANY);
+  if (ret < 0) {
+    debug("Failed to init new fd_event in cache: %d!", ret);
     return 1;
   }
-  struct fd_event *entry = bpf_map_lookup_elem(&cache, &entry_index);
+  struct fd_event *entry = bpf_map_lookup_elem(&cache, &key);
   if (entry == NULL) {
     debug("This should not happen!");
     return 1;
@@ -826,7 +839,7 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
   entry->fd = fd_num;
   // read f_path
   struct file *file;
-  int ret = bpf_core_read(&file, sizeof(void *), &fd_array[fd_num]);
+  ret = bpf_core_read(&file, sizeof(void *), &fd_array[fd_num]);
   if (ret < 0) {
     debug("failed to read file struct: %d", ret);
     goto ptr_err;
@@ -865,11 +878,13 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
   // debug("open fd: %u -> %u with flags %u", fd_num, entry->path_id,
   //       entry->flags);
   bpf_ringbuf_output(&events, entry, sizeof(struct fd_event), 0);
+  bpf_map_delete_elem(&cache, &key);
   return 0;
 ptr_err:
   entry->header.flags |= PTR_READ_FAILURE;
   entry->path_id = -1;
   bpf_ringbuf_output(&events, entry, sizeof(struct fd_event), 0);
+  bpf_map_delete_elem(&cache, &key);
   return 1;
 }
 
@@ -893,12 +908,13 @@ static int read_strings(u32 index, struct reader_context *ctx) {
     return 1;
   }
   // Read the str into a temporary buffer
-  u32 entry_index = bpf_get_smp_processor_id();
-  if (entry_index > tracexec_config.max_num_cpus) {
-    debug("Too many cores!");
+  u64 key = ((u64)STRING_EVENT << 32) + (u32)bpf_get_current_pid_tgid();
+  ret = bpf_map_update_elem(&cache, &key, &cache_item_initializer, BPF_ANY);
+  if (ret < 0) {
+    debug("Failed to init new string_event in cache: %d!", ret);
     return 1;
   }
-  struct string_event *entry = bpf_map_lookup_elem(&cache, &entry_index);
+  struct string_event *entry = bpf_map_lookup_elem(&cache, &key);
   if (entry == NULL) {
     debug("This should not happen!");
     return 1;
@@ -924,6 +940,7 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   }
   ret = bpf_ringbuf_output(
       &events, entry, sizeof(struct tracexec_event_header) + bytes_read, 0);
+  bpf_map_delete_elem(&cache, &key);
   if (ret < 0) {
     event->header.flags |= OUTPUT_FAILURE;
   }

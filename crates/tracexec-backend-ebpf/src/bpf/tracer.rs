@@ -486,10 +486,11 @@ impl EbpfTracer {
     let skel_builder = TracexecSystemSkelBuilder::default();
     bump_memlock_rlimit()?;
     let mut open_skel = skel_builder.open(object)?;
-    let ncpu = num_possible_cpus()?.try_into().expect("Too many cores!");
+    let ncpu: u32 = num_possible_cpus()?.try_into().expect("Too many cores!");
     let rodata = open_skel.maps.rodata_data.as_deref_mut().unwrap();
-    rodata.tracexec_config.max_num_cpus = ncpu;
-    open_skel.maps.cache.set_max_entries(ncpu)?;
+    // Considering that bpf is preemept-able, we must be prepared to handle more entries.
+    let cache_size = 2 * ncpu;
+    open_skel.maps.cache.set_max_entries(cache_size)?;
     // tracexec runs in the same pid namespace with the tracee
     let pid_ns_ino = std::fs::metadata("/proc/self/ns/pid")?.ino();
     let (skel, child) = if !cmd.is_empty() {
