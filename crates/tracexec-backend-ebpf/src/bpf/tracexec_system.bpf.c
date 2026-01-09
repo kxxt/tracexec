@@ -566,7 +566,7 @@ int __always_inline tp_sys_exit_exec(int sysret) {
       bpf_map_delete_elem(&cache, &key);
     }
   }
-  ret = bpf_ringbuf_output(&events, event, sizeof(struct exec_event), 0);
+  ret = bpf_ringbuf_output(&events, event, sizeof(struct exec_event), BPF_RB_FORCE_WAKEUP);
   if (ret != 0) {
 #ifdef EBPF_DEBUG
     u64 avail = bpf_ringbuf_query(&events, BPF_RB_AVAIL_DATA);
