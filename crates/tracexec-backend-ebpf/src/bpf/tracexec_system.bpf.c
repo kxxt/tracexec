@@ -237,6 +237,8 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   int ret;
   // debug("sysenter: pid=%d, tgid=%d, tracee=%d", pid, tgid,
   // config.tracee_pid); Create event
+  if (!ctx)
+    return 0;
   if (bpf_map_update_elem(&execs, &pid, &empty_event, BPF_NOEXIST)) {
     // Cannot allocate new event, map is full!
     debug("Failed to allocate new event!");
@@ -244,7 +246,7 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
     return 0;
   }
   struct exec_event *event = bpf_map_lookup_elem(&execs, &pid);
-  if (!event || !ctx)
+  if (!event)
     return 0;
   // Initialize event
   event->timestamp = timestamp;
