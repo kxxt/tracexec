@@ -1,9 +1,12 @@
 name: Coverage
 
+permissions:
+  contents: read
+
 on: [pull_request, push]
 
 jobs:
-  publish-crates:
+  test-coverage:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
