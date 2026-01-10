@@ -871,13 +871,13 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
   }
   // debug("open fd: %u -> %u with flags %u", fd_num, entry->path_id,
   //       entry->flags);
-  bpf_ringbuf_output(&events, entry, sizeof(struct fd_event), 0);
+  bpf_ringbuf_output(&events, entry, sizeof(struct fd_event), BPF_RB_FORCE_WAKEUP);
   bpf_map_delete_elem(&cache, &key);
   return 0;
 ptr_err:
   entry->header.flags |= PTR_READ_FAILURE;
   entry->path_id = -1;
-  bpf_ringbuf_output(&events, entry, sizeof(struct fd_event), 0);
+  bpf_ringbuf_output(&events, entry, sizeof(struct fd_event), BPF_RB_FORCE_WAKEUP);
   bpf_map_delete_elem(&cache, &key);
   return 1;
 }
@@ -933,7 +933,7 @@ static int read_strings(u32 index, struct reader_context *ctx) {
     entry->header.flags |= POSSIBLE_TRUNCATION;
   }
   ret = bpf_ringbuf_output(
-      &events, entry, sizeof(struct tracexec_event_header) + bytes_read, 0);
+      &events, entry, sizeof(struct tracexec_event_header) + bytes_read, BPF_RB_FORCE_WAKEUP);
   bpf_map_delete_elem(&cache, &key);
   if (ret < 0) {
     event->header.flags |= OUTPUT_FAILURE;
@@ -1234,7 +1234,7 @@ static int read_send_path(const struct path *path,
   }
   // Send path event to userspace
   event->segment_count = ctx.base_index;
-  ret = bpf_ringbuf_output(&events, event, sizeof(*event), 0);
+  ret = bpf_ringbuf_output(&events, event, sizeof(*event), BPF_RB_FORCE_WAKEUP);
   bpf_task_storage_delete(&path_event_cache, current_task);
   if (ret < 0) {
     debug("Failed to output path_event to ringbuf");
@@ -1249,7 +1249,7 @@ loop_err:
   goto err_out;
 err_out:
   event->segment_count = 0;
-  ret = bpf_ringbuf_output(&events, event, sizeof(*event), 0);
+  ret = bpf_ringbuf_output(&events, event, sizeof(*event), BPF_RB_FORCE_WAKEUP);
   bpf_task_storage_delete(&path_event_cache, current_task);
   if (ret < 0) {
     debug("Failed to output path_event to ringbuf");
