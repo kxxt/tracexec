@@ -1,15 +1,15 @@
+use internment::ArcIntern;
 use serde::{Serialize, Serializer};
 use std::{
   borrow::Cow,
   fmt::{Debug, Display},
   ops::Deref,
-  sync::{Arc, LazyLock, Weak},
+  sync::LazyLock,
 };
-use weak_table::WeakHashSet;
 
-#[derive(Clone)]
 #[repr(transparent)]
-pub struct ArcStr(Arc<str>);
+#[derive(Clone)]
+pub struct ArcStr(ArcIntern<String>);
 
 impl ArcStr {
   pub fn as_str(&self) -> &str {
@@ -36,17 +36,11 @@ where
   T: AsRef<str>,
 {
   fn eq(&self, other: &T) -> bool {
-    &*self.0 == other.as_ref()
+    *self.0 == other.as_ref()
   }
 }
 
 impl Eq for ArcStr {}
-
-impl From<Arc<str>> for ArcStr {
-  fn from(value: Arc<str>) -> Self {
-    Self(value)
-  }
-}
 
 impl From<ArcStr> for Cow<'_, str> {
   fn from(value: ArcStr) -> Self {
@@ -95,7 +89,7 @@ impl Debug for ArcStr {
 
 impl From<&str> for ArcStr {
   fn from(value: &str) -> Self {
-    Arc::<str>::from(value).into()
+    Self(ArcIntern::from_ref(value))
   }
 }
 
@@ -105,37 +99,23 @@ impl Default for ArcStr {
   }
 }
 
-static DEFAULT_ARCSTR: LazyLock<ArcStr> = LazyLock::new(|| "".into());
+static DEFAULT_ARCSTR: LazyLock<ArcStr> = LazyLock::new(|| ArcStr(ArcIntern::from_ref("")));
 
 #[derive(Default)]
-pub struct StringCache {
-  inner: WeakHashSet<Weak<str>>,
-}
+pub struct StringCache;
 
 impl StringCache {
   pub fn new() -> Self {
-    Self::default()
+    Self
   }
 
-  pub fn get_or_insert(&mut self, s: &str) -> ArcStr {
-    if let Some(s) = self.inner.get(s) {
-      s.into()
-    } else {
-      let arc: Arc<str> = Arc::from(s);
-      self.inner.insert(arc.clone());
-      arc.into()
-    }
+  pub fn get_or_insert(&self, s: &str) -> ArcStr {
+    ArcStr(ArcIntern::from_ref(s))
   }
 
   // Probably this is not necessary.
   // I don't think we can find a way to turn a String into Arc<str> in-place.
-  pub fn get_or_insert_owned(&mut self, s: String) -> ArcStr {
-    if let Some(s) = self.inner.get(s.as_str()) {
-      s.into()
-    } else {
-      let arc: Arc<str> = Arc::from(s);
-      self.inner.insert(arc.clone());
-      arc.into()
-    }
+  pub fn get_or_insert_owned(&self, s: String) -> ArcStr {
+    ArcStr(ArcIntern::new(s))
   }
 }

@@ -18,9 +18,6 @@ ebpf = []
 filterable-enum = { version = "0.1.1" }
 enumflags2 = "0.7.9"
 regex-cursor = { version = "0.1.4", default-features = false }
-weak-table = { version = "0.3.2", default-features = false, features = [
-    "ahash",
-] }
 filedescriptor = "0.8.2"
 clap_complete = "4.5.2"
 directories = "6"
@@ -42,3 +39,4 @@ color-eyre = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }
 crossterm = { workspace = true }
+internment = { version = "0.8.6", default-features = false, features = ["arc", "serde"] }

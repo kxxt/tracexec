@@ -1,8 +1,4 @@
-use std::{
-  borrow::Cow,
-  ffi::CStr,
-  sync::{LazyLock, RwLock},
-};
+use std::{borrow::Cow, ffi::CStr};
 
 use tracexec_core::cache::{ArcStr, StringCache};
 
@@ -26,9 +22,9 @@ fn utf8_lossy_cow_from_bytes_with_nul(data: &[u8]) -> Cow<'_, str> {
 
 fn cached_cow(cow: Cow<str>) -> ArcStr {
   match cow {
-    Cow::Borrowed(s) => CACHE.write().unwrap().get_or_insert(s),
-    Cow::Owned(s) => CACHE.write().unwrap().get_or_insert_owned(s),
+    Cow::Borrowed(s) => CACHE.get_or_insert(s),
+    Cow::Owned(s) => CACHE.get_or_insert_owned(s),
   }
 }
 
-static CACHE: LazyLock<RwLock<StringCache>> = LazyLock::new(|| RwLock::new(StringCache::new()));
+static CACHE: StringCache = StringCache;

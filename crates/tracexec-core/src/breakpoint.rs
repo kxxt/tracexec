@@ -123,7 +123,7 @@ impl BreakPointPattern {
         let OutputMsg::Ok(filename) = filename else {
           return false;
         };
-        filename == path
+        filename.as_str() == path
       }
     }
   }
