@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 /// Regex and regex-cursor related code
 pub use regex_cursor::*;
 
-use crate::event::OutputMsg;
+use crate::{cache::ArcStr, event::OutputMsg};
 
 pub trait BidirectionalIterator: Iterator {
   fn prev(&mut self) -> Option<Self::Item>;
@@ -304,7 +304,7 @@ pub struct ArgvCursor<'a, T> {
   offset: usize,
 }
 
-pub static SPACE: LazyLock<OutputMsg> = LazyLock::new(|| OutputMsg::Ok(" ".into()));
+pub static SPACE: LazyLock<OutputMsg> = LazyLock::new(|| OutputMsg::Ok(ArcStr::from(" ")));
 
 impl<'a, T> ArgvCursor<'a, T>
 where
@@ -387,7 +387,7 @@ mod cursor_tests {
   #[test]
   fn smoke_test() {
     let single = vec![ArcStr::from("abc")];
-    let separator = " ".into();
+    let separator = ArcStr::from(" ");
     let mut cursor = ArgvCursor::new(single.as_slice(), &separator);
     assert_eq!(cursor.chunk(), b"abc");
     assert!(!cursor.advance());

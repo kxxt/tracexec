@@ -10,7 +10,6 @@ use std::{
   io::{self, BufRead, BufReader, Read},
   os::raw::c_int,
   path::{Path, PathBuf},
-  sync::{Arc, LazyLock, RwLock},
 };
 
 use crate::cache::ArcStr;
@@ -45,8 +44,7 @@ pub fn read_comm(pid: Pid) -> color_eyre::Result<ArcStr> {
   let mut buf = std::fs::read(filename)?;
   buf.pop(); // remove trailing newline
   let utf8 = String::from_utf8_lossy(&buf);
-  let mut cache = CACHE.write().unwrap();
-  Ok(cache.get_or_insert(&utf8))
+  Ok(CACHE.get_or_insert(&utf8))
 }
 
 pub fn read_cwd(pid: Pid) -> std::io::Result<ArcStr> {
@@ -266,7 +264,7 @@ impl Default for FileDescriptorInfo {
   fn default() -> Self {
     Self {
       fd: Default::default(),
-      path: OutputMsg::Ok("".into()),
+      path: OutputMsg::Ok(ArcStr::default()),
       pos: Default::default(),
       flags: OFlag::empty(),
       mnt_id: Default::default(),
@@ -302,8 +300,7 @@ pub fn read_fdinfo(pid: Pid, fd: i32) -> color_eyre::Result<FileDescriptorInfo> 
       "mnt_id:" => info.mnt_id = value.parse()?,
       "ino:" => info.ino = value.parse()?,
       _ => {
-        let mut cache = CACHE.write().unwrap();
-        let line = cache.get_or_insert_owned(line);
+        let line = CACHE.get_or_insert_owned(line);
         info.extra.push(line)
       }
     }
@@ -332,12 +329,10 @@ fn get_mountinfo_by_mnt_id(pid: Pid, mnt_id: c_int) -> color_eyre::Result<ArcStr
     let line = line?;
     let parts = line.split_once(' ');
     if parts.map(|(mount_id, _)| mount_id.parse()) == Some(Ok(mnt_id)) {
-      let mut cache = CACHE.write().unwrap();
-      return Ok(cache.get_or_insert_owned(line));
+      return Ok(CACHE.get_or_insert_owned(line));
     }
   }
-  let mut cache = CACHE.write().unwrap();
-  Ok(cache.get_or_insert("Not found. This is probably a pipe or something else."))
+  Ok(CACHE.get_or_insert("Not found. This is probably a pipe or something else."))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -388,8 +383,7 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
     if e.kind() == io::ErrorKind::PermissionDenied || e.kind() == io::ErrorKind::NotFound {
       Interpreter::ExecutableInaccessible
     } else {
-      let mut cache = CACHE.write().unwrap();
-      let e = cache.get_or_insert_owned(e.to_string());
+      let e = CACHE.get_or_insert_owned(e.to_string());
       Interpreter::Error(e)
     }
   }
@@ -402,8 +396,7 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
   let mut buf = [0u8; 2];
 
   if let Err(e) = reader.read_exact(&mut buf) {
-    let mut cache = CACHE.write().unwrap();
-    let e = cache.get_or_insert_owned(e.to_string());
+    let e = CACHE.get_or_insert_owned(e.to_string());
     return Interpreter::Error(e);
   };
   if &buf != b"#!" {
@@ -413,8 +406,7 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
   let mut buf = Vec::new();
 
   if let Err(e) = reader.read_until(b'\n', &mut buf) {
-    let mut cache = CACHE.write().unwrap();
-    let e = cache.get_or_insert_owned(e.to_string());
+    let e = CACHE.get_or_insert_owned(e.to_string());
     return Interpreter::Error(e);
   };
   // Get trimmed shebang line [start, end) indices
@@ -429,8 +421,7 @@ pub fn read_interpreter(exe: &Path) -> Interpreter {
     .map(|x| x + 1)
     .unwrap_or(buf.len());
   let shebang = String::from_utf8_lossy(&buf[start..end]);
-  let mut cache = CACHE.write().unwrap();
-  let shebang = cache.get_or_insert(&shebang);
+  let shebang = CACHE.get_or_insert(&shebang);
   Interpreter::Shebang(shebang)
 }
 
@@ -470,13 +461,12 @@ pub fn parse_failiable_envp(envp: Vec<OutputMsg>) -> (BTreeMap<OutputMsg, Output
       .map(|entry| {
         if let OutputMsg::Ok(s) | OutputMsg::PartialOk(s) = entry {
           let (key, value) = parse_env_entry(&s);
-          let mut cache = CACHE.write().unwrap();
           if key.starts_with('-') {
             has_dash_var = true;
           }
           (
-            OutputMsg::Ok(cache.get_or_insert(key)),
-            OutputMsg::Ok(cache.get_or_insert(value)),
+            OutputMsg::Ok(CACHE.get_or_insert(key)),
+            OutputMsg::Ok(CACHE.get_or_insert(value)),
           )
         } else {
           (entry.clone(), entry)
@@ -488,13 +478,11 @@ pub fn parse_failiable_envp(envp: Vec<OutputMsg>) -> (BTreeMap<OutputMsg, Output
 }
 
 pub fn cached_str(s: &str) -> ArcStr {
-  let mut cache = CACHE.write().unwrap();
-  cache.get_or_insert(s)
+  CACHE.get_or_insert(s)
 }
 
 pub fn cached_string(s: String) -> ArcStr {
-  let mut cache = CACHE.write().unwrap();
-  cache.get_or_insert_owned(s)
+  CACHE.get_or_insert_owned(s)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -563,10 +551,9 @@ impl BaselineInfo {
     let cwd = cached_str(&std::env::current_dir()?.to_string_lossy()).into();
     let env = std::env::vars()
       .map(|(k, v)| {
-        let mut cache = CACHE.write().unwrap();
         (
-          cache.get_or_insert_owned(k).into(),
-          cache.get_or_insert_owned(v).into(),
+          CACHE.get_or_insert_owned(k).into(),
+          CACHE.get_or_insert_owned(v).into(),
         )
       })
       .collect();
@@ -578,10 +565,9 @@ impl BaselineInfo {
     let cwd = cached_str(&std::env::current_dir()?.to_string_lossy()).into();
     let env = std::env::vars()
       .map(|(k, v)| {
-        let mut cache = CACHE.write().unwrap();
         (
-          cache.get_or_insert_owned(k).into(),
-          cache.get_or_insert_owned(v).into(),
+          CACHE.get_or_insert_owned(k).into(),
+          CACHE.get_or_insert_owned(v).into(),
         )
       })
       .collect();
@@ -590,8 +576,7 @@ impl BaselineInfo {
   }
 }
 
-static CACHE: LazyLock<Arc<RwLock<StringCache>>> =
-  LazyLock::new(|| Arc::new(RwLock::new(StringCache::new())));
+static CACHE: StringCache = StringCache;
 
 #[cfg(test)]
 mod tests {
