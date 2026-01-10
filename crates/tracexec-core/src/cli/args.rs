@@ -549,3 +549,401 @@ pub struct ExporterArgs {
   #[clap(short, long, help = "prettify the output if supported")]
   pub pretty: bool,
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use clap::Parser;
+
+  // Helper wrapper so we can test clap parsing easily
+  #[derive(Parser, Debug)]
+  struct TestCli<T: Args + Clone + std::fmt::Debug> {
+    #[clap(flatten)]
+    args: T,
+  }
+
+  /* ----------------------------- PtraceArgs ----------------------------- */
+
+  #[test]
+  fn test_ptrace_args_merge_config() {
+    let mut args = PtraceArgs {
+      seccomp_bpf: SeccompBpf::Auto,
+      polling_interval: None,
+    };
+
+    let cfg = PtraceConfig {
+      seccomp_bpf: Some(SeccompBpf::On),
+    };
+
+    args.merge_config(cfg);
+    assert_eq!(args.seccomp_bpf, SeccompBpf::On);
+  }
+
+  #[test]
+  fn test_ptrace_args_cli_parse() {
+    let cli = TestCli::<PtraceArgs>::parse_from(["test", "--polling-interval", "100"]);
+    assert_eq!(cli.args.polling_interval, Some(100));
+  }
+
+  /* ---------------------------- ModifierArgs ----------------------------- */
+
+  #[test]
+  fn test_modifier_processed_defaults() {
+    let args = ModifierArgs::default().processed();
+    assert!(args.resolve_proc_self_exe);
+    assert!(args.hide_cloexec_fds);
+    assert!(!args.timestamp);
+    assert!(args.inline_timestamp_format.is_some());
+  }
+
+  #[test]
+  fn test_modifier_processed_fd_implies_stdio() {
+    let args = ModifierArgs {
+      fd_in_cmdline: true,
+      ..Default::default()
+    }
+    .processed();
+
+    assert!(args.stdio_in_cmdline);
+  }
+
+  #[test]
+  fn test_modifier_merge_config() {
+    let mut args = ModifierArgs::default();
+
+    let cfg = ModifierConfig {
+      successful_only: Some(true),
+      fd_in_cmdline: Some(true),
+      stdio_in_cmdline: None,
+      resolve_proc_self_exe: Some(false),
+      hide_cloexec_fds: Some(false),
+      timestamp: None,
+      seccomp_bpf: None,
+    };
+
+    args.merge_config(cfg);
+
+    assert!(args.successful_only);
+    assert!(args.fd_in_cmdline);
+    assert!(!args.resolve_proc_self_exe);
+    assert!(!args.hide_cloexec_fds);
+  }
+
+  #[test]
+  fn test_modifier_args_cli_overrides_config_positive() {
+    let mut args = ModifierArgs {
+      resolve_proc_self_exe: true, // CLI explicitly enables
+      ..Default::default()
+    };
+
+    let cfg = ModifierConfig {
+      resolve_proc_self_exe: Some(false),
+      ..Default::default()
+    };
+
+    args.merge_config(cfg);
+
+    assert!(args.resolve_proc_self_exe);
+  }
+
+  #[test]
+  fn test_modifier_args_cli_no_flag_blocks_config() {
+    let mut args = ModifierArgs {
+      no_hide_cloexec_fds: true, // CLI explicitly disables
+      ..Default::default()
+    };
+
+    let cfg = ModifierConfig {
+      hide_cloexec_fds: Some(true),
+      ..Default::default()
+    };
+
+    args.merge_config(cfg);
+
+    assert!(!args.hide_cloexec_fds);
+  }
+
+  #[test]
+  fn test_modifier_cli_parse_conflicts() {
+    let cli = TestCli::<ModifierArgs>::parse_from(["test", "--no-timestamp"]);
+
+    let processed = cli.args.processed();
+    assert!(!processed.timestamp);
+  }
+
+  #[test]
+  fn test_modifier_args_timestamp_cli_overrides_config() {
+    let mut args = ModifierArgs {
+      timestamp: true,
+      ..Default::default()
+    };
+
+    let cfg = ModifierConfig {
+      timestamp: Some(crate::cli::config::TimestampConfig {
+        enable: false,
+        inline_format: None,
+      }),
+      ..Default::default()
+    };
+
+    args.merge_config(cfg);
+
+    assert!(args.timestamp);
+  }
+
+  /* -------------------------- TracerEventArgs ---------------------------- */
+
+  #[test]
+  fn test_tracer_event_filter_parser_basic() {
+    let f = tracer_event_filter_parser("warning,error").unwrap();
+    assert!(f.contains(TracerEventDetailsKind::Warning));
+    assert!(f.contains(TracerEventDetailsKind::Error));
+  }
+
+  #[test]
+  fn test_tracer_event_filter_duplicate() {
+    let err = tracer_event_filter_parser("warning,warning").unwrap_err();
+    assert!(err.contains("already included"));
+  }
+
+  #[test]
+  fn test_tracer_event_args_all() {
+    let args = TracerEventArgs::all();
+    let f = args.filter().unwrap();
+    assert_eq!(f, BitFlags::all());
+  }
+
+  #[test]
+  fn test_tracer_event_include_exclude_conflict() {
+    let args = TracerEventArgs {
+      show_all_events: false,
+      filter: BitFlags::empty(),
+      filter_include: TracerEventDetailsKind::Error.into(),
+      filter_exclude: TracerEventDetailsKind::Error.into(),
+    };
+
+    assert!(args.filter().is_err());
+  }
+
+  /* ---------------------------- LogModeArgs ------------------------------ */
+
+  #[test]
+  fn test_logmode_foreground_logic() {
+    let args = LogModeArgs {
+      foreground: false,
+      no_foreground: true,
+      ..Default::default()
+    };
+    assert!(!args.foreground());
+
+    let args = LogModeArgs {
+      foreground: true,
+      no_foreground: false,
+      ..Default::default()
+    };
+    assert!(args.foreground());
+  }
+
+  #[test]
+  fn test_logmode_merge_color_config() {
+    let mut args = LogModeArgs::default();
+
+    let cfg = LogModeConfig {
+      color_level: Some(ColorLevel::Less),
+      ..Default::default()
+    };
+
+    args.merge_config(cfg);
+    assert!(args.less_colors);
+  }
+
+  #[test]
+  fn test_logmode_fd_display_config() {
+    let mut args = LogModeArgs::default();
+
+    let cfg = LogModeConfig {
+      fd_display: Some(FileDescriptorDisplay::Show),
+      ..Default::default()
+    };
+
+    args.merge_config(cfg);
+    assert!(args.show_fd);
+  }
+
+  #[test]
+  fn test_logmode_cli_parse() {
+    let cli = TestCli::<LogModeArgs>::parse_from(["test", "--show-cmdline", "--show-interpreter"]);
+
+    assert!(cli.args.show_cmdline);
+    assert!(cli.args.show_interpreter);
+  }
+
+  #[test]
+  fn test_logmode_cli_no_foreground_overrides_config() {
+    let mut args = LogModeArgs {
+      no_foreground: true,
+      ..Default::default()
+    };
+
+    let cfg = LogModeConfig {
+      foreground: Some(true),
+      ..Default::default()
+    };
+
+    args.merge_config(cfg);
+
+    assert!(!args.foreground());
+  }
+
+  #[test]
+  fn test_logmode_cli_show_fd_overrides_config_hide() {
+    let mut args = LogModeArgs {
+      show_fd: true,
+      ..Default::default()
+    };
+
+    let cfg = LogModeConfig {
+      fd_display: Some(FileDescriptorDisplay::Hide),
+      ..Default::default()
+    };
+
+    args.merge_config(cfg);
+
+    assert!(args.show_fd);
+    assert!(!args.no_show_fd);
+  }
+
+  #[test]
+  fn test_logmode_cli_color_overrides_config() {
+    let mut args = LogModeArgs {
+      more_colors: true,
+      ..Default::default()
+    };
+
+    let cfg = LogModeConfig {
+      color_level: Some(ColorLevel::Less),
+      ..Default::default()
+    };
+
+    args.merge_config(cfg);
+
+    assert!(args.more_colors);
+    assert!(!args.less_colors);
+  }
+
+  /* ----------------------------- TuiModeArgs ----------------------------- */
+
+  #[test]
+  fn test_tui_merge_config_exit_handling() {
+    let mut args = TuiModeArgs::default();
+
+    let cfg = TuiModeConfig {
+      exit_handling: Some(ExitHandling::Kill),
+      follow: Some(true),
+      ..Default::default()
+    };
+
+    args.merge_config(cfg);
+
+    assert!(args.kill_on_exit);
+    assert!(args.follow);
+  }
+
+  #[test]
+  fn test_tui_cli_parse() {
+    let cli =
+      TestCli::<TuiModeArgs>::parse_from(["test", "--tty", "--follow", "--frame-rate", "30"]);
+
+    assert!(cli.args.tty);
+    assert!(cli.args.follow);
+    assert_eq!(cli.args.frame_rate, Some(30.0));
+  }
+
+  #[test]
+  fn test_tui_cli_exit_handling_overrides_config() {
+    let mut args = TuiModeArgs {
+      terminate_on_exit: true,
+      ..Default::default()
+    };
+
+    let cfg = TuiModeConfig {
+      exit_handling: Some(ExitHandling::Kill),
+      ..Default::default()
+    };
+
+    args.merge_config(cfg);
+
+    assert!(args.terminate_on_exit);
+    assert!(!args.kill_on_exit);
+  }
+
+  /* --------------------------- DebuggerArgs ------------------------------ */
+
+  #[test]
+  fn test_debugger_merge_config() {
+    let mut args = DebuggerArgs::default();
+
+    let cfg = DebuggerConfig {
+      default_external_command: Some("echo hi".into()),
+    };
+
+    args.merge_config(cfg);
+    assert_eq!(args.default_external_command.as_deref(), Some("echo hi"));
+  }
+
+  #[test]
+  fn test_debugger_cli_parse_breakpoint() {
+    let cli = TestCli::<DebuggerArgs>::parse_from([
+      "test",
+      "--add-breakpoint",
+      "sysenter:exact-filename:/bin/ls",
+    ]);
+
+    assert_eq!(cli.args.breakpoints.len(), 1);
+  }
+
+  #[test]
+  fn test_debugger_cli_command_overrides_config() {
+    let mut args = DebuggerArgs {
+      default_external_command: Some("cli-cmd".into()),
+      ..Default::default()
+    };
+
+    let cfg = DebuggerConfig {
+      default_external_command: Some("config-cmd".into()),
+    };
+
+    args.merge_config(cfg);
+
+    assert_eq!(args.default_external_command.as_deref(), Some("cli-cmd"));
+  }
+
+  /* ------------------------- frame_rate_parser --------------------------- */
+
+  #[test]
+  fn test_frame_rate_parser_valid() {
+    assert_eq!(frame_rate_parser("60").unwrap(), 60.0);
+  }
+
+  #[test]
+  fn test_frame_rate_parser_too_low() {
+    let err = frame_rate_parser("1").unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("too low"));
+  }
+
+  #[test]
+  fn test_frame_rate_parser_invalid() {
+    let err = frame_rate_parser("-1").unwrap_err();
+    assert!(err.to_string().contains("Invalid"));
+  }
+
+  /* ----------------------------- ExporterArgs ---------------------------- */
+
+  #[test]
+  fn test_exporter_cli_parse() {
+    let cli = TestCli::<ExporterArgs>::parse_from(["test", "--pretty"]);
+
+    assert!(cli.args.pretty);
+  }
+}

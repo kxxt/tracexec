@@ -289,3 +289,246 @@ impl Cli {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::cli::args::{
+    DebuggerArgs, LogModeArgs, ModifierArgs, PtraceArgs, TracerEventArgs, TuiModeArgs,
+  };
+  use crate::cli::config::{
+    Config, DebuggerConfig, LogModeConfig, ModifierConfig, PtraceConfig, TuiModeConfig,
+  };
+  use crate::cli::options::{Color, ExportFormat, SeccompBpf};
+  use std::fs;
+  use std::io::Write;
+  use std::path::PathBuf;
+
+  #[test]
+  fn test_cli_parse_log() {
+    let args = vec![
+      "tracexec",
+      "log",
+      "--show-interpreter",
+      "--successful-only",
+      "--",
+      "echo",
+      "hello",
+    ];
+    let cli = Cli::parse_from(args);
+
+    if let CliCommand::Log {
+      cmd,
+      tracing_args,
+      modifier_args,
+      ..
+    } = cli.cmd
+    {
+      assert_eq!(cmd, vec!["echo", "hello"]);
+      assert!(tracing_args.show_interpreter);
+      assert!(modifier_args.successful_only);
+    } else {
+      panic!("Expected Log command");
+    }
+  }
+
+  #[test]
+  fn test_cli_parse_tui() {
+    let args = vec!["tracexec", "tui", "--tty", "--follow", "--", "bash"];
+    let cli = Cli::parse_from(args);
+
+    if let CliCommand::Tui { cmd, tui_args, .. } = cli.cmd {
+      assert_eq!(cmd, vec!["bash"]);
+      assert!(tui_args.tty);
+      assert!(tui_args.follow);
+    } else {
+      panic!("Expected Tui command");
+    }
+  }
+
+  #[test]
+  fn test_get_output_stderr_stdout_file() {
+    // default (None) -> stderr
+    let out = Cli::get_output(None, Color::Auto).unwrap();
+    let _ = out; // just ensure it returns something
+
+    // "-" -> stdout
+    let out = Cli::get_output(Some(PathBuf::from("-")), Color::Auto).unwrap();
+    let _ = out;
+
+    // real file
+    let path = PathBuf::from("test_output.txt");
+    let mut out = Cli::get_output(Some(path.clone()), Color::Auto).unwrap();
+    writeln!(out, "Hello world").unwrap();
+    drop(out);
+
+    let content = fs::read_to_string(path.clone()).unwrap();
+    assert!(content.contains("Hello world"));
+    fs::remove_file(path).unwrap();
+  }
+
+  #[test]
+  fn test_merge_config_log() {
+    let mut cli = Cli {
+      color: Color::Auto,
+      cwd: None,
+      profile: None,
+      no_profile: false,
+      user: None,
+      cmd: CliCommand::Log {
+        cmd: vec!["ls".into()],
+        tracing_args: LogModeArgs {
+          show_interpreter: false,
+          ..Default::default()
+        },
+        modifier_args: ModifierArgs::default(),
+        ptrace_args: PtraceArgs::default(),
+        tracer_event_args: TracerEventArgs::all(),
+        output: None,
+      },
+    };
+
+    let config = Config {
+      ptrace: Some(PtraceConfig {
+        seccomp_bpf: Some(SeccompBpf::On),
+      }),
+      modifier: Some(ModifierConfig {
+        successful_only: Some(true),
+        ..Default::default()
+      }),
+      log: Some(LogModeConfig {
+        show_interpreter: Some(true),
+        ..Default::default()
+      }),
+      tui: None,
+      debugger: None,
+    };
+
+    cli.merge_config(config);
+
+    if let CliCommand::Log {
+      tracing_args,
+      modifier_args,
+      ptrace_args,
+      ..
+    } = cli.cmd
+    {
+      assert!(tracing_args.show_interpreter);
+      assert!(modifier_args.successful_only);
+      assert_eq!(ptrace_args.seccomp_bpf, SeccompBpf::On);
+    } else {
+      panic!("Expected Log command");
+    }
+  }
+
+  #[test]
+  fn test_merge_config_tui() {
+    let mut cli = Cli {
+      color: Color::Auto,
+      cwd: None,
+      profile: None,
+      no_profile: false,
+      user: None,
+      cmd: CliCommand::Tui {
+        cmd: vec!["bash".into()],
+        modifier_args: ModifierArgs::default(),
+        ptrace_args: PtraceArgs::default(),
+        tracer_event_args: TracerEventArgs::all(),
+        tui_args: TuiModeArgs::default(),
+        debugger_args: DebuggerArgs::default(),
+      },
+    };
+
+    let config = Config {
+      ptrace: Some(PtraceConfig {
+        seccomp_bpf: Some(SeccompBpf::Off),
+      }),
+      modifier: Some(ModifierConfig {
+        successful_only: Some(true),
+        ..Default::default()
+      }),
+      log: None,
+      tui: Some(TuiModeConfig {
+        follow: Some(true),
+        frame_rate: Some(30.0),
+        ..Default::default()
+      }),
+      debugger: Some(DebuggerConfig {
+        default_external_command: Some("echo hello".into()),
+      }),
+    };
+
+    cli.merge_config(config);
+
+    if let CliCommand::Tui {
+      modifier_args,
+      ptrace_args,
+      tui_args,
+      debugger_args,
+      ..
+    } = cli.cmd
+    {
+      assert!(modifier_args.successful_only);
+      assert_eq!(ptrace_args.seccomp_bpf, SeccompBpf::Off);
+      assert_eq!(tui_args.frame_rate.unwrap(), 30.0);
+      assert_eq!(
+        debugger_args.default_external_command.as_ref().unwrap(),
+        "echo hello"
+      );
+    } else {
+      panic!("Expected Tui command");
+    }
+  }
+
+  #[test]
+  fn test_merge_config_collect_foreground() {
+    let mut cli = Cli {
+      color: Color::Auto,
+      cwd: None,
+      profile: None,
+      no_profile: false,
+      user: None,
+      cmd: CliCommand::Collect {
+        cmd: vec!["ls".into()],
+        modifier_args: ModifierArgs::default(),
+        ptrace_args: PtraceArgs::default(),
+        exporter_args: Default::default(),
+        format: ExportFormat::Json,
+        output: None,
+        foreground: false,
+        no_foreground: false,
+      },
+    };
+
+    let config = Config {
+      log: Some(LogModeConfig {
+        foreground: Some(true),
+        ..Default::default()
+      }),
+      ptrace: None,
+      modifier: None,
+      tui: None,
+      debugger: None,
+    };
+
+    cli.merge_config(config);
+
+    if let CliCommand::Collect {
+      foreground,
+      no_foreground,
+      ..
+    } = cli.cmd
+    {
+      assert!(foreground);
+      assert!(!no_foreground);
+    } else {
+      panic!("Expected Collect command");
+    }
+  }
+
+  #[test]
+  fn test_generate_completions_smoke() {
+    // smoke test: just run without panicking
+    Cli::generate_completions(clap_complete::Shell::Bash);
+  }
+}

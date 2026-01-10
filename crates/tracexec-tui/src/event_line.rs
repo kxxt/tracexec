@@ -32,7 +32,7 @@ impl Mask {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct EventLine {
   pub line: Line<'static>,
   pub cwd_mask: Option<Mask>,

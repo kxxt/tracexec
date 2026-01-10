@@ -249,3 +249,143 @@ pub enum ProcessExit {
   Code(i32),
   Signal(Signal),
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::event::OutputMsg;
+
+  use chrono::Local;
+  use nix::sys::signal::Signal as NixSignal;
+  use std::collections::BTreeMap;
+  use std::sync::Arc;
+
+  /* ---------------- Signal ---------------- */
+
+  #[test]
+  fn signal_from_raw_standard() {
+    let sig = Signal::from_raw(NixSignal::SIGINT as i32);
+    assert_eq!(sig, Signal::Standard(NixSignal::SIGINT));
+    assert_eq!(sig.as_raw(), NixSignal::SIGINT as i32);
+  }
+
+  #[test]
+  fn signal_from_raw_realtime() {
+    let raw = SIGRTMIN() + 3;
+    let sig = Signal::from_raw(raw);
+    assert_eq!(sig, Signal::Realtime(raw as u8));
+    assert_eq!(sig.as_raw(), raw);
+  }
+
+  #[test]
+  fn signal_display_standard() {
+    let sig = Signal::Standard(NixSignal::SIGTERM);
+    assert_eq!(sig.to_string(), "SIGTERM");
+  }
+
+  #[test]
+  fn signal_display_realtime_variants() {
+    let min = SIGRTMIN();
+
+    let sig_min = Signal::Realtime(min as u8);
+    assert_eq!(sig_min.to_string(), "SIGRTMIN");
+
+    let sig_plus = Signal::Realtime((min + 2) as u8);
+    assert_eq!(sig_plus.to_string(), "SIGRTMIN+2");
+
+    let sig_minus = Signal::Realtime((min - 1) as u8);
+    assert_eq!(sig_minus.to_string(), "SIGRTMIN-1");
+  }
+
+  /* ---------------- TracerBuilder ---------------- */
+  #[test]
+  #[should_panic(expected = "Cannot enable blocking mode")]
+  fn tracer_builder_blocking_conflict_panics() {
+    TracerBuilder::new()
+      .ptrace_polling_delay(Some(10))
+      .ptrace_blocking(true);
+  }
+
+  #[test]
+  #[should_panic(expected = "Cannot set ptrace_polling_delay")]
+  fn tracer_builder_polling_conflict_panics() {
+    TracerBuilder::new()
+      .ptrace_blocking(true)
+      .ptrace_polling_delay(Some(10));
+  }
+
+  #[test]
+  fn tracer_builder_chaining_works() {
+    let builder = TracerBuilder::new()
+      .ptrace_blocking(false)
+      .ptrace_polling_delay(None)
+      .seccomp_bpf(SeccompBpf::Auto);
+
+    assert_eq!(builder.ptrace_blocking, Some(false));
+    assert_eq!(builder.ptrace_polling_delay, None);
+  }
+
+  /* ---------------- ExecData ---------------- */
+
+  #[test]
+  fn exec_data_new_populates_fields() {
+    let filename = OutputMsg::Ok("bin".into());
+    let argv = Ok(vec![
+      OutputMsg::Ok("bin".into()),
+      OutputMsg::Ok("-h".into()),
+    ]);
+
+    let mut envp_map = BTreeMap::new();
+    envp_map.insert(
+      OutputMsg::Ok("A".into()),
+      OutputMsg::Ok("B".into()),
+    );
+    let envp = Ok(envp_map);
+
+    let cwd = OutputMsg::Ok("/".into());
+    let fdinfo = FileDescriptorInfoCollection::default();
+    let timestamp = Local::now();
+
+    let exec = ExecData::new(
+      filename.clone(),
+      argv,
+      envp,
+      false,
+      Err(CredInspectError::Inspect),
+      cwd.clone(),
+      None,
+      fdinfo,
+      timestamp,
+    );
+
+    assert_eq!(exec.filename, filename);
+    assert_eq!(exec.cwd, cwd);
+    assert!(exec.argv.is_ok());
+    assert!(exec.envp.is_ok());
+    assert!(!exec.has_dash_env);
+    assert!(exec.interpreters.is_none());
+    assert!(Arc::strong_count(&exec.argv) >= 1);
+    assert!(Arc::strong_count(&exec.envp) >= 1);
+    assert!(Arc::strong_count(&exec.fdinfo) >= 1);
+  }
+
+
+  /* ---------------- ProcessExit ---------------- */
+
+  #[test]
+  fn process_exit_equality() {
+    let a = ProcessExit::Code(0);
+    let b = ProcessExit::Code(0);
+    let c = ProcessExit::Code(1);
+
+    assert_eq!(a, b);
+    assert_ne!(a, c);
+
+    let s1 = ProcessExit::Signal(Signal::Standard(NixSignal::SIGKILL));
+    let s2 = ProcessExit::Signal(Signal::Standard(NixSignal::SIGKILL));
+    let s3 = ProcessExit::Signal(Signal::Standard(NixSignal::SIGTERM));
+
+    assert_eq!(s1, s2);
+    assert_ne!(s1, s3);
+  }
+}

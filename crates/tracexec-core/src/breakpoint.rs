@@ -173,3 +173,115 @@ impl TryFrom<&str> for BreakPoint {
     })
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::cache::ArcStr;
+  use nix::errno::Errno;
+
+  #[test]
+  fn test_breakpoint_stop_toggle() {
+    let mut s = BreakPointStop::SyscallEnter;
+    s.toggle();
+    assert_eq!(s, BreakPointStop::SyscallExit);
+    s.toggle();
+    assert_eq!(s, BreakPointStop::SyscallEnter);
+  }
+
+  #[test]
+  fn test_from_editable_and_to_editable_and_pattern() {
+    // argv-regex
+    let bp = BreakPointPattern::from_editable("argv-regex:foo").expect("argv-regex");
+    assert_eq!(bp.pattern(), "foo");
+    assert_eq!(bp.to_editable(), "argv-regex:foo");
+
+    // in-filename
+    let bp2 = BreakPointPattern::from_editable("in-filename:/tmp/test").expect("in-filename");
+    assert_eq!(bp2.pattern(), "/tmp/test");
+    assert_eq!(bp2.to_editable(), "in-filename:/tmp/test");
+
+    // exact-filename
+    let bp3 = BreakPointPattern::from_editable("exact-filename:/bin/sh").expect("exact-filename");
+    assert_eq!(bp3.pattern(), "/bin/sh");
+    assert_eq!(bp3.to_editable(), "exact-filename:/bin/sh");
+
+    // invalid prefix
+    assert!(BreakPointPattern::from_editable("unknown:abc").is_err());
+    // missing colon
+    assert!(BreakPointPattern::from_editable("no-colon").is_err());
+  }
+
+  #[test]
+  fn test_matches_argv_regex() {
+    // pattern "arg1" should match when argv contains "arg1"
+    let pat = BreakPointPattern::from_editable("argv-regex:arg1").unwrap();
+
+    let argv = [
+      OutputMsg::Ok(ArcStr::from("arg0")),
+      OutputMsg::Ok(ArcStr::from("arg1")),
+      OutputMsg::Ok(ArcStr::from("arg2")),
+    ];
+    let filename = OutputMsg::Ok(ArcStr::from("/bin/prog"));
+
+    assert!(pat.matches(Some(&argv), &filename));
+
+    // If argv is None, ArgvRegex cannot match
+    assert!(!pat.matches(None, &filename));
+  }
+
+  #[test]
+  fn test_matches_in_and_exact_filename() {
+    let in_pat = BreakPointPattern::from_editable("in-filename:log").unwrap();
+    let exact_pat = BreakPointPattern::from_editable("exact-filename:/var/log/app").unwrap();
+
+    let ok_filename = OutputMsg::Ok(ArcStr::from("/var/log/app"));
+    let other_filename = OutputMsg::Ok(ArcStr::from("/tmp/file"));
+    let partial_filename = OutputMsg::PartialOk(ArcStr::from("something"));
+    let err_filename = OutputMsg::Err(crate::event::FriendlyError::InspectError(Errno::EINVAL));
+
+    // in-filename: substring match only when filename is Ok
+    assert!(in_pat.matches(Some(&[]), &ok_filename));
+    assert!(!in_pat.matches(Some(&[]), &other_filename));
+    assert!(!in_pat.matches(Some(&[]), &partial_filename));
+    assert!(!in_pat.matches(Some(&[]), &err_filename));
+
+    // exact-filename: equality only when filename is Ok
+    assert!(exact_pat.matches(Some(&[]), &ok_filename));
+    assert!(!exact_pat.matches(Some(&[]), &other_filename));
+    assert!(!exact_pat.matches(Some(&[]), &partial_filename));
+    assert!(!exact_pat.matches(Some(&[]), &err_filename));
+  }
+
+  #[test]
+  fn test_try_from_breakpoint_valid_and_invalid() {
+    // valid sysenter argv regex
+    let bp = BreakPoint::try_from("sysenter:argv-regex:foo").expect("valid breakpoint");
+    assert_eq!(bp.stop, BreakPointStop::SyscallEnter);
+    match bp.pattern {
+      BreakPointPattern::ArgvRegex(r) => assert_eq!(r.editable, "foo"),
+      _ => panic!("expected ArgvRegex"),
+    }
+
+    // valid sysexit exact filename
+    let bp2 =
+      BreakPoint::try_from("sysexit:exact-filename:/bin/ls").expect("valid exact breakpoint");
+    assert_eq!(bp2.stop, BreakPointStop::SyscallExit);
+    match bp2.pattern {
+      BreakPointPattern::ExactFilename(s) => assert_eq!(s, "/bin/ls"),
+      _ => panic!("expected ExactFilename"),
+    }
+
+    // missing stop
+    assert!(BreakPoint::try_from("no-colon-here").is_err());
+
+    // invalid stop
+    assert!(BreakPoint::try_from("badstop:argv-regex:foo").is_err());
+
+    // missing pattern kind
+    assert!(BreakPoint::try_from("sysenter:badformat").is_err());
+
+    // invalid pattern kind
+    assert!(BreakPoint::try_from("sysenter:unknown-kind:xyz").is_err());
+  }
+}

@@ -227,3 +227,113 @@ impl OutputMsg {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::cache::ArcStr;
+  use nix::errno::Errno;
+  use std::collections::hash_map::DefaultHasher;
+  use std::hash::{Hash, Hasher};
+
+  #[test]
+  fn test_friendly_error_display() {
+    let e = FriendlyError::InspectError(Errno::EINVAL);
+    assert_eq!(format!("{}", e), "[err: failed to inspect]");
+  }
+
+  #[cfg(feature = "ebpf")]
+  #[test]
+  fn test_friendly_error_bpf_display() {
+    let e = FriendlyError::Bpf(BpfError::Dropped);
+    assert_eq!(format!("{}", e), "[err: bpf error]");
+  }
+
+  #[test]
+  fn test_output_msg_as_ref() {
+    let ok = OutputMsg::Ok(ArcStr::from("hello"));
+    let partial = OutputMsg::PartialOk(ArcStr::from("partial"));
+    let err = OutputMsg::Err(FriendlyError::InspectError(Errno::EACCES));
+
+    assert_eq!(ok.as_ref(), "hello");
+    assert_eq!(partial.as_ref(), "partial");
+    assert_eq!(err.as_ref(), "[err: failed to inspect]");
+  }
+
+  #[test]
+  fn test_not_ok() {
+    let ok = OutputMsg::Ok(ArcStr::from("ok"));
+    let partial = OutputMsg::PartialOk(ArcStr::from("partial"));
+    let err = OutputMsg::Err(FriendlyError::InspectError(Errno::EPERM));
+
+    assert!(!ok.not_ok());
+    assert!(partial.not_ok());
+    assert!(err.not_ok());
+  }
+
+  #[test]
+  fn test_is_ok_and_is_err_or() {
+    let ok = OutputMsg::Ok(ArcStr::from("matchme"));
+    let partial = OutputMsg::PartialOk(ArcStr::from("partial"));
+    let err = OutputMsg::Err(FriendlyError::InspectError(Errno::EPERM));
+
+    assert!(ok.is_ok_and(|s| s.contains("match")));
+    assert!(!partial.is_ok_and(|_| true));
+    assert!(!err.is_ok_and(|_| true));
+
+    assert!(!ok.is_err_or(|s| s.contains("ok")));
+    assert!(partial.is_err_or(|_| false));
+    assert!(err.is_err_or(|_| false));
+  }
+
+  #[test]
+  fn test_join() {
+    let ok = OutputMsg::Ok(ArcStr::from("base"));
+    let partial = OutputMsg::PartialOk(ArcStr::from("part"));
+    let err = OutputMsg::Err(FriendlyError::InspectError(Errno::EPERM));
+
+    assert_eq!(ok.join("path").as_ref(), "base/path");
+    assert_eq!(partial.join("p").as_ref(), "part/p");
+    assert_eq!(err.join("x").as_ref(), "[err: failed to inspect]/x");
+  }
+
+  #[test]
+  fn test_bash_escaped() {
+    let ok = OutputMsg::Ok(ArcStr::from("a b"));
+    let err = OutputMsg::Err(FriendlyError::InspectError(Errno::EPERM));
+
+    assert_eq!(ok.bash_escaped(), "$'a b'");
+    assert_eq!(err.bash_escaped(), "[err: failed to inspect]");
+  }
+
+  #[test]
+  fn test_hash_eq_ord() {
+    let a = FriendlyError::InspectError(Errno::EINVAL);
+    let b = FriendlyError::InspectError(Errno::EACCES);
+
+    assert!(a != b);
+    assert!(a < b || a > b);
+
+    let mut hasher = DefaultHasher::new();
+    a.hash(&mut hasher);
+    let _hash_val = hasher.finish();
+  }
+
+  #[test]
+  fn test_from_arcstr() {
+    let s: ArcStr = ArcStr::from("hello");
+    let msg: OutputMsg = s.clone().into();
+    assert_eq!(msg.as_ref(), "hello");
+  }
+
+  #[test]
+  fn test_display_debug_formats() {
+    let ok = OutputMsg::Ok(ArcStr::from("ok"));
+    let partial = OutputMsg::PartialOk(ArcStr::from("partial"));
+    let err = OutputMsg::Err(FriendlyError::InspectError(Errno::EINVAL));
+
+    assert!(format!("{}", ok).contains("ok"));
+    assert!(format!("{}", partial).contains("partial"));
+    assert!(format!("{}", err).contains("[err: failed to inspect]"));
+  }
+}

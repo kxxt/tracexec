@@ -82,3 +82,72 @@ impl<'a> PartialLine<'a> for Line<'a> {
     self
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use ratatui::text::{Line, Span};
+
+  #[test]
+  fn test_substring_ascii() {
+    let line = Line::from("Hello world");
+
+    let sub = line.clone().substring(0, 5);
+    assert_eq!(sub.to_string(), "Hello");
+
+    let sub = line.clone().substring(6, 5);
+    assert_eq!(sub.to_string(), "world");
+
+    let sub = line.clone().substring(3, 20); // len exceeds width
+    assert_eq!(sub.to_string(), "lo world");
+  }
+
+  #[test]
+  fn test_substring_unicode() {
+    let line = Line::from("😀😃😄😁"); // each emoji has width 2
+
+    let sub = line.clone().substring(0, 4); // width 4 -> first 2 emojis
+    assert_eq!(sub.to_string(), "😀😃");
+
+    let sub = line.clone().substring(2, 2);
+    assert_eq!(sub.to_string(), "😃");
+
+    let sub = line.clone().substring(1, 2);
+    assert_eq!(sub.to_string(), "😃");
+
+    let sub = line.clone().substring(0, 10); // exceeds total width
+    assert_eq!(sub.to_string(), "😀😃😄😁");
+  }
+
+  #[test]
+  fn test_substring_empty_line() {
+    let line = Line::from("");
+    let sub = line.substring(0, 5);
+    assert_eq!(sub.to_string(), "");
+  }
+
+  #[test]
+  fn test_substring_multiple_spans() {
+    let line = Line::from(vec![Span::raw("Hello"), Span::raw(" "), Span::raw("world")]);
+
+    let sub = line.clone().substring(3, 5); // should take "lo wo"
+    assert_eq!(sub.to_string(), "lo wo");
+
+    let sub = line.clone().substring(0, 11); // full line
+    assert_eq!(sub.to_string(), "Hello world");
+
+    let sub = line.clone().substring(10, 5); // last char
+    assert_eq!(sub.to_string(), "d");
+  }
+
+  #[test]
+  fn test_substring_unicode_combining() {
+    let line = Line::from("a\u{0301}b"); // áb (a + combining acute accent)
+
+    let sub = line.clone().substring(0, 1); // width 1 -> á
+    assert_eq!(sub.to_string(), "á");
+
+    let sub = line.clone().substring(1, 1); // next character -> b
+    assert_eq!(sub.to_string(), "b");
+  }
+}

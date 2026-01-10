@@ -93,7 +93,7 @@ impl QueryResult {
 
   pub fn prev_result(&mut self) {
     if let Some(selection) = self.selection {
-      self.selection = match self.indices.range(..selection).next() {
+      self.selection = match self.indices.range(..selection).next_back() {
         Some(id) => Some(*id),
         None => self.indices.last().copied(),
       };
@@ -261,5 +261,143 @@ impl Widget for &mut QueryBuilder {
       .into(),
     )
     .render(area, buf, &mut self.state);
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+  use ratatui::text::Line;
+  use tracexec_core::event::EventId;
+
+  fn make_event_line(text: &str) -> EventLine {
+    EventLine {
+      line: Line::from(text.to_string()),
+      cwd_mask: None,
+      env_mask: None,
+    }
+  }
+
+  #[test]
+  fn test_query_matches_text_case() {
+    let line = make_event_line("Hello World");
+
+    let q = Query::new(
+      QueryKind::Search,
+      QueryValue::Text("hello".to_string()),
+      false,
+    );
+    assert!(q.matches(&line));
+
+    let q = Query::new(
+      QueryKind::Search,
+      QueryValue::Text("hello".to_string()),
+      true,
+    );
+    assert!(!q.matches(&line));
+  }
+
+  #[test]
+  fn test_query_matches_regex() {
+    let line = make_event_line("abc123");
+    let re = pikevm::Builder::new()
+      .syntax(syntax::Config::new().case_insensitive(false))
+      .build(r"\d+")
+      .unwrap();
+    let q = Query::new(QueryKind::Search, QueryValue::Regex(re), false);
+    assert!(q.matches(&line));
+
+    let re = pikevm::Builder::new()
+      .syntax(syntax::Config::new())
+      .build(r"xyz")
+      .unwrap();
+    let q = Query::new(QueryKind::Search, QueryValue::Regex(re), false);
+    assert!(!q.matches(&line));
+  }
+
+  #[test]
+  fn test_query_result_navigation() {
+    let mut qr = QueryResult {
+      indices: vec![1, 3, 5].into_iter().map(EventId::new).collect(),
+      searched_id: EventId::new(5),
+      selection: None,
+    };
+
+    assert_eq!(qr.selection(), None);
+    qr.next_result();
+    assert_eq!(qr.selection(), Some(EventId::new(1)));
+    qr.next_result();
+    assert_eq!(qr.selection(), Some(EventId::new(3)));
+    qr.next_result();
+    assert_eq!(qr.selection(), Some(EventId::new(5)));
+    qr.next_result(); // wrap around
+    assert_eq!(qr.selection(), Some(EventId::new(1)));
+    qr.next_result();
+    assert_eq!(qr.selection(), Some(EventId::new(3)));
+
+    qr.prev_result();
+    assert_eq!(qr.selection(), Some(EventId::new(1)));
+    qr.prev_result(); // don't wrap around at start
+    assert_eq!(qr.selection(), Some(EventId::new(1)));
+    qr.prev_result(); // don't wrap around at start
+    assert_eq!(qr.selection(), Some(EventId::new(1)));
+  }
+
+  #[test]
+  fn test_query_result_statistics() {
+    let qr = QueryResult {
+      indices: vec![10, 20, 30].into_iter().map(EventId::new).collect(),
+      searched_id: EventId::new(30),
+      selection: Some(EventId::new(20)),
+    };
+
+    let line = qr.statistics();
+    let s = line.to_string();
+    assert!(s.contains("2")); // selected index
+    assert!(s.contains("3")); // total matches
+  }
+
+  #[test]
+  fn test_query_builder_toggle_flags_and_enter() {
+    let mut qb = QueryBuilder::new(QueryKind::Search);
+    assert!(qb.editing());
+    assert!(!qb.case_sensitive);
+    assert!(!qb.is_regex);
+
+    // Toggle case sensitivity
+    qb.handle_key_events(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::ALT))
+      .unwrap();
+    assert!(qb.case_sensitive);
+
+    // Toggle regex
+    qb.handle_key_events(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::ALT))
+      .unwrap();
+    assert!(qb.is_regex);
+
+    // Enter with empty input returns EndSearch
+    let mut empty_qb = QueryBuilder::new(QueryKind::Search);
+    let action = empty_qb
+      .handle_key_events(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+      .unwrap();
+    assert!(matches!(action, Some(Action::EndSearch)));
+  }
+
+  #[test]
+  fn test_query_builder_edit_and_cursor() {
+    let mut qb = QueryBuilder::new(QueryKind::Search);
+    qb.edit();
+    assert!(qb.editing());
+
+    let cursor = qb.cursor();
+    assert_eq!(cursor, (0, 0));
+  }
+
+  #[test]
+  fn test_query_builder_help() {
+    let qb = QueryBuilder::new(QueryKind::Search);
+    let help = qb.help();
+    assert!(help.iter().any(|span| span.content.contains("Esc")));
+    assert!(help.iter().any(|span| span.content.contains("Enter")));
   }
 }
