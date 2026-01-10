@@ -1,10 +1,6 @@
-name: Publish
+name: Coverage
 
-on:
-  push:
-    tags:
-      - v[0-9]+.*
-      - test-release.*
+on: [pull_request, push]
 
 jobs:
   publish-crates:
@@ -17,7 +13,7 @@ jobs:
           components: rustfmt
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-release
+          tool: cargo-llvm-cov
       - name: Install native dependencies
         if: runner.os == 'Linux'
         run: |
@@ -25,8 +21,11 @@ jobs:
           sudo apt install -y {binutils,gcc}-{aarch64,riscv64}-linux-gnu \
           build-essential autopoint gettext libelf-dev zlib1g-dev libseccomp-dev \
           protobuf-compiler
-      - name: Publish to crates.io
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          cargo release -x --no-confirm --workspace --no-tag --no-push --allow-branch HEAD --exclude perfetto-trace-proto
+      - name: Generate code coverage
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }} # required for private repos or protected branches
+          files: lcov.info
+          fail_ci_if_error: true
