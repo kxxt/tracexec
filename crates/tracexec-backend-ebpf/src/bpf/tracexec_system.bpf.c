@@ -47,11 +47,13 @@ struct {
   __type(value, char);
 } tgid_closure SEC(".maps");
 
+// To avoid data race, for every task, only a single BPF program should access
+// this map. Currently that program is the fentry of execve family syscalls.
 struct {
-  __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+  __uint(type, BPF_MAP_TYPE_TASK_STORAGE);
   __type(key, u32);
   __type(value, struct path_event);
-  __uint(max_entries, 1);
+  __uint(map_flags, BPF_F_NO_PREALLOC);
 } path_event_cache SEC(".maps");
 
 // A staging area for writing variable length strings
@@ -1166,9 +1168,12 @@ fstype_err_out:
 static int read_send_path(const struct path *path,
                           struct tracexec_event_header *base_header,
                           s32 path_id, struct fd_event *fd_event) {
-  int ret = -1, zero = 0;
+  struct task_struct *current_task =
+      (struct task_struct *)bpf_get_current_task_btf();
+  int ret = -1;
   // Initialize
-  struct path_event *event = bpf_map_lookup_elem(&path_event_cache, &zero);
+  struct path_event *event = bpf_task_storage_get(
+      &path_event_cache, current_task, NULL, BPF_LOCAL_STORAGE_GET_F_CREATE);
   if (event == NULL) {
     debug("This should not happen!");
     return 1;
@@ -1230,6 +1235,7 @@ static int read_send_path(const struct path *path,
   // Send path event to userspace
   event->segment_count = ctx.base_index;
   ret = bpf_ringbuf_output(&events, event, sizeof(*event), 0);
+  bpf_task_storage_delete(&path_event_cache, current_task);
   if (ret < 0) {
     debug("Failed to output path_event to ringbuf");
     return -1;
@@ -1244,6 +1250,7 @@ loop_err:
 err_out:
   event->segment_count = 0;
   ret = bpf_ringbuf_output(&events, event, sizeof(*event), 0);
+  bpf_task_storage_delete(&path_event_cache, current_task);
   if (ret < 0) {
     debug("Failed to output path_event to ringbuf");
     return -1;
