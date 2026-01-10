@@ -51,18 +51,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-      - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
       - name: Check typos
         uses: crate-ci/typos@master
       - name: Lint dependencies
         uses: EmbarkStudios/cargo-deny-action@v2.0.14
         with:
           rust-version: 1.88
+
   clippy:
     runs-on: ubuntu-latest
     steps:
@@ -78,8 +73,45 @@ jobs:
           sudo apt-get install -y libelf-dev zlib1g-dev build-essential protobuf-compiler
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
+        with:
+          add-job-id-key: false
+          save-if: false
+          key: clippy
       - name: Run clippy
         run: cargo clippy -- -D warnings
+
+  test-coverage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - name: Install native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt update -y
+          sudo apt install -y {binutils,gcc}-{aarch64,riscv64}-linux-gnu \
+          build-essential autopoint gettext libelf-dev zlib1g-dev libseccomp-dev \
+          protobuf-compiler
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          add-job-id-key: false
+          key: coverage
+      - name: Generate code coverage
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }} # required for private repos or protected branches
+          files: lcov.info
+          fail_ci_if_error: true
+
   check_and_test:
     strategy:
       fail-fast: false
@@ -183,6 +215,9 @@ jobs:
       #   run: 3rdparty/prepare-native-dependencies.sh ${{ matrix.arch }}
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
+        with:
+          add-job-id-key: false
+          key: ${{ matrix.target }}
       - name: Run cargo build with default features
         run: cargo build --bins --tests --target ${{ matrix.target }} ${{ matrix.args }}
       - name: Run cargo check with default features
