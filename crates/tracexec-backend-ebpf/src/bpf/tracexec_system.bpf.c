@@ -556,6 +556,15 @@ int __always_inline tp_sys_exit_exec(int sysret) {
       bpf_map_delete_elem(&cache, &key);
     }
   }
+#ifdef EBPF_DEBUG
+  u64 avail = bpf_ringbuf_query(&events, BPF_RB_AVAIL_DATA);
+  u64 cons = bpf_ringbuf_query(&events, BPF_RB_CONS_POS);
+  u64 prod = bpf_ringbuf_query(&events, BPF_RB_PROD_POS);
+  debug("Ringbuf stat: avail: %lu, cons: %lu, "
+        "prod: %lu",
+        avail, cons, prod);
+#endif
+
   ret = bpf_ringbuf_output(&events, event, sizeof(struct exec_event),
                            BPF_RB_FORCE_WAKEUP);
   if (ret != 0) {
