@@ -54,13 +54,6 @@ struct {
   __uint(max_entries, 1);
 } path_event_cache SEC(".maps");
 
-struct {
-  __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-  __type(key, u32);
-  __type(value, struct sys_enter_exec_args);
-  __uint(max_entries, 1);
-} exec_args_alloc SEC(".maps");
-
 // A staging area for writing variable length strings
 // We cannot use per-cpu trick as bpf could be preempted.
 // Note that we update the max_entries in userspace before load.
@@ -240,9 +233,9 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   // config.tracee_pid); Create event
   if (!ctx)
     return 0;
-  struct exec_event *event =
-      bpf_task_storage_get(&execs, (struct task_struct *)bpf_get_current_task_btf(),
-                           NULL, BPF_LOCAL_STORAGE_GET_F_CREATE);
+  struct exec_event *event = bpf_task_storage_get(
+      &execs, (struct task_struct *)bpf_get_current_task_btf(), NULL,
+      BPF_LOCAL_STORAGE_GET_F_CREATE);
   if (!event) {
     // Cannot allocate new event!
     debug("Failed to allocate new event!");
@@ -433,37 +426,28 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
 SEC("fentry/__" SYSCALL_PREFIX "_sys_execve")
 int BPF_PROG(sys_execve, struct pt_regs *regs) {
   int key = 0;
-  struct sys_enter_exec_args *common_ctx =
-      bpf_map_lookup_elem(&exec_args_alloc, &key);
-  if (common_ctx == NULL)
-    return 0;
-  *common_ctx = (struct sys_enter_exec_args){
+  struct sys_enter_exec_args common_ctx = {
       .is_execveat = false,
       .is_compat = false,
       .argv = (u8 const *const *)PT_REGS_PARM2_CORE(regs),
       .envp = (u8 const *const *)PT_REGS_PARM3_CORE(regs),
       .base_filename = (u8 *)PT_REGS_PARM1_CORE(regs),
   };
-  trace_exec_common(common_ctx);
+  trace_exec_common(&common_ctx);
   return 0;
 }
 
 SEC("fentry/__" SYSCALL_PREFIX "_sys_execveat")
 int BPF_PROG(sys_execveat, struct pt_regs *regs, int ret) {
   int key = 0;
-  struct sys_enter_exec_args *common_ctx =
-      bpf_map_lookup_elem(&exec_args_alloc, &key);
-  if (common_ctx == NULL)
-    return 0;
-
-  *common_ctx = (struct sys_enter_exec_args){
+  struct sys_enter_exec_args common_ctx = {
       .is_execveat = true,
       .is_compat = false,
       .argv = (u8 const *const *)PT_REGS_PARM3_CORE(regs),
       .envp = (u8 const *const *)PT_REGS_PARM4_CORE(regs),
       .base_filename = (u8 *)PT_REGS_PARM2_CORE(regs),
   };
-  trace_exec_common(common_ctx);
+  trace_exec_common(&common_ctx);
   pid_t pid = (pid_t)bpf_get_current_pid_tgid();
   struct exec_event *event = bpf_task_storage_get(
       &execs, (struct task_struct *)bpf_get_current_task_btf(), NULL, BPF_ANY);
@@ -606,19 +590,14 @@ int BPF_PROG(compat_sys_exit_execveat, struct pt_regs *regs, int ret) {
 SEC("fentry/__" SYSCALL_COMPAT_PREFIX "_sys_execveat")
 int BPF_PROG(compat_sys_execveat, struct pt_regs *regs, int ret) {
   int key = 0;
-  struct sys_enter_exec_args *common_ctx =
-      bpf_map_lookup_elem(&exec_args_alloc, &key);
-  if (common_ctx == NULL)
-    return 0;
-
-  *common_ctx = (struct sys_enter_exec_args){
+  struct sys_enter_exec_args common_ctx = {
       .is_execveat = true,
       .is_compat = true,
       .argv = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM3_CORE(regs),
       .envp = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM4_CORE(regs),
       .base_filename = (u8 *)(u64)COMPAT_PT_REGS_PARM2_CORE(regs),
   };
-  trace_exec_common(common_ctx);
+  trace_exec_common(&common_ctx);
   pid_t pid = (pid_t)bpf_get_current_pid_tgid();
   struct exec_event *event = bpf_task_storage_get(
       &execs, (struct task_struct *)bpf_get_current_task_btf(), NULL, BPF_ANY);
@@ -639,18 +618,14 @@ SEC("fentry/__" SYSCALL_COMPAT_PREFIX "_sys_execve")
 int BPF_PROG(compat_sys_execve, struct pt_regs *regs) {
   //  int tp_sys_enter_execve(struct sys_enter_execve_args *ctx)
   int key = 0;
-  struct sys_enter_exec_args *common_ctx =
-      bpf_map_lookup_elem(&exec_args_alloc, &key);
-  if (common_ctx == NULL)
-    return 0;
-  *common_ctx = (struct sys_enter_exec_args){
+  struct sys_enter_exec_args common_ctx = (struct sys_enter_exec_args){
       .is_execveat = false,
       .is_compat = true,
       .argv = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM2_CORE(regs),
       .envp = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM3_CORE(regs),
       .base_filename = (u8 *)(u64)COMPAT_PT_REGS_PARM1_CORE(regs),
   };
-  trace_exec_common(common_ctx);
+  trace_exec_common(&common_ctx);
   return 0;
 }
 
