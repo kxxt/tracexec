@@ -11,6 +11,27 @@ does a proprietary software run, etc.
 
 ## Showcases
 
+### Perfetto Trace Export
+
+tracexec supports exporting exec traces to perfetto trace format,
+which could be viewed in the [Perfetto UI](https://ui.perfetto.dev/).
+The trace follows a tree format in the UI, where processes resulting from successful execs are represented as slices and exec failures are represented as instant events.
+
+The following video shows analyzing the build process of tracexec with itself:
+
+https://github.com/user-attachments/assets/fc825d55-eb2f-43cd-b454-a11b5f9b44bc
+
+The shape of the traces in the Perfetto UI could give you a rough idea of how
+parallel the build is at process-level. The trace tree and details of slices
+enable identification of bottlenecks, troubleshooting, and a deep understanding
+of how the build works.
+
+Start collecting a perfetto trace with the following command:
+
+```bash
+tracexec collect --format=perfetto -o out.pftrace -- cmd
+```
+
 ### TUI mode with pseudo terminal
 
 In TUI mode with a pseudo terminal, you can view the details of exec events and interact with the processes

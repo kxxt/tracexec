@@ -6,9 +6,9 @@
 
 Now it's possible to export detailed trace to perfetto trace format!
 The trace can be collected with `tracexec collect --format perfetto`
-and viewed in https://ui.perfetto.dev/.
+and viewed in https://ui.perfetto.dev/ as demonstrated in the following video:
 
-![TODO](TODO)
+https://github.com/user-attachments/assets/fc825d55-eb2f-43cd-b454-a11b5f9b44bc
 
 This feature enables interesting new use cases such as build system profiling
 and examining the detailed exec traces in tree format using perfetto UI.
