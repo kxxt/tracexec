@@ -1,0 +1,10 @@
+codecov:
+  notify:
+    wait_for_ci: false
+    require_ci_to_pass: false
+
+
+ignore:
+  - "fixtures"  # ignore test fixtures
+  - "demonstration" # ignore demos
+  - "crates/perfetto-trace-proto" # ignore perfetto protobuf binding
