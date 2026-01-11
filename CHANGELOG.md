@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.16.0-beta.5
+## v0.16.0-beta.6
 
 ### New Features
 
@@ -17,16 +17,28 @@ and examining the detailed exec traces in tree format using perfetto UI.
 
 - Ptrace backend: use timestamp produced at a single location.
 - Ptrace backend: fix parent tracking for exec failure events.
+- TUI: fix "Prev Match" command.
 - Collect command now handles SIGINT and SIGTERM gracefully.
 - eBPF backend:  don't write skel to src dir in build script
+- eBPF backend: fix data race with per-cpu data structures.
+- Ptrace backend: fix interpreter path extraction for files smaller than 2 bytes.
+
+### Improvements
+
+- eBPF backend: use `BPF_RB_FORCE_WAKEUP` for event delivery.
+- Perf: use `internment` crate for much faster string interning.
 
 ### Internal Changes
 
 - tracexec is now split into multiple crates for better modularity and faster compilation.
+- Obsolete directories (`casts`, `screenshots`, `3rdparty`) are removed from git repo.
 - Update dependencies. Notably ratatui is updated to 0.30 and lru is bumped for an unsoundness fix.
 - Update and refactor UKCI.
 - Add CodeRabbit configuration for AI powered code review.
 - Remove whitesource bolt bot from CI.
+- Track test coverage with Codecov and cargo-llvm-cov in CI.
+- Check code style in CI with rustfmt.
+- Explicitly specify Github Actions workflow permissions
 
 ## v0.15.1
 
