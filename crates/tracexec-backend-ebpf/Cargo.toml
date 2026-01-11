@@ -11,6 +11,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [features]
+default = ["vendored-libbpf"]
 ebpf-debug = []
 ebpf-no-rcu-kfuncs = [
 ] # Avoid using rcu helpers. Necessary for kernel version < 6.2

@@ -23,7 +23,7 @@ version = "0.16.0-beta.6"
 [workspace.dependencies]
 perfetto-trace-proto = { path = "crates/perfetto-trace-proto", version = "0.1.0" }
 tracexec-backend-ptrace = { path = "crates/tracexec-backend-ptrace", version = "=0.16.0-beta.6" }
-tracexec-backend-ebpf = { path = "crates/tracexec-backend-ebpf", version = "=0.16.0-beta.6" }
+tracexec-backend-ebpf = { path = "crates/tracexec-backend-ebpf", default-features = false, version = "=0.16.0-beta.6" }
 tracexec-exporter-json = { path = "crates/tracexec-exporter-json", version = "=0.16.0-beta.6" }
 tracexec-exporter-perfetto = { path = "crates/tracexec-exporter-perfetto", version = "=0.16.0-beta.6" }
 tracexec-core = { path = "crates/tracexec-core", version = "=0.16.0-beta.6" }
