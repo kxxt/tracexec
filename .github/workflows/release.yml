@@ -112,8 +112,6 @@ jobs:
           if ! [ "${{ matrix.static_libseccomp }}" = "true" ]; then
             sudo apt-get install -y libseccomp2:${{ matrix.os-arch }}
           fi
-      # - name: Prepare libelf and zlib
-      #   run: 3rdparty/prepare-native-dependencies.sh ${{ matrix.arch }}
       - name: Generate third-party licenses
         run: cargo about generate -o THIRD_PARTY_LICENSES.HTML about.hbs
       - uses: taiki-e/upload-rust-binary-action@v1

@@ -16,7 +16,7 @@ does a proprietary software run, etc.
 In TUI mode with a pseudo terminal, you can view the details of exec events and interact with the processes
 within the pseudo terminal at ease.
 
-![TUI demo](https://github.com/kxxt/tracexec/blob/main/screenshots/tui-demo.gif?raw=true)
+![TUI demo](https://github.com/kxxt/tracexec/blob/v0.15.1/screenshots/tui-demo.gif?raw=true)
 
 ### Tracing setuid binaries
 
@@ -28,11 +28,11 @@ You can use eBPF mode which is more performant in such scenarios.
 sudo tracexec --user $(whoami) tui -t -- sudo ls
 ```
 
-![Tracing sudo ls](https://github.com/kxxt/tracexec/blob/main/screenshots/tracing-sudo.png?raw=true)
+![Tracing sudo ls](https://github.com/kxxt/tracexec/blob/v0.15.1/screenshots/tracing-sudo.png?raw=true)
 
 Nested setuid binary tracing is also possible: A real world use case is to trace `extra-x86_64-build`(Arch Linux's build tool that requires sudo):
 
-![Tracing extra-x86_64-build](https://github.com/kxxt/tracexec/blob/main/screenshots/tracing-nested-setuid.gif?raw=true)
+![Tracing extra-x86_64-build](https://github.com/kxxt/tracexec/blob/v0.15.1/screenshots/tracing-nested-setuid.gif?raw=true)
 
 In this real world example, we can easily see that `_FORTIFY_SOURCE` is redefined from `2` to `3`, which lead to a compiler error.
 
@@ -44,7 +44,7 @@ use tracexec to launch gdb to detach two simple programs piped together by a she
 
 https://github.com/kxxt/tracexec/assets/18085551/72c755a5-0f2f-4bf9-beb9-98c8d6b5e5fd
 
-Please [read the gdb-launcher example](https://github.com/kxxt/tracexec/blob/main/demonstration/gdb-launcher/README.md) for more details.
+Please [read the gdb-launcher example](demonstration/gdb-launcher/README.md) for more details.
 
 ### eBPF mode
 
@@ -118,7 +118,7 @@ $ tracexec log --show-interpreter --show-cwd -- makepkg -f
 General CLI help:
 
 ```bash
-Tracer for execve{,at} and pre-exec behavior, launcher for debuggers.
+Core crate of tracexec [Internal implementation! DO NOT DEPEND ON!]
 
 Usage: tracexec [OPTIONS] <COMMAND>
 
@@ -346,10 +346,10 @@ Options:
           Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
       --polling-interval <POLLING_INTERVAL>
           Polling interval, in microseconds. -1(default) disables polling.
-  -F, --format <FORMAT>
-          the format for exported exec events [possible values: json-stream, json]
   -p, --pretty
           prettify the output if supported
+  -F, --format <FORMAT>
+          the format for exported exec events [possible values: json-stream, json, perfetto]
   -o, --output <OUTPUT>
           Output, stderr by default. A single hyphen '-' represents stdout.
       --foreground
