@@ -211,8 +211,6 @@ jobs:
           if ! [ "${{ matrix.static_libseccomp }}" = "true" ]; then
             sudo apt-get install -y libseccomp2:${{ matrix.os-arch }}
           fi
-      # - name: Prepare libelf and zlib
-      #   run: 3rdparty/prepare-native-dependencies.sh ${{ matrix.arch }}
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
         with:
