@@ -5,3 +5,4 @@
 *.bpf.o
 # Clangd
 .cache
+compile_commands.json
