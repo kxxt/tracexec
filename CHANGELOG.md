@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.16.0-beta.7
+## v0.16.0
 
 ### New Features
 
@@ -13,6 +13,11 @@ https://github.com/user-attachments/assets/fc825d55-eb2f-43cd-b454-a11b5f9b44bc
 This feature enables interesting new use cases such as build system profiling
 and examining the detailed exec traces in tree format using perfetto UI.
 
+### Improvements
+
+- eBPF backend: use `BPF_RB_FORCE_WAKEUP` for event delivery.
+- Perf: use `internment` crate for much faster string interning.
+
 ### Bug Fixes
 
 - Ptrace backend: use timestamp produced at a single location.
@@ -23,14 +28,15 @@ and examining the detailed exec traces in tree format using perfetto UI.
 - eBPF backend: fix data race with per-cpu data structures.
 - Ptrace backend: fix interpreter path extraction for files smaller than 2 bytes.
 
-### Improvements
+### Build Related Changes
 
-- eBPF backend: use `BPF_RB_FORCE_WAKEUP` for event delivery.
-- Perf: use `internment` crate for much faster string interning.
+- tracexec is now split into multiple crates (`tracexec-core`, `tracexec-backend-ptrace`, `tracexec-backend-ebpf`, `tracexec-exporter-json`, `tracexec-exporter-perfetto`, `tracexec-tui` and optionally `perfetto-trace-proto`) for better modularity and faster compilation.
+- A new feature `protobuf-binding-from-source` is added for building protobuf bindings to the perfetto trace format.
+  By default, this feature is disabled and tracexec uses a vendored and hand-minified protobuf binding to perfetto to speed up compilation and avoid `protoc` build dependency.
+  See [INSTALL.md](INSTALL.md) for more details.
 
 ### Internal Changes
 
-- tracexec is now split into multiple crates for better modularity and faster compilation.
 - Obsolete directories (`casts`, `screenshots`, `3rdparty`) are removed from git repo.
 - Update dependencies. Notably ratatui is updated to 0.30 and lru is bumped for an unsoundness fix.
 - Update and refactor UKCI.
