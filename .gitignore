@@ -4,4 +4,4 @@
 *.skel.rs
 *.bpf.o
 # Clangd
-/.cache
+.cache
