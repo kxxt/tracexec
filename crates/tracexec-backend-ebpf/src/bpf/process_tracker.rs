@@ -15,7 +15,7 @@ pub struct ProcessState {
   associated_events: Vec<EventId>,
   /// # How parent tracking works in BPF
   ///
-  /// ```
+  /// ```ignore
   ///                      A
   ///                      │
   ///             fork (0) │
