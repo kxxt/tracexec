@@ -78,7 +78,7 @@ jobs:
           save-if: false
           key: clippy
       - name: Run clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --workspace -- -D warnings
 
   style:
     runs-on: ubuntu-latest
