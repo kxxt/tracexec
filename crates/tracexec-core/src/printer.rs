@@ -232,6 +232,7 @@ impl ListPrinter {
   pub fn print_string_list(&self, out: &mut dyn Write, list: &[impl Display]) -> io::Result<()> {
     self.begin(out)?;
     if let Some((last, rest)) = list.split_last() {
+      #[allow(clippy::branches_sharing_code)]
       if rest.is_empty() {
         write!(out, "{last}")?;
       } else {
@@ -326,7 +327,6 @@ impl Printer {
             "cloexec: ".bright_red().bold(),
             desc.bright_red().bold()
           )?;
-          list_printer.comma(out)?;
         } else {
           write!(
             out,
@@ -334,8 +334,8 @@ impl Printer {
             "closed: ".bright_red().bold(),
             desc.bright_red().bold()
           )?;
-          list_printer.comma(out)?;
         }
+        list_printer.comma(out)?;
       } else if fdinfo.not_same_file_as(orig_fd) {
         write!(out, "{}", desc.bright_yellow().bold())?;
         write!(out, "={}", fdinfo.path.bright_yellow())?;

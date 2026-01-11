@@ -1,17 +1,5 @@
-#![warn(
-  clippy::all,
-  // clippy::pedantic,
-  clippy::nursery,
-)]
 #![allow(
-  clippy::option_if_let_else,
-  clippy::missing_const_for_fn,
-  clippy::significant_drop_tightening,
-  clippy::cognitive_complexity, // FIXME
-  clippy::large_stack_frames, // In generated bpf skel, not really used to store on stack.
   clippy::future_not_send, // We are not a library for now.
-  clippy::branches_sharing_code,
-  clippy::non_send_fields_in_send_ty, // In bpf skel, maybe open an issue in libbpf-rs?
 )]
 
 #[cfg(feature = "ebpf")]

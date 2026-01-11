@@ -10,6 +10,9 @@ license.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 tracexec-core = { workspace = true }
 tracexec-backend-ptrace = { workspace = true }

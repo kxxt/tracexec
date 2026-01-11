@@ -12,7 +12,11 @@ pub mod event;
 pub mod process_tracker;
 pub mod tracer;
 
-#[allow(clippy::use_self)] // remove after https://github.com/libbpf/libbpf-rs/pull/1231 is merged
+#[allow(
+  clippy::use_self, // remove after https://github.com/libbpf/libbpf-rs/pull/1231 landed
+  clippy::large_stack_frames, // generated Default impl for large structs
+  clippy::non_send_fields_in_send_ty
+ )]
 pub mod skel {
   include!(concat!(env!("OUT_DIR"), "/tracexec_system.skel.rs"));
 }

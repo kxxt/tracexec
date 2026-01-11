@@ -136,7 +136,7 @@ pub struct LogModeConfig {
   pub decode_errno: Option<bool>,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ColorLevel {
   Less,
   #[default]
@@ -144,7 +144,7 @@ pub enum ColorLevel {
   More,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum FileDescriptorDisplay {
   Hide,
   Show,
@@ -152,7 +152,7 @@ pub enum FileDescriptorDisplay {
   Diff,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum EnvDisplay {
   Hide,
   Show,
@@ -160,7 +160,7 @@ pub enum EnvDisplay {
   Diff,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ExitHandling {
   #[default]
   Wait,
