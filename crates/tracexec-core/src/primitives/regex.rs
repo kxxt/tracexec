@@ -3,7 +3,10 @@ use std::sync::LazyLock;
 /// Regex and regex-cursor related code
 pub use regex_cursor::*;
 
-use crate::{cache::ArcStr, event::OutputMsg};
+use crate::{
+  cache::ArcStr,
+  event::OutputMsg,
+};
 
 pub trait BidirectionalIterator: Iterator {
   fn prev(&mut self) -> Option<Self::Item>;
@@ -200,8 +203,10 @@ impl<T> BidirectionalIterator for BidirectionalInterspersedIter<'_, T> {
 
 #[cfg(test)]
 mod iter_tests {
-  use super::BidirectionalInterspersedIter;
-  use super::BidirectionalIterator;
+  use super::{
+    BidirectionalInterspersedIter,
+    BidirectionalIterator,
+  };
 
   #[test]
   fn biter_interspersed_roundtrip() {

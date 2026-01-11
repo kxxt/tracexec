@@ -1,33 +1,72 @@
 use std::{
   collections::BTreeMap,
   sync::{
-    Arc, RwLock,
-    atomic::{AtomicU32, Ordering},
+    Arc,
+    RwLock,
+    atomic::{
+      AtomicU32,
+      Ordering,
+    },
   },
   time::Duration,
 };
 
-use crate::ptrace::tracer::{inner::TracerInner, private::Sealed};
 use enumflags2::BitFlags;
 use nix::{
   errno::Errno,
-  libc::{c_int, pthread_kill, pthread_self, pthread_setname_np, pthread_t},
-  sys::signal::{SaFlags, SigAction, SigSet, sigaction},
-  unistd::{Pid, User},
+  libc::{
+    c_int,
+    pthread_kill,
+    pthread_self,
+    pthread_setname_np,
+    pthread_t,
+  },
+  sys::signal::{
+    SaFlags,
+    SigAction,
+    SigSet,
+    sigaction,
+  },
+  unistd::{
+    Pid,
+    User,
+  },
 };
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
+use tokio::sync::mpsc::{
+  UnboundedReceiver,
+  UnboundedSender,
+  unbounded_channel,
+};
+use tracexec_core::{
+  breakpoint::{
+    BreakPoint,
+    BreakPointHit,
+  },
+  cli::{
+    args::ModifierArgs,
+    options::SeccompBpf,
+  },
+  event::{
+    TracerEventDetailsKind,
+    TracerMessage,
+  },
+  printer::{
+    Printer,
+    PrinterOut,
+  },
+  proc::BaselineInfo,
+  tracer::{
+    Signal,
+    TracerBuilder,
+    TracerMode,
+  },
+};
 use tracing::trace;
 
-use tracexec_core::{
-  cli::args::ModifierArgs,
-  event::{TracerEventDetailsKind, TracerMessage},
-  printer::{Printer, PrinterOut},
-  proc::BaselineInfo,
-  tracer::{Signal, TracerBuilder, TracerMode},
+use crate::ptrace::tracer::{
+  inner::TracerInner,
+  private::Sealed,
 };
-
-use tracexec_core::breakpoint::{BreakPoint, BreakPointHit};
-use tracexec_core::cli::options::SeccompBpf;
 
 mod inner;
 mod state;

@@ -1,12 +1,21 @@
-use std::{borrow::Cow, error::Error};
+use std::{
+  borrow::Cow,
+  error::Error,
+};
 
 use nix::unistd::Pid;
-use regex_cursor::engines::pikevm::{self, PikeVM};
+use regex_cursor::engines::pikevm::{
+  self,
+  PikeVM,
+};
 use strum::IntoStaticStr;
 
 use crate::{
   event::OutputMsg,
-  primitives::regex::{ArgvCursor, SPACE},
+  primitives::regex::{
+    ArgvCursor,
+    SPACE,
+  },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -176,9 +185,10 @@ impl TryFrom<&str> for BreakPoint {
 
 #[cfg(test)]
 mod tests {
+  use nix::errno::Errno;
+
   use super::*;
   use crate::cache::ArcStr;
-  use nix::errno::Errno;
 
   #[test]
   fn test_breakpoint_stop_toggle() {

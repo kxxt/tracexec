@@ -1,25 +1,68 @@
 use std::collections::BTreeMap;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use itertools::{Itertools, chain};
-use ratatui::{
-  layout::{Alignment, Constraint, Layout},
-  prelude::{Buffer, Rect},
-  style::Stylize,
-  text::{Line, Span},
-  widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, StatefulWidgetRef, Widget, Wrap},
+use crossterm::event::{
+  KeyCode,
+  KeyEvent,
+  KeyModifiers,
 };
-use tui_prompts::{State, TextPrompt, TextState};
-use tui_widget_list::{ListBuilder, ListView};
-
-use crate::action::{Action, ActivePopup};
+use itertools::{
+  Itertools,
+  chain,
+};
+use ratatui::{
+  layout::{
+    Alignment,
+    Constraint,
+    Layout,
+  },
+  prelude::{
+    Buffer,
+    Rect,
+  },
+  style::Stylize,
+  text::{
+    Line,
+    Span,
+  },
+  widgets::{
+    Block,
+    Borders,
+    Clear,
+    Paragraph,
+    StatefulWidget,
+    StatefulWidgetRef,
+    Widget,
+    Wrap,
+  },
+};
 use tracexec_backend_ptrace::ptrace::RunningTracer;
-use tracexec_core::breakpoint::{BreakPoint, BreakPointPattern, BreakPointStop, BreakPointType};
+use tracexec_core::breakpoint::{
+  BreakPoint,
+  BreakPointPattern,
+  BreakPointStop,
+  BreakPointType,
+};
+use tui_prompts::{
+  State,
+  TextPrompt,
+  TextState,
+};
+use tui_widget_list::{
+  ListBuilder,
+  ListView,
+};
 
 use super::{
   error_popup::InfoPopupState,
-  help::{help_item, help_key},
+  help::{
+    help_item,
+    help_key,
+  },
   theme::THEME,
+};
+use crate::action::{
+  Action,
+  ActivePopup,
 };
 
 struct BreakPointEntry {

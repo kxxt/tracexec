@@ -1,7 +1,11 @@
 use ratatui::{
   buffer::Buffer,
   layout::Rect,
-  widgets::{Paragraph, Widget, WidgetRef},
+  widgets::{
+    Paragraph,
+    Widget,
+    WidgetRef,
+  },
 };
 use tui_popup::KnownSize;
 

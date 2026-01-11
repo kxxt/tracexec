@@ -17,26 +17,47 @@
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 use std::{
-  ops::{Deref, DerefMut},
+  ops::{
+    Deref,
+    DerefMut,
+  },
   time::Duration,
 };
 
 use color_eyre::eyre::Result;
 use crossterm::{
   cursor,
-  event::{Event as CrosstermEvent, KeyEventKind},
-  terminal::{EnterAlternateScreen, LeaveAlternateScreen},
+  event::{
+    Event as CrosstermEvent,
+    KeyEventKind,
+  },
+  terminal::{
+    EnterAlternateScreen,
+    LeaveAlternateScreen,
+  },
 };
-use futures::{FutureExt, StreamExt};
+use futures::{
+  FutureExt,
+  StreamExt,
+};
 use ratatui::backend::CrosstermBackend as Backend;
 use tokio::{
-  sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
+  sync::mpsc::{
+    self,
+    UnboundedReceiver,
+    UnboundedSender,
+  },
   task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{error, trace};
-
-use tracexec_core::event::{Event, TracerMessage};
+use tracexec_core::event::{
+  Event,
+  TracerMessage,
+};
+use tracing::{
+  error,
+  trace,
+};
 
 pub mod action;
 pub mod app;

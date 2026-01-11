@@ -2,7 +2,10 @@ use ratatui::{
   buffer::Buffer,
   layout::Rect,
   text::Text,
-  widgets::{Paragraph, Widget},
+  widgets::{
+    Paragraph,
+    Widget,
+  },
 };
 
 use super::theme::THEME;

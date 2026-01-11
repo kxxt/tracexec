@@ -16,16 +16,22 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::{path::PathBuf, sync::LazyLock};
+use std::{
+  path::PathBuf,
+  sync::LazyLock,
+};
 
 use color_eyre::eyre::Result;
 use tracexec_core::cli::config::project_directory;
-use tracing_error::ErrorLayer;
-use tracing_subscriber::{self, Layer, layer::SubscriberExt, util::SubscriberInitExt};
-
-pub use tracing::*;
-
 use tracexec_tui::restore_tui;
+pub use tracing::*;
+use tracing_error::ErrorLayer;
+use tracing_subscriber::{
+  self,
+  Layer,
+  layer::SubscriberExt,
+  util::SubscriberInitExt,
+};
 
 const LOG_FILE: &str = concat!(env!("CARGO_PKG_NAME"), ".log");
 

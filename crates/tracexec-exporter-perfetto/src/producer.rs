@@ -4,25 +4,45 @@ use std::{
   cell::RefCell,
   cmp::Reverse,
   rc::Rc,
-  sync::{Arc, atomic::AtomicU64},
+  sync::{
+    Arc,
+    atomic::AtomicU64,
+  },
 };
 
-use crate::proto::{
-  TracePacket, TrackDescriptor,
-  track_descriptor::{ChildTracksOrdering, SiblingMergeBehavior, StaticOrDynamicName},
+use hashbrown::{
+  Equivalent,
+  HashMap,
 };
-use hashbrown::{Equivalent, HashMap};
 use priority_queue::PriorityQueue;
-use tracing::debug;
-
 use tracexec_core::{
   event::{
-    EventId, ParentEvent, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEvent, TracerMessage,
+    EventId,
+    ParentEvent,
+    ProcessStateUpdate,
+    ProcessStateUpdateEvent,
+    TracerEvent,
+    TracerMessage,
   },
   proc::BaselineInfo,
 };
+use tracing::debug;
 
-use crate::packet::{SliceEndInfo, TracePacketCreator};
+use crate::{
+  packet::{
+    SliceEndInfo,
+    TracePacketCreator,
+  },
+  proto::{
+    TracePacket,
+    TrackDescriptor,
+    track_descriptor::{
+      ChildTracksOrdering,
+      SiblingMergeBehavior,
+      StaticOrDynamicName,
+    },
+  },
+};
 // We try to maintain as few tracks as possible for performance reasons.
 // When a process begin, we mark its track as occupied and won't put other newly spawned processes onto it.
 // When a parent process first spawns a child process, we create a new track under the parent's track if

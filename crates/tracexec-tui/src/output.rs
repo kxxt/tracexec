@@ -1,10 +1,16 @@
 use ratatui::{
-  style::{Style, Styled},
+  style::{
+    Style,
+    Styled,
+  },
   text::Span,
 };
 use tracexec_core::event::OutputMsg;
 
-use crate::{output::private::Sealed, theme::THEME};
+use crate::{
+  output::private::Sealed,
+  theme::THEME,
+};
 
 mod private {
   use tracexec_core::event::OutputMsg;

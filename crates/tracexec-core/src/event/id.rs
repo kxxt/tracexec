@@ -1,4 +1,7 @@
-use std::ops::{Add, Sub};
+use std::ops::{
+  Add,
+  Sub,
+};
 
 use nutype::nutype;
 

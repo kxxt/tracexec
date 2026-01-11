@@ -2,29 +2,45 @@ use std::{
   collections::BTreeMap,
   fmt::Debug,
   io::Write,
-  sync::{Arc, atomic::AtomicU64},
+  sync::{
+    Arc,
+    atomic::AtomicU64,
+  },
 };
 
-use crate::{
-  cache::ArcStr,
-  printer::ListPrinter,
-  proc::{Cred, CredInspectError},
-  timestamp::Timestamp,
+use chrono::{
+  DateTime,
+  Local,
 };
-use chrono::{DateTime, Local};
 use clap::ValueEnum;
 use crossterm::event::KeyEvent;
 use enumflags2::BitFlags;
 use filterable_enum::FilterableEnum;
-use nix::{errno::Errno, libc::c_int, unistd::Pid};
+use nix::{
+  errno::Errno,
+  libc::c_int,
+  unistd::Pid,
+};
 use strum::Display;
 use tokio::sync::mpsc;
 
 use crate::{
   breakpoint::BreakPointHit,
-  proc::{EnvDiff, FileDescriptorInfoCollection, Interpreter},
-  tracer::ProcessExit,
-  tracer::{InspectError, Signal},
+  cache::ArcStr,
+  printer::ListPrinter,
+  proc::{
+    Cred,
+    CredInspectError,
+    EnvDiff,
+    FileDescriptorInfoCollection,
+    Interpreter,
+  },
+  timestamp::Timestamp,
+  tracer::{
+    InspectError,
+    ProcessExit,
+    Signal,
+  },
 };
 
 mod id;
@@ -352,13 +368,19 @@ impl std::fmt::Display for EventStatus {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::cache::ArcStr;
-  use crate::timestamp::ts_from_boot_ns;
+  use std::{
+    collections::BTreeMap,
+    sync::Arc,
+  };
+
   use chrono::Local;
   use nix::unistd::Pid;
-  use std::collections::BTreeMap;
-  use std::sync::Arc;
+
+  use super::*;
+  use crate::{
+    cache::ArcStr,
+    timestamp::ts_from_boot_ns,
+  };
 
   #[test]
   fn test_event_tracer_message_conversion() {

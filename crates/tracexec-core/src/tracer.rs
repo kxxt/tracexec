@@ -1,27 +1,49 @@
-use chrono::{DateTime, Local};
+use std::{
+  collections::BTreeMap,
+  fmt::Display,
+  sync::Arc,
+};
+
+use chrono::{
+  DateTime,
+  Local,
+};
 use enumflags2::BitFlags;
 use nix::{
   errno::Errno,
-  libc::{SIGRTMIN, c_int},
+  libc::{
+    SIGRTMIN,
+    c_int,
+  },
   unistd::User,
 };
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
   cli::{
-    args::{LogModeArgs, ModifierArgs},
+    args::{
+      LogModeArgs,
+      ModifierArgs,
+    },
     options::SeccompBpf,
   },
-  event::{TracerEventDetailsKind, TracerMessage},
-  printer::{Printer, PrinterArgs},
-  proc::{BaselineInfo, Cred, CredInspectError},
+  event::{
+    OutputMsg,
+    TracerEventDetailsKind,
+    TracerMessage,
+  },
+  printer::{
+    Printer,
+    PrinterArgs,
+  },
+  proc::{
+    BaselineInfo,
+    Cred,
+    CredInspectError,
+    FileDescriptorInfoCollection,
+    Interpreter,
+  },
   pty::UnixSlavePty,
-};
-use std::{collections::BTreeMap, fmt::Display, sync::Arc};
-
-use crate::{
-  event::OutputMsg,
-  proc::{FileDescriptorInfoCollection, Interpreter},
 };
 
 pub type InspectError = Errno;
@@ -252,13 +274,16 @@ pub enum ProcessExit {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::event::OutputMsg;
+  use std::{
+    collections::BTreeMap,
+    sync::Arc,
+  };
 
   use chrono::Local;
   use nix::sys::signal::Signal as NixSignal;
-  use std::collections::BTreeMap;
-  use std::sync::Arc;
+
+  use super::*;
+  use crate::event::OutputMsg;
 
   /* ---------------- Signal ---------------- */
 
@@ -336,10 +361,7 @@ mod tests {
     ]);
 
     let mut envp_map = BTreeMap::new();
-    envp_map.insert(
-      OutputMsg::Ok("A".into()),
-      OutputMsg::Ok("B".into()),
-    );
+    envp_map.insert(OutputMsg::Ok("A".into()), OutputMsg::Ok("B".into()));
     let envp = Ok(envp_map);
 
     let cwd = OutputMsg::Ok("/".into());
@@ -368,7 +390,6 @@ mod tests {
     assert!(Arc::strong_count(&exec.envp) >= 1);
     assert!(Arc::strong_count(&exec.fdinfo) >= 1);
   }
-
 
   /* ---------------- ProcessExit ---------------- */
 

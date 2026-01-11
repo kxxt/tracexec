@@ -1,10 +1,21 @@
 use std::num::NonZeroUsize;
 
-use crate::proto::{
-  DebugAnnotation, DebugAnnotationName, EventName, InternedString,
-  debug_annotation::{NameField, Value},
+use strum::{
+  EnumIter,
+  IntoEnumIterator,
+  IntoStaticStr,
 };
-use strum::{EnumIter, IntoEnumIterator, IntoStaticStr};
+
+use crate::proto::{
+  DebugAnnotation,
+  DebugAnnotationName,
+  EventName,
+  InternedString,
+  debug_annotation::{
+    NameField,
+    Value,
+  },
+};
 
 #[repr(u64)]
 #[derive(Debug, Clone, Copy, IntoStaticStr, EnumIter)]

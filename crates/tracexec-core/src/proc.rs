@@ -3,29 +3,59 @@
 use core::fmt;
 use std::{
   borrow::Cow,
-  collections::{BTreeMap, BTreeSet, HashSet},
+  collections::{
+    BTreeMap,
+    BTreeSet,
+    HashSet,
+  },
   ffi::CString,
-  fmt::{Display, Formatter},
+  fmt::{
+    Display,
+    Formatter,
+  },
   fs,
-  io::{self, BufRead, BufReader, Read},
+  io::{
+    self,
+    BufRead,
+    BufReader,
+    Read,
+  },
   os::raw::c_int,
-  path::{Path, PathBuf},
+  path::{
+    Path,
+    PathBuf,
+  },
 };
 
-use crate::cache::ArcStr;
 use filedescriptor::AsRawFileDescriptor;
-use owo_colors::OwoColorize;
-
 use nix::{
   fcntl::OFlag,
-  libc::{AT_FDCWD, gid_t},
-  unistd::{Pid, getpid},
+  libc::{
+    AT_FDCWD,
+    gid_t,
+  },
+  unistd::{
+    Pid,
+    getpid,
+  },
 };
-use serde::{Serialize, Serializer, ser::SerializeSeq};
+use owo_colors::OwoColorize;
+use serde::{
+  Serialize,
+  Serializer,
+  ser::SerializeSeq,
+};
 use snafu::Snafu;
 use tracing::warn;
 
-use crate::{cache::StringCache, event::OutputMsg, pty::UnixSlavePty};
+use crate::{
+  cache::{
+    ArcStr,
+    StringCache,
+  },
+  event::OutputMsg,
+  pty::UnixSlavePty,
+};
 
 #[allow(unused)]
 pub fn read_argv(pid: Pid) -> color_eyre::Result<Vec<CString>> {
@@ -665,9 +695,8 @@ Groups:\t0
 
 #[cfg(test)]
 mod env_tests {
-  use crate::event::FriendlyError;
-
   use super::*;
+  use crate::event::FriendlyError;
 
   #[test]
   fn test_parse_env_entry_normal() {
@@ -739,7 +768,10 @@ mod env_tests {
 mod env_diff_tests {
   use std::collections::BTreeMap;
 
-  use crate::{event::OutputMsg, proc::diff_env};
+  use crate::{
+    event::OutputMsg,
+    proc::diff_env,
+  };
 
   #[test]
   fn test_env_diff_added_removed_modified() {
@@ -821,14 +853,22 @@ mod fdinfo_tests {
 #[cfg(test)]
 mod interpreter_test {
   use std::{
-    fs::{self, File},
+    fs::{
+      self,
+      File,
+    },
     io::Write,
     os::unix::fs::PermissionsExt,
   };
 
   use tempfile::tempdir;
 
-  use crate::proc::{Interpreter, cached_str, read_interpreter, read_interpreter_recursive};
+  use crate::proc::{
+    Interpreter,
+    cached_str,
+    read_interpreter,
+    read_interpreter_recursive,
+  };
 
   #[test]
   fn test_interpreter_display() {
@@ -895,10 +935,17 @@ mod interpreter_test {
 
   #[test]
   fn test_read_interpreter_recursive_shebang_chain() {
-    use super::read_interpreter_recursive;
-    use std::fs::{self, File};
-    use std::io::Write;
+    use std::{
+      fs::{
+        self,
+        File,
+      },
+      io::Write,
+    };
+
     use tempfile::tempdir;
+
+    use super::read_interpreter_recursive;
 
     let dir = tempdir().unwrap();
 
@@ -950,6 +997,7 @@ mod interpreter_test {
   #[test]
   fn test_read_interpreter_recursive_no_shebang() {
     use std::fs::File;
+
     use tempfile::tempdir;
 
     let dir = tempdir().unwrap();

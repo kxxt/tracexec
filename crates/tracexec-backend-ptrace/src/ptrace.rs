@@ -7,5 +7,9 @@ mod waitpid;
 
 pub use engine::RecursivePtraceEngine;
 pub use guards::*;
-pub use tracer::{BuildPtraceTracer, RunningTracer, Tracer};
+pub use tracer::{
+  BuildPtraceTracer,
+  RunningTracer,
+  Tracer,
+};
 pub use waitpid::*;

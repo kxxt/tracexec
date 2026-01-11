@@ -1,6 +1,7 @@
-use crate::proto::TracePacket;
 use bytes::BufMut;
 use prost::Message;
+
+use crate::proto::TracePacket;
 
 pub struct PerfettoTraceRecorder<W: std::io::Write> {
   buf: Vec<u8>,

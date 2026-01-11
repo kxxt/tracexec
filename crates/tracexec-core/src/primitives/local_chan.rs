@@ -5,7 +5,11 @@
 //! Specifically, in tracexec it is used to implement the event-action pattern:
 //! https://ratatui.rs/concepts/event-handling/#centralized-catching-message-passing
 
-use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+use std::{
+  cell::RefCell,
+  collections::VecDeque,
+  rc::Rc,
+};
 
 pub fn unbounded<T>() -> (LocalUnboundedSender<T>, LocalUnboundedReceiver<T>) {
   let inner = Rc::new(RefCell::new(VecDeque::new()));

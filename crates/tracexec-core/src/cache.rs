@@ -1,10 +1,17 @@
-use internment::ArcIntern;
-use serde::{Serialize, Serializer};
 use std::{
   borrow::Cow,
-  fmt::{Debug, Display},
+  fmt::{
+    Debug,
+    Display,
+  },
   ops::Deref,
   sync::LazyLock,
+};
+
+use internment::ArcIntern;
+use serde::{
+  Serialize,
+  Serializer,
 };
 
 #[repr(transparent)]

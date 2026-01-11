@@ -1,7 +1,11 @@
 use std::sync::LazyLock;
 
 use ratatui::{
-  style::{Modifier, Style, Stylize},
+  style::{
+    Modifier,
+    Style,
+    Stylize,
+  },
   text::Span,
 };
 

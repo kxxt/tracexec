@@ -1,1 +1,5 @@
 tab_spaces = 2
+reorder_imports = true
+imports_layout = "Vertical"
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"

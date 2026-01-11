@@ -1,8 +1,15 @@
-use std::{io::Write, sync::Arc};
+use std::{
+  io::Write,
+  sync::Arc,
+};
 
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use crate::{cli::args::ExporterArgs, event::TracerMessage, proc::BaselineInfo};
+use crate::{
+  cli::args::ExporterArgs,
+  event::TracerMessage,
+  proc::BaselineInfo,
+};
 
 pub struct ExporterMetadata {
   pub baseline: Arc<BaselineInfo>,

@@ -1,4 +1,8 @@
-use libseccomp::{ScmpAction, ScmpArch, ScmpFilterContext};
+use libseccomp::{
+  ScmpAction,
+  ScmpArch,
+  ScmpFilterContext,
+};
 
 pub fn load_seccomp_filters() -> color_eyre::Result<()> {
   libseccomp::reset_global_state()?;
@@ -20,12 +24,18 @@ pub fn load_seccomp_filters() -> color_eyre::Result<()> {
 
 #[cfg(test)]
 mod test {
-  use nix::errno::Errno;
-  use nix::fcntl::AtFlags;
-  use nix::fcntl::OFlag;
-  use nix::sys::stat::Mode;
-  use nix::unistd::execve;
-  use nix::unistd::execveat;
+  use nix::{
+    errno::Errno,
+    fcntl::{
+      AtFlags,
+      OFlag,
+    },
+    sys::stat::Mode,
+    unistd::{
+      execve,
+      execveat,
+    },
+  };
   use rusty_fork::rusty_fork_test;
 
   use crate::seccomp::load_seccomp_filters;

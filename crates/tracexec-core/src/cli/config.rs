@@ -1,13 +1,26 @@
-use std::{io, path::PathBuf};
+use std::{
+  io,
+  path::PathBuf,
+};
 
 use directories::ProjectDirs;
-use serde::{Deserialize, Deserializer, Serialize};
-use snafu::{ResultExt, Snafu};
+use serde::{
+  Deserialize,
+  Deserializer,
+  Serialize,
+};
+use snafu::{
+  ResultExt,
+  Snafu,
+};
 use tracing::warn;
 
+use super::options::{
+  ActivePane,
+  AppLayout,
+  SeccompBpf,
+};
 use crate::timestamp::TimestampFormat;
-
-use super::options::{ActivePane, AppLayout, SeccompBpf};
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Config {
@@ -161,10 +174,11 @@ pub fn project_directory() -> Option<ProjectDirs> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use std::path::PathBuf;
 
   use toml;
+
+  use super::*;
 
   #[test]
   fn test_validate_frame_rate() {

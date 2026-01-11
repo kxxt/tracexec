@@ -1,7 +1,12 @@
-use std::{borrow::Cow, ffi::CStr};
+use std::{
+  borrow::Cow,
+  ffi::CStr,
+};
 
-use tracexec_core::cache::{ArcStr, StringCache};
-
+use tracexec_core::cache::{
+  ArcStr,
+  StringCache,
+};
 pub use tracexec_core::event::BpfError;
 pub mod event;
 pub mod process_tracker;

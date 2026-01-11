@@ -1,22 +1,44 @@
-use std::{env, path::PathBuf, sync::Arc};
+use std::{
+  env,
+  path::PathBuf,
+  sync::Arc,
+};
 
-use rstest::{fixture, rstest};
+use rstest::{
+  fixture,
+  rstest,
+};
 use serial_test::file_serial;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tracexec_core::{
+  cli::{
+    args::{
+      LogModeArgs,
+      ModifierArgs,
+    },
+    options::SeccompBpf,
+  },
+  event::{
+    OutputMsg,
+    TracerEvent,
+    TracerEventDetails,
+    TracerMessage,
+  },
+  proc::{
+    BaselineInfo,
+    Interpreter,
+  },
+  tracer::TracerBuilder,
+};
 use tracing::info;
 use tracing_test::traced_test;
 
-use tracexec_core::{
-  cli::{
-    args::{LogModeArgs, ModifierArgs},
-    options::SeccompBpf,
-  },
-  event::{OutputMsg, TracerEvent, TracerEventDetails, TracerMessage},
-  proc::{BaselineInfo, Interpreter},
-  tracer::TracerBuilder,
+use super::{
+  BuildPtraceTracer,
+  SpawnToken,
+  Tracer,
+  TracerMode,
 };
-
-use super::{BuildPtraceTracer, SpawnToken, Tracer, TracerMode};
 
 #[fixture]
 fn true_executable() -> PathBuf {

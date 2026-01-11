@@ -1,7 +1,8 @@
 //! Code for locating the id of parent event of an event.
 
-use super::EventId;
 use std::fmt::Debug;
+
+use super::EventId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParentEvent<T> {

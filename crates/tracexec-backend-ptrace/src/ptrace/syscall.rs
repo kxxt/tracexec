@@ -1,8 +1,15 @@
 #![allow(unused)]
 
-use crate::arch::{HAS_32BIT, NATIVE_AUDIT_ARCH};
 use cfg_if::cfg_if;
-use nix::libc::{SYS_execve, SYS_execveat};
+use nix::libc::{
+  SYS_execve,
+  SYS_execveat,
+};
+
+use crate::arch::{
+  HAS_32BIT,
+  NATIVE_AUDIT_ARCH,
+};
 
 #[allow(unused)]
 #[repr(transparent)]

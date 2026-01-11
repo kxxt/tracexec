@@ -1,12 +1,19 @@
 use hashbrown::HashMap;
 use nix::unistd::Pid;
 use tracexec_core::{
+  breakpoint::BreakPointHit,
   cache::ArcStr,
-  event::{EventId, ParentTracker},
-  tracer::{ExecData, ProcessExit},
+  event::{
+    EventId,
+    ParentTracker,
+  },
+  proc::read_comm,
+  tracer::{
+    ExecData,
+    ProcessExit,
+    Signal,
+  },
 };
-
-use tracexec_core::{breakpoint::BreakPointHit, proc::read_comm, tracer::Signal};
 
 pub struct ProcessStateStore {
   processes: HashMap<Pid, ProcessState>,

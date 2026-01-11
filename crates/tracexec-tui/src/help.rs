@@ -1,17 +1,27 @@
-use ratatui::{
-  layout::Rect,
-  style::Stylize,
-  text::{Line, Text},
-  widgets::{Paragraph, Wrap},
-};
-
-use tracexec_core::event::EventStatus;
-
-use super::{sized_paragraph::SizedParagraph, theme::THEME};
-
 use std::borrow::Cow;
 
-use ratatui::{style::Styled, text::Span};
+use ratatui::{
+  layout::Rect,
+  style::{
+    Styled,
+    Stylize,
+  },
+  text::{
+    Line,
+    Span,
+    Text,
+  },
+  widgets::{
+    Paragraph,
+    Wrap,
+  },
+};
+use tracexec_core::event::EventStatus;
+
+use super::{
+  sized_paragraph::SizedParagraph,
+  theme::THEME,
+};
 
 pub fn cli_flag<'a, T>(f: T) -> Span<'a>
 where

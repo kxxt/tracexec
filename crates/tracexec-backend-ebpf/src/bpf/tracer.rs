@@ -1,70 +1,139 @@
 use std::{
   cell::RefCell,
-  collections::{HashMap, HashSet},
+  collections::{
+    HashMap,
+    HashSet,
+  },
   ffi::OsStr,
   io::stdin,
   iter::repeat_n,
   mem::MaybeUninit,
-  os::{fd::RawFd, unix::fs::MetadataExt},
+  os::{
+    fd::RawFd,
+    unix::fs::MetadataExt,
+  },
   sync::{
     Arc,
-    atomic::{AtomicBool, Ordering},
+    atomic::{
+      AtomicBool,
+      Ordering,
+    },
   },
   time::Duration,
 };
 
-use crate::bpf::tracer::private::Sealed;
-
-use super::interface::BpfEventFlags;
-use super::process_tracker::ProcessTracker;
-use super::skel::{
-  TracexecSystemSkel,
-  types::{
-    event_type, exec_event, exit_event, fd_event, fork_event, path_event, path_segment_event,
-    tracexec_event_header,
-  },
-};
-use super::{BpfError, cached_cow, utf8_lossy_cow_from_bytes_with_nul};
-use super::{event::EventStorage, skel::TracexecSystemSkelBuilder};
 use chrono::Local;
 use color_eyre::Section;
-use enumflags2::{BitFlag, BitFlags};
+use enumflags2::{
+  BitFlag,
+  BitFlags,
+};
 use libbpf_rs::{
-  OpenObject, RingBuffer, RingBufferBuilder, num_possible_cpus,
-  skel::{OpenSkel, Skel, SkelBuilder},
+  OpenObject,
+  RingBuffer,
+  RingBufferBuilder,
+  num_possible_cpus,
+  skel::{
+    OpenSkel,
+    Skel,
+    SkelBuilder,
+  },
 };
 use nix::{
   errno::Errno,
   fcntl::OFlag,
-  libc::{self, AT_FDCWD, c_int, gid_t},
-  sys::{
-    signal::{kill, raise},
-    wait::{WaitPidFlag, WaitStatus, waitpid},
+  libc::{
+    self,
+    AT_FDCWD,
+    c_int,
+    gid_t,
   },
-  unistd::{Pid, User, tcsetpgrp},
+  sys::{
+    signal::{
+      kill,
+      raise,
+    },
+    wait::{
+      WaitPidFlag,
+      WaitStatus,
+      waitpid,
+    },
+  },
+  unistd::{
+    Pid,
+    User,
+    tcsetpgrp,
+  },
 };
 use tokio::sync::mpsc::UnboundedSender;
-use tracexec_core::{
-  proc::{Cred, CredInspectError},
-  timestamp::ts_from_boot_ns,
-  tracee,
-  tracer::TracerBuilder,
-};
-use tracing::{debug, warn};
-
 use tracexec_core::{
   cli::args::ModifierArgs,
   cmdbuilder::CommandBuilder,
   event::{
-    ExecEvent, FilterableTracerEventDetails, FriendlyError, OutputMsg, ProcessStateUpdate,
-    ProcessStateUpdateEvent, TracerEvent, TracerEventDetails, TracerEventDetailsKind,
-    TracerMessage, filterable_event,
+    ExecEvent,
+    FilterableTracerEventDetails,
+    FriendlyError,
+    OutputMsg,
+    ProcessStateUpdate,
+    ProcessStateUpdateEvent,
+    TracerEvent,
+    TracerEventDetails,
+    TracerEventDetailsKind,
+    TracerMessage,
+    filterable_event,
   },
-  printer::{Printer, PrinterOut},
-  proc::{BaselineInfo, FileDescriptorInfo, cached_string, diff_env, parse_failiable_envp},
+  printer::{
+    Printer,
+    PrinterOut,
+  },
+  proc::{
+    BaselineInfo,
+    Cred,
+    CredInspectError,
+    FileDescriptorInfo,
+    cached_string,
+    diff_env,
+    parse_failiable_envp,
+  },
   pty,
-  tracer::{ExecData, ProcessExit, Signal, TracerMode},
+  timestamp::ts_from_boot_ns,
+  tracee,
+  tracer::{
+    ExecData,
+    ProcessExit,
+    Signal,
+    TracerBuilder,
+    TracerMode,
+  },
 };
+use tracing::{
+  debug,
+  warn,
+};
+
+use super::{
+  BpfError,
+  cached_cow,
+  event::EventStorage,
+  interface::BpfEventFlags,
+  process_tracker::ProcessTracker,
+  skel::{
+    TracexecSystemSkel,
+    TracexecSystemSkelBuilder,
+    types::{
+      event_type,
+      exec_event,
+      exit_event,
+      fd_event,
+      fork_event,
+      path_event,
+      path_segment_event,
+      tracexec_event_header,
+    },
+  },
+  utf8_lossy_cow_from_bytes_with_nul,
+};
+use crate::bpf::tracer::private::Sealed;
 
 pub struct EbpfTracer {
   user: Option<User>,

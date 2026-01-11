@@ -2,13 +2,28 @@
 
 use std::{
   ffi::CString,
-  os::fd::{AsFd, FromRawFd, OwnedFd},
+  os::fd::{
+    AsFd,
+    FromRawFd,
+    OwnedFd,
+  },
 };
 
 use nix::{
   errno::Errno,
   libc,
-  unistd::{Gid, Uid, User, dup2, getpid, initgroups, setpgid, setresgid, setresuid, setsid},
+  unistd::{
+    Gid,
+    Uid,
+    User,
+    dup2,
+    getpid,
+    initgroups,
+    setpgid,
+    setresgid,
+    setresuid,
+    setsid,
+  },
 };
 
 pub fn nullify_stdio() -> Result<(), std::io::Error> {
@@ -51,10 +66,15 @@ pub fn lead_session_and_control_terminal() -> Result<(), Errno> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use std::io::{
+    Read,
+    Write,
+  };
+
   use nix::unistd::getpgrp;
   use rusty_fork::rusty_fork_test;
-  use std::io::{Read, Write};
+
+  use super::*;
 
   rusty_fork_test! {
     #[test]

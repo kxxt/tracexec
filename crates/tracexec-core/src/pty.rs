@@ -25,26 +25,66 @@
 
 #![allow(unused)]
 
-use color_eyre::eyre::{Error, bail};
-use filedescriptor::FileDescriptor;
-use nix::libc::{self, pid_t, winsize};
-use nix::unistd::{Pid, dup2, execv, fork};
-use std::cell::RefCell;
-use std::ffi::{CStr, CString, OsStr};
-
-use std::fs::File;
-use std::io::{Read, Write};
-use std::os::fd::{AsFd, OwnedFd};
-use std::os::unix::ffi::{OsStrExt, OsStringExt};
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
-use std::os::unix::process::CommandExt;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::{io, mem, ptr};
-
 // use downcast_rs::{impl_downcast, Downcast};
+use std::{
+  cell::RefCell,
+  ffi::{
+    CStr,
+    CString,
+    OsStr,
+  },
+  fs::File,
+  io,
+  io::{
+    Read,
+    Result as IoResult,
+    Write,
+  },
+  mem,
+  os::{
+    fd::{
+      AsFd,
+      OwnedFd,
+    },
+    unix::{
+      ffi::{
+        OsStrExt,
+        OsStringExt,
+      },
+      io::{
+        AsRawFd,
+        FromRawFd,
+        RawFd,
+      },
+      process::CommandExt,
+    },
+  },
+  path::{
+    Path,
+    PathBuf,
+  },
+  process::Command,
+  ptr,
+};
 
-use std::io::Result as IoResult;
+use color_eyre::eyre::{
+  Error,
+  bail,
+};
+use filedescriptor::FileDescriptor;
+use nix::{
+  libc::{
+    self,
+    pid_t,
+    winsize,
+  },
+  unistd::{
+    Pid,
+    dup2,
+    execv,
+    fork,
+  },
+};
 
 use crate::cmdbuilder::CommandBuilder;
 
@@ -728,11 +768,17 @@ impl Write for UnixMasterWriter {
 
 #[cfg(test)]
 mod tests {
+  use std::{
+    io::{
+      Read,
+      Write,
+    },
+    time::Duration,
+  };
+
   use nix::sys::wait::waitpid;
 
   use super::*;
-  use std::io::{Read, Write};
-  use std::time::Duration;
 
   fn system() -> UnixPtySystem {
     UnixPtySystem::default()

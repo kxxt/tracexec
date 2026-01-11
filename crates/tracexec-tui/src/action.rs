@@ -1,13 +1,22 @@
 use std::sync::Arc;
 
 use crossterm::event::KeyEvent;
-use ratatui::{layout::Size, text::Line};
+use ratatui::{
+  layout::Size,
+  text::Line,
+};
+use tracexec_core::event::{
+  EventId,
+  TracerEventDetails,
+};
 
-use crate::copy_popup::CopyPopupState;
-use crate::details_popup::DetailsPopupState;
-use crate::error_popup::InfoPopupState;
-use crate::{backtrace_popup::BacktracePopupState, query::Query};
-use tracexec_core::event::{EventId, TracerEventDetails};
+use crate::{
+  backtrace_popup::BacktracePopupState,
+  copy_popup::CopyPopupState,
+  details_popup::DetailsPopupState,
+  error_popup::InfoPopupState,
+  query::Query,
+};
 
 #[derive(Debug)]
 pub enum Action {

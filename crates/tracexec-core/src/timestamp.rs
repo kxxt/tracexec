@@ -1,6 +1,12 @@
-use std::{borrow::Cow, sync::LazyLock};
+use std::{
+  borrow::Cow,
+  sync::LazyLock,
+};
 
-use chrono::{DateTime, Local};
+use chrono::{
+  DateTime,
+  Local,
+};
 use nutype::nutype;
 
 #[nutype(
@@ -40,9 +46,14 @@ static BOOT_TIME: LazyLock<u64> = LazyLock::new(|| {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use chrono::{DateTime, Local};
   use std::str::FromStr;
+
+  use chrono::{
+    DateTime,
+    Local,
+  };
+
+  use super::*;
 
   /* ---------------- TimestampFormat ---------------- */
 

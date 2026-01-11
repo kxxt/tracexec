@@ -5,26 +5,43 @@
 //! `nix`'s ptrace have problem about RT signals: https://github.com/nix-rust/nix/issues/495
 #![allow(unused)]
 
-use std::{ffi::c_int, mem::MaybeUninit};
+use std::{
+  ffi::c_int,
+  mem::MaybeUninit,
+};
 
-use crate::arch::{Regs, RegsPayload, RegsRepr};
 use cfg_if::cfg_if;
 use either::Either;
 use nix::{
   errno::Errno,
   libc::{
-    PTRACE_GET_SYSCALL_INFO, PTRACE_SYSCALL_INFO_ENTRY, PTRACE_SYSCALL_INFO_EXIT,
-    PTRACE_SYSCALL_INFO_SECCOMP, ptrace_syscall_info,
+    PTRACE_GET_SYSCALL_INFO,
+    PTRACE_SYSCALL_INFO_ENTRY,
+    PTRACE_SYSCALL_INFO_EXIT,
+    PTRACE_SYSCALL_INFO_SECCOMP,
+    ptrace_syscall_info,
   },
   sys::ptrace::AddressType,
   unistd::Pid,
 };
 use tracexec_core::tracer::Signal;
-use tracing::{info, trace};
+use tracing::{
+  info,
+  trace,
+};
 
 use super::{
   RecursivePtraceEngine,
-  syscall::{AuditArch, SyscallInfo, SyscallInfoData},
+  syscall::{
+    AuditArch,
+    SyscallInfo,
+    SyscallInfoData,
+  },
+};
+use crate::arch::{
+  Regs,
+  RegsPayload,
+  RegsRepr,
 };
 mod private {
   pub trait Sealed {}

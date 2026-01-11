@@ -4,22 +4,37 @@
 //!
 //! `nix`'s ptrace have problem about RT signals: https://github.com/nix-rust/nix/issues/495
 
-use std::{cell::Cell, marker::PhantomData, sync::MutexGuard};
+use std::{
+  cell::Cell,
+  marker::PhantomData,
+  sync::MutexGuard,
+};
 
 use color_eyre::eyre::Context;
 use nix::{
   errno::Errno,
   sys::{
-    ptrace::{self},
-    wait::{WaitPidFlag, WaitStatus},
+    ptrace::{
+      self,
+    },
+    wait::{
+      WaitPidFlag,
+      WaitStatus,
+    },
   },
   unistd::Pid,
 };
 use tracing::trace;
 
-use crate::ptrace::{PtraceOpaqueStopGuard, PtraceStop};
-
-use super::{PtraceSignalDeliveryStopGuard, PtraceWaitPidEvent, waitpid};
+use super::{
+  PtraceSignalDeliveryStopGuard,
+  PtraceWaitPidEvent,
+  waitpid,
+};
+use crate::ptrace::{
+  PtraceOpaqueStopGuard,
+  PtraceStop,
+};
 
 pub type PhantomUnsync = PhantomData<Cell<()>>;
 pub type PhantomUnsend = PhantomData<MutexGuard<'static, ()>>;

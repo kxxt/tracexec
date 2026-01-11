@@ -1,25 +1,49 @@
 use std::{
   cmp::min,
   collections::BTreeMap,
-  sync::{Arc, LazyLock},
-};
-
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::{
-  buffer::Buffer,
-  layout::{Alignment, Rect},
-  style::{Color, Modifier, Style},
-  text::Span,
-  widgets::{
-    Block, Borders, Clear, HighlightSpacing, List, ListState, StatefulWidget, StatefulWidgetRef,
-    Widget,
+  sync::{
+    Arc,
+    LazyLock,
   },
 };
 
-use crate::action::{Action, CopyTarget, SupportedShell::Bash};
+use crossterm::event::{
+  KeyCode,
+  KeyEvent,
+  KeyModifiers,
+};
+use ratatui::{
+  buffer::Buffer,
+  layout::{
+    Alignment,
+    Rect,
+  },
+  style::{
+    Color,
+    Modifier,
+    Style,
+  },
+  text::Span,
+  widgets::{
+    Block,
+    Borders,
+    Clear,
+    HighlightSpacing,
+    List,
+    ListState,
+    StatefulWidget,
+    StatefulWidgetRef,
+    Widget,
+  },
+};
 use tracexec_core::event::TracerEventDetails;
 
 use super::help::help_item;
+use crate::action::{
+  Action,
+  CopyTarget,
+  SupportedShell::Bash,
+};
 
 #[derive(Debug, Clone)]
 pub struct CopyPopup;

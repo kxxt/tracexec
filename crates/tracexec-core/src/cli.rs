@@ -1,19 +1,37 @@
 use std::{
-  io::{BufWriter, stderr, stdout},
+  io::{
+    BufWriter,
+    stderr,
+    stdout,
+  },
   path::PathBuf,
 };
 
-use args::{DebuggerArgs, PtraceArgs, TuiModeArgs};
-use clap::{CommandFactory, Parser, Subcommand};
+use args::{
+  DebuggerArgs,
+  PtraceArgs,
+  TuiModeArgs,
+};
+use clap::{
+  CommandFactory,
+  Parser,
+  Subcommand,
+};
 use config::Config;
 use options::ExportFormat;
 use tracing::debug;
 
-use crate::{cli::args::ExporterArgs, output::Output};
-
 use self::{
-  args::{LogModeArgs, ModifierArgs, TracerEventArgs},
+  args::{
+    LogModeArgs,
+    ModifierArgs,
+    TracerEventArgs,
+  },
   options::Color,
+};
+use crate::{
+  cli::args::ExporterArgs,
+  output::Output,
 };
 
 pub mod args;
@@ -292,17 +310,36 @@ impl Cli {
 
 #[cfg(test)]
 mod tests {
+  use std::{
+    fs,
+    io::Write,
+    path::PathBuf,
+  };
+
   use super::*;
-  use crate::cli::args::{
-    DebuggerArgs, LogModeArgs, ModifierArgs, PtraceArgs, TracerEventArgs, TuiModeArgs,
+  use crate::cli::{
+    args::{
+      DebuggerArgs,
+      LogModeArgs,
+      ModifierArgs,
+      PtraceArgs,
+      TracerEventArgs,
+      TuiModeArgs,
+    },
+    config::{
+      Config,
+      DebuggerConfig,
+      LogModeConfig,
+      ModifierConfig,
+      PtraceConfig,
+      TuiModeConfig,
+    },
+    options::{
+      Color,
+      ExportFormat,
+      SeccompBpf,
+    },
   };
-  use crate::cli::config::{
-    Config, DebuggerConfig, LogModeConfig, ModifierConfig, PtraceConfig, TuiModeConfig,
-  };
-  use crate::cli::options::{Color, ExportFormat, SeccompBpf};
-  use std::fs;
-  use std::io::Write;
-  use std::path::PathBuf;
 
   #[test]
   fn test_cli_parse_log() {

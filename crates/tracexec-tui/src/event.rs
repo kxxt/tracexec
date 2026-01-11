@@ -1,22 +1,40 @@
 use std::borrow::Cow;
 
-use itertools::{Itertools, chain};
+use itertools::{
+  Itertools,
+  chain,
+};
 use nix::fcntl::OFlag;
 use ratatui::{
   style::Styled,
-  text::{Line, Span},
+  text::{
+    Line,
+    Span,
+  },
 };
 use tracexec_core::{
   cli::args::ModifierArgs,
-  event::{EventStatus, ExecEvent, RuntimeModifier, TracerEventDetails, TracerEventMessage},
-  proc::{BaselineInfo, FileDescriptorInfoCollection},
+  event::{
+    EventStatus,
+    ExecEvent,
+    RuntimeModifier,
+    TracerEventDetails,
+    TracerEventMessage,
+  },
+  proc::{
+    BaselineInfo,
+    FileDescriptorInfoCollection,
+  },
   timestamp::Timestamp,
 };
 
 use crate::{
   action::CopyTarget,
   event::private::Sealed,
-  event_line::{EventLine, Mask},
+  event_line::{
+    EventLine,
+    Mask,
+  },
   output::OutputMsgTuiExt,
   theme::THEME,
 };

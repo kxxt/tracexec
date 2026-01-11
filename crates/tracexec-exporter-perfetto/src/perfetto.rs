@@ -1,9 +1,19 @@
 use tokio::sync::mpsc::UnboundedReceiver;
-
-use crate::{producer::TracePacketProducer, recorder::PerfettoTraceRecorder};
 use tracexec_core::{
-  event::{TracerEvent, TracerEventDetails, TracerMessage},
-  export::{Exporter, ExporterMetadata},
+  event::{
+    TracerEvent,
+    TracerEventDetails,
+    TracerMessage,
+  },
+  export::{
+    Exporter,
+    ExporterMetadata,
+  },
+};
+
+use crate::{
+  producer::TracePacketProducer,
+  recorder::PerfettoTraceRecorder,
 };
 
 pub struct PerfettoExporter {
