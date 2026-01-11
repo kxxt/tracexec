@@ -18,46 +18,83 @@
 
 use std::{
   sync::Arc,
-  time::{Duration, Instant},
+  time::{
+    Duration,
+    Instant,
+  },
 };
 
 use arboard::Clipboard;
-use crossterm::event::{KeyCode, KeyModifiers};
-
-use nix::{errno::Errno, sys::signal::Signal, unistd::Pid};
+use crossterm::event::{
+  KeyCode,
+  KeyModifiers,
+};
+use nix::{
+  errno::Errno,
+  sys::signal::Signal,
+  unistd::Pid,
+};
 use ratatui::{
-  layout::{Position, Size},
+  layout::{
+    Position,
+    Size,
+  },
   style::Stylize,
   text::Line,
   widgets::Widget,
 };
-use tracing::{debug, trace};
-
-use crate::{
-  action::{Action, ActivePopup},
-  error_popup::InfoPopupState,
-  event::TracerEventDetailsTuiExt,
-  query::QueryKind,
-};
-
 use tracexec_backend_ptrace::ptrace::RunningTracer;
 use tracexec_core::{
   cli::{
-    args::{DebuggerArgs, LogModeArgs, ModifierArgs, TuiModeArgs},
+    args::{
+      DebuggerArgs,
+      LogModeArgs,
+      ModifierArgs,
+      TuiModeArgs,
+    },
     config::ExitHandling,
-    options::{ActivePane, AppLayout},
+    options::{
+      ActivePane,
+      AppLayout,
+    },
   },
-  event::{Event, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEventDetails, TracerMessage},
+  event::{
+    Event,
+    ProcessStateUpdate,
+    ProcessStateUpdateEvent,
+    TracerEventDetails,
+    TracerMessage,
+  },
   primitives::local_chan,
   printer::PrinterArgs,
   proc::BaselineInfo,
-  pty::{PtySize, UnixMasterPty},
+  pty::{
+    PtySize,
+    UnixMasterPty,
+  },
+};
+use tracing::{
+  debug,
+  trace,
 };
 
 use super::{
-  Tui, breakpoint_manager::BreakPointManagerState, copy_popup::CopyPopupState,
-  event_list::EventList, hit_manager::HitManagerState, pseudo_term::PseudoTerminalPane,
+  Tui,
+  breakpoint_manager::BreakPointManagerState,
+  copy_popup::CopyPopupState,
+  event_list::EventList,
+  hit_manager::HitManagerState,
+  pseudo_term::PseudoTerminalPane,
   query::QueryBuilder,
+};
+use crate::{
+  action::{
+    Action,
+    ActivePopup,
+  },
+  error_popup::InfoPopupState,
+  event::TracerEventDetailsTuiExt,
+  query::QueryKind,
 };
 
 mod ui;

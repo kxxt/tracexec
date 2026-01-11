@@ -1,16 +1,26 @@
-use std::{collections::BTreeMap, ffi::CString};
+use std::{
+  collections::BTreeMap,
+  ffi::CString,
+};
 
 use nix::{
-  sys::ptrace::{self, AddressType},
+  sys::ptrace::{
+    self,
+    AddressType,
+  },
   unistd::Pid,
 };
-use tracexec_core::{cache::ArcStr, tracer::InspectError};
-use tracing::warn;
-
 use tracexec_core::{
+  cache::ArcStr,
   event::OutputMsg,
-  proc::{cached_str, cached_string, parse_env_entry},
+  proc::{
+    cached_str,
+    cached_string,
+    parse_env_entry,
+  },
+  tracer::InspectError,
 };
+use tracing::warn;
 
 pub fn read_generic_string<TString>(
   pid: Pid,

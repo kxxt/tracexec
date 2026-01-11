@@ -1,33 +1,87 @@
 use std::{
-  collections::{BTreeMap, HashMap},
+  collections::{
+    BTreeMap,
+    HashMap,
+  },
   process::Stdio,
 };
 
-use color_eyre::{Section, eyre::eyre};
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use either::Either;
-use itertools::{Itertools, chain};
-use nix::{sys::signal::Signal, unistd::Pid};
-use ratatui::{
-  layout::{Alignment, Constraint, Layout},
-  prelude::{Buffer, Rect},
-  style::{Modifier, Style, Stylize},
-  text::{Line, Span},
-  widgets::{Block, Borders, Clear, Paragraph, StatefulWidget, Widget, Wrap},
+use color_eyre::{
+  Section,
+  eyre::eyre,
 };
-use tracing::{debug, trace};
-use tui_prompts::{State, TextPrompt, TextState};
-use tui_widget_list::{ListBuilder, ListView};
-
-use crate::action::Action;
+use crossterm::event::{
+  KeyCode,
+  KeyEvent,
+  KeyModifiers,
+};
+use either::Either;
+use itertools::{
+  Itertools,
+  chain,
+};
+use nix::{
+  sys::signal::Signal,
+  unistd::Pid,
+};
+use ratatui::{
+  layout::{
+    Alignment,
+    Constraint,
+    Layout,
+  },
+  prelude::{
+    Buffer,
+    Rect,
+  },
+  style::{
+    Modifier,
+    Style,
+    Stylize,
+  },
+  text::{
+    Line,
+    Span,
+  },
+  widgets::{
+    Block,
+    Borders,
+    Clear,
+    Paragraph,
+    StatefulWidget,
+    Widget,
+    Wrap,
+  },
+};
 use tracexec_backend_ptrace::ptrace::RunningTracer;
-use tracexec_core::breakpoint::{BreakPointHit, BreakPointStop};
+use tracexec_core::breakpoint::{
+  BreakPointHit,
+  BreakPointStop,
+};
+use tracing::{
+  debug,
+  trace,
+};
+use tui_prompts::{
+  State,
+  TextPrompt,
+  TextState,
+};
+use tui_widget_list::{
+  ListBuilder,
+  ListView,
+};
 
 use super::{
   error_popup::InfoPopupState,
-  help::{cli_flag, help_item, help_key},
+  help::{
+    cli_flag,
+    help_item,
+    help_key,
+  },
   theme::THEME,
 };
+use crate::action::Action;
 
 #[derive(Debug, Clone)]
 struct BreakPointHitEntry {

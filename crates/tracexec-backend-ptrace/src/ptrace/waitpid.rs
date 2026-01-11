@@ -23,29 +23,48 @@
 // THE SOFTWARE.
 #![allow(unused)]
 
-use std::{fmt::Display, hint::black_box};
+use std::{
+  fmt::Display,
+  hint::black_box,
+};
 
 use nix::{
   errno::Errno,
-  libc::{self, SIGRTMIN, WSTOPSIG, c_int, pid_t},
-  sys::{signal, wait::WaitPidFlag},
+  libc::{
+    self,
+    SIGRTMIN,
+    WSTOPSIG,
+    c_int,
+    pid_t,
+  },
+  sys::{
+    signal,
+    wait::WaitPidFlag,
+  },
   unistd::Pid,
 };
+use tracexec_core::tracer::Signal;
 use tracing::trace;
 
-use tracexec_core::tracer::Signal;
-
+use super::{
+  PtraceInterruptStopGuard,
+  RecursivePtraceEngine,
+  guards::{
+    PtraceOpaqueStopGuard,
+    PtraceStopGuard,
+    PtraceSyscallStopGuard,
+  },
+};
 use crate::ptrace::{
   PtraceSeccompStopGuard,
   guards::{
-    PtraceCloneChildStopGuard, PtraceCloneParentStopGuard, PtraceExecStopGuard,
-    PtraceExitStopGuard, PtraceGroupStopGuard, PtraceSignalDeliveryStopGuard,
+    PtraceCloneChildStopGuard,
+    PtraceCloneParentStopGuard,
+    PtraceExecStopGuard,
+    PtraceExitStopGuard,
+    PtraceGroupStopGuard,
+    PtraceSignalDeliveryStopGuard,
   },
-};
-
-use super::{
-  PtraceInterruptStopGuard, RecursivePtraceEngine,
-  guards::{PtraceOpaqueStopGuard, PtraceStopGuard, PtraceSyscallStopGuard},
 };
 
 #[derive(Debug)]

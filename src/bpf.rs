@@ -1,41 +1,67 @@
 use std::{
   mem::MaybeUninit,
   process,
-  sync::{Arc, atomic::Ordering},
+  sync::{
+    Arc,
+    atomic::Ordering,
+  },
 };
 
-use color_eyre::{Section, eyre::eyre};
+use color_eyre::{
+  Section,
+  eyre::eyre,
+};
 use enumflags2::BitFlag;
 use futures::stream::StreamExt;
 use nix::unistd::User;
 use signal_hook::consts::signal::*;
 use signal_hook_tokio::Signals;
 use tokio::{
-  sync::mpsc::{self},
+  sync::mpsc::{
+    self,
+  },
   task::spawn_blocking,
 };
 use tracexec_backend_ebpf::bpf::tracer::BuildEbpfTracer;
 use tracexec_core::{
-  export::{Exporter, ExporterMetadata},
-  tracer::TracerBuilder,
-};
-
-use tracexec_core::{
   cli::{
-    Cli, EbpfCommand,
+    Cli,
+    EbpfCommand,
     args::LogModeArgs,
-    options::{Color, ExportFormat},
+    options::{
+      Color,
+      ExportFormat,
+    },
   },
   event::TracerEventDetailsKind,
-  printer::{Printer, PrinterArgs},
+  export::{
+    Exporter,
+    ExporterMetadata,
+  },
+  printer::{
+    Printer,
+    PrinterArgs,
+  },
   proc::BaselineInfo,
-  pty::{PtySize, PtySystem, native_pty_system},
-  tracer::TracerMode,
+  pty::{
+    PtySize,
+    PtySystem,
+    native_pty_system,
+  },
+  tracer::{
+    TracerBuilder,
+    TracerMode,
+  },
 };
-
-use tracexec_exporter_json::{JsonExporter, JsonStreamExporter};
+use tracexec_exporter_json::{
+  JsonExporter,
+  JsonStreamExporter,
+};
 use tracexec_exporter_perfetto::PerfettoExporter;
-use tracexec_tui::{self, app::App};
+use tracexec_tui::{
+  self,
+  app::App,
+};
 
 pub async fn main(
   command: EbpfCommand,

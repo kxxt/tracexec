@@ -1,7 +1,9 @@
 use hashbrown::HashMap;
 use nix::unistd::Pid;
-
-use tracexec_core::event::{EventId, ParentTracker};
+use tracexec_core::event::{
+  EventId,
+  ParentTracker,
+};
 
 #[derive(Default)]
 pub struct ProcessTracker {

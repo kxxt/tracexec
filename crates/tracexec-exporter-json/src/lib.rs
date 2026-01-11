@@ -1,19 +1,33 @@
 //! Data structures for export command
-use std::{error::Error, io, sync::Arc};
+use std::{
+  error::Error,
+  io,
+  sync::Arc,
+};
 
 use nix::libc::pid_t;
 use serde::Serialize;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tracexec_core::{
   cache::ArcStr,
-  event::{EventId, TracerEvent, TracerEventDetails, TracerMessage},
-  export::{Exporter, ExporterMetadata},
-  proc::Cred,
-};
-
-use tracexec_core::{
-  event::{ExecEvent, OutputMsg},
-  proc::{BaselineInfo, EnvDiff, FileDescriptorInfoCollection},
+  event::{
+    EventId,
+    ExecEvent,
+    OutputMsg,
+    TracerEvent,
+    TracerEventDetails,
+    TracerMessage,
+  },
+  export::{
+    Exporter,
+    ExporterMetadata,
+  },
+  proc::{
+    BaselineInfo,
+    Cred,
+    EnvDiff,
+    FileDescriptorInfoCollection,
+  },
 };
 
 struct JsonExporterInner {

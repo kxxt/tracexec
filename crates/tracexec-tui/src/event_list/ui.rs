@@ -2,27 +2,54 @@ use itertools::chain;
 use nix::sys::signal;
 use ratatui::{
   buffer::Buffer,
-  layout::{Alignment, Rect},
-  style::{Color, Modifier, Style},
-  text::{Line, Span},
+  layout::{
+    Alignment,
+    Rect,
+  },
+  style::{
+    Color,
+    Modifier,
+    Style,
+  },
+  text::{
+    Line,
+    Span,
+  },
   widgets::{
-    HighlightSpacing, List, ListItem, Scrollbar, ScrollbarOrientation, ScrollbarState,
-    StatefulWidget, Widget,
+    HighlightSpacing,
+    List,
+    ListItem,
+    Scrollbar,
+    ScrollbarOrientation,
+    ScrollbarState,
+    StatefulWidget,
+    Widget,
+  },
+};
+use tracexec_core::{
+  event::{
+    EventStatus,
+    ProcessStateUpdate,
+  },
+  proc::BaselineInfo,
+  tracer::{
+    ProcessExit,
+    Signal,
   },
 };
 
+use super::{
+  Event,
+  EventList,
+  EventModifier,
+};
 use crate::{
-  event::TracerEventDetailsTuiExt, event_line::EventLine, help::help_item,
-  partial_line::PartialLine, theme::THEME,
+  event::TracerEventDetailsTuiExt,
+  event_line::EventLine,
+  help::help_item,
+  partial_line::PartialLine,
+  theme::THEME,
 };
-use tracexec_core::{
-  event::{EventStatus, ProcessStateUpdate},
-  proc::BaselineInfo,
-  tracer::ProcessExit,
-  tracer::Signal,
-};
-
-use super::{Event, EventList, EventModifier};
 
 impl Event {
   pub(super) fn to_event_line(

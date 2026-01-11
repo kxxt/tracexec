@@ -25,20 +25,39 @@
 
 #![allow(unused)]
 
-use color_eyre::eyre::{Context, bail};
+use std::{
+  collections::BTreeMap,
+  env,
+  ffi::{
+    CString,
+    OsStr,
+    OsString,
+  },
+  os::unix::ffi::OsStringExt,
+  path::{
+    Path,
+    PathBuf,
+  },
+};
+
+use color_eyre::eyre::{
+  Context,
+  bail,
+};
 use nix::libc;
-use std::collections::BTreeMap;
-use std::env;
-use std::ffi::{CString, OsStr, OsString};
-use std::os::unix::ffi::OsStringExt;
-use std::path::{Path, PathBuf};
 use tracing::warn;
 
 fn get_shell() -> String {
-  use nix::unistd::{AccessFlags, access};
-  use std::ffi::CStr;
-  use std::path::Path;
-  use std::str;
+  use std::{
+    ffi::CStr,
+    path::Path,
+    str,
+  };
+
+  use nix::unistd::{
+    AccessFlags,
+    access,
+  };
 
   let ent = unsafe { libc::getpwuid(libc::getuid()) };
   if !ent.is_null() {
@@ -182,8 +201,12 @@ impl CommandBuilder {
   }
 
   fn search_path(&self, exe: &OsStr, cwd: &Path) -> color_eyre::Result<PathBuf> {
-    use nix::unistd::{AccessFlags, access};
     use std::path::Path;
+
+    use nix::unistd::{
+      AccessFlags,
+      access,
+    };
 
     let exe_path: &Path = exe.as_ref();
     if exe_path.is_relative() {
@@ -250,13 +273,23 @@ pub struct Command {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use std::{
+    ffi::{
+      OsStr,
+      OsString,
+    },
+    fs::{
+      self,
+      File,
+    },
+    os::unix::fs::PermissionsExt,
+    path::PathBuf,
+  };
+
   use rusty_fork::rusty_fork_test;
-  use std::ffi::{OsStr, OsString};
-  use std::fs::{self, File};
-  use std::os::unix::fs::PermissionsExt;
-  use std::path::PathBuf;
   use tempfile::TempDir;
+
+  use super::*;
 
   fn make_executable(dir: &TempDir, name: &str) -> PathBuf {
     let path = dir.path().join(name);

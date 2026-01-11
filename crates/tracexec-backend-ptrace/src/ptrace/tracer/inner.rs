@@ -1,71 +1,173 @@
 use std::{
   cell::RefCell,
-  collections::{BTreeMap, HashMap},
+  collections::{
+    BTreeMap,
+    HashMap,
+  },
   fs::File,
-  io::{self, Read, Write, stdin},
+  io::{
+    self,
+    Read,
+    Write,
+    stdin,
+  },
   marker::PhantomData,
   ops::ControlFlow,
-  os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd},
-  sync::{Arc, RwLock},
+  os::fd::{
+    AsFd,
+    AsRawFd,
+    FromRawFd,
+    OwnedFd,
+  },
+  sync::{
+    Arc,
+    RwLock,
+  },
   time::Duration,
 };
 
-use super::state::{PendingDetach, Syscall};
-use crate::arch::RegsExt;
-use crate::ptrace::{
-  PtraceSeccompStopGuard, PtraceSignalDeliveryStopGuard, PtraceStop, PtraceStopGuard,
-  PtraceSyscallLikeStop, PtraceSyscallStopGuard, PtraceWaitPidEvent, RecursivePtraceEngine, Tracer,
-  engine::{PhantomUnsend, PhantomUnsync},
-  inspect::read_string,
-  inspect::{self, read_env},
-  tracer::{
-    PendingRequest,
-    state::{ProcessState, ProcessStateStore, ProcessStatus},
-  },
+use chrono::{
+  DateTime,
+  Local,
 };
-
-use crate::seccomp;
-use chrono::{DateTime, Local};
 use either::Either;
 use enumflags2::BitFlags;
-use inspect::{read_arcstr, read_output_msg_array};
+use inspect::{
+  read_arcstr,
+  read_output_msg_array,
+};
 use nix::{
   errno::Errno,
-  libc::{self, AT_EMPTY_PATH, S_ISGID, S_ISUID, c_int},
-  sys::{ptrace::AddressType, stat::fstat, wait::WaitPidFlag},
-  unistd::{Gid, Pid, Uid, User, getpid, tcsetpgrp},
+  libc::{
+    self,
+    AT_EMPTY_PATH,
+    S_ISGID,
+    S_ISUID,
+    c_int,
+  },
+  sys::{
+    ptrace::AddressType,
+    stat::fstat,
+    wait::WaitPidFlag,
+  },
+  unistd::{
+    Gid,
+    Pid,
+    Uid,
+    User,
+    getpid,
+    tcsetpgrp,
+  },
 };
-use snafu::{ResultExt, Snafu};
+use snafu::{
+  ResultExt,
+  Snafu,
+};
 use tokio::{
   select,
-  sync::mpsc::{UnboundedReceiver, UnboundedSender, error::SendError},
+  sync::mpsc::{
+    UnboundedReceiver,
+    UnboundedSender,
+    error::SendError,
+  },
 };
 use tracexec_core::{
-  breakpoint::{BreakPoint, BreakPointHit, BreakPointStop},
+  breakpoint::{
+    BreakPoint,
+    BreakPointHit,
+    BreakPointStop,
+  },
   cache::ArcStr,
-  cli::options::SeccompBpf,
-  event::ParentEventId,
-  proc::{CredInspectError, read_status},
-  timestamp::Timestamp,
-  tracee,
-  tracer::{ExecData, InspectError, ProcessExit, Signal, TracerMode},
-};
-use tracexec_core::{
-  cli::args::ModifierArgs,
+  cli::{
+    args::ModifierArgs,
+    options::SeccompBpf,
+  },
   cmdbuilder::CommandBuilder,
   event::{
-    ExecEvent, OutputMsg, ProcessStateUpdate, ProcessStateUpdateEvent, TracerEvent,
-    TracerEventDetails, TracerEventDetailsKind, TracerEventMessage, TracerMessage,
+    ExecEvent,
+    OutputMsg,
+    ParentEventId,
+    ProcessStateUpdate,
+    ProcessStateUpdateEvent,
+    TracerEvent,
+    TracerEventDetails,
+    TracerEventDetailsKind,
+    TracerEventMessage,
+    TracerMessage,
     filterable_event,
   },
-  printer::{Printer, PrinterOut},
+  printer::{
+    Printer,
+    PrinterOut,
+  },
   proc::{
-    BaselineInfo, cached_string, diff_env, read_comm, read_cwd, read_exe, read_fd, read_fds,
+    BaselineInfo,
+    CredInspectError,
+    cached_string,
+    diff_env,
+    read_comm,
+    read_cwd,
+    read_exe,
+    read_fd,
+    read_fds,
     read_interpreter_recursive,
+    read_status,
   },
   pty,
+  timestamp::Timestamp,
+  tracee,
+  tracer::{
+    ExecData,
+    InspectError,
+    ProcessExit,
+    Signal,
+    TracerMode,
+  },
 };
-use tracing::{debug, error, info, trace, warn};
+use tracing::{
+  debug,
+  error,
+  info,
+  trace,
+  warn,
+};
+
+use super::state::{
+  PendingDetach,
+  Syscall,
+};
+use crate::{
+  arch::RegsExt,
+  ptrace::{
+    PtraceSeccompStopGuard,
+    PtraceSignalDeliveryStopGuard,
+    PtraceStop,
+    PtraceStopGuard,
+    PtraceSyscallLikeStop,
+    PtraceSyscallStopGuard,
+    PtraceWaitPidEvent,
+    RecursivePtraceEngine,
+    Tracer,
+    engine::{
+      PhantomUnsend,
+      PhantomUnsync,
+    },
+    inspect::{
+      self,
+      read_env,
+      read_string,
+    },
+    tracer::{
+      PendingRequest,
+      state::{
+        ProcessState,
+        ProcessStateStore,
+        ProcessStatus,
+      },
+    },
+  },
+  seccomp,
+};
 
 pub struct TracerInner {
   with_tty: bool,
@@ -1091,7 +1193,11 @@ impl TracerInner {
   }
 
   fn suspend_seccomp_bpf(&self, pid: Pid) -> Result<(), Errno> {
-    use nix::libc::{PTRACE_O_SUSPEND_SECCOMP, PTRACE_SETOPTIONS, ptrace};
+    use nix::libc::{
+      PTRACE_O_SUSPEND_SECCOMP,
+      PTRACE_SETOPTIONS,
+      ptrace,
+    };
 
     if self.seccomp_bpf == SeccompBpf::On {
       unsafe {

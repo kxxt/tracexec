@@ -1,19 +1,29 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{
+  KeyCode,
+  KeyEvent,
+  KeyModifiers,
+};
 use ratatui::text::Line;
+use tracexec_core::{
+  event::TracerEventDetails,
+  primitives::local_chan::LocalUnboundedSender,
+};
 
+use super::EventList;
 use crate::{
-  action::{Action, ActivePopup},
+  action::{
+    Action,
+    ActivePopup,
+  },
   backtrace_popup::BacktracePopupState,
   details_popup::DetailsPopupState,
   error_popup::{
-    InfoPopupState, err_popup_goto_parent_miss, err_popup_goto_parent_not_exec,
+    InfoPopupState,
+    err_popup_goto_parent_miss,
+    err_popup_goto_parent_not_exec,
     err_popup_goto_parent_not_found,
   },
 };
-
-use tracexec_core::{event::TracerEventDetails, primitives::local_chan::LocalUnboundedSender};
-
-use super::EventList;
 
 impl EventList {
   pub async fn handle_key_event(

@@ -2,15 +2,28 @@ use crossterm::event::KeyEvent;
 use ratatui::{
   buffer::Buffer,
   layout::Rect,
-  style::{Style, Stylize},
+  style::{
+    Style,
+    Stylize,
+  },
   text::Line,
-  widgets::{Paragraph, StatefulWidget, Widget, Wrap},
+  widgets::{
+    Paragraph,
+    StatefulWidget,
+    Widget,
+    Wrap,
+  },
 };
 use tui_popup::Popup;
 
-use crate::action::{Action, ActivePopup};
-
-use super::{sized_paragraph::SizedParagraph, theme::THEME};
+use super::{
+  sized_paragraph::SizedParagraph,
+  theme::THEME,
+};
+use crate::action::{
+  Action,
+  ActivePopup,
+};
 
 #[derive(Debug, Clone)]
 pub struct InfoPopupState {

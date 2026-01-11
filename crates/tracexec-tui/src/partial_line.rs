@@ -85,8 +85,12 @@ impl<'a> PartialLine<'a> for Line<'a> {
 
 #[cfg(test)]
 mod tests {
+  use ratatui::text::{
+    Line,
+    Span,
+  };
+
   use super::*;
-  use ratatui::text::{Line, Span};
 
   #[test]
   fn test_substring_ascii() {

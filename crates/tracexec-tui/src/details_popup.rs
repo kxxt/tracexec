@@ -1,37 +1,88 @@
-use std::ops::{Deref, DerefMut};
+use std::ops::{
+  Deref,
+  DerefMut,
+};
 
 use arboard::Clipboard;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{
+  KeyCode,
+  KeyEvent,
+  KeyModifiers,
+};
 use hashbrown::HashMap;
-use itertools::{Itertools, chain};
+use itertools::{
+  Itertools,
+  chain,
+};
 use nix::{
   errno::Errno,
   fcntl::OFlag,
-  unistd::{Gid, Group, User},
+  unistd::{
+    Gid,
+    Group,
+    User,
+  },
 };
 use ratatui::{
   buffer::Buffer,
-  layout::{Alignment, Rect, Size},
+  layout::{
+    Alignment,
+    Rect,
+    Size,
+  },
   style::Styled,
-  text::{Line, Span},
+  text::{
+    Line,
+    Span,
+  },
   widgets::{
-    Block, Borders, Clear, Paragraph, StatefulWidget, StatefulWidgetRef, Tabs, Widget, Wrap,
+    Block,
+    Borders,
+    Clear,
+    Paragraph,
+    StatefulWidget,
+    StatefulWidgetRef,
+    Tabs,
+    Widget,
+    Wrap,
   },
 };
-use tui_scrollview::{ScrollView, ScrollViewState};
-
-use crate::{
-  action::{Action, ActivePopup},
-  event::TracerEventDetailsTuiExt,
+use tracexec_core::{
+  event::{
+    EventId,
+    EventStatus,
+    ParentEvent,
+    TracerEventDetails,
+  },
+  primitives::local_chan::LocalUnboundedSender,
 };
-use tracexec_core::event::{EventId, EventStatus, ParentEvent, TracerEventDetails};
-use tracexec_core::primitives::local_chan::LocalUnboundedSender;
+use tui_scrollview::{
+  ScrollView,
+  ScrollViewState,
+};
 
 use super::{
-  error_popup::{err_popup_goto_parent_miss, err_popup_goto_parent_not_found},
-  event_list::{Event, EventList},
-  help::{help_desc, help_item, help_key},
+  error_popup::{
+    err_popup_goto_parent_miss,
+    err_popup_goto_parent_not_found,
+  },
+  event_list::{
+    Event,
+    EventList,
+  },
+  help::{
+    help_desc,
+    help_item,
+    help_key,
+  },
   theme::THEME,
+};
+use crate::{
+  action::{
+    Action,
+    ActivePopup,
+  },
+  event::TracerEventDetailsTuiExt,
 };
 
 pub struct DetailsPopup {

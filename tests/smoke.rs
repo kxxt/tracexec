@@ -1,7 +1,11 @@
-use assert_cmd::{cargo, prelude::*};
+use std::process::Command;
+
+use assert_cmd::{
+  cargo,
+  prelude::*,
+};
 use predicates::prelude::*;
 use serial_test::file_serial;
-use std::process::Command;
 
 #[test]
 #[file_serial]

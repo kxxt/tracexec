@@ -1,19 +1,42 @@
 use std::error::Error;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{
+  KeyCode,
+  KeyEvent,
+  KeyModifiers,
+};
 use itertools::Itertools;
 use ratatui::{
   style::Styled,
-  text::{Line, Span},
-  widgets::{StatefulWidget, Widget},
+  text::{
+    Line,
+    Span,
+  },
+  widgets::{
+    StatefulWidget,
+    Widget,
+  },
 };
-use tracexec_core::primitives::regex::{IntoCursor, engines::pikevm, regex_automata::util::syntax};
-use tui_prompts::{State, TextPrompt, TextState};
+use tracexec_core::{
+  event::EventId,
+  primitives::regex::{
+    IntoCursor,
+    engines::pikevm,
+    regex_automata::util::syntax,
+  },
+};
+use tui_prompts::{
+  State,
+  TextPrompt,
+  TextState,
+};
 
+use super::{
+  event_line::EventLine,
+  help::help_item,
+  theme::THEME,
+};
 use crate::action::Action;
-use tracexec_core::event::EventId;
-
-use super::{event_line::EventLine, help::help_item, theme::THEME};
 
 #[derive(Debug, Clone)]
 pub struct Query {
@@ -266,10 +289,15 @@ impl Widget for &mut QueryBuilder {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+  use crossterm::event::{
+    KeyCode,
+    KeyEvent,
+    KeyModifiers,
+  };
   use ratatui::text::Line;
   use tracexec_core::event::EventId;
+
+  use super::*;
 
   fn make_event_line(text: &str) -> EventLine {
     EventLine {

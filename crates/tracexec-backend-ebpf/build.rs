@@ -1,7 +1,10 @@
 fn main() {
   use std::{
     env,
-    ffi::{OsStr, OsString},
+    ffi::{
+      OsStr,
+      OsString,
+    },
     path::PathBuf,
   };
 
@@ -11,8 +14,8 @@ fn main() {
   let manifest_dir =
     PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
   let bpf_src = manifest_dir.join(BPF_SRC);
-  let skel_out = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"))
-    .join("tracexec_system.skel.rs");
+  let skel_out =
+    PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set")).join("tracexec_system.skel.rs");
   let arch = env::var("CARGO_CFG_TARGET_ARCH").expect("CARGO_CFG_TARGET_ARCH not set");
   let arch_define = OsStr::new(match arch.as_str() {
     "x86_64" => "TRACEXEC_TARGET_X86_64",

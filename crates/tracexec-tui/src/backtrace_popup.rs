@@ -1,26 +1,47 @@
-use std::{cell::RefCell, collections::VecDeque, rc::Rc, sync::LazyLock};
+use std::{
+  cell::RefCell,
+  collections::VecDeque,
+  rc::Rc,
+  sync::LazyLock,
+};
 
-use crossterm::event::{KeyCode, KeyEvent};
-
+use crossterm::event::{
+  KeyCode,
+  KeyEvent,
+};
 use ratatui::{
   buffer::Buffer,
-  layout::{Alignment, Rect},
+  layout::{
+    Alignment,
+    Rect,
+  },
   style::Styled,
   text::Line,
-  widgets::{Block, Borders, Clear, StatefulWidgetRef, Widget},
+  widgets::{
+    Block,
+    Borders,
+    Clear,
+    StatefulWidgetRef,
+    Widget,
+  },
+};
+use tracexec_core::{
+  event::{
+    ParentEventId,
+    TracerEventDetails,
+  },
+  primitives::local_chan::LocalUnboundedSender,
 };
 use tracing::debug;
 
-use crate::action::Action;
-use tracexec_core::{
-  event::{ParentEventId, TracerEventDetails},
-  primitives::local_chan::LocalUnboundedSender,
-};
-
 use super::{
-  event_list::{Event, EventList},
+  event_list::{
+    Event,
+    EventList,
+  },
   theme::THEME,
 };
+use crate::action::Action;
 
 pub struct BacktracePopup;
 

@@ -1,9 +1,20 @@
-use std::{borrow::Cow, fmt::Display, mem, ops::Range};
+use std::{
+  borrow::Cow,
+  fmt::Display,
+  mem,
+  ops::Range,
+};
 
-use ratatui::text::{Line, Span};
-
+use ratatui::text::{
+  Line,
+  Span,
+};
 use tracexec_core::primitives::regex::{
-  BidirectionalIter, BidirectionalIterator, Cursor, IntoBidirectionalIterator, IntoCursor,
+  BidirectionalIter,
+  BidirectionalIterator,
+  Cursor,
+  IntoBidirectionalIterator,
+  IntoCursor,
 };
 
 #[derive(Debug, Clone)]
@@ -197,8 +208,9 @@ where
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use ratatui::text::Span;
+
+  use super::*;
 
   #[test]
   fn smoke_test() {

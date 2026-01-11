@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 
 use nix::libc::gid_t;
-
 use tracexec_core::{
   event::OutputMsg,
-  proc::{CredInspectError, FileDescriptorInfoCollection, cached_string},
+  proc::{
+    CredInspectError,
+    FileDescriptorInfoCollection,
+    cached_string,
+  },
 };
 
 /// The temporary storage for receiving information

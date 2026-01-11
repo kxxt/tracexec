@@ -1,26 +1,51 @@
 use std::{
   cell::RefCell,
   collections::BTreeMap,
-  fmt::{Debug, Display},
-  io::{self, Write},
+  fmt::{
+    Debug,
+    Display,
+  },
+  io::{
+    self,
+    Write,
+  },
   sync::Arc,
 };
 
+use itertools::chain;
+use nix::{
+  fcntl::OFlag,
+  libc::ENOENT,
+  unistd::Pid,
+};
+use owo_colors::{
+  OwoColorize,
+  Style,
+};
+
 use crate::{
+  cache::ArcStr,
   cli::{
-    args::{LogModeArgs, ModifierArgs},
+    args::{
+      LogModeArgs,
+      ModifierArgs,
+    },
     theme::THEME,
   },
-  event::{FriendlyError, OutputMsg},
-  proc::{BaselineInfo, FileDescriptorInfo, FileDescriptorInfoCollection, Interpreter, diff_env},
+  event::{
+    FriendlyError,
+    OutputMsg,
+  },
+  proc::{
+    BaselineInfo,
+    FileDescriptorInfo,
+    FileDescriptorInfoCollection,
+    Interpreter,
+    diff_env,
+  },
   timestamp::TimestampFormat,
   tracer::ExecData,
 };
-
-use crate::cache::ArcStr;
-use itertools::chain;
-use nix::{fcntl::OFlag, libc::ENOENT, unistd::Pid};
-use owo_colors::{OwoColorize, Style};
 
 macro_rules! escape_str_for_bash {
   ($x:expr) => {{

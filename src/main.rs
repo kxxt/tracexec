@@ -18,38 +18,75 @@
 mod bpf;
 mod log;
 
-use std::{os::unix::ffi::OsStrExt, process, sync::Arc};
+use std::{
+  os::unix::ffi::OsStrExt,
+  process,
+  sync::Arc,
+};
 
 use atoi::atoi;
 use clap::Parser;
-use color_eyre::eyre::{OptionExt, bail};
-use tracexec_exporter_json::{JsonExporter, JsonStreamExporter};
-use tracexec_exporter_perfetto::PerfettoExporter;
-
-use crate::log::initialize_panic_handler;
+use color_eyre::eyre::{
+  OptionExt,
+  bail,
+};
 use futures::StreamExt;
-use nix::unistd::{Uid, User};
+use nix::unistd::{
+  Uid,
+  User,
+};
 use signal_hook::consts::signal::*;
 use signal_hook_tokio::Signals;
 use tokio::sync::mpsc;
 use tracexec_backend_ptrace::ptrace::BuildPtraceTracer;
 use tracexec_core::{
   cli::{
-    Cli, CliCommand,
-    args::LogModeArgs,
-    args::TracerEventArgs,
-    config::{Config, ConfigLoadError},
-    options::Color,
-    options::ExportFormat,
+    Cli,
+    CliCommand,
+    args::{
+      LogModeArgs,
+      TracerEventArgs,
+    },
+    config::{
+      Config,
+      ConfigLoadError,
+    },
+    options::{
+      Color,
+      ExportFormat,
+    },
   },
-  event::{TracerEvent, TracerEventDetails, TracerMessage},
-  export::{Exporter, ExporterMetadata},
+  event::{
+    TracerEvent,
+    TracerEventDetails,
+    TracerMessage,
+  },
+  export::{
+    Exporter,
+    ExporterMetadata,
+  },
   proc::BaselineInfo,
-  pty::{PtySize, PtySystem, native_pty_system},
-  tracer::{TracerBuilder, TracerMode},
+  pty::{
+    PtySize,
+    PtySystem,
+    native_pty_system,
+  },
+  tracer::{
+    TracerBuilder,
+    TracerMode,
+  },
 };
-use tracexec_tui::app::App;
-use tracexec_tui::app::PTracer;
+use tracexec_exporter_json::{
+  JsonExporter,
+  JsonStreamExporter,
+};
+use tracexec_exporter_perfetto::PerfettoExporter;
+use tracexec_tui::app::{
+  App,
+  PTracer,
+};
+
+use crate::log::initialize_panic_handler;
 
 #[tokio::main(worker_threads = 2)]
 async fn main() -> color_eyre::Result<()> {

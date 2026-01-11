@@ -1,9 +1,27 @@
 use ratatui::{
   buffer::Buffer,
-  layout::{Constraint, Layout, Rect},
+  layout::{
+    Constraint,
+    Layout,
+    Rect,
+  },
   style::Stylize,
-  text::{Line, Span},
-  widgets::{Block, Paragraph, StatefulWidget, StatefulWidgetRef, Widget, Wrap},
+  text::{
+    Line,
+    Span,
+  },
+  widgets::{
+    Block,
+    Paragraph,
+    StatefulWidget,
+    StatefulWidgetRef,
+    Widget,
+    Wrap,
+  },
+};
+use tracexec_core::{
+  cli::options::ActivePane,
+  pty::PtySize,
 };
 use tui_popup::Popup;
 
@@ -13,15 +31,23 @@ use super::{
     copy_popup::CopyPopup,
     details_popup::DetailsPopup,
     error_popup::InfoPopup,
-    help::{fancy_help_desc, help, help_item, help_key},
+    help::{
+      fancy_help_desc,
+      help,
+      help_item,
+      help_key,
+    },
     hit_manager::HitManager,
     theme::THEME,
     ui::render_title,
   },
-  App, AppLayout,
+  App,
+  AppLayout,
 };
-use crate::{action::ActivePopup, backtrace_popup::BacktracePopup};
-use tracexec_core::{cli::options::ActivePane, pty::PtySize};
+use crate::{
+  action::ActivePopup,
+  backtrace_popup::BacktracePopup,
+};
 
 impl Widget for &mut App {
   fn render(self, area: Rect, buf: &mut Buffer) {

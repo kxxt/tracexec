@@ -21,22 +21,45 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+use std::{
+  io::{
+    BufWriter,
+    Write,
+  },
+  sync::{
+    Arc,
+    RwLock,
+  },
+};
+
 use bytes::Bytes;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::prelude::{Buffer, Rect};
-
-use ratatui::widgets::Widget;
-use std::io::{BufWriter, Write};
-use std::sync::Arc;
+use crossterm::event::{
+  KeyCode,
+  KeyEvent,
+  KeyModifiers,
+};
+use ratatui::{
+  prelude::{
+    Buffer,
+    Rect,
+  },
+  widgets::Widget,
+};
 use tokio::sync::mpsc::channel;
-use tracing::{trace, warn};
-use tui_term::widget::{Cursor, PseudoTerminal};
-
 use tokio_util::sync::CancellationToken;
-
-use std::sync::RwLock;
-
-use tracexec_core::pty::{MasterPty, PtySize, UnixMasterPty};
+use tracexec_core::pty::{
+  MasterPty,
+  PtySize,
+  UnixMasterPty,
+};
+use tracing::{
+  trace,
+  warn,
+};
+use tui_term::widget::{
+  Cursor,
+  PseudoTerminal,
+};
 
 pub struct PseudoTerminalPane {
   // cannot move out of `parser` because it is borrowed

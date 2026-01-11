@@ -1,23 +1,43 @@
-use std::{borrow::Cow, num::ParseFloatError};
-
-use clap::{Args, ValueEnum};
-use color_eyre::eyre::bail;
-use enumflags2::BitFlags;
-use snafu::{ResultExt, Snafu};
-
-use crate::{
-  breakpoint::BreakPoint,
-  cli::config::{ColorLevel, EnvDisplay, FileDescriptorDisplay},
-  event::TracerEventDetailsKind,
-  timestamp::TimestampFormat,
+use std::{
+  borrow::Cow,
+  num::ParseFloatError,
 };
 
-use super::options::{AppLayout, SeccompBpf};
+use clap::{
+  Args,
+  ValueEnum,
+};
+use color_eyre::eyre::bail;
+use enumflags2::BitFlags;
+use snafu::{
+  ResultExt,
+  Snafu,
+};
+
 use super::{
   config::{
-    DebuggerConfig, ExitHandling, LogModeConfig, ModifierConfig, PtraceConfig, TuiModeConfig,
+    DebuggerConfig,
+    ExitHandling,
+    LogModeConfig,
+    ModifierConfig,
+    PtraceConfig,
+    TuiModeConfig,
   },
-  options::ActivePane,
+  options::{
+    ActivePane,
+    AppLayout,
+    SeccompBpf,
+  },
+};
+use crate::{
+  breakpoint::BreakPoint,
+  cli::config::{
+    ColorLevel,
+    EnvDisplay,
+    FileDescriptorDisplay,
+  },
+  event::TracerEventDetailsKind,
+  timestamp::TimestampFormat,
 };
 
 #[derive(Args, Debug, Default, Clone)]
@@ -552,8 +572,9 @@ pub struct ExporterArgs {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use clap::Parser;
+
+  use super::*;
 
   // Helper wrapper so we can test clap parsing easily
   #[derive(Parser, Debug)]

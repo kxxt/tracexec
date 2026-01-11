@@ -1,29 +1,61 @@
 //! Abstractions for creating Perfetto trace packet for tracexec events
 
-use std::{num::NonZeroUsize, sync::Arc};
-
-use crate::proto::{
-  ClockSnapshot, DebugAnnotation, DebugAnnotationName, EventName, InternedData, InternedString,
-  TracePacket, TracePacketDefaults, TrackDescriptor, TrackEvent,
-  clock_snapshot::clock::BuiltinClocks,
-  debug_annotation,
-  trace_packet::{Data, OptionalTrustedPacketSequenceId, SequenceFlags},
-  track_event::{self, NameField},
+use std::{
+  num::NonZeroUsize,
+  sync::Arc,
 };
-use chrono::{DateTime, Local};
 
+use chrono::{
+  DateTime,
+  Local,
+};
 use tracexec_core::{
   cli::args::ModifierArgs,
-  event::{RuntimeModifier, TracerEventDetails},
+  event::{
+    RuntimeModifier,
+    TracerEventDetails,
+  },
   proc::BaselineInfo,
   tracer::ProcessExit,
 };
-use tracexec_tui::TracerEventDetailsTuiExt;
-use tracexec_tui::action::{CopyTarget, SupportedShell};
+use tracexec_tui::{
+  TracerEventDetailsTuiExt,
+  action::{
+    CopyTarget,
+    SupportedShell,
+  },
+};
 
 use crate::{
-  intern::{DebugAnnotationInternId, ValueInterner, da_interned_string},
+  intern::{
+    DebugAnnotationInternId,
+    ValueInterner,
+    da_interned_string,
+  },
   producer::TrackUuid,
+  proto::{
+    ClockSnapshot,
+    DebugAnnotation,
+    DebugAnnotationName,
+    EventName,
+    InternedData,
+    InternedString,
+    TracePacket,
+    TracePacketDefaults,
+    TrackDescriptor,
+    TrackEvent,
+    clock_snapshot::clock::BuiltinClocks,
+    debug_annotation,
+    trace_packet::{
+      Data,
+      OptionalTrustedPacketSequenceId,
+      SequenceFlags,
+    },
+    track_event::{
+      self,
+      NameField,
+    },
+  },
 };
 
 const TRUSTED_PKT_SEQ_ID: OptionalTrustedPacketSequenceId =

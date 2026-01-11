@@ -1,16 +1,22 @@
 use std::{
   borrow::Cow,
-  fmt::{Debug, Display},
+  fmt::{
+    Debug,
+    Display,
+  },
   hash::Hash,
 };
 
-use crate::cache::ArcStr;
 use either::Either;
 use nix::errno::Errno;
 use owo_colors::OwoColorize;
 use serde::Serialize;
 
-use crate::{cli, proc::cached_string};
+use crate::{
+  cache::ArcStr,
+  cli,
+  proc::cached_string,
+};
 
 #[cfg(feature = "ebpf")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -230,11 +236,18 @@ impl OutputMsg {
 
 #[cfg(test)]
 mod tests {
+  use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{
+      Hash,
+      Hasher,
+    },
+  };
+
+  use nix::errno::Errno;
+
   use super::*;
   use crate::cache::ArcStr;
-  use nix::errno::Errno;
-  use std::collections::hash_map::DefaultHasher;
-  use std::hash::{Hash, Hasher};
 
   #[test]
   fn test_friendly_error_display() {

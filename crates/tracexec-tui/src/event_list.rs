@@ -16,27 +16,42 @@
 // OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::{cell::RefCell, collections::VecDeque, rc::Rc, sync::Arc};
+use std::{
+  cell::RefCell,
+  collections::VecDeque,
+  rc::Rc,
+  sync::Arc,
+};
 
 use chrono::TimeDelta;
 use hashbrown::HashMap;
 use ratatui::{
   text::Span,
-  widgets::{List, ListState},
+  widgets::{
+    List,
+    ListState,
+  },
 };
-use ui::pstate_update_to_status;
-
 use tracexec_core::{
   cli::args::ModifierArgs,
   event::{
-    EventId, EventStatus, ParentEvent, ProcessStateUpdateEvent, RuntimeModifier, TracerEventDetails,
+    EventId,
+    EventStatus,
+    ParentEvent,
+    ProcessStateUpdateEvent,
+    RuntimeModifier,
+    TracerEventDetails,
   },
   proc::BaselineInfo,
 };
+use ui::pstate_update_to_status;
 
 use super::{
   event_line::EventLine,
-  query::{Query, QueryResult},
+  query::{
+    Query,
+    QueryResult,
+  },
 };
 
 mod react;
