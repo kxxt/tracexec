@@ -192,6 +192,7 @@ Files: * except those files noted below
    See the License for the specific language governing permissions and
    limitations under the License.
 */
+#![allow(clippy::all)]
 
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Utsname {
@@ -346,7 +347,7 @@ pub struct TrackEventConfig {
 }
 
 /// A snapshot of clock readings to allow for trace alignment.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, ::prost::Message)]
 pub struct ClockSnapshot {
   #[prost(message, repeated, tag = "1")]
   pub clocks: ::prost::alloc::vec::Vec<clock_snapshot::Clock>,
@@ -491,9 +492,9 @@ pub struct DebugAnnotation {
   #[prost(bytes = "vec", optional, tag = "14")]
   pub proto_value: ::core::option::Option<::prost::alloc::vec::Vec<u8>>,
   #[prost(message, repeated, tag = "11")]
-  pub dict_entries: ::prost::alloc::vec::Vec<DebugAnnotation>,
+  pub dict_entries: ::prost::alloc::vec::Vec<Self>,
   #[prost(message, repeated, tag = "12")]
-  pub array_values: ::prost::alloc::vec::Vec<DebugAnnotation>,
+  pub array_values: ::prost::alloc::vec::Vec<Self>,
   /// Name fields are set only for dictionary entries.
   #[prost(oneof = "debug_annotation::NameField", tags = "1, 10")]
   pub name_field: ::core::option::Option<debug_annotation::NameField>,
@@ -519,9 +520,9 @@ pub mod debug_annotation {
     #[prost(string, repeated, tag = "2")]
     pub dict_keys: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(message, repeated, tag = "3")]
-    pub dict_values: ::prost::alloc::vec::Vec<NestedValue>,
+    pub dict_values: ::prost::alloc::vec::Vec<Self>,
     #[prost(message, repeated, tag = "4")]
-    pub array_values: ::prost::alloc::vec::Vec<NestedValue>,
+    pub array_values: ::prost::alloc::vec::Vec<Self>,
     #[prost(int64, optional, tag = "5")]
     pub int_value: ::core::option::Option<i64>,
     #[prost(double, optional, tag = "6")]
@@ -965,7 +966,7 @@ pub mod track_event {
   /// Use this for simple callstacks with function names and source locations.
   /// For binary/library information (mappings, build IDs, relative PCs), use
   /// interned callstacks via callstack_iid instead.
-  #[derive(Clone, PartialEq, ::prost::Message)]
+  #[derive(Clone, PartialEq, Eq, ::prost::Message)]
   pub struct Callstack {
     /// Frames of this callstack, ordered from bottom (outermost) to top
     /// (innermost). For example, if main() calls foo() which calls bar(), the
@@ -1254,7 +1255,7 @@ pub mod track_event {
   ///    (efficient for repeated callstacks)
   ///
   /// Only one of these fields should be set.
-  #[derive(Clone, PartialEq, ::prost::Oneof)]
+  #[derive(Clone, PartialEq, Eq, ::prost::Oneof)]
   pub enum CallstackField {
     /// Inline callstack data. Use this for simplicity when interning is not
     /// needed (e.g., for unique callstacks or when trace size is not critical).
@@ -1383,7 +1384,7 @@ pub struct Line {
   pub line_number: ::core::option::Option<u32>,
 }
 /// Symbols for a given address in a module.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, ::prost::Message)]
 pub struct AddressSymbols {
   #[prost(uint64, optional, tag = "1")]
   pub address: ::core::option::Option<u64>,
@@ -1399,7 +1400,7 @@ pub struct AddressSymbols {
 }
 /// Symbols for addresses seen in a module.
 /// Used in re-symbolisation of complete traces.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, ::prost::Message)]
 pub struct ModuleSymbols {
   /// Fully qualified path to the mapping.
   /// E.g. /system/lib64/libc.so.
@@ -1511,7 +1512,7 @@ pub struct Callstack {
 ///
 /// TODO(eseckler): Replace iid fields inside interned messages with
 /// map<iid, message> type fields in InternedData.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, ::prost::Message)]
 pub struct InternedData {
   /// Each field's message type needs to specify an |iid| field, which is the ID
   /// of the entry in the field's interning index. Each field constructs its own
@@ -1594,7 +1595,7 @@ pub struct InternedData {
 /// |trusted_packet_sequence_id|, unless otherwise specified in each packet.
 ///
 /// Should be reemitted whenever incremental state is cleared on the sequence.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, ::prost::Message)]
 pub struct TracePacketDefaults {
   #[prost(uint32, optional, tag = "58")]
   pub timestamp_clock_id: ::core::option::Option<u32>,

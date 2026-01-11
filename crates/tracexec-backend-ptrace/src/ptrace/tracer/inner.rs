@@ -242,6 +242,7 @@ impl TracerInner {
 
 // Spawn
 impl TracerInner {
+  #[allow(clippy::future_not_send)]
   pub async fn run(
     self,
     args: Vec<String>,
@@ -533,6 +534,7 @@ impl TracerInner {
           // PTRACE_EVENT_EXEC only happens for successful exec.
           p.is_exec_successful = true;
           // Exec event comes first before our special SENTINEL_SIGNAL is sent to tracee! (usually happens on syscall-enter)
+          #[allow(clippy::branches_sharing_code)]
           if p.pending_detach.is_none() {
             // Don't use seccomp_aware_cont here because that will skip the next syscall exit stop
             guard.cont_syscall(true).context(OSSnafu)?;

@@ -67,6 +67,14 @@ tracing-test = "0.2.4"
 serial_test = { version = "3.1.1", features = ["file_locks"] }
 rusty-fork = "0.3.1"
 
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+option_if_let_else = "allow"
+missing_errors_doc = "allow"
+missing_const_for_fn = "allow"
+significant_drop_tightening = "allow" # Many false positives
+
 [package]
 name = "tracexec"
 version.workspace = true
