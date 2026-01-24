@@ -871,13 +871,15 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
   }
   // debug("open fd: %u -> %u with flags %u", fd_num, entry->path_id,
   //       entry->flags);
-  bpf_ringbuf_output(&events, entry, sizeof(struct fd_event), BPF_RB_FORCE_WAKEUP);
+  bpf_ringbuf_output(&events, entry, sizeof(struct fd_event),
+                     BPF_RB_FORCE_WAKEUP);
   bpf_map_delete_elem(&cache, &key);
   return 0;
 ptr_err:
   entry->header.flags |= PTR_READ_FAILURE;
   entry->path_id = -1;
-  bpf_ringbuf_output(&events, entry, sizeof(struct fd_event), BPF_RB_FORCE_WAKEUP);
+  bpf_ringbuf_output(&events, entry, sizeof(struct fd_event),
+                     BPF_RB_FORCE_WAKEUP);
   bpf_map_delete_elem(&cache, &key);
   return 1;
 }
@@ -932,8 +934,9 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   } else if (bytes_read == sizeof(entry->data)) {
     entry->header.flags |= POSSIBLE_TRUNCATION;
   }
-  ret = bpf_ringbuf_output(
-      &events, entry, sizeof(struct tracexec_event_header) + bytes_read, BPF_RB_FORCE_WAKEUP);
+  ret = bpf_ringbuf_output(&events, entry,
+                           sizeof(struct tracexec_event_header) + bytes_read,
+                           BPF_RB_FORCE_WAKEUP);
   bpf_map_delete_elem(&cache, &key);
   if (ret < 0) {
     event->header.flags |= OUTPUT_FAILURE;
@@ -1158,6 +1161,10 @@ fstype_err_out:
   return 0; // soft fail
 }
 
+static int read_send_path_stage2(struct path_event *event,
+                                 struct path_segment_ctx *segment_ctx,
+                                 s32 path_id, struct vfsmount *vfsmnt);
+
 // Read all dentry path segments up to mnt_root,
 // and then read all ancestor mount entries to reconstruct
 // an absolute path.
@@ -1213,20 +1220,36 @@ static int read_send_path(const struct path *path,
     goto ptr_err;
   }
 
+  return read_send_path_stage2(event, &segment_ctx, path_id, vfsmnt);
+ptr_err:
+  event->header.flags |= PTR_READ_FAILURE;
+  event->segment_count = 0;
+  ret = bpf_ringbuf_output(&events, event, sizeof(*event), BPF_RB_FORCE_WAKEUP);
+  bpf_task_storage_delete(&path_event_cache, current_task);
+  if (ret < 0) {
+    debug("Failed to output path_event to ringbuf");
+    return -1;
+  }
+  return -1;
+}
+
+static int read_send_path_stage2(struct path_event *event,
+                                 struct path_segment_ctx *segment_ctx,
+                                 s32 path_id, struct vfsmount *vfsmnt) {
   // Send the dentry segments to userspace
-  ret = read_send_dentry_segments_recursive(&segment_ctx, event, path_id);
+  int ret = read_send_dentry_segments_recursive(segment_ctx, event, path_id);
   if (ret < 0) {
     goto loop_err;
   }
   struct mount *mount = container_of(vfsmnt, struct mount, mnt);
   // Iterate over all ancestor mounts and send segments to userspace
   struct mount_ctx ctx = {
-      .base_index = segment_ctx.base_index,
+      .base_index = segment_ctx->base_index,
       .mnt = mount,
       .path_event = event,
       .path_id = path_id,
       // Reuse the above segment_ctx to save stack space
-      .segment_ctx = &segment_ctx,
+      .segment_ctx = segment_ctx,
   };
   ret = bpf_loop(PATH_DEPTH_MAX, read_send_mount_segments, &ctx, 0);
   if (ret < 0) {
@@ -1235,7 +1258,7 @@ static int read_send_path(const struct path *path,
   // Send path event to userspace
   event->segment_count = ctx.base_index;
   ret = bpf_ringbuf_output(&events, event, sizeof(*event), BPF_RB_FORCE_WAKEUP);
-  bpf_task_storage_delete(&path_event_cache, current_task);
+  bpf_task_storage_delete(&path_event_cache, (void *)bpf_get_current_task_btf());
   if (ret < 0) {
     debug("Failed to output path_event to ringbuf");
     return -1;
@@ -1250,7 +1273,7 @@ loop_err:
 err_out:
   event->segment_count = 0;
   ret = bpf_ringbuf_output(&events, event, sizeof(*event), BPF_RB_FORCE_WAKEUP);
-  bpf_task_storage_delete(&path_event_cache, current_task);
+  bpf_task_storage_delete(&path_event_cache, (void *)bpf_get_current_task_btf());
   if (ret < 0) {
     debug("Failed to output path_event to ringbuf");
     return -1;
