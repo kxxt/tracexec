@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.16.1
+
+Fix a bug that when compiled in release mode with some versions of clang,
+the experimental eBPF backend may fail to load with `E2BIG` error.
+
 ## v0.16.0
 
 ### New Features
