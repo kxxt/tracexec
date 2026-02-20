@@ -2,7 +2,7 @@ use std::ffi::CString;
 
 use nix::unistd::execv;
 use rand::{
-  Rng,
+  RngExt,
   distr::Alphanumeric,
 };
 
