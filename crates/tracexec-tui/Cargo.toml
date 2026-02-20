@@ -50,4 +50,4 @@ tui-term = "0.3.1"
 arboard = { version = "3.3.2", default-features = false, features = [
     "wayland-data-control",
 ] }
-indexset = "0.12"
+indexset = "0.15"
