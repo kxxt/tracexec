@@ -32,7 +32,7 @@ shell-quote = { workspace = true }
 unicode-segmentation = "1.11.0"
 unicode-width = "0.2.2"
 shell-words = "1.1.0"
-vt100 = "0.15.2"
+vt100 = "0.16"
 
 tokio-util = "0.7.10"
 humantime = "2.2.0"
@@ -44,7 +44,7 @@ tui-popup = "0.7.2"
 tui-scrollview = "0.6.2"
 tui-prompts = "0.6.1"
 tui-widget-list = "0.14"
-tui-term = "0.3.0"
+tui-term = "0.3.1"
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
 arboard = { version = "3.3.2", default-features = false, features = [

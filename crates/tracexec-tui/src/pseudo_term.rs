@@ -220,7 +220,12 @@ impl PseudoTerminalPane {
       return Ok(());
     }
     self.size = size;
-    self.parser.write().unwrap().set_size(size.rows, size.cols);
+    self
+      .parser
+      .write()
+      .unwrap()
+      .screen_mut()
+      .set_size(size.rows, size.cols);
     self.pty_master.resize(size)?;
     Ok(())
   }
