@@ -43,7 +43,7 @@ ratatui = { version = "0.30", features = [
 tui-popup = "0.7.2"
 tui-scrollview = "0.6.2"
 tui-prompts = "0.6.1"
-tui-widget-list = "0.14"
+tui-widget-list = "0.15"
 tui-term = "0.3.1"
 # tui-prompts = { version = "0.3.11", path = "../../contrib/tui-prompts" }
 # tui-popup = { version = "0.3.0", path = "../../contrib/tui-popup" }
