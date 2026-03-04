@@ -40,6 +40,7 @@
    }:
 let
   kernel =
+    # todo: migrate to  ../os-specific/linux/kernel/build.nix { };
     ((callPackage "${nixpkgs}/pkgs/os-specific/linux/kernel/manual-config.nix" { })
       {
         inherit src modDirVersion version kernelPatches configfile;
