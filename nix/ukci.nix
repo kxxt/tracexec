@@ -22,40 +22,48 @@ localFlake:
           sources = [
             {
               name = "6.1lts";
-              tag = "6.1.158";
+              tag = "6.1.165";
               source = "mirror";
               test_exe = "tracexec_no_rcu_kfuncs";
-              sha256 = "sha256-rQaL/bYE7A9PfeOFyOerlEAIqnikruypT1Mgbmcmv9o=";
+              sha256 = "sha256-WoFxhPG+kBt1x+CvwCN2vDrFFiTgPsb3uKX505XSLvQ=";
             }
             {
               name = "6.6lts";
-              tag = "6.6.119";
+              tag = "6.6.128";
               source = "mirror";
               test_exe = "tracexec";
-              sha256 = "sha256-PaCbmAu0BMwoeTR5uy1sY2UiZ5IV/6ZaBMiTV1JT5eg=";
+              sha256 = "sha256-ZpYzu4SAAh8Vw4iD+y9v4gh8yLaaWC8m9rfUrms0jkg=";
             }
             {
               name = "6.12lts";
-              tag = "6.12.62";
+              tag = "6.12.75";
               source = "mirror";
               test_exe = "tracexec";
-              sha256 = "sha256-E+LGhayPq13Zkt0QVzJVTa5RSu81DCqMdBjnt062LBM=";
+              sha256 = "sha256-Bu55J1Vv8aqIEMSCZQGw/bFp69wYBkS4gs98FDrBwXc=";
             }
             {
-              name = "6.18";
-              tag = "6.18.1";
-              version = "6.18.1";
+              name = "6.18lts";
+              tag = "6.18.16";
+              version = "6.18.16";
               source = "mirror";
               test_exe = "tracexec";
-              sha256 = "sha256-0KeL8/DRKqoQrzta3K7VvHZ7W3hwXl74hdXpMLcuJdU=";
+              sha256 = "sha256-TyHAH00EwdGz7XlBU/iQCALJJJe+YgsHxIaVMPLSjuM=";
             }
             {
               name = "6.19";
-              tag = "v6.19-rc1";
-              version = "6.19.0-rc1";
+              tag = "6.19.6";
+              version = "6.19.6";
+              source = "mirror";
+              test_exe = "tracexec_use_iter_bits";
+              sha256 = "sha256-TZ8/9zIU9owBlO8C25ykt7pxMlOsEEVEHU6fNSvCLhQ=";
+            }
+            {
+              name = "7.0";
+              tag = "v7.0-rc2";
+              version = "7.0.0-rc2";
               source = "linus";
-              test_exe = "tracexec";
-              sha256 = "sha256-itUMYlX2BWUMmqeACu8ZaDMR/S2eBhDSIx1UZl9hh9E=";
+              test_exe = "tracexec_use_iter_bits";
+              sha256 = "sha256-BlKlJdEYvwDN6iWJfuOvd1gcm6lN6McJ/vmMwOmzHdc=";
             }
           ];
           nixpkgs = localFlake.nixpkgs;
@@ -134,7 +142,7 @@ localFlake:
 
               sudo qemu-system-x86_64 \
                 -enable-kvm \
-                -m 2G \
+                -m 4G \
                 -smp cores=4 \
                 -kernel "$kernel"/bzImage \
                 -initrd "$initrd"/initrd.gz \
@@ -163,6 +171,9 @@ localFlake:
                 ;;
               tracexec_no_rcu_kfuncs)
                 package="${self'.packages.tracexec_no_rcu_kfuncs}"
+                ;;
+              tracexec_use_iter_bits)
+                package="${self'.packages.tracexec_use_iter_bits}"
                 ;;
               *)
                 echo "Unrecognized executable!"
