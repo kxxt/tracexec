@@ -39,12 +39,20 @@
 
 #define BITS_PER_LONG 64
 #define NOFILE_MAX 2147483584
+
+#ifdef USE_ITER_BITS
+// Since we are already using 512 byte chunking implemented via bpf_iter_bits,
+// we could reach the theoretical limit in this case
+# define FDSET_SIZE_MAX_BYTES ((NOFILE_MAX) / 8)
+#else
 // ((NOFILE_MAX) / (BITS_PER_LONG)) = 33554431. it is still too large for
 // bpf_loop 1 << 23 = 8388608 is the bpf loop limit. This will take 64MiB space
 // per cpu, which is probably too big. Let's set this limit to 2MiB and wait to
 // see if anyone complains.
-#define FDSET_SIZE_MAX_BYTES 2097152
-#define FDSET_SIZE_MAX_IN_LONG ((2097152) / sizeof(long))
+# define FDSET_SIZE_MAX_BYTES 2097152
+#endif
+
+#define FDSET_SIZE_MAX_IN_LONG ((FDSET_SIZE_MAX_BYTES) / sizeof(long))
 
 // Copy the content to interface.rs after modification!
 enum exec_event_flags {
