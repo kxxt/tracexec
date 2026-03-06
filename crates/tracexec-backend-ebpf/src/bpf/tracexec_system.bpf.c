@@ -7,6 +7,9 @@
 
 char LICENSE[] SEC("license") = "GPL";
 
+const u32 BPF_BITS_ITER_MAX_BYTES = 512;
+const u32 BPF_BITS_ITER_MAX_BITS = BPF_BITS_ITER_MAX_BYTES * 8;
+
 static const struct exec_event empty_event = {};
 static u64 event_counter = 0;
 static u32 drop_counter = 0;
@@ -114,14 +117,18 @@ struct fdset_word_reader_context {
 
 static int read_strings(u32 index, struct reader_context *ctx);
 static int read_fds(struct exec_event *event);
-static int read_fds_impl(u32 index, struct fdset_reader_context *ctx);
-static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx);
 static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event, bool cloexec);
 static int add_tgid_to_closure(pid_t tgid);
 static int read_send_path(const struct path *path,
                           struct tracexec_event_header *base_header,
                           s32 path_id, struct fd_event *fd_event);
+#ifdef USE_ITER_BITS
+static int iter_fdset_chunk(u32 chunk, void *data);
+#else
+static int read_fds_impl(u32 index, struct fdset_reader_context *ctx);
+static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx);
+#endif
 
 #ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
@@ -698,34 +705,21 @@ static int read_fds(struct exec_event *event) {
   }
   rcu_read_unlock();
   // open_fds is a fd set, which is a bitmap
-  // Copy it into cache first
   // Ref:
   // https://github.com/torvalds/linux/blob/5189dafa4cf950e675f02ee04b577dfbbad0d9b1/fs/file.c#L279-L291
   ctx.size = max_fds / BITS_PER_LONG;
   ctx.size = min(ctx.size, FDSET_SIZE_MAX_IN_LONG);
 #ifdef USE_ITER_BITS
-  unsigned int* pfd_num;
-  bpf_for_each(bits, pfd_num, (const u64*)ctx.fdset, min(ctx.size, 512)) {
-    // unfortunately we cannot zip two bpf bits iterator so manually check the cloexec set here
-    bool cloexec = false;
-    // Read a 64bits part of close_on_exec set from kernel
-    int index = *pfd_num / 64;  // the index of the word in the cloexec bitmap
-    int offset = *pfd_num & 63; // the offset of the bit in the cloexec bitmap
-    long unsigned int *pcloexec_set = &ctx.cloexec_set[index];
-    u64 cloexec_word;
-    ret = bpf_core_read(&cloexec_word, sizeof(cloexec_word), pcloexec_set);
-    if (ret < 0) {
-      debug("Failed to check if fd %lu is cloexec", *pfd_num);
-      event->header.flags |= FLAGS_READ_FAILURE;
-      // fallthrough
-    }
-    cloexec = cloexec_word & (1UL << offset);
-    ret = _read_fd(*pfd_num, ctx.fd_array, ctx.event, cloexec);
-    if (ret != 0) {
-      debug("Failed to get info about fd %lu (inside bpf bits iter)", *pfd_num);
-      goto probe_failure;
-    }
-	}
+  // For USE_ITER_BITS, the unit of size is bit (not the number of words)
+  ctx.size *= BITS_PER_LONG;
+  u32 chunks = (ctx.size + BPF_BITS_ITER_MAX_BITS - 1) / BPF_BITS_ITER_MAX_BITS;
+  ret = bpf_loop(chunks, iter_fdset_chunk, &ctx, 0);
+  
+  if (ret < 0) {
+    debug("Failed to iter over all fds: %d!", ret);
+    ctx.event->header.flags |= LOOP_FAIL;
+    return ret;
+  }
 #else
   bpf_loop(ctx.size, read_fds_impl, &ctx, 0);
 #endif
@@ -736,6 +730,56 @@ probe_failure:
   event->header.flags |= FDS_PROBE_FAILURE;
   return -EFAULT;
 }
+
+#ifdef USE_ITER_BITS
+
+
+static int iter_fdset_chunk(u32 chunk, void *data)
+{
+  struct fdset_reader_context *ctx = data;
+  int ret;
+
+  const u32 base = chunk * BPF_BITS_ITER_MAX_BITS;
+
+  if (base >= ctx->size)
+    return 1; // stop loop
+
+  u32 remaining = ctx->size - base;
+  u32 chunk_nr_words = (remaining < BPF_BITS_ITER_MAX_BITS ? remaining : BPF_BITS_ITER_MAX_BITS) / BITS_PER_LONG;
+
+  const u64 *fdset_chunk = ((const u64 *)ctx->fdset) + (base / 64);
+
+  int *pbit_index;
+  bpf_for_each(bits, pbit_index, fdset_chunk, chunk_nr_words) {
+    u32 fd = base + *pbit_index;
+
+    bool cloexec = false;
+
+    int index = fd / 64;
+    int offset = fd & 63;
+
+    long unsigned int *pcloexec_set = &ctx->cloexec_set[index];
+    u64 cloexec_word;
+
+    ret = bpf_core_read(&cloexec_word, sizeof(cloexec_word), pcloexec_set);
+    if (ret < 0) {
+      debug("Failed to check if fd %u is cloexec", fd);
+      ctx->event->header.flags |= FLAGS_READ_FAILURE;
+    }
+
+    cloexec = cloexec_word & (1UL << offset);
+
+    ret = _read_fd(fd, ctx->fd_array, ctx->event, cloexec);
+    if (ret != 0) {
+      debug("Failed to get info about fd %u (inside bpf bits iter)", fd);
+    }
+  }
+
+  return 0;
+}
+
+
+#else
 
 // Ref:
 // https://elixir.bootlin.com/linux/v6.10.3/source/include/asm-generic/bitops/__ffs.h#L45
@@ -834,6 +878,8 @@ static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx) {
   ctx->next_bit = find_next_bit(ctx->fdset, ctx->next_bit + 1);
   return 0;
 }
+
+#endif
 
 // Gather information about a single fd and send it back to userspace
 static int _read_fd(unsigned int fd_num, struct file **fd_array,
