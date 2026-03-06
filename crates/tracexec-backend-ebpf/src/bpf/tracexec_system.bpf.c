@@ -706,12 +706,23 @@ static int read_fds(struct exec_event *event) {
 #ifdef USE_ITER_BITS
   unsigned int* pfd_num;
   bpf_for_each(bits, pfd_num, (const u64*)ctx.fdset, min(ctx.size, 512)) {
-    // TODO: handle cloexec set.
-    // unfortunately we cannot zip two bpf bits iterator.
+    // unfortunately we cannot zip two bpf bits iterator so manually check the cloexec set here
     bool cloexec = false;
+    // Read a 64bits part of close_on_exec set from kernel
+    int index = *pfd_num / 64;  // the index of the word in the cloexec bitmap
+    int offset = *pfd_num & 63; // the offset of the bit in the cloexec bitmap
+    long unsigned int *pcloexec_set = &ctx.cloexec_set[index];
+    u64 cloexec_word;
+    ret = bpf_core_read(&cloexec_word, sizeof(cloexec_word), pcloexec_set);
+    if (ret < 0) {
+      debug("Failed to check if fd %lu is cloexec", *pfd_num);
+      event->header.flags |= FLAGS_READ_FAILURE;
+      // fallthrough
+    }
+    cloexec = cloexec_word & (1UL << offset);
     ret = _read_fd(*pfd_num, ctx.fd_array, ctx.event, cloexec);
     if (ret != 0) {
-      debug("Failed to get info about fd (inside bpf bits iter)")
+      debug("Failed to get info about fd %lu (inside bpf bits iter)", *pfd_num);
       goto probe_failure;
     }
 	}
