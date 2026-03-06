@@ -41,6 +41,9 @@ fn main() {
   if cfg!(feature = "ebpf-no-rcu-kfuncs") {
     clang_args.push(OsStr::new("-DNO_RCU_KFUNCS"));
   }
+  if cfg!(feature = "ebpf-use-iter-bits") {
+    clang_args.push(OsStr::new("-DUSE_ITER_BITS"));
+  }
   let mut builder = SkeletonBuilder::new();
   builder.source(bpf_src).clang_args(clang_args);
   if let Some(path) = std::env::var_os("CLANG") {

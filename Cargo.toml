@@ -73,7 +73,7 @@ nursery = { level = "warn", priority = -1 }
 option_if_let_else = "allow"
 missing_errors_doc = "allow"
 missing_const_for_fn = "allow"
-significant_drop_tightening = "allow" # Many false positives
+significant_drop_tightening = "allow"       # Many false positives
 
 [package]
 name = "tracexec"
@@ -137,10 +137,10 @@ ebpf = ["dep:tracexec-backend-ebpf"]
 # Either cargo doesn't rebuild and run build.rs on feature flag change,
 # or some logic is wrong in build.rs
 ebpf-debug = ["ebpf", "tracexec-backend-ebpf/ebpf-debug"]
-ebpf-no-rcu-kfuncs = [
-    "ebpf",
-    "tracexec-backend-ebpf/ebpf-no-rcu-kfuncs",
-] # Avoid using rcu helpers. Necessary for kernel version < 6.2
+# Avoid using rcu helpers. Necessary for kernel version < 6.2
+ebpf-no-rcu-kfuncs = ["ebpf", "tracexec-backend-ebpf/ebpf-no-rcu-kfuncs"]
+# Use BPF bits iterator instead of our implementation, requires Linux 6.11
+ebpf-use-iter-bits = ["ebpf", "tracexec-backend-ebpf/ebpf-use-iter-bits"]
 static = ["tracexec-backend-ebpf?/static"]
 vendored = ["tracexec-backend-ebpf?/vendored"]
 vendored-libbpf = ["tracexec-backend-ebpf?/vendored-libbpf"]

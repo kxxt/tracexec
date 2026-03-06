@@ -703,7 +703,21 @@ static int read_fds(struct exec_event *event) {
   // https://github.com/torvalds/linux/blob/5189dafa4cf950e675f02ee04b577dfbbad0d9b1/fs/file.c#L279-L291
   ctx.size = max_fds / BITS_PER_LONG;
   ctx.size = min(ctx.size, FDSET_SIZE_MAX_IN_LONG);
+#ifdef USE_ITER_BITS
+  unsigned int* pfd_num;
+  bpf_for_each(bits, pfd_num, (const u64*)ctx.fdset, min(ctx.size, 512)) {
+    // TODO: handle cloexec set.
+    // unfortunately we cannot zip two bpf bits iterator.
+    bool cloexec = false;
+    ret = _read_fd(*pfd_num, ctx.fd_array, ctx.event, cloexec);
+    if (ret != 0) {
+      debug("Failed to get info about fd (inside bpf bits iter)")
+      goto probe_failure;
+    }
+	}
+#else
   bpf_loop(ctx.size, read_fds_impl, &ctx, 0);
+#endif
   return 0;
 probe_failure_locked_rcu:
   rcu_read_unlock();
