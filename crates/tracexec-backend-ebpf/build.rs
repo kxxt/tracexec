@@ -38,9 +38,6 @@ fn main() {
   if cfg!(any(feature = "ebpf-debug", debug_assertions)) {
     clang_args.push(OsStr::new("-DEBPF_DEBUG"));
   }
-  if cfg!(feature = "ebpf-no-rcu-kfuncs") {
-    clang_args.push(OsStr::new("-DNO_RCU_KFUNCS"));
-  }
   if cfg!(feature = "ebpf-use-iter-bits") {
     clang_args.push(OsStr::new("-DUSE_ITER_BITS"));
   }

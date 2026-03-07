@@ -24,7 +24,7 @@ localFlake:
               name = "6.1lts";
               tag = "6.1.165";
               source = "mirror";
-              test_exe = "tracexec_no_rcu_kfuncs";
+              test_exe = "tracexec";
               sha256 = "sha256-WoFxhPG+kBt1x+CvwCN2vDrFFiTgPsb3uKX505XSLvQ=";
             }
             {
@@ -168,9 +168,6 @@ localFlake:
             case "$1" in
               tracexec)
                 package="${self'.packages.tracexec}"
-                ;;
-              tracexec_no_rcu_kfuncs)
-                package="${self'.packages.tracexec_no_rcu_kfuncs}"
                 ;;
               tracexec_use_iter_bits)
                 package="${self'.packages.tracexec_use_iter_bits}"

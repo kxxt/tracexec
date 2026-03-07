@@ -59,24 +59,27 @@ struct sys_enter_exec_args {
   const u8 *const *envp;
 };
 
+// Kernel version at program load time
+extern int LINUX_KERNEL_VERSION __kconfig;
+
 // Compatibility Shims
 
-#ifndef NO_RCU_KFUNCS
 extern void bpf_rcu_read_lock(void) __ksym;
 extern void bpf_rcu_read_unlock(void) __ksym;
-#endif
+
+#define MIN_KERNEL_VERSION_FOR_RCU_KFUNC KERNEL_VERSION(6, 2, 0)
 
 int __always_inline rcu_read_lock() {
-#ifndef NO_RCU_KFUNCS
-  bpf_rcu_read_lock();
-#endif
+  if (LINUX_KERNEL_VERSION >= MIN_KERNEL_VERSION_FOR_RCU_KFUNC) {
+    bpf_rcu_read_lock();
+  }
   return 0;
 }
 
 int __always_inline rcu_read_unlock() {
-#ifndef NO_RCU_KFUNCS
-  bpf_rcu_read_unlock();
-#endif
+  if (LINUX_KERNEL_VERSION >= MIN_KERNEL_VERSION_FOR_RCU_KFUNC) {
+    bpf_rcu_read_unlock();
+  }
   return 0;
 }
 
