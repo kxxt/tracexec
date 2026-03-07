@@ -35,6 +35,7 @@ let
   localVersion = "-ukci";
   sources = {
     mirror = "mirror://kernel/linux/kernel/v6.x/linux-${tag}.tar.xz";
+    mirror-v5 = "mirror://kernel/linux/kernel/v5.x/linux-${tag}.tar.xz";
     linus = "https://github.com/torvalds/linux/archive/refs/tags/${tag}.tar.gz";
   };
 in
@@ -72,6 +73,7 @@ in
       {
         DEBUG_FS = yes;
         DEBUG_KERNEL = yes;
+        DEBUG_INFO = yes;
         DEBUG_MISC = yes;
         DEBUG_BUGVERBOSE = yes;
         DEBUG_BOOT_PARAMS = yes;
