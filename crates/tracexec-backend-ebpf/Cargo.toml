@@ -16,8 +16,6 @@ workspace = true
 [features]
 default = ["vendored-libbpf"]
 ebpf-debug = []
-# Avoid using rcu helpers. Necessary for kernel version < 6.2
-ebpf-no-rcu-kfuncs = []
 # Use BPF bits iterator instead of our implementation, requires Linux 6.11
 ebpf-use-iter-bits = []
 static = ["libbpf-sys/static"]
