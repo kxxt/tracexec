@@ -38,9 +38,6 @@ fn main() {
   if cfg!(any(feature = "ebpf-debug", debug_assertions)) {
     clang_args.push(OsStr::new("-DEBPF_DEBUG"));
   }
-  if cfg!(feature = "ebpf-use-iter-bits") {
-    clang_args.push(OsStr::new("-DUSE_ITER_BITS"));
-  }
   let mut builder = SkeletonBuilder::new();
   builder.source(bpf_src).clang_args(clang_args);
   if let Some(path) = std::env::var_os("CLANG") {

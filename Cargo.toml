@@ -137,8 +137,6 @@ ebpf = ["dep:tracexec-backend-ebpf"]
 # Either cargo doesn't rebuild and run build.rs on feature flag change,
 # or some logic is wrong in build.rs
 ebpf-debug = ["ebpf", "tracexec-backend-ebpf/ebpf-debug"]
-# Use BPF bits iterator instead of our implementation, requires Linux 6.11
-ebpf-use-iter-bits = ["ebpf", "tracexec-backend-ebpf/ebpf-use-iter-bits"]
 static = ["tracexec-backend-ebpf?/static"]
 vendored = ["tracexec-backend-ebpf?/vendored"]
 vendored-libbpf = ["tracexec-backend-ebpf?/vendored-libbpf"]

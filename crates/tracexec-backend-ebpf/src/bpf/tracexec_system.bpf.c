@@ -123,12 +123,12 @@ static int add_tgid_to_closure(pid_t tgid);
 static int read_send_path(const struct path *path,
                           struct tracexec_event_header *base_header,
                           s32 path_id, struct fd_event *fd_event);
-#ifdef USE_ITER_BITS
+
+// iter bits implementation for iterating over fdset
 static int iter_fdset_chunk(u32 chunk, void *data);
-#else
+// old hand-written implementation for iterating over fdset
 static int read_fds_impl(u32 index, struct fdset_reader_context *ctx);
 static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx);
-#endif
 
 #ifdef EBPF_DEBUG
 #define debug(...) bpf_printk("tracexec_system: " __VA_ARGS__);
@@ -709,20 +709,21 @@ static int read_fds(struct exec_event *event) {
   // https://github.com/torvalds/linux/blob/5189dafa4cf950e675f02ee04b577dfbbad0d9b1/fs/file.c#L279-L291
   ctx.size = max_fds / BITS_PER_LONG;
   ctx.size = min(ctx.size, FDSET_SIZE_MAX_IN_LONG);
-#ifdef USE_ITER_BITS
-  // For USE_ITER_BITS, the unit of size is bit (not the number of words)
-  ctx.size *= BITS_PER_LONG;
-  u32 chunks = (ctx.size + BPF_BITS_ITER_MAX_BITS - 1) / BPF_BITS_ITER_MAX_BITS;
-  ret = bpf_loop(chunks, iter_fdset_chunk, &ctx, 0);
-  
+  if (LINUX_KERNEL_VERSION >= MIN_KERNEL_VERSION_FOR_ITER_BITS) {
+    // When using iter_bits, the unit of size is bit (not the number of words)
+    ctx.size *= BITS_PER_LONG;
+    u32 chunks = (ctx.size + BPF_BITS_ITER_MAX_BITS - 1) / BPF_BITS_ITER_MAX_BITS;
+    ret = bpf_loop(chunks, iter_fdset_chunk, &ctx, 0);
+  } else {
+    ret = bpf_loop(ctx.size, read_fds_impl, &ctx, 0);
+  }
+
   if (ret < 0) {
     debug("Failed to iter over all fds: %d!", ret);
     ctx.event->header.flags |= LOOP_FAIL;
     return ret;
   }
-#else
-  bpf_loop(ctx.size, read_fds_impl, &ctx, 0);
-#endif
+
   return 0;
 probe_failure_locked_rcu:
   rcu_read_unlock();
@@ -731,7 +732,7 @@ probe_failure:
   return -EFAULT;
 }
 
-#ifdef USE_ITER_BITS
+// BEGIN iter bits implementation for iterating the fdset
 
 
 static int iter_fdset_chunk(u32 chunk, void *data)
@@ -779,7 +780,9 @@ static int iter_fdset_chunk(u32 chunk, void *data)
 }
 
 
-#else
+// END iter bits implementation for iterating the fdset
+
+// BEGIN hand-written implementation for iterating the fdset
 
 // Ref:
 // https://elixir.bootlin.com/linux/v6.10.3/source/include/asm-generic/bitops/__ffs.h#L45
@@ -879,7 +882,7 @@ static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx) {
   return 0;
 }
 
-#endif
+// END hand-written implementation for iterating the fdset
 
 // Gather information about a single fd and send it back to userspace
 static int _read_fd(unsigned int fd_num, struct file **fd_array,
