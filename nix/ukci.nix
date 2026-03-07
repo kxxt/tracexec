@@ -21,11 +21,25 @@ localFlake:
           vmSshPort = "10022";
           sources = [
             {
+              name = "5.17";
+              tag = "5.17.15";
+              source = "mirror-v5";
+              test_exe = "tracexec";
+              sha256 = "sha256-ShySKkkO6r9bRNT9423pultxcRtzUsYlhxbaQRYNtig=";
+              kernelPatches = [
+                {
+                  name = "pahole-compatibility-fix";
+                  patch = ./0001-Replace-scripts-pahole-flags.sh-with-the-one-in-5.15.patch;
+                }
+              ];
+            }
+            {
               name = "6.1lts";
               tag = "6.1.165";
               source = "mirror";
               test_exe = "tracexec";
               sha256 = "sha256-WoFxhPG+kBt1x+CvwCN2vDrFFiTgPsb3uKX505XSLvQ=";
+              kernelPatches = [];
             }
             {
               name = "6.6lts";
@@ -33,6 +47,7 @@ localFlake:
               source = "mirror";
               test_exe = "tracexec";
               sha256 = "sha256-ZpYzu4SAAh8Vw4iD+y9v4gh8yLaaWC8m9rfUrms0jkg=";
+              kernelPatches = [];
             }
             {
               name = "6.12lts";
@@ -40,6 +55,7 @@ localFlake:
               source = "mirror";
               test_exe = "tracexec";
               sha256 = "sha256-Bu55J1Vv8aqIEMSCZQGw/bFp69wYBkS4gs98FDrBwXc=";
+              kernelPatches = [];
             }
             {
               name = "6.18lts";
@@ -48,6 +64,7 @@ localFlake:
               source = "mirror";
               test_exe = "tracexec";
               sha256 = "sha256-TyHAH00EwdGz7XlBU/iQCALJJJe+YgsHxIaVMPLSjuM=";
+              kernelPatches = [];
             }
             {
               name = "6.19";
@@ -56,6 +73,7 @@ localFlake:
               source = "mirror";
               test_exe = "tracexec";
               sha256 = "sha256-TZ8/9zIU9owBlO8C25ykt7pxMlOsEEVEHU6fNSvCLhQ=";
+              kernelPatches = [];
             }
             {
               name = "7.0";
@@ -64,6 +82,7 @@ localFlake:
               source = "linus";
               test_exe = "tracexec";
               sha256 = "sha256-BlKlJdEYvwDN6iWJfuOvd1gcm6lN6McJ/vmMwOmzHdc=";
+              kernelPatches = [];
             }
           ];
           nixpkgs = localFlake.nixpkgs;
@@ -89,8 +108,8 @@ localFlake:
                   src
                   modDirVersion
                   version
-                  kernelPatches
                   ;
+                inherit (source) kernelPatches;
                 inherit configfile nixpkgs;
               };
               buildInitramfs = pkgs.callPackage ./initramfs.nix { };
