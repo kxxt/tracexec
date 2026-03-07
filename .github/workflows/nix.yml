@@ -32,7 +32,8 @@ jobs:
           nix_conf: |
             keep-env-derivations = true
             keep-outputs = true
-
+            http2 = false
+          
       - name: Setup Attic cache (Writable)
         uses: ryanccn/attic-action@v0.4.1
         if: github.event.pull_request.head.repo.fork == false
