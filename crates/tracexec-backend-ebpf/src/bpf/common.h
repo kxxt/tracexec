@@ -54,6 +54,9 @@
 struct sys_enter_exec_args {
   bool is_execveat;
   bool is_compat;
+  // we need declare the padding to have it auto zeroed
+  // so that old kernels(e.g. 5.19) won't complain
+  char _padding[6];
   const u8 *base_filename;
   const u8 *const *argv;
   const u8 *const *envp;
