@@ -68,6 +68,7 @@ extern void bpf_rcu_read_lock(void) __ksym;
 extern void bpf_rcu_read_unlock(void) __ksym;
 
 #define MIN_KERNEL_VERSION_FOR_RCU_KFUNC KERNEL_VERSION(6, 2, 0)
+#define MIN_KERNEL_VERSION_FOR_ITER_BITS KERNEL_VERSION(6, 11, 0)
 
 int __always_inline rcu_read_lock() {
   if (LINUX_KERNEL_VERSION >= MIN_KERNEL_VERSION_FOR_RCU_KFUNC) {

@@ -16,8 +16,6 @@ workspace = true
 [features]
 default = ["vendored-libbpf"]
 ebpf-debug = []
-# Use BPF bits iterator instead of our implementation, requires Linux 6.11
-ebpf-use-iter-bits = []
 static = ["libbpf-sys/static"]
 vendored = ["libbpf-sys/vendored", "vendored-libbpf"]
 vendored-libbpf = ["libbpf-sys/vendored-libbpf", "libbpf-cargo/default"]

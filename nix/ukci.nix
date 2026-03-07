@@ -54,7 +54,7 @@ localFlake:
               tag = "6.19.6";
               version = "6.19.6";
               source = "mirror";
-              test_exe = "tracexec_use_iter_bits";
+              test_exe = "tracexec";
               sha256 = "sha256-TZ8/9zIU9owBlO8C25ykt7pxMlOsEEVEHU6fNSvCLhQ=";
             }
             {
@@ -62,7 +62,7 @@ localFlake:
               tag = "v7.0-rc2";
               version = "7.0.0-rc2";
               source = "linus";
-              test_exe = "tracexec_use_iter_bits";
+              test_exe = "tracexec";
               sha256 = "sha256-BlKlJdEYvwDN6iWJfuOvd1gcm6lN6McJ/vmMwOmzHdc=";
             }
           ];
@@ -168,9 +168,6 @@ localFlake:
             case "$1" in
               tracexec)
                 package="${self'.packages.tracexec}"
-                ;;
-              tracexec_use_iter_bits)
-                package="${self'.packages.tracexec_use_iter_bits}"
                 ;;
               *)
                 echo "Unrecognized executable!"

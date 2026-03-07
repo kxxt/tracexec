@@ -51,7 +51,6 @@ localFlake:
         in
         {
           tracexec = builder { cargoExtraArgs = "--locked"; };
-          tracexec_use_iter_bits = builder { cargoExtraArgs = "--locked -F ebpf-use-iter-bits"; };
         };
     };
 }
