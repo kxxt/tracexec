@@ -36,7 +36,7 @@ jobs:
           
       - name: Setup Attic cache (Writable)
         uses: ryanccn/attic-action@v0.4.1
-        if: github.event.pull_request.head.repo.fork == false
+        if: github.event.pull_request.head.repo.fork != true
         with:
           endpoint: https://nix.kxxt.dev
           cache: tracexec
