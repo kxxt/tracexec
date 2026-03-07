@@ -495,8 +495,8 @@ int __always_inline tp_sys_exit_exec(int sysret) {
   debug("execve result: %d PID %d\n", sysret, pid);
   // Read creds in exec syscall exit
   struct task_struct *current = (void *)bpf_get_current_task();
-  struct cred *cred;
-  struct group_info *group_info;
+  struct cred *cred = NULL;
+  struct group_info *group_info = NULL;
   long ret = bpf_core_read(&cred, sizeof(void *), &current->cred);
   if (ret < 0) {
     debug("Failed to read current->cred");
@@ -518,12 +518,12 @@ int __always_inline tp_sys_exit_exec(int sysret) {
       // read and send supplemental groups
 
       // get the number of groups needed
-      int ngroups;
+      int ngroups = 0;
       ret = bpf_core_read(&ngroups, sizeof group_info->ngroups,
                           &group_info->ngroups);
       if (ret < 0 || ngroups < 0) {
         event->header.flags |= CRED_READ_ERR;
-        goto groups_out;
+        goto groups_out_no_cleanup;
       }
       // initialize groups_event struct
       u64 key = ((u64)GROUPS_EVENT << 32) + (u32)pid;
@@ -561,8 +561,9 @@ int __always_inline tp_sys_exit_exec(int sysret) {
       if (ret < 0) {
         debug("Failed to send groups event!");
       }
-    groups_out:;
+    groups_out:
       bpf_map_delete_elem(&cache, &key);
+    groups_out_no_cleanup:;
     }
   }
 #ifdef EBPF_DEBUG
@@ -712,7 +713,8 @@ static int read_fds(struct exec_event *event) {
   if (LINUX_KERNEL_VERSION >= MIN_KERNEL_VERSION_FOR_ITER_BITS) {
     // When using iter_bits, the unit of size is bit (not the number of words)
     ctx.size *= BITS_PER_LONG;
-    u32 chunks = (ctx.size + BPF_BITS_ITER_MAX_BITS - 1) / BPF_BITS_ITER_MAX_BITS;
+    u32 chunks =
+        (ctx.size + BPF_BITS_ITER_MAX_BITS - 1) / BPF_BITS_ITER_MAX_BITS;
     ret = bpf_loop(chunks, iter_fdset_chunk, &ctx, 0);
   } else {
     ret = bpf_loop(ctx.size, read_fds_impl, &ctx, 0);
@@ -734,9 +736,7 @@ probe_failure:
 
 // BEGIN iter bits implementation for iterating the fdset
 
-
-static int iter_fdset_chunk(u32 chunk, void *data)
-{
+static int iter_fdset_chunk(u32 chunk, void *data) {
   struct fdset_reader_context *ctx = data;
   int ret;
 
@@ -746,7 +746,10 @@ static int iter_fdset_chunk(u32 chunk, void *data)
     return 1; // stop loop
 
   u32 remaining = ctx->size - base;
-  u32 chunk_nr_words = (remaining < BPF_BITS_ITER_MAX_BITS ? remaining : BPF_BITS_ITER_MAX_BITS) / BITS_PER_LONG;
+  u32 chunk_nr_words =
+      (remaining < BPF_BITS_ITER_MAX_BITS ? remaining
+                                          : BPF_BITS_ITER_MAX_BITS) /
+      BITS_PER_LONG;
 
   const u64 *fdset_chunk = ((const u64 *)ctx->fdset) + (base / 64);
 
@@ -778,7 +781,6 @@ static int iter_fdset_chunk(u32 chunk, void *data)
 
   return 0;
 }
-
 
 // END iter bits implementation for iterating the fdset
 
@@ -1332,7 +1334,8 @@ static int read_send_path_stage2(struct path_event *event,
   // Send path event to userspace
   event->segment_count = ctx.base_index;
   ret = bpf_ringbuf_output(&events, event, sizeof(*event), BPF_RB_FORCE_WAKEUP);
-  bpf_task_storage_delete(&path_event_cache, (void *)bpf_get_current_task_btf());
+  bpf_task_storage_delete(&path_event_cache,
+                          (void *)bpf_get_current_task_btf());
   if (ret < 0) {
     debug("Failed to output path_event to ringbuf");
     return -1;
@@ -1347,7 +1350,8 @@ loop_err:
 err_out:
   event->segment_count = 0;
   ret = bpf_ringbuf_output(&events, event, sizeof(*event), BPF_RB_FORCE_WAKEUP);
-  bpf_task_storage_delete(&path_event_cache, (void *)bpf_get_current_task_btf());
+  bpf_task_storage_delete(&path_event_cache,
+                          (void *)bpf_get_current_task_btf());
   if (ret < 0) {
     debug("Failed to output path_event to ringbuf");
     return -1;
