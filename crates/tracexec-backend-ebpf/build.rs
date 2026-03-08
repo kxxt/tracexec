@@ -14,8 +14,8 @@ fn main() {
   let manifest_dir =
     PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
   let bpf_src = manifest_dir.join(BPF_SRC);
-  let skel_out =
-    PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set")).join("tracexec_system.skel.rs");
+  let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
+  let skel_out = out_dir.join("tracexec_system.skel.rs");
   let arch = env::var("CARGO_CFG_TARGET_ARCH").expect("CARGO_CFG_TARGET_ARCH not set");
   let arch_define = OsStr::new(match arch.as_str() {
     "x86_64" => "TRACEXEC_TARGET_X86_64",
@@ -39,6 +39,9 @@ fn main() {
     clang_args.push(OsStr::new("-DEBPF_DEBUG"));
   }
   let mut builder = SkeletonBuilder::new();
+  builder.reference_obj(true);
+  // TODO: drop the following line when https://github.com/libbpf/libbpf-rs/pull/1354 lands
+  builder.obj(out_dir.join("tracexec_system.o"));
   builder.source(bpf_src).clang_args(clang_args);
   if let Some(path) = std::env::var_os("CLANG") {
     builder.clang(path);
