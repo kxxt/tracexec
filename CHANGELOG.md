@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.17.0
+
+### Bug Fixes
+
+- Fix a bug that the eBPF backend could not load on kernel >= 6.19.4 (#164)
+
+### Enhancement
+
+- Make the eBPF backend compatible with 5.17 kernel and estiblish 5.17 as our
+  minimum supported kernel version (MSKV) for the eBPF backend. 
+
+### Breaking Changes
+
+- Crate feature `ebpf-no-rcu-kfuncs` is removed. Now we do kernel feature detection
+  based on kernel version at bpf program load time.
+
+### Misc
+
+- Bump dependencies
+- Bump vmlinux headers to match kernel version 6.19
+- Update UKCI to include latest kernels and minimum supported kernel version (5.17)
+- CI: Use self-hosted nix cache
+
 ## v0.16.1
 
 Fix a bug that when compiled in release mode with some versions of clang,
