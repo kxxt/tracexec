@@ -48,7 +48,6 @@ To control whether to dynamically link to libbpf, libelf and zlib, consult the n
 - `static`: Statically link libelf, zlib and libbpf.
 - `vendored`: Vendoring libelf, zlib and libbpf, implies `static`.
 - `vendored-libbpf`: Vendoring libbpf and statically link to it.
-- `ebpf-no-rcu-kfuncs`: Enable this feature for eBPF backend to work on kernel versions less than `6.2`.
 - `protobuf-binding-from-source`: Enable this feature to build protobuf bindings from source.
    By default, we use a vendored and stripped-down version of protobuf bindings.
    Enable this feature would build the full set of protobuf bindings from source and requires `protoc` binary.
