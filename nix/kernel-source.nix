@@ -69,123 +69,153 @@ in
     inherit localVersion;
     modDirVersion = version + localVersion;
   };
-  kernelConfig = {
-    # See https://github.com/NixOS/nixpkgs/blob/master/nixos/modules/system/boot/kernel_config.nix
-    structuredExtraConfig = with lib.kernel; {
-      DEBUG_FS = yes;
-      DEBUG_KERNEL = yes;
-      DEBUG_INFO = yes;
-      DEBUG_MISC = yes;
-      DEBUG_BUGVERBOSE = yes;
-      DEBUG_BOOT_PARAMS = yes;
-      DEBUG_STACK_USAGE = yes;
-      DEBUG_SHIRQ = yes;
-      DEBUG_ATOMIC_SLEEP = yes;
+  kernelConfig =
+    let
+      isAarch64 = pkgs.stdenv.hostPlatform.system == "aarch64-linux";
+      isX86_64 = pkgs.stdenv.hostPlatform.system == "x86_64-linux";
+      # Define a conditional attribute set
+      aarch64SpecificConfig = pkgs.lib.optionalAttrs isAarch64 (
+        with lib.kernel;
+        {
+          PREEMPT = yes;
+        }
+      );
+      x86_64SpecificConfig = lib.optionalAttrs isX86_64 (
+        with lib.kernel;
+        {
+          PREEMPT_DYNAMIC = yes;
 
-      IKCONFIG = yes;
-      IKCONFIG_PROC = yes;
-      # Compile with headers
-      IKHEADERS = yes;
+          # Power
+          ACPI = yes;
 
-      # SLUB_DEBUG = yes;
-      # DEBUG_MEMORY_INIT = yes;
-      # KASAN = yes;
+          # 32bit
+          IA32_EMULATION = yes;
 
-      # FRAME_WARN - warn at build time for stack frames larger than this.
+          UNWINDER_FRAME_POINTER = yes;
 
-      MAGIC_SYSRQ = yes;
+          DEBUG_BOOT_PARAMS = yes;
 
-      LOCALVERSION = freeform localVersion;
+          EARLY_PRINTK = yes;
+        }
+      );
+    in
+    {
+      # See https://github.com/NixOS/nixpkgs/blob/master/nixos/modules/system/boot/kernel_config.nix
+      structuredExtraConfig =
+        with lib.kernel;
+        {
+          DEBUG_FS = yes;
+          DEBUG_KERNEL = yes;
+          DEBUG_INFO = yes;
+          DEBUG_MISC = yes;
+          DEBUG_BUGVERBOSE = yes;
+          DEBUG_STACK_USAGE = yes;
+          DEBUG_SHIRQ = yes;
+          DEBUG_ATOMIC_SLEEP = yes;
 
-      LOCK_STAT = yes;
-      PROVE_LOCKING = yes;
+          IKCONFIG = yes;
+          IKCONFIG_PROC = yes;
+          # Compile with headers
+          IKHEADERS = yes;
 
-      FTRACE = yes;
-      STACKTRACE = yes;
-      IRQSOFF_TRACER = yes;
+          # SLUB_DEBUG = yes;
+          # DEBUG_MEMORY_INIT = yes;
+          # KASAN = yes;
 
-      KGDB = yes;
-      UBSAN = yes;
-      BUG_ON_DATA_CORRUPTION = yes;
-      SCHED_STACK_END_CHECK = yes;
-      UNWINDER_FRAME_POINTER = yes;
-      "64BIT" = yes;
-      SMP = yes;
-      IA32_EMULATION = yes;
-      PREEMPT_DYNAMIC = yes;
+          # FRAME_WARN - warn at build time for stack frames larger than this.
 
-      # initramfs/initrd support
-      BLK_DEV_INITRD = yes;
+          MAGIC_SYSRQ = yes;
 
-      PRINTK = yes;
-      PRINTK_TIME = yes;
-      EARLY_PRINTK = yes;
+          LOCALVERSION = freeform localVersion;
 
-      # Support elf and #! scripts
-      BINFMT_ELF = yes;
-      BINFMT_SCRIPT = yes;
+          LOCK_STAT = yes;
+          PROVE_LOCKING = yes;
 
-      # Create a tmpfs/ramfs early at bootup.
-      DEVTMPFS = yes;
-      DEVTMPFS_MOUNT = yes;
+          FTRACE = yes;
+          STACKTRACE = yes;
+          IRQSOFF_TRACER = yes;
 
-      TTY = yes;
-      SERIAL_8250 = yes;
-      SERIAL_8250_CONSOLE = yes;
+          KGDB = yes;
+          UBSAN = yes;
+          BUG_ON_DATA_CORRUPTION = yes;
+          SCHED_STACK_END_CHECK = yes;
+          "64BIT" = yes;
+          SMP = yes;
 
-      PROC_FS = yes;
-      SYSFS = yes;
+          # initramfs/initrd support
+          BLK_DEV_INITRD = yes;
 
-      MODULES = yes;
-      MODULE_UNLOAD = yes;
+          PRINTK = yes;
+          PRINTK_TIME = yes;
 
-      # FW_LOADER = yes;
+          # Support elf and #! scripts
+          BINFMT_ELF = yes;
+          BINFMT_SCRIPT = yes;
 
-      ##
-      SYSVIPC = yes;
-      NET = yes;
-      PACKET = yes;
-      INET = yes;
-      NETDEVICES = yes;
-      NET_CORE = yes;
-      ETHERNET = yes;
-      PCI = yes;
-      NET_VENDOR_INTEL = yes;
-      E1000 = yes;
-      UNIX = yes;
+          # Create a tmpfs/ramfs early at bootup.
+          DEVTMPFS = yes;
+          DEVTMPFS_MOUNT = yes;
 
-      EXPERT = yes;
-      TMPFS = yes;
-      MEMFD_CREATE = yes;
+          TTY = yes;
+          SERIAL_8250 = yes;
+          SERIAL_8250_CONSOLE = yes;
 
-      PID_NS = yes;
+          PROC_FS = yes;
+          SYSFS = yes;
 
-      SECCOMP = yes;
+          MODULES = yes;
+          MODULE_UNLOAD = yes;
 
-      # Power
-      ACPI = yes;
+          # FW_LOADER = yes;
 
-      ## BPF
-      DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT = yes;
-      DEBUG_INFO_SPLIT = no;
-      DEBUG_INFO_REDUCED = no;
-      DEBUG_INFO_BTF = yes;
-      BPF_SYSCALL = yes;
-      BPF_JIT = yes;
-      FUNCTION_TRACER = yes;
-      # Enable kprobes and kallsyms: https://www.kernel.org/doc/html/latest/trace/kprobes.html#configuring-kprobes
-      # Debug FS is be enabled (done above) to show registered kprobes in /sys/kernel/debug: https://www.kernel.org/doc/html/latest/trace/kprobes.html#the-kprobes-debugfs-interface
-      KPROBES = yes;
-      KALLSYMS_ALL = yes;
+          ##
+          SYSVIPC = yes;
+          NET = yes;
+          PACKET = yes;
+          INET = yes;
+          NETDEVICES = yes;
+          NET_CORE = yes;
+          ETHERNET = yes;
+          PCI = yes;
+          NET_VENDOR_INTEL = yes;
+          E1000 = yes;
+          UNIX = yes;
+
+          EXPERT = yes;
+          TMPFS = yes;
+          MEMFD_CREATE = yes;
+
+          PID_NS = yes;
+
+          SECCOMP = yes;
+
+          ## BPF
+          DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT = yes;
+          DEBUG_INFO_SPLIT = no;
+          DEBUG_INFO_REDUCED = no;
+          DEBUG_INFO_BTF = yes;
+          BPF_SYSCALL = yes;
+          BPF_JIT = yes;
+          FUNCTION_TRACER = yes;
+          # Enable kprobes and kallsyms: https://www.kernel.org/doc/html/latest/trace/kprobes.html#configuring-kprobes
+          # Debug FS is be enabled (done above) to show registered kprobes in /sys/kernel/debug: https://www.kernel.org/doc/html/latest/trace/kprobes.html#the-kprobes-debugfs-interface
+          KPROBES = yes;
+          PERF_EVENTS = yes;
+          BPF_EVENTS = yes;
+          KPROBE_EVENTS = yes;
+          UPROBE_EVENTS = yes;
+          KALLSYMS_ALL = yes;
+        }
+        // x86_64SpecificConfig
+        // aarch64SpecificConfig;
+
+      # Flags that get passed to generate-config.pl
+      generateConfigFlags = {
+        # Ignores any config errors (eg unused config options)
+        ignoreConfigErrors = false;
+        # Build every available module
+        autoModules = false;
+        preferBuiltin = false;
+      };
     };
-
-    # Flags that get passed to generate-config.pl
-    generateConfigFlags = {
-      # Ignores any config errors (eg unused config options)
-      ignoreConfigErrors = false;
-      # Build every available module
-      autoModules = false;
-      preferBuiltin = false;
-    };
-  };
 }
