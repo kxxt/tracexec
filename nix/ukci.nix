@@ -166,7 +166,7 @@ localFlake:
               ) kernels;
             in
             pkgs.writeScriptBin "run-qemu" ''
-              #!/usr/bin/env sh
+              #!/usr/bin/env bash
 
               case "$1" in
                 ${shellCases}
@@ -174,6 +174,8 @@ localFlake:
                   echo "Invalid argument!"
                   exit 1
               esac
+
+              archSpecificArgs=(${if getArch system == "aarch64" then "-machine virt" else ""})
 
               sudo ${pkgs.qemu_kvm}/bin/qemu-system-${getArch system} \
                 -enable-kvm \
@@ -183,7 +185,8 @@ localFlake:
                 -initrd "$initrd"/initrd.gz \
                 -device e1000,netdev=net0 \
                 -netdev user,id=net0,hostfwd=::${vmSshPort}-:22 \
-                -nographic -append "console=ttyS0"
+                -nographic -append "console=ttyS0" \
+                "''${archSpecificArgs[@]}"
             '';
           test-qemu = pkgs.writeScriptBin "test-qemu" ''
             #!/usr/bin/env sh
