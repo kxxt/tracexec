@@ -32,6 +32,7 @@ localFlake:
                   patch = ./0001-Replace-scripts-pahole-flags.sh-with-the-one-in-5.15.patch;
                 }
               ];
+              extraMakeFlags = [];
             }
             {
               name = "6.1lts";
@@ -40,6 +41,7 @@ localFlake:
               test_exe = "tracexec";
               sha256 = "sha256-WoFxhPG+kBt1x+CvwCN2vDrFFiTgPsb3uKX505XSLvQ=";
               kernelPatches = [];
+              extraMakeFlags = [];
             }
             {
               name = "6.6lts";
@@ -48,6 +50,7 @@ localFlake:
               test_exe = "tracexec";
               sha256 = "sha256-ZpYzu4SAAh8Vw4iD+y9v4gh8yLaaWC8m9rfUrms0jkg=";
               kernelPatches = [];
+              extraMakeFlags = [];
             }
             {
               name = "6.12lts";
@@ -56,6 +59,7 @@ localFlake:
               test_exe = "tracexec";
               sha256 = "sha256-Bu55J1Vv8aqIEMSCZQGw/bFp69wYBkS4gs98FDrBwXc=";
               kernelPatches = [];
+              extraMakeFlags = [];
             }
             {
               name = "6.18lts";
@@ -65,6 +69,7 @@ localFlake:
               test_exe = "tracexec";
               sha256 = "sha256-TyHAH00EwdGz7XlBU/iQCALJJJe+YgsHxIaVMPLSjuM=";
               kernelPatches = [];
+              extraMakeFlags = [];
             }
             {
               name = "6.19";
@@ -74,6 +79,7 @@ localFlake:
               test_exe = "tracexec";
               sha256 = "sha256-TZ8/9zIU9owBlO8C25ykt7pxMlOsEEVEHU6fNSvCLhQ=";
               kernelPatches = [];
+              extraMakeFlags = [];
             }
             {
               name = "7.0";
@@ -83,11 +89,12 @@ localFlake:
               test_exe = "tracexec";
               sha256 = "sha256-BlKlJdEYvwDN6iWJfuOvd1gcm6lN6McJ/vmMwOmzHdc=";
               kernelPatches = [];
+              extraMakeFlags = [];
             }
           ];
           nixpkgs = localFlake.nixpkgs;
           configureKernel = pkgs.callPackage ./kernel-configure.nix { };
-          buildKernel = pkgs.callPackage ./kernel-build.nix { };
+          buildKernel = pkgs.callPackage ./kernel-build.nix { stdenv = pkgs.gcc14Stdenv; };
           kernelNixConfig = source: pkgs.callPackage ./kernel-source.nix source;
           kernels = map (
             source:
@@ -109,7 +116,7 @@ localFlake:
                   modDirVersion
                   version
                   ;
-                inherit (source) kernelPatches;
+                inherit (source) kernelPatches extraMakeFlags;
                 inherit configfile nixpkgs;
               };
               buildInitramfs = pkgs.callPackage ./initramfs.nix { };

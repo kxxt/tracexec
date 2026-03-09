@@ -35,15 +35,15 @@
    , version
    , # Install the GDB scripts
      kernelPatches ? [ ]
+   , extraMakeFlags
    , nixpkgs
    , # Nixpkgs source
    }:
 let
   kernel =
-    # todo: migrate to  ../os-specific/linux/kernel/build.nix { };
-    ((callPackage "${nixpkgs}/pkgs/os-specific/linux/kernel/manual-config.nix" { })
+    ((callPackage "${nixpkgs}/pkgs/os-specific/linux/kernel/build.nix" { })
       {
-        inherit src modDirVersion version kernelPatches configfile;
+        inherit src modDirVersion version kernelPatches configfile extraMakeFlags;
         inherit lib stdenv;
 
         # Because allowedImportFromDerivation is not enabled,
@@ -61,49 +61,43 @@ let
       dontStrip = true;
 
       postInstall = ''
-        mkdir -p $dev
-        cp vmlinux $dev/
-        if [ -z "''${dontStrip-}" ]; then
-          installFlagsArray+=("INSTALL_MOD_STRIP=1")
-        fi
-        make modules_install $makeFlags "''${makeFlagsArray[@]}" \
-          $installFlags "''${installFlagsArray[@]}"
-        if [ -L "$out/lib/modules/${modDirVersion}/build" ]; then
-          unlink $out/lib/modules/${modDirVersion}/build
-        fi
-        if [ -L "$out/lib/modules/${modDirVersion}/source" ]; then
-          unlink $out/lib/modules/${modDirVersion}/source
-        fi
+          mkdir -p $dev
+          cp vmlinux $dev/
 
-        mkdir -p $dev/lib/modules/${modDirVersion}/{build,source}
+          mkdir -p $dev/lib/modules/${modDirVersion}/{build,source}
+          cp -rL $buildRoot/scripts $dev/lib/modules/${modDirVersion}/build/
+          cp -L $buildRoot/vmlinux-gdb.py $dev/lib/modules/${modDirVersion}/build/scripts/gdb/
+          ln -sfn $dev/lib/modules/${modDirVersion}/build/scripts/gdb/vmlinux-gdb.py $dev/lib/modules/${modDirVersion}/build/vmlinux-gdb.py
 
-        # To save space, exclude a bunch of unneeded stuff when copying.
-        (cd .. && rsync --archive --prune-empty-dirs \
-            --exclude='/build/' \
-            * $dev/lib/modules/${modDirVersion}/source/)
-
-        cd $dev/lib/modules/${modDirVersion}/source
-
-        cp $buildRoot/{.config,Module.symvers} $dev/lib/modules/${modDirVersion}/build
-
-        make modules_prepare $makeFlags "''${makeFlagsArray[@]}" O=$dev/lib/modules/${modDirVersion}/build
-
-        # For reproducibility, removes accidental leftovers from a `cc1` call
-        # from a `try-run` call from the Makefile
-        rm -f $dev/lib/modules/${modDirVersion}/build/.[0-9]*.d
-
-        # Keep some extra files on some arches (powerpc, aarch64)
-        for f in arch/powerpc/lib/crtsavres.o arch/arm64/kernel/ftrace-mod.o; do
-          if [ -f "$buildRoot/$f" ]; then
-            cp $buildRoot/$f $dev/lib/modules/${modDirVersion}/build/$f
+          if [ -z "''${dontStrip-}" ]; then
+            installFlags+=("INSTALL_MOD_STRIP=1")
           fi
-        done
+          make modules_install "''${makeFlags[@]}" "''${installFlags[@]}"
+          unlink $modules/lib/modules/${modDirVersion}/build
 
-        # Not doing the nix default of removing files from the source tree.
-        # This is because the source tree is necessary for debugging with GDB.
+          # To save space, exclude a bunch of unneeded stuff when copying.
+          (cd .. && rsync --archive --prune-empty-dirs \
+              --exclude='/build/' \
+              * $dev/lib/modules/${modDirVersion}/source/)
 
-        # Remove reference to kmod
-        sed -i Makefile -e 's|= ${buildPackages.kmod}/bin/depmod|= depmod|'
+          cd $dev/lib/modules/${modDirVersion}/source
+          cp $buildRoot/{.config,Module.symvers} $dev/lib/modules/${modDirVersion}/build
+
+          make modules_prepare "''${makeFlags[@]}" O=$dev/lib/modules/${modDirVersion}/build
+
+          # For reproducibility, removes accidental leftovers from a `cc1` call
+          # from a `try-run` call from the Makefile
+          rm -f $dev/lib/modules/${modDirVersion}/build/.[0-9]*.d
+
+          # Keep some extra files on some arches (powerpc, aarch64)
+          for f in arch/powerpc/lib/crtsavres.o arch/arm64/kernel/ftrace-mod.o; do
+            if [ -f "$buildRoot/$f" ]; then
+              cp $buildRoot/$f $dev/lib/modules/${modDirVersion}/build/$f
+            fi
+          done
+
+          # Not doing the nix default of removing files from the source tree.
+          # This is because the source tree is necessary for debugging with GDB.
       '';
     });
 
