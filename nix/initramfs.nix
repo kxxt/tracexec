@@ -23,31 +23,37 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-{ lib
-, buildEnv
-, writeScript
-, makeInitrdNG
-, bash
-, busybox
-, kmod
-, dropbear
-,
-}: { kernel
-   , modules ? [ ]
-   , extraBin ? { }
-   , extraContent ? { }
-   , storePaths ? [ ]
-   , extraInit ? ""
-   ,
-   }:
+{
+  lib,
+  buildEnv,
+  writeScript,
+  makeInitrdNG,
+  bash,
+  busybox,
+  kmod,
+  dropbear,
+}:
+{
+  kernel,
+  modules ? [ ],
+  extraBin ? { },
+  extraContent ? { },
+  storePaths ? [ ],
+  extraInit ? "",
+}:
 let
   busyboxStatic = busybox.override { enableStatic = true; };
 
   initrdBinEnv = buildEnv {
     name = "initrd-emergency-env";
     paths = map lib.getBin initrdBin;
-    pathsToLink = [ "/bin" "/sbin" ];
-    postBuild = lib.concatStringsSep "\n" (lib.mapAttrsToList (n: v: "ln -s ${v} $out/bin/${n}") extraBin);
+    pathsToLink = [
+      "/bin"
+      "/sbin"
+    ];
+    postBuild = lib.concatStringsSep "\n" (
+      lib.mapAttrsToList (n: v: "ln -s ${v} $out/bin/${n}") extraBin
+    );
   };
 
   moduleEnv = buildEnv {
@@ -56,32 +62,32 @@ let
     pathsToLink = [ "/lib/modules/${kernel.modDirVersion}/misc" ];
   };
 
-  content =
-    {
-      "/bin" = "${initrdBinEnv}/bin";
-      "/sbin" = "${initrdBinEnv}/sbin";
-      "/init" = init;
-      "/modules" = "${moduleEnv}/lib/modules/${kernel.modDirVersion}/misc";
-    }
-    // extraContent;
+  content = {
+    "/bin" = "${initrdBinEnv}/bin";
+    "/sbin" = "${initrdBinEnv}/sbin";
+    "/init" = init;
+    "/modules" = "${moduleEnv}/lib/modules/${kernel.modDirVersion}/misc";
+  }
+  // extraContent;
 
-  initrdBin = [ bash busyboxStatic kmod dropbear ];
+  initrdBin = [
+    bash
+    busyboxStatic
+    kmod
+    dropbear
+  ];
 
   initialRamdisk = makeInitrdNG {
     compressor = "gzip";
     #strip = false;
     contents =
-      map
-        (path: {
-          source = path;
-        })
-        storePaths
-      ++ lib.mapAttrsToList
-        (n: v: {
-          source = v;
-          target = n;
-        })
-        content;
+      map (path: {
+        source = path;
+      }) storePaths
+      ++ lib.mapAttrsToList (n: v: {
+        source = v;
+        target = n;
+      }) content;
   };
 
   init = writeScript "init" ''

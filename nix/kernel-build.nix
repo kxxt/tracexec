@@ -23,44 +23,51 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-{ stdenv
-, lib
-, callPackage
-, buildPackages
-, rustPlatform
-,
-}: { src
-   , configfile
-   , modDirVersion
-   , version
-   , # Install the GDB scripts
-     kernelPatches ? [ ]
-   , extraMakeFlags
-   , nixpkgs
-   , # Nixpkgs source
-   }:
+{
+  stdenv,
+  lib,
+  callPackage,
+  buildPackages,
+  rustPlatform,
+}:
+{
+  src,
+  configfile,
+  modDirVersion,
+  version,
+  # Install the GDB scripts
+  kernelPatches ? [ ],
+  extraMakeFlags,
+  nixpkgs, # Nixpkgs source
+}:
 let
   kernel =
-    ((callPackage "${nixpkgs}/pkgs/os-specific/linux/kernel/build.nix" { })
-      {
-        inherit src modDirVersion version kernelPatches configfile extraMakeFlags;
-        inherit lib stdenv;
+    ((callPackage "${nixpkgs}/pkgs/os-specific/linux/kernel/build.nix" { }) {
+      inherit
+        src
+        modDirVersion
+        version
+        kernelPatches
+        configfile
+        extraMakeFlags
+        ;
+      inherit lib stdenv;
 
-        # Because allowedImportFromDerivation is not enabled,
-        # the function cannot set anything based on the configfile. These settings do not
-        # actually change the .config but let the kernel derivation know what can be built.
-        # See manual-config.nix for other options
-        config = {
-          # Enables the dev build
-          CONFIG_MODULES = "y";
-        };
-      }).overrideAttrs (old: {
-      nativeBuildInputs =
-        old.nativeBuildInputs;
+      # Because allowedImportFromDerivation is not enabled,
+      # the function cannot set anything based on the configfile. These settings do not
+      # actually change the .config but let the kernel derivation know what can be built.
+      # See manual-config.nix for other options
+      config = {
+        # Enables the dev build
+        CONFIG_MODULES = "y";
+      };
+    }).overrideAttrs
+      (old: {
+        nativeBuildInputs = old.nativeBuildInputs;
 
-      dontStrip = true;
+        dontStrip = true;
 
-      postInstall = ''
+        postInstall = ''
           mkdir -p $dev
           cp vmlinux $dev/
 
@@ -98,8 +105,8 @@ let
 
           # Not doing the nix default of removing files from the source tree.
           # This is because the source tree is necessary for debugging with GDB.
-      '';
-    });
+        '';
+      });
 
   kernelPassthru = {
     inherit (configfile) structuredConfig;
