@@ -18,7 +18,8 @@ localFlake:
     {
       packages =
         let
-          getArch = systemString:
+          getArch =
+            systemString:
             let
               split = lib.strings.splitString "-" systemString;
             in
@@ -40,7 +41,7 @@ localFlake:
                   patch = ./0001-Replace-scripts-pahole-flags.sh-with-the-one-in-5.15.patch;
                 }
               ];
-              extraMakeFlags = [];
+              extraMakeFlags = [ ];
             }
             {
               name = "6.1lts";
@@ -48,8 +49,8 @@ localFlake:
               source = "mirror";
               test_exe = "tracexec";
               sha256 = "sha256-WoFxhPG+kBt1x+CvwCN2vDrFFiTgPsb3uKX505XSLvQ=";
-              kernelPatches = [];
-              extraMakeFlags = [];
+              kernelPatches = [ ];
+              extraMakeFlags = [ ];
             }
             {
               name = "6.6lts";
@@ -57,8 +58,8 @@ localFlake:
               source = "mirror";
               test_exe = "tracexec";
               sha256 = "sha256-ZpYzu4SAAh8Vw4iD+y9v4gh8yLaaWC8m9rfUrms0jkg=";
-              kernelPatches = [];
-              extraMakeFlags = [];
+              kernelPatches = [ ];
+              extraMakeFlags = [ ];
             }
             {
               name = "6.12lts";
@@ -66,8 +67,8 @@ localFlake:
               source = "mirror";
               test_exe = "tracexec";
               sha256 = "sha256-Bu55J1Vv8aqIEMSCZQGw/bFp69wYBkS4gs98FDrBwXc=";
-              kernelPatches = [];
-              extraMakeFlags = [];
+              kernelPatches = [ ];
+              extraMakeFlags = [ ];
             }
             {
               name = "6.18lts";
@@ -76,8 +77,8 @@ localFlake:
               source = "mirror";
               test_exe = "tracexec";
               sha256 = "sha256-TyHAH00EwdGz7XlBU/iQCALJJJe+YgsHxIaVMPLSjuM=";
-              kernelPatches = [];
-              extraMakeFlags = [];
+              kernelPatches = [ ];
+              extraMakeFlags = [ ];
             }
             {
               name = "6.19";
@@ -86,8 +87,8 @@ localFlake:
               source = "mirror";
               test_exe = "tracexec";
               sha256 = "sha256-TZ8/9zIU9owBlO8C25ykt7pxMlOsEEVEHU6fNSvCLhQ=";
-              kernelPatches = [];
-              extraMakeFlags = [];
+              kernelPatches = [ ];
+              extraMakeFlags = [ ];
             }
             {
               name = "7.0";
@@ -96,8 +97,8 @@ localFlake:
               source = "linus";
               test_exe = "tracexec";
               sha256 = "sha256-BlKlJdEYvwDN6iWJfuOvd1gcm6lN6McJ/vmMwOmzHdc=";
-              kernelPatches = [];
-              extraMakeFlags = [];
+              kernelPatches = [ ];
+              extraMakeFlags = [ ];
             }
           ];
           nixpkgs = localFlake.nixpkgs;
