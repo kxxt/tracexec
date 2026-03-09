@@ -18,6 +18,14 @@ localFlake:
     {
       packages =
         let
+          getArch = systemString:
+            let
+              split = lib.strings.splitString "-" systemString;
+            in
+            if builtins.length split != 2 then
+              builtins.abort "Invalid system type ${systemString}"
+            else
+              builtins.elemAt split 0;
           vmSshPort = "10022";
           sources = [
             {
@@ -166,7 +174,7 @@ localFlake:
                   exit 1
               esac
 
-              sudo qemu-system-x86_64 \
+              sudo ${pkgs.qemu_kvm}/bin/qemu-system-${getArch system} \
                 -enable-kvm \
                 -m 4G \
                 -smp cores=4 \

@@ -24,9 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          sudo apt-get update -y
-          sudo apt-get install -y qemu-kvm
+
       - uses: nixbuild/nix-quick-install-action@v30
         with:
           nix_conf: |
