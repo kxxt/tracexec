@@ -17,12 +17,27 @@ localFlake:
           cFilter = path: _type: builtins.match ".*\.[ch]$" path != null;
           protoFilter = path: _type: builtins.match ".*\.proto$" path != null;
           symlinkFilter = _path: type: type == "symlink";
+          rustFilter =
+            path: type:
+            let
+              base = baseNameOf path;
+              parentDir = baseNameOf (dirOf path);
+            in
+            type == "directory"
+            || (
+              lib.any (suffix: lib.hasSuffix suffix base) [
+                ".rs"
+                ".toml"
+              ]
+              && (base != "config.toml" || parentDir != ".cargo") # Filter out .cargo/config.toml
+            )
+            || base == "Cargo.lock";
           sourceFilter =
             path: type:
             (cFilter path type)
             || (protoFilter path type)
             || (symlinkFilter path type)
-            || (craneLib.filterCargoSources path type);
+            || (rustFilter path type);
           builder =
             { cargoExtraArgs }:
             craneLib.buildPackage {
