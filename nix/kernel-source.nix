@@ -78,6 +78,10 @@ in
         with lib.kernel;
         {
           PREEMPT = yes;
+
+          SERIAL_AMBA_PL011 = yes;
+
+          SERIAL_AMBA_PL011_CONSOLE = yes;
         }
       );
       x86_64SpecificConfig = lib.optionalAttrs isX86_64 (
