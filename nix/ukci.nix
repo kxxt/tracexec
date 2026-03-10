@@ -181,10 +181,16 @@ localFlake:
                 else ""
               })
 
+              kernelImageFile=${
+                if getArch system == "aarch64" then "Image" 
+                else if getArch system == "x86_64" then "bzImage"
+                else "Image"
+              }
+
               sudo ${pkgs.qemu_kvm}/bin/qemu-system-${getArch system} \
                 -m 4G \
                 -smp cores=4 \
-                -kernel "$kernel"/bzImage \
+                -kernel "$kernel/$kernelImageFile" \
                 -initrd "$initrd"/initrd.gz \
                 -device e1000,netdev=net0 \
                 -netdev user,id=net0,hostfwd=::${vmSshPort}-:22 \
