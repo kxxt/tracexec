@@ -176,7 +176,7 @@ localFlake:
               esac
 
               archSpecificArgs=(${
-                if getArch system == "aarch64" then "-machine virt -append \"console=ttyAMA0\""
+                if getArch system == "aarch64" then "-machine virt -cpu neoverse-n2 -append \"console=ttyAMA0\""
                 else if getArch system == "x86_64" then "-enable-kvm -append \"console=ttyS0\""
                 else ""
               })
