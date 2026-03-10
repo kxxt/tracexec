@@ -27,80 +27,85 @@ localFlake:
               builtins.abort "Invalid system type ${systemString}"
             else
               builtins.elemAt split 0;
+          isAarch64 = system == "aarch64-linux";
+          isX86_64 = system == "x86_64-linux";
           vmSshPort = "10022";
-          sources = [
-            {
-              name = "5.17";
-              tag = "5.17.15";
-              source = "mirror-v5";
-              test_exe = "tracexec";
-              sha256 = "sha256-ShySKkkO6r9bRNT9423pultxcRtzUsYlhxbaQRYNtig=";
-              kernelPatches = [
-                {
-                  name = "pahole-compatibility-fix";
-                  patch = ./0001-Replace-scripts-pahole-flags.sh-with-the-one-in-5.15.patch;
-                }
-              ];
-              extraMakeFlags = [ ];
-            }
-            {
-              name = "6.1lts";
-              tag = "6.1.165";
-              source = "mirror";
-              test_exe = "tracexec";
-              sha256 = "sha256-WoFxhPG+kBt1x+CvwCN2vDrFFiTgPsb3uKX505XSLvQ=";
-              kernelPatches = [ ];
-              extraMakeFlags = [ ];
-            }
-            {
-              name = "6.6lts";
-              tag = "6.6.128";
-              source = "mirror";
-              test_exe = "tracexec";
-              sha256 = "sha256-ZpYzu4SAAh8Vw4iD+y9v4gh8yLaaWC8m9rfUrms0jkg=";
-              kernelPatches = [ ];
-              extraMakeFlags = [ ];
-            }
-            {
-              name = "6.12lts";
-              tag = "6.12.75";
-              source = "mirror";
-              test_exe = "tracexec";
-              sha256 = "sha256-Bu55J1Vv8aqIEMSCZQGw/bFp69wYBkS4gs98FDrBwXc=";
-              kernelPatches = [ ];
-              extraMakeFlags = [ ];
-            }
-            {
-              name = "6.18lts";
-              tag = "6.18.16";
-              version = "6.18.16";
-              source = "mirror";
-              test_exe = "tracexec";
-              sha256 = "sha256-TyHAH00EwdGz7XlBU/iQCALJJJe+YgsHxIaVMPLSjuM=";
-              kernelPatches = [ ];
-              extraMakeFlags = [ ];
-            }
-            {
-              name = "6.19";
-              tag = "6.19.6";
-              version = "6.19.6";
-              source = "mirror";
-              test_exe = "tracexec";
-              sha256 = "sha256-TZ8/9zIU9owBlO8C25ykt7pxMlOsEEVEHU6fNSvCLhQ=";
-              kernelPatches = [ ];
-              extraMakeFlags = [ ];
-            }
-            {
-              name = "7.0";
-              tag = "v7.0-rc2";
-              version = "7.0.0-rc2";
-              source = "linus";
-              test_exe = "tracexec";
-              sha256 = "sha256-BlKlJdEYvwDN6iWJfuOvd1gcm6lN6McJ/vmMwOmzHdc=";
-              kernelPatches = [ ];
-              extraMakeFlags = [ ];
-            }
-          ];
+          sources =
+            lib.optionals (!isAarch64) [
+              {
+                name = "5.17";
+                tag = "5.17.15";
+                source = "mirror-v5";
+                test_exe = "tracexec";
+                sha256 = "sha256-ShySKkkO6r9bRNT9423pultxcRtzUsYlhxbaQRYNtig=";
+                kernelPatches = [
+                  {
+                    name = "pahole-compatibility-fix";
+                    patch = ./0001-Replace-scripts-pahole-flags.sh-with-the-one-in-5.15.patch;
+                  }
+                ];
+                extraMakeFlags = [ ];
+              }
+              {
+                name = "6.1lts";
+                tag = "6.1.165";
+                source = "mirror";
+                test_exe = "tracexec";
+                sha256 = "sha256-WoFxhPG+kBt1x+CvwCN2vDrFFiTgPsb3uKX505XSLvQ=";
+                kernelPatches = [ ];
+                extraMakeFlags = [ ];
+              }
+            ]
+            ++ [
+              {
+                name = "6.6lts";
+                tag = "6.6.128";
+                source = "mirror";
+                test_exe = "tracexec";
+                sha256 = "sha256-ZpYzu4SAAh8Vw4iD+y9v4gh8yLaaWC8m9rfUrms0jkg=";
+                kernelPatches = [ ];
+                extraMakeFlags = [ ];
+              }
+              {
+                name = "6.12lts";
+                tag = "6.12.75";
+                source = "mirror";
+                test_exe = "tracexec";
+                sha256 = "sha256-Bu55J1Vv8aqIEMSCZQGw/bFp69wYBkS4gs98FDrBwXc=";
+                kernelPatches = [ ];
+                extraMakeFlags = [ ];
+              }
+              {
+                name = "6.18lts";
+                tag = "6.18.16";
+                version = "6.18.16";
+                source = "mirror";
+                test_exe = "tracexec";
+                sha256 = "sha256-TyHAH00EwdGz7XlBU/iQCALJJJe+YgsHxIaVMPLSjuM=";
+                kernelPatches = [ ];
+                extraMakeFlags = [ ];
+              }
+              {
+                name = "6.19";
+                tag = "6.19.6";
+                version = "6.19.6";
+                source = "mirror";
+                test_exe = "tracexec";
+                sha256 = "sha256-TZ8/9zIU9owBlO8C25ykt7pxMlOsEEVEHU6fNSvCLhQ=";
+                kernelPatches = [ ];
+                extraMakeFlags = [ ];
+              }
+              {
+                name = "7.0";
+                tag = "v7.0-rc2";
+                version = "7.0.0-rc2";
+                source = "linus";
+                test_exe = "tracexec";
+                sha256 = "sha256-BlKlJdEYvwDN6iWJfuOvd1gcm6lN6McJ/vmMwOmzHdc=";
+                kernelPatches = [ ];
+                extraMakeFlags = [ ];
+              }
+            ];
           nixpkgs = localFlake.nixpkgs;
           configureKernel = pkgs.callPackage ./kernel-configure.nix { };
           buildKernel = pkgs.callPackage ./kernel-build.nix { stdenv = pkgs.gcc14Stdenv; };
@@ -176,15 +181,21 @@ localFlake:
               esac
 
               archSpecificArgs=(${
-                if getArch system == "aarch64" then "-machine virt -cpu neoverse-n2 -append \"console=ttyAMA0\""
-                else if getArch system == "x86_64" then "-enable-kvm -append \"console=ttyS0\""
-                else ""
+                if getArch system == "aarch64" then
+                  "-machine virt -cpu neoverse-n2 -append \"console=ttyAMA0\""
+                else if getArch system == "x86_64" then
+                  "-enable-kvm -append \"console=ttyS0\""
+                else
+                  ""
               })
 
               kernelImageFile=${
-                if getArch system == "aarch64" then "Image" 
-                else if getArch system == "x86_64" then "bzImage"
-                else "Image"
+                if getArch system == "aarch64" then
+                  "Image"
+                else if getArch system == "x86_64" then
+                  "bzImage"
+                else
+                  "Image"
               }
 
               sudo ${pkgs.qemu_kvm}/bin/qemu-system-${getArch system} \
