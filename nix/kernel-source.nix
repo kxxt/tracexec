@@ -73,15 +73,21 @@ in
     let
       isAarch64 = pkgs.stdenv.hostPlatform.system == "aarch64-linux";
       isX86_64 = pkgs.stdenv.hostPlatform.system == "x86_64-linux";
-      # Define a conditional attribute set
-      aarch64SpecificConfig = pkgs.lib.optionalAttrs isAarch64 (
+      aarch64SpecificConfig = lib.optionalAttrs isAarch64 (
         with lib.kernel;
         {
           PREEMPT = yes;
 
           SERIAL_AMBA_PL011 = yes;
-
           SERIAL_AMBA_PL011_CONSOLE = yes;
+
+          PCIEPORTBUS = yes;
+          PCI_HOST_GENERIC = yes;
+          HIGH_RES_TIMERS = yes;
+          ARM_ARCH_TIMER_EVTSTREAM = yes;
+          
+          ARM64_ERRATUM_2067961 = yes;
+          ARM64_ERRATUM_2054223 = yes;
         }
       );
       x86_64SpecificConfig = lib.optionalAttrs isX86_64 (
