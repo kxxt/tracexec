@@ -176,8 +176,8 @@ localFlake:
               esac
 
               archSpecificArgs=(${
-                if getArch system == "aarch64" then "-machine virt" 
-                else if getArch system == "x86_64" then "-enable-kvm"
+                if getArch system == "aarch64" then "-machine virt -append \"console=ttyAMA0\""
+                else if getArch system == "x86_64" then "-enable-kvm -append \"console=ttyS0\""
                 else ""
               })
 
@@ -194,7 +194,7 @@ localFlake:
                 -initrd "$initrd"/initrd.gz \
                 -device e1000,netdev=net0 \
                 -netdev user,id=net0,hostfwd=::${vmSshPort}-:22 \
-                -nographic -append "console=ttyS0" \
+                -nographic \
                 "''${archSpecificArgs[@]}"
             '';
           test-qemu = pkgs.writeScriptBin "test-qemu" ''
