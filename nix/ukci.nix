@@ -175,10 +175,13 @@ localFlake:
                   exit 1
               esac
 
-              archSpecificArgs=(${if getArch system == "aarch64" then "-machine virt" else ""})
+              archSpecificArgs=(${
+                if getArch system == "aarch64" then "-machine virt" 
+                else if getArch system == "x86_64" then "-enable-kvm"
+                else ""
+              })
 
               sudo ${pkgs.qemu_kvm}/bin/qemu-system-${getArch system} \
-                -enable-kvm \
                 -m 4G \
                 -smp cores=4 \
                 -kernel "$kernel"/bzImage \
