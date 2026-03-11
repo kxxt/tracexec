@@ -1,0 +1,8 @@
+[book]
+authors = ["Levi Zim"]
+language = "en"
+src = "book"
+title = "Tracexec Book"
+
+[build]
+build-dir = "book-output"

@@ -19,8 +19,8 @@ To install from source, the following dependencies are needed:
 
 - A working rust compiler and `cargo`.
 - `libbpf`: if not using `vendored-libbpf`
-- `zlib`: if not using `vendored-zlib`
-- `libelf`: if not using `vendored-libelf`
+- `zlib`: if not using `vendored-libbpf`
+- `libelf`: if not using `vendored-libbpf`
 - `libseccomp`: For `seccomp-bpf`.
 - If any library vendoring feature is enabled:
   - `build-essential` `autopoint` `gettext` for Debian based distros
