@@ -29,11 +29,13 @@ hashbrown = { workspace = true }
 color-eyre = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
+cfg-if = { workspace = true }
 tokio = { workspace = true }
 bytemuck = "1.24.0"
 libbpf-rs = { version = "0.26.1", default-features = false }
 # libbpf-sys exists here because we want to control its features
 libbpf-sys = { version = "1", default-features = false }
+procfs = "0.18.0"
 
 
 [build-dependencies]

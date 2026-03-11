@@ -1,4 +1,7 @@
-use nix::libc::{AT_EMPTY_PATH, execveat};
+use nix::libc::{
+  AT_FDCWD,
+  execveat,
+};
 
 fn main() {
   let i = std::env::var("COUNTER")
@@ -15,7 +18,7 @@ fn main() {
       c"/proc/self/exe".as_ptr(),
       std::ptr::null(),
       [env0.as_ptr() as *mut nix::libc::c_char, std::ptr::null()].as_ptr() as _,
-      0
+      0,
     );
   }
 }

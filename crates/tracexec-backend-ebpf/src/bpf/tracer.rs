@@ -4,6 +4,7 @@ use std::{
     HashMap,
     HashSet,
   },
+  env,
   ffi::OsStr,
   io::stdin,
   iter::repeat_n,
@@ -22,6 +23,7 @@ use std::{
   time::Duration,
 };
 
+use cfg_if::cfg_if;
 use chrono::Local;
 use color_eyre::Section;
 use enumflags2::{
@@ -557,6 +559,24 @@ impl EbpfTracer {
     let mut open_skel = skel_builder.open(object)?;
     let ncpu: u32 = num_possible_cpus()?.try_into().expect("Too many cores!");
     let rodata = open_skel.maps.rodata_data.as_deref_mut().unwrap();
+    // Check if we should use kprobe on kernels without CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS
+    if !kernel_have_ftrace_with_direct_calls() {
+      open_skel.progs.sys_execve_fentry.set_autoload(false);
+      open_skel.progs.sys_execveat_fentry.set_autoload(false);
+      open_skel.progs.sys_exit_execve_fexit.set_autoload(false);
+      open_skel.progs.sys_exit_execveat_fexit.set_autoload(false);
+    } else {
+      open_skel.progs.sys_execve_kprobe.set_autoload(false);
+      open_skel.progs.sys_execveat_kprobe.set_autoload(false);
+      open_skel
+        .progs
+        .sys_exit_execve_kretprobe
+        .set_autoload(false);
+      open_skel
+        .progs
+        .sys_exit_execveat_kretprobe
+        .set_autoload(false);
+    }
     // Considering that bpf is preemept-able, we must be prepared to handle more entries.
     let cache_size = 2 * ncpu;
     open_skel.maps.cache.set_max_entries(cache_size)?;
@@ -662,6 +682,43 @@ impl RunningEbpfTracer<'_> {
             panic!("Failed to poll ringbuf: {e}");
           }
         }
+      }
+    }
+  }
+}
+
+fn kernel_have_ftrace_with_direct_calls() -> bool {
+  // First, check special env `TRACEXEC_USE_KPROBE`
+  if env::var("TRACEXEC_USE_KPROBE")
+    .inspect_err(|e| warn!("Failed to read env TRACEXEC_USE_KPROBE: {e}"))
+    .map(|v| !v.is_empty())
+    .unwrap_or_default()
+  {
+    return false;
+  }
+  env::var("TRACEXEC_USE_FENTRY")
+    .inspect_err(|e| warn!("Failed to read env TRACEXEC_USE_FENTRY: {e}"))
+    .map(|v| !v.is_empty())
+    .unwrap_or_default() ||
+  // Then, we try to read kernel config
+  procfs::kernel_config()
+    .inspect_err(|e| warn!("Failed to get kernel config: {e}"))
+    .map(|configs| configs.contains_key("CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS"))
+    .unwrap_or_default() ||
+  // Finally, we try to decide based on kernel version
+  {
+    cfg_if! {
+      if #[cfg(target_arch = "x86_64")] {
+        // We support linux >= 5.17, which all have this feature
+        true
+      } else if #[cfg(target_arch = "aarch64")] {
+        // https://github.com/torvalds/linux/commit/2aa6ac03516d078cf0c35aaa273b5cd11ea9734c
+        tracexec_core::is_current_kernel_ge((6, 4)).unwrap_or_default()
+      } else if #[cfg(target_arch = "riscv64")] {
+        // https://github.com/torvalds/linux/commit/b21cdb9523e5561b97fd534dbb75d132c5c938ff
+        tracexec_core::is_current_kernel_ge((6, 16)).unwrap_or_default()
+      } else {
+          compile_error!("unsupported architecture");
       }
     }
   }
