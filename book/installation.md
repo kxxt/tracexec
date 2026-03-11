@@ -4,7 +4,7 @@ Different people have different opinions when it comes to how to install a progr
 Some may prefer using system package manager while others might like downloading a prebuilt binary.
 But don't worry, tracexec supports a wide variety of installation methods.
 
-Before installation, you can check [the platform support status](./support.md).
+Before installation, you should check [the platform support status](./support.md).
 
 ## Install via Package Managers
 
@@ -56,7 +56,7 @@ To install the current stable version of tracexec. Run
 cargo install tracexec --bin tracexec
 ```
 
-To install the bleeding-edge main branch git version of tracexec. Run
+To install the bleeding-edge development version of tracexec from git main branch. Run
 
 ```bash
 cargo install --git https://github.com/kxxt/tracexec --bin tracexec
