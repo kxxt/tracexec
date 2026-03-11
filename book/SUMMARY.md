@@ -1,7 +1,7 @@
 # Summary
 
 - [Introduction](./introduction.md)
-  - [Show cases](./introduction/showcases.md)
+  - [Showcases](./introduction/showcases.md)
 - [Installation](./installation.md)
   - [Platform Support](./support.md)
   - [Build from source](./build-from-src.md)
