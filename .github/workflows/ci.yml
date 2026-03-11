@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: Continuous Integration
+name: CI
 
 permissions:
   contents: read
@@ -33,7 +33,18 @@ on:
   push:
     branches:
       - main
+    paths: &trigger_paths
+      - '.cargo/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'deny.toml'
+      - 'rustfmt.toml'
+      - 'fixtures/**'
+      - 'crates/**'
+      - 'src/**'
+      - '.github/workflows/ci.yml'
   pull_request:
+    paths: *trigger_paths
   merge_group:
 
 # ensure that the workflow is only triggered once per PR,  subsequent pushes to the PR will cancel
