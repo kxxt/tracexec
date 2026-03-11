@@ -1,4 +1,4 @@
-use nix::libc::execve;
+use nix::libc::{AT_EMPTY_PATH, execveat};
 
 fn main() {
   let i = std::env::var("COUNTER")
@@ -10,10 +10,12 @@ fn main() {
   }
   let env0 = format!("COUNTER={}\0", i + 1);
   unsafe {
-    execve(
+    execveat(
+      AT_FDCWD,
       c"/proc/self/exe".as_ptr(),
       std::ptr::null(),
-      [env0.as_ptr() as *const nix::libc::c_char, std::ptr::null()].as_ptr(),
+      [env0.as_ptr() as *mut nix::libc::c_char, std::ptr::null()].as_ptr() as _,
+      0
     );
   }
 }
