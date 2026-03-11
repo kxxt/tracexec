@@ -6,3 +6,5 @@
 # Clangd
 .cache
 compile_commands.json
+# mdBook
+/book-output
