@@ -1,4 +1,4 @@
-name: Continuous Integration (Nix)
+name: UKCI
 
 permissions:
   contents: read
@@ -10,7 +10,21 @@ on:
     branches:
       - main
       - ci
+    paths: &trigger_paths
+      - '.cargo/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'deny.toml'
+      - 'rustfmt.toml'
+      - 'fixtures/**'
+      - 'crates/**'
+      - 'src/**'
+      - '.github/workflows/nix.yml'
+      - 'nix/**'
+      - 'flake.nix'
+      - 'flake.lock'
   pull_request:
+    paths: *trigger_paths
   merge_group:
 
 # ensure that the workflow is only triggered once per PR,  subsequent pushes to the PR will cancel
