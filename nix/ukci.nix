@@ -46,6 +46,8 @@ localFlake:
                 ];
                 extraMakeFlags = [ ];
               }
+            ]
+            ++ [
               {
                 name = "6.1lts";
                 tag = "6.1.165";
@@ -55,8 +57,6 @@ localFlake:
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
-            ]
-            ++ [
               {
                 name = "6.6lts";
                 tag = "6.6.128";
