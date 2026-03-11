@@ -432,8 +432,23 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
   return 0;
 }
 
+SEC("kprobe/__" SYSCALL_PREFIX "_sys_execve")
+int BPF_KSYSCALL(sys_execve_kprobe, u8 *base_filename, u8 const *const *argv,
+                 u8 const *const *envp) {
+  int key = 0;
+  struct sys_enter_exec_args common_ctx = {
+      .is_execveat = false,
+      .is_compat = false,
+      .argv = argv,
+      .envp = envp,
+      .base_filename = base_filename,
+  };
+  trace_exec_common(&common_ctx);
+  return 0;
+}
+
 SEC("fentry/__" SYSCALL_PREFIX "_sys_execve")
-int BPF_PROG(sys_execve, struct pt_regs *regs) {
+int BPF_PROG(sys_execve_fentry, struct pt_regs *regs) {
   int key = 0;
   struct sys_enter_exec_args common_ctx = {
       .is_execveat = false,
@@ -447,7 +462,7 @@ int BPF_PROG(sys_execve, struct pt_regs *regs) {
 }
 
 SEC("fentry/__" SYSCALL_PREFIX "_sys_execveat")
-int BPF_PROG(sys_execveat, struct pt_regs *regs, int ret) {
+int BPF_PROG(sys_execveat_fentry, struct pt_regs *regs, int ret) {
   int key = 0;
   struct sys_enter_exec_args common_ctx = {
       .is_execveat = true,
@@ -459,12 +474,36 @@ int BPF_PROG(sys_execveat, struct pt_regs *regs, int ret) {
   trace_exec_common(&common_ctx);
   pid_t pid = (pid_t)bpf_get_current_pid_tgid();
   struct exec_event *event = bpf_task_storage_get(
-      &execs, (struct task_struct *)bpf_get_current_task_btf(), NULL, BPF_ANY);
+      &execs, (struct task_struct *)bpf_get_current_task_btf(), NULL,
+      BPF_ANY);
   if (!event || !ctx)
     return 0;
 
   event->fd = PT_REGS_PARM1_CORE(regs);
   event->flags = PT_REGS_PARM5_CORE(regs);
+  return 0;
+}
+
+SEC("kprobe/__" SYSCALL_PREFIX "_sys_execveat")
+int BPF_KSYSCALL(sys_execveat_kprobe, s32 fd, u8 *base_filename,
+                 u8 const *const *argv, u8 const *const *envp, u64 flags) {
+  int key = 0;
+  struct sys_enter_exec_args common_ctx = {
+      .is_execveat = true,
+      .is_compat = false,
+      .argv = argv,
+      .envp = envp,
+      .base_filename = base_filename,
+  };
+  trace_exec_common(&common_ctx);
+  pid_t pid = (pid_t)bpf_get_current_pid_tgid();
+  struct exec_event *event = bpf_task_storage_get(
+      &execs, (struct task_struct *)bpf_get_current_task_btf(), NULL, BPF_ANY);
+  if (!event || !ctx)
+    return 0;
+
+  event->fd = fd;
+  event->flags = flags;
   return 0;
 }
 
@@ -590,12 +629,22 @@ int __always_inline tp_sys_exit_exec(int sysret) {
 }
 
 SEC("fexit/__" SYSCALL_PREFIX "_sys_execve")
-int BPF_PROG(sys_exit_execve, struct pt_regs *regs, int ret) {
+int BPF_PROG(sys_exit_execve_fexit, struct pt_regs *regs, int ret) {
   return tp_sys_exit_exec(ret);
 }
 
 SEC("fexit/__" SYSCALL_PREFIX "_sys_execveat")
-int BPF_PROG(sys_exit_execveat, struct pt_regs *regs, int ret) {
+int BPF_PROG(sys_exit_execveat_fexit, struct pt_regs *regs, int ret) {
+  return tp_sys_exit_exec(ret);
+}
+
+SEC("kretprobe/__" SYSCALL_PREFIX "_sys_execve")
+int BPF_KRETPROBE(sys_exit_execve_kretprobe, int ret) {
+  return tp_sys_exit_exec(ret);
+}
+
+SEC("kretprobe/__" SYSCALL_PREFIX "_sys_execveat")
+int BPF_KRETPROBE(sys_exit_execveat_kretprobe, int ret) {
   return tp_sys_exit_exec(ret);
 }
 

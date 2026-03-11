@@ -7,12 +7,10 @@ mod bpf;
 mod log;
 
 use std::{
-  os::unix::ffi::OsStrExt,
   process,
   sync::Arc,
 };
 
-use atoi::atoi;
 use clap::Parser;
 use color_eyre::eyre::{
   OptionExt,
@@ -53,6 +51,7 @@ use tracexec_core::{
     Exporter,
     ExporterMetadata,
   },
+  is_current_kernel_ge,
   proc::BaselineInfo,
   pty::{
     PtySize,
@@ -357,19 +356,4 @@ async fn main() -> color_eyre::Result<()> {
     }
   }
   Ok(())
-}
-
-fn is_current_kernel_ge(min_support: (u32, u32)) -> color_eyre::Result<bool> {
-  let utsname = nix::sys::utsname::uname()?;
-  let kstr = utsname.release().as_bytes();
-  let pos = kstr.iter().position(|&c| c != b'.' && !c.is_ascii_digit());
-  let kver = pos.map_or(kstr, |pos| kstr.split_at(pos).0);
-  let mut kvers = kver.split(|&c| c == b'.');
-  let Some(major) = kvers.next().and_then(atoi::<u32>) else {
-    bail!("Failed to parse kernel major ver!")
-  };
-  let Some(minor) = kvers.next().and_then(atoi::<u32>) else {
-    bail!("Failed to parse kernel minor ver!")
-  };
-  Ok((major, minor) >= min_support)
 }
