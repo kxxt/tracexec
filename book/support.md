@@ -24,10 +24,13 @@ for more details if you got errors when using tracexec on riscv64.
 
 ## Linux Kernel Support Status
 
-| Kernel Version | ptrace backend | eBPF backend | Comments |
-|:--------------:|----------------|--------------|----------|
-| \< 5.3         | ❌ (Need `PTRACE_GET_SYSCALL_INFO`) | ❌ | Seriously, upgrade your kernel!!!|
-| >= 5.3,\< 5.17 | ✅ | ❌ (Need `bpf_loop`) |
-| >=5.17         | ✅ | ✅ | |
-| >= 6.2         | ✅ | ✅ | |
-| (LTS) >=6.6.64, \<6.6.70 | ✅ | ❌ fail due to [kernel regression](https://lore.kernel.org/all/k32rq5abffq5kss5ejrzj3yx2dgn4c2ken2hrudws52mwuua4k@j64qawub3icu/)| Kernel regression caught by our CI |
+| Architecture | Kernel Version | ptrace backend | eBPF backend | Comments |
+|--------------|:--------------:|----------------|--------------|----------|
+| all          | \< 5.3         | ❌ (Need `PTRACE_GET_SYSCALL_INFO`)   | ❌ | Seriously, upgrade your kernel!!!|
+| all          | >= 5.3,\< 5.17 | ✅             | ❌ (Need `bpf_loop`) |            |
+| x86_64       | >=5.17         | ✅             | ✅                   |            |
+| aarch64      | >=5.17,\< 5.18 | ✅             | ❌ (No BPF atomics)  |            |
+| riscv64      | >=5.17,\< 5.19 | ✅             | ❌ (No BPF atomics)  |            |
+| aarch64      | >=5.18         | ✅             | ✅                   |            |
+| riscv64      | >=5.19         | ✅             | ✅                   | Not tested |
+| all          | (LTS) >=6.6.64, \<6.6.70 | ✅ | ❌ fail due to [kernel regression](https://lore.kernel.org/all/k32rq5abffq5kss5ejrzj3yx2dgn4c2ken2hrudws52mwuua4k@j64qawub3icu/)| Kernel regression caught by our CI |
