@@ -17,7 +17,7 @@
       let
         inherit (flake-parts-lib) importApply;
         tracexec.default = importApply ./nix/tracexec.nix { inherit crane; };
-        ukci.default = importApply ./nix/ukci.nix { inherit nixpkgs; };
+        ukci.default = importApply ./nix/ukci.nix { inherit nixpkgs; inherit crane; };
       in
       {
         imports = [

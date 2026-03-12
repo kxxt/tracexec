@@ -1,0 +1,26 @@
+diff --git a/build.rs b/build.rs
+index 8e04244..6105316 100644
+--- a/build.rs
++++ b/build.rs
+@@ -155,7 +155,11 @@ fn main() {
+ 
+     let (compiler, mut cflags) = if vendored_libbpf || vendored_libelf || vendored_zlib {
+         pkg_check("make");
+-        pkg_check("pkg-config");
++        pkg_check(
++            std::env::var("PKG_CONFIG")
++                .as_deref()
++                .unwrap_or("pkg-config"),
++        );
+ 
+         let compiler = cc::Build::new().try_get_compiler().expect(
+             "a C compiler is required to compile libbpf-sys using the vendored copy of libbpf",
+@@ -246,7 +250,7 @@ fn open_lockable(path: &Path) -> io::Result<File> {
+             // with write permissions. So just open for reading and hope
+             // for the best.
+             File::open(path)
+-        },
++        }
+         e @ Err(..) => e,
+     }
+ }
