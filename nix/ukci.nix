@@ -29,9 +29,32 @@ localFlake:
               builtins.elemAt split 0;
           isAarch64 = system == "aarch64-linux";
           isX86_64 = system == "x86_64-linux";
+          targetSystems =
+            if isX86_64 then
+              [
+                "x86_64-linux"
+                "aarch64-linux"
+              ]
+            else
+              [ system ];
+          pkgsForTarget =
+            targetSystem:
+            if targetSystem == system then
+              pkgs
+            else if targetSystem == "x86_64-linux" then
+              pkgsWithOverlay.pkgsCross.gnu64
+            else if targetSystem == "aarch64-linux" then
+              pkgs.pkgsCross.aarch64-multiplatform
+            else
+              builtins.abort "Unsupported cross target ${targetSystem} on host ${system}";
           vmSshPort = "10022";
-          sources =
-            lib.optionals isX86_64 [
+          sourcesFor =
+            targetSystem:
+            let
+              isTargetAarch64 = targetSystem == "aarch64-linux";
+              isTargetX86_64 = targetSystem == "x86_64-linux";
+            in
+            (lib.optionals isTargetX86_64 [
               {
                 # MSKV for x86_64
                 name = "5.17";
@@ -47,8 +70,8 @@ localFlake:
                 ];
                 extraMakeFlags = [ ];
               }
-            ]
-            ++ lib.optionals isAarch64 [
+            ])
+            ++ (lib.optionals isTargetAarch64 [
               {
                 # MSKV for aarch64
                 name = "5.18";
@@ -64,7 +87,7 @@ localFlake:
                 ];
                 extraMakeFlags = [ ];
               }
-            ]
+            ])
             ++ [
               {
                 name = "6.1lts";
@@ -124,13 +147,28 @@ localFlake:
                 extraMakeFlags = [ ];
               }
             ];
+          sources =
+            lib.concatMap (
+              targetSystem:
+              map (source: source // { inherit targetSystem; }) (sourcesFor targetSystem)
+            ) targetSystems;
           nixpkgs = localFlake.nixpkgs;
-          configureKernel = pkgs.callPackage ./kernel-configure.nix { };
-          buildKernel = pkgs.callPackage ./kernel-build.nix { stdenv = pkgs.gcc14Stdenv; };
-          kernelNixConfig = source: pkgs.callPackage ./kernel-source.nix source;
+          tracexecFor =
+            targetPkgs:
+            (import ./tracexec-package.nix {
+              lib = targetPkgs.lib;
+              pkgs = targetPkgs;
+              inherit (localFlake) crane;
+            }) { };
           kernels = map (
             source:
             let
+              targetSystem = source.targetSystem;
+              targetPkgs = pkgsForTarget targetSystem;
+              targetArch = getArch targetSystem;
+              kernelNixConfig = s: targetPkgs.callPackage ./kernel-source.nix s;
+              configureKernel = targetPkgs.callPackage ./kernel-configure.nix { };
+              buildKernel = targetPkgs.callPackage ./kernel-build.nix { stdenv = targetPkgs.gcc14Stdenv; };
               config = kernelNixConfig source;
               inherit (config) kernelArgs kernelConfig;
               configfile = configureKernel {
@@ -140,7 +178,7 @@ localFlake:
                   ;
                 inherit kernel nixpkgs;
               };
-              linuxDev = pkgs.linuxPackagesFor kernelDrv;
+              linuxDev = targetPkgs.linuxPackagesFor kernelDrv;
               kernel = linuxDev.kernel;
               kernelDrv = buildKernel {
                 inherit (kernelArgs)
@@ -151,21 +189,30 @@ localFlake:
                 inherit (source) kernelPatches extraMakeFlags;
                 inherit configfile nixpkgs;
               };
-              buildInitramfs = pkgs.callPackage ./initramfs.nix { };
+              buildInitramfs = targetPkgs.callPackage ./initramfs.nix { };
+              useArchSuffix = builtins.length targetSystems > 1;
+              kernelName =
+                if useArchSuffix then
+                  "${source.name}-${targetArch}"
+                else
+                  source.name;
+              testPackage = tracexecFor targetPkgs;
             in
             {
               inherit kernel;
-              inherit (source) name test_exe;
+              inherit targetSystem targetArch testPackage;
+              name = kernelName;
+              inherit (source) test_exe;
               initramfs = buildInitramfs {
                 inherit kernel;
                 extraBin = {
                   # We exclude tracexec from it to avoid constant rebuilding of initrds in CI.
                   # tracexec = "${self'.packages.tracexec}/bin/tracexec";
                   # tracexec_no_rcu_kfuncs = "${self'.packages.tracexec_no_rcu_kfuncs}/bin/tracexec";
-                  strace = "${pkgs.strace}/bin/strace";
-                  nix-store = "${pkgs.nix}/bin/nix";
+                  strace = "${targetPkgs.strace}/bin/strace";
+                  nix-store = "${targetPkgs.nix}/bin/nix";
                 };
-                storePaths = [ pkgs.foot.terminfo ];
+                storePaths = [ targetPkgs.foot.terminfo ];
               };
             }
           ) sources;
@@ -178,12 +225,14 @@ localFlake:
                   name,
                   kernel,
                   initramfs,
+                  targetArch,
                   ...
                 }:
                 ''
                   ${name})
                     kernel="${kernel}"
                     initrd="${initramfs}"
+                    arch="${targetArch}"
                   ;;
                 ''
               ) kernels;
@@ -198,25 +247,22 @@ localFlake:
                   exit 1
               esac
 
-              archSpecificArgs=(${
-                if getArch system == "aarch64" then
-                  "-machine virt -cpu neoverse-n2 -append \"console=ttyAMA0\""
-                else if getArch system == "x86_64" then
-                  "-enable-kvm -append \"console=ttyS0\""
-                else
-                  ""
-              })
+              case "$arch" in
+                aarch64)
+                  archSpecificArgs=(-machine virt -cpu neoverse-n2 -append "console=ttyAMA0")
+                  kernelImageFile="Image"
+                  ;;
+                x86_64)
+                  archSpecificArgs=(-enable-kvm -append "console=ttyS0")
+                  kernelImageFile="bzImage"
+                  ;;
+                *)
+                  archSpecificArgs=()
+                  kernelImageFile="Image"
+                  ;;
+              esac
 
-              kernelImageFile=${
-                if getArch system == "aarch64" then
-                  "Image"
-                else if getArch system == "x86_64" then
-                  "bzImage"
-                else
-                  "Image"
-              }
-
-              sudo ${pkgs.qemu_kvm}/bin/qemu-system-${getArch system} \
+              sudo ${pkgs.qemu}/bin/qemu-system-$arch \
                 -m 4G \
                 -smp cores=4 \
                 -kernel "$kernel/$kernelImageFile" \
@@ -241,15 +287,19 @@ localFlake:
             # Copy tracexec
             export NIX_SSHOPTS="-p ${vmSshPort} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
             # Try to load eBPF module:
-            case "$1" in
-              tracexec)
-                package="${self'.packages.tracexec}"
-                ;;
+            test_exe="$1"
+            package="$2"
+            case "$test_exe" in
+              tracexec) : ;;
               *)
                 echo "Unrecognized executable!"
                 exit 1
                 ;;
             esac
+            if [ -z "$package" ]; then
+              echo "Missing package path!"
+              exit 1
+            fi
             ${pkgs.nix}/bin/nix copy --to ssh://root@127.0.0.1 "$package"
             $ssh "$package"/bin/tracexec ebpf log -- ls
             exit $?
@@ -257,7 +307,10 @@ localFlake:
 
           ukci =
             let
-              platforms = lib.concatMapStringsSep " " ({ name, test_exe, ... }: "${name}:${test_exe}") kernels;
+              platforms = lib.concatMapStringsSep " " (
+                { name, targetSystem, test_exe, testPackage, ... }:
+                "${name}:${targetSystem}:${test_exe}:${testPackage}"
+              ) kernels;
             in
             pkgs.writeScriptBin "ukci" ''
               #!/usr/bin/env bash
@@ -271,9 +324,9 @@ localFlake:
 
               ssh="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 -p ${vmSshPort}"
               for platform in ${platforms}; do
-                IFS=: read -r kernel test_exe <<< "$platform"
+                IFS=: read -r kernel target_system test_exe package <<< "$platform"
                 ${run-qemu}/bin/run-qemu "$kernel" &
-                ${test-qemu}/bin/test-qemu "$test_exe"
+                ${test-qemu}/bin/test-qemu "$test_exe" "$package"
                 $ssh poweroff -f || true
                 wait < <(jobs -p)
               done;
