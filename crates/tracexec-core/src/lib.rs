@@ -32,3 +32,13 @@ pub fn is_current_kernel_ge(min_support: (u32, u32)) -> color_eyre::Result<bool>
   };
   Ok((major, minor) >= min_support)
 }
+
+#[cfg(test)]
+mod test {
+  use crate::is_current_kernel_ge;
+
+  #[test]
+  fn test_is_current_kernel_ge() {
+    assert!(is_current_kernel_ge((3, 0)).unwrap())
+  }
+}
