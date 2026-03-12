@@ -31,8 +31,9 @@ localFlake:
           isX86_64 = system == "x86_64-linux";
           vmSshPort = "10022";
           sources =
-            lib.optionals (!isAarch64) [
+            lib.optionals isX86_64 [
               {
+                # MSKV for x86_64
                 name = "5.17";
                 tag = "5.17.15";
                 source = "mirror-v5";
@@ -41,7 +42,24 @@ localFlake:
                 kernelPatches = [
                   {
                     name = "pahole-compatibility-fix";
-                    patch = ./0001-Replace-scripts-pahole-flags.sh-with-the-one-in-5.15.patch;
+                    patch = ./patches/5.17-Replace-scripts-pahole-flags.sh-with-the-one-in-5.15.patch;
+                  }
+                ];
+                extraMakeFlags = [ ];
+              }
+            ]
+            ++ lib.optionals isAarch64 [
+              {
+                # MSKV for aarch64
+                name = "5.18";
+                tag = "5.18.19";
+                source = "mirror-v5";
+                test_exe = "tracexec";
+                sha256 = "sha256-3/CbJRcS+zs4fLTg97CXwO88e263+UqMmu5swCP8iNU=";
+                kernelPatches = [
+                  {
+                    name = "pahole-compatibility-fix";
+                    patch = ./patches/5.18-Replace-scripts-pahole-flags.sh-with-the-one-in.patch;
                   }
                 ];
                 extraMakeFlags = [ ];
