@@ -29,6 +29,14 @@ localFlake:
               builtins.elemAt split 0;
           isAarch64 = system == "aarch64-linux";
           isX86_64 = system == "x86_64-linux";
+          gnutlsOverlay = final: prev: {
+            gnutls = prev.gnutls.overrideAttrs (prevAttrs: {
+              postPatch = (prevAttrs.postPatch or "") + ''
+                touch doc/stamp_error_codes
+              '';
+            });
+          };
+          pkgsWithOverlay = pkgs.extend gnutlsOverlay;
           targetSystems =
             if isX86_64 then
               [
