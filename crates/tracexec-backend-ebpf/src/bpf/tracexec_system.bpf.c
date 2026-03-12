@@ -88,6 +88,19 @@ struct {
   __uint(max_entries, 268435456);
 } events SEC(".maps");
 
+struct tracexec_spin_lock {
+  struct bpf_spin_lock lock;
+};
+
+struct {
+  __uint(type, BPF_MAP_TYPE_ARRAY);
+  __type(key, u32);
+  __type(value, struct tracexec_spin_lock);
+  __uint(max_entries, 1);
+} spin_locks SEC(".maps");
+
+const u32 TRACEXEC_SPIN_LOCK_EID_COUNTER = 0;
+
 struct reader_context {
   struct exec_event *event;
   // index:
@@ -261,7 +274,20 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   if (!should_trace(event->tgid))
     return 0;
   event->header.type = SYSEXIT_EVENT;
-  event->header.eid = __sync_fetch_and_add(&event_counter, 1);
+  if (LINUX_KERNEL_VERSION >= MIN_KERNEL_VERSION_FOR_ATOMICS) {
+    event->header.eid = __sync_fetch_and_add(&event_counter, 1);
+  } else {
+    struct tracexec_spin_lock *lock = bpf_map_lookup_elem(&spin_locks, &TRACEXEC_SPIN_LOCK_EID_COUNTER);
+    if (lock == NULL) {
+      debug("Failed to take lock for event id counter!");
+      drop_counter++;
+      return 0;
+    }
+    bpf_spin_lock(&lock->lock);
+    event->header.eid = event_counter;
+    event_counter += 1;
+    bpf_spin_unlock(&lock->lock);
+  }
   event->count[0] = event->count[1] = event->fd_count = event->path_count = 0;
   event->is_compat = ctx->is_compat;
   event->is_execveat = ctx->is_execveat;
