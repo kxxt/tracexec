@@ -33,15 +33,10 @@
 #ifdef TRACEXEC_TARGET_X86_64
 #define SYSCALL_PREFIX "x64"
 #define SYSCALL_COMPAT_PREFIX "ia32_compat"
-#define MIN_KERNEL_VERSION_FOR_ATOMICS KERNEL_VERSION(5, 12, 0)
 #elif TRACEXEC_TARGET_AARCH64
 #define SYSCALL_PREFIX "arm64"
-// https://github.com/torvalds/linux/commit/1902472b4fa97dba1fd10a204c6b231d6a560081
-#define MIN_KERNEL_VERSION_FOR_ATOMICS KERNEL_VERSION(5, 18, 0)
 #elif TRACEXEC_TARGET_RISCV64
 #define SYSCALL_PREFIX "riscv"
-// https://github.com/torvalds/linux/commit/dd642ccb45ecce1402eb2550f5284fc6bb9ed7b8
-#define MIN_KERNEL_VERSION_FOR_ATOMICS KERNEL_VERSION(5, 19, 0)
 #endif
 
 #ifdef TRACEXEC_TARGET_X86_64
