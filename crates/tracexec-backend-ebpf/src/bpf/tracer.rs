@@ -67,6 +67,7 @@ use nix::{
     tcsetpgrp,
   },
 };
+use procfs::ConfigSetting;
 use tokio::sync::mpsc::UnboundedSender;
 use tracexec_core::{
   cli::args::ModifierArgs,
@@ -559,8 +560,11 @@ impl EbpfTracer {
     let mut open_skel = skel_builder.open(object)?;
     let ncpu: u32 = num_possible_cpus()?.try_into().expect("Too many cores!");
     let rodata = open_skel.maps.rodata_data.as_deref_mut().unwrap();
+    let kconfig = procfs::kernel_config()
+      .inspect_err(|e| warn!("Failed to get kernel config: {e}"))
+      .ok();
     // Check if we should use kprobe on kernels without CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS
-    if !kernel_have_ftrace_with_direct_calls() {
+    if !kernel_have_ftrace_with_direct_calls(kconfig.as_ref()) {
       open_skel.progs.sys_execve_fentry.set_autoload(false);
       open_skel.progs.sys_execveat_fentry.set_autoload(false);
       open_skel.progs.sys_exit_execve_fexit.set_autoload(false);
@@ -577,6 +581,24 @@ impl EbpfTracer {
         .sys_exit_execveat_kretprobe
         .set_autoload(false);
     }
+
+    let kernel_have_syscall_wrappers = kernel_have_syscall_wrappers(kconfig.as_ref());
+    if !kernel_have_syscall_wrappers {
+      // Only handle kprobe here because the only supported kernels
+      // that could trigger it is riscv linux < 6.6, which won't
+      // support ftrace_with_direct_calls anyway.
+      open_skel.progs.sys_execve_kprobe.set_autoattach(false);
+      open_skel.progs.sys_execveat_kprobe.set_autoattach(false);
+      open_skel
+        .progs
+        .sys_exit_execve_kretprobe
+        .set_autoattach(false);
+      open_skel
+        .progs
+        .sys_exit_execveat_kretprobe
+        .set_autoattach(false);
+    }
+
     // Considering that bpf is preemept-able, we must be prepared to handle more entries.
     let cache_size = 2 * ncpu;
     open_skel.maps.cache.set_max_entries(cache_size)?;
@@ -640,8 +662,13 @@ impl EbpfTracer {
       rodata.tracexec_config.follow_fork = MaybeUninit::new(true);
       rodata.tracexec_config.tracee_pid = child.as_raw();
       rodata.tracexec_config.tracee_pidns_inum = pid_ns_ino as u32;
+
       let mut skel = open_skel.load()?;
       skel.attach()?;
+      if !kernel_have_syscall_wrappers {
+        attach_kprobes_without_syscall_wrappers(&mut skel)?;
+      }
+
       match waitpid(child, Some(WaitPidFlag::WSTOPPED))? {
         terminated @ WaitStatus::Exited(_, _) | terminated @ WaitStatus::Signaled(_, _, _) => {
           panic!("Child exited abnormally before tracing is started: status: {terminated:?}");
@@ -653,6 +680,9 @@ impl EbpfTracer {
     } else {
       let mut skel = open_skel.load()?;
       skel.attach()?;
+      if !kernel_have_syscall_wrappers {
+        attach_kprobes_without_syscall_wrappers(&mut skel)?;
+      }
       (skel, None)
     };
     Ok((skel, child))
@@ -687,7 +717,52 @@ impl RunningEbpfTracer<'_> {
   }
 }
 
-fn kernel_have_ftrace_with_direct_calls() -> bool {
+fn attach_kprobes_without_syscall_wrappers(skel: &mut TracexecSystemSkel) -> libbpf_rs::Result<()> {
+  skel.links.sys_execve_kprobe = Some(
+    skel
+      .progs
+      .sys_execve_kprobe
+      .attach_kprobe(false, "__se_sys_execve")?,
+  );
+  skel.links.sys_execveat_kprobe = Some(
+    skel
+      .progs
+      .sys_execveat_kprobe
+      .attach_kprobe(false, "__se_sys_execveat")?,
+  );
+  skel.links.sys_exit_execve_kretprobe = Some(
+    skel
+      .progs
+      .sys_exit_execve_kretprobe
+      .attach_kprobe(true, "__se_sys_execve")?,
+  );
+  skel.links.sys_exit_execveat_kretprobe = Some(
+    skel
+      .progs
+      .sys_exit_execveat_kretprobe
+      .attach_kprobe(true, "__se_sys_execveat")?,
+  );
+  Ok(())
+}
+
+fn kernel_have_syscall_wrappers(
+  #[allow(unused)] kconfig: Option<&HashMap<String, ConfigSetting>>,
+) -> bool {
+  // arm64 and x86_64 both have syscall wrappers long before 5.17
+  cfg_if! {
+   if #[cfg(target_arch = "riscv64")] {
+      // https://github.com/torvalds/linux/commit/b21cdb9523e5561b97fd534dbb75d132c5c938ff
+      kconfig
+        .map(|configs| configs.contains_key("CONFIG_ARCH_HAS_SYSCALL_WRAPPER"))
+        .unwrap_or_default() ||
+        tracexec_core::is_current_kernel_ge((6, 6)).unwrap_or_default()
+    } else {
+      true
+    }
+  }
+}
+
+fn kernel_have_ftrace_with_direct_calls(kconfig: Option<&HashMap<String, ConfigSetting>>) -> bool {
   // First, check special env `TRACEXEC_USE_KPROBE`
   if env::var("TRACEXEC_USE_KPROBE")
     .inspect_err(|e| warn!("Failed to read env TRACEXEC_USE_KPROBE: {e}"))
@@ -701,8 +776,7 @@ fn kernel_have_ftrace_with_direct_calls() -> bool {
     .map(|v| !v.is_empty())
     .unwrap_or_default() ||
   // Then, we try to read kernel config
-  procfs::kernel_config()
-    .inspect_err(|e| warn!("Failed to get kernel config: {e}"))
+  kconfig
     .map(|configs| configs.contains_key("CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS"))
     .unwrap_or_default() ||
   // Finally, we try to decide based on kernel version
