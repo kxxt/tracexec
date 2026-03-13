@@ -35,6 +35,10 @@ fn main() {
     OsStr::new("-D"),
     &max_cpus_define,
   ];
+  let bpf_cflags = env::var("BPF_CFLAGS").ok();
+  if let Some(bpf_cflags) = bpf_cflags.as_deref() {
+    clang_args.extend(bpf_cflags.split_ascii_whitespace().map(OsStr::new));
+  }
   if cfg!(any(feature = "ebpf-debug", debug_assertions)) {
     clang_args.push(OsStr::new("-DEBPF_DEBUG"));
   }
@@ -48,6 +52,7 @@ fn main() {
   }
   builder.build_and_generate(&skel_out).unwrap();
   println!("cargo:rerun-if-env-changed=CLANG");
+  println!("cargo:rerun-if-env-changed=BPF_CFLAGS");
   println!("cargo:rerun-if-changed={BPF_SRC}");
   println!("cargo:rerun-if-changed=src/bpf/common.h");
   println!("cargo:rerun-if-changed=src/bpf/interface.h");
