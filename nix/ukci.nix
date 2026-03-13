@@ -37,14 +37,14 @@ localFlake:
             });
           };
           pkgsWithOverlay = pkgs.extend gnutlsOverlay;
-          targetSystems =
+          nativeTargetSystems = [ system ];
+          crossTargetSystems =
             if isX86_64 then
-              [
-                "x86_64-linux"
-                "aarch64-linux"
-              ]
+              [ "aarch64-linux" ]
+            else if isAarch64 then
+              [ "x86_64-linux" ]
             else
-              [ system ];
+              [ ];
           pkgsForTarget =
             targetSystem:
             if targetSystem == system then
@@ -155,7 +155,8 @@ localFlake:
                 extraMakeFlags = [ ];
               }
             ];
-          sources =
+          sourcesForTargets =
+            targetSystems:
             lib.concatMap (
               targetSystem:
               map (source: source // { inherit targetSystem; }) (sourcesFor targetSystem)
@@ -168,66 +169,79 @@ localFlake:
               pkgs = targetPkgs;
               inherit (localFlake) crane;
             }) { };
-          kernels = map (
-            source:
+          mkKernels =
+            targetSystems:
             let
-              targetSystem = source.targetSystem;
-              targetPkgs = pkgsForTarget targetSystem;
-              targetArch = getArch targetSystem;
-              kernelNixConfig = s: targetPkgs.callPackage ./kernel-source.nix s;
-              configureKernel = targetPkgs.callPackage ./kernel-configure.nix { };
-              buildKernel = targetPkgs.callPackage ./kernel-build.nix { stdenv = targetPkgs.gcc14Stdenv; };
-              config = kernelNixConfig source;
-              inherit (config) kernelArgs kernelConfig;
-              configfile = configureKernel {
-                inherit (kernelConfig)
-                  generateConfigFlags
-                  structuredExtraConfig
-                  ;
-                inherit kernel nixpkgs;
-              };
-              linuxDev = targetPkgs.linuxPackagesFor kernelDrv;
-              kernel = linuxDev.kernel;
-              kernelDrv = buildKernel {
-                inherit (kernelArgs)
-                  src
-                  modDirVersion
-                  version
-                  ;
-                inherit (source) kernelPatches extraMakeFlags;
-                inherit configfile nixpkgs;
-              };
-              buildInitramfs = targetPkgs.callPackage ./initramfs.nix { };
+              sources = sourcesForTargets targetSystems;
               useArchSuffix = builtins.length targetSystems > 1;
-              kernelName =
-                if useArchSuffix then
-                  "${source.name}-${targetArch}"
-                else
-                  source.name;
-              testPackage = tracexecFor targetPkgs;
             in
-            {
-              inherit kernel;
-              inherit targetSystem targetArch testPackage;
-              name = kernelName;
-              inherit (source) test_exe;
-              initramfs = buildInitramfs {
-                inherit kernel;
-                extraBin = {
-                  # We exclude tracexec from it to avoid constant rebuilding of initrds in CI.
-                  # tracexec = "${self'.packages.tracexec}/bin/tracexec";
-                  # tracexec_no_rcu_kfuncs = "${self'.packages.tracexec_no_rcu_kfuncs}/bin/tracexec";
-                  strace = "${targetPkgs.strace}/bin/strace";
-                  nix-store = "${targetPkgs.nix}/bin/nix";
+            map (
+              source:
+              let
+                targetSystem = source.targetSystem;
+                targetPkgs = pkgsForTarget targetSystem;
+                targetArch = getArch targetSystem;
+                kernelNixConfig = s: targetPkgs.callPackage ./kernel-source.nix s;
+                configureKernel = targetPkgs.callPackage ./kernel-configure.nix { };
+                buildKernel = targetPkgs.callPackage ./kernel-build.nix { stdenv = targetPkgs.gcc14Stdenv; };
+                config = kernelNixConfig source;
+                inherit (config) kernelArgs kernelConfig;
+                configfile = configureKernel {
+                  inherit (kernelConfig)
+                    generateConfigFlags
+                    structuredExtraConfig
+                    ;
+                  inherit kernel nixpkgs;
                 };
-                storePaths = [ targetPkgs.foot.terminfo ];
-              };
-            }
-          ) sources;
-        in
-        rec {
-          run-qemu =
+                linuxDev = targetPkgs.linuxPackagesFor kernelDrv;
+                kernel = linuxDev.kernel;
+                kernelDrv = buildKernel {
+                  inherit (kernelArgs)
+                    src
+                    modDirVersion
+                    version
+                    ;
+                  inherit (source) kernelPatches extraMakeFlags;
+                  inherit configfile nixpkgs;
+                };
+                buildInitramfs = targetPkgs.callPackage ./initramfs.nix { };
+                kernelName =
+                  if useArchSuffix then
+                    "${source.name}-${targetArch}"
+                  else
+                    source.name;
+                testPackage = tracexecFor targetPkgs;
+              in
+              {
+                inherit kernel;
+                inherit targetSystem targetArch testPackage;
+                name = kernelName;
+                inherit (source) test_exe;
+                initramfs = buildInitramfs {
+                  inherit kernel;
+                  extraBin = {
+                    # We exclude tracexec from it to avoid constant rebuilding of initrds in CI.
+                    # tracexec = "${self'.packages.tracexec}/bin/tracexec";
+                    # tracexec_no_rcu_kfuncs = "${self'.packages.tracexec_no_rcu_kfuncs}/bin/tracexec";
+                    strace = "${targetPkgs.strace}/bin/strace";
+                    nix-store = "${targetPkgs.nix}/bin/nix";
+                  };
+                  storePaths = [ targetPkgs.foot.terminfo ];
+                };
+              }
+            ) sources;
+          kernelsNative = mkKernels nativeTargetSystems;
+          kernelsCross = mkKernels crossTargetSystems;
+          targetSystemsAll = nativeTargetSystems ++ crossTargetSystems;
+          mkScripts =
+            {
+              nameSuffix ? "",
+              kernels,
+            }:
             let
+              runQemuName = "run-qemu${nameSuffix}";
+              testQemuName = "test-qemu${nameSuffix}";
+              ukciName = "ukci${nameSuffix}";
               shellCases = lib.concatMapStrings (
                 {
                   name,
@@ -244,101 +258,136 @@ localFlake:
                   ;;
                 ''
               ) kernels;
-            in
-            pkgs.writeScriptBin "run-qemu" ''
-              #!/usr/bin/env bash
-
-              case "$1" in
-                ${shellCases}
-                *)
-                  echo "Invalid argument!"
-                  exit 1
-              esac
-
-              case "$arch" in
-                aarch64)
-                  archSpecificArgs=(-machine virt -cpu neoverse-n2 -append "console=ttyAMA0")
-                  kernelImageFile="Image"
-                  ;;
-                x86_64)
-                  archSpecificArgs=(-enable-kvm -append "console=ttyS0")
-                  kernelImageFile="bzImage"
-                  ;;
-                *)
-                  archSpecificArgs=()
-                  kernelImageFile="Image"
-                  ;;
-              esac
-
-              sudo ${pkgs.qemu}/bin/qemu-system-$arch \
-                -m 4G \
-                -smp cores=4 \
-                -kernel "$kernel/$kernelImageFile" \
-                -initrd "$initrd"/initrd.gz \
-                -device e1000,netdev=net0 \
-                -netdev user,id=net0,hostfwd=::${vmSshPort}-:22 \
-                -nographic \
-                "''${archSpecificArgs[@]}"
-            '';
-          test-qemu = pkgs.writeScriptBin "test-qemu" ''
-            #!/usr/bin/env sh
-            ssh="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 -p ${vmSshPort}"
-
-            # Wait for the qemu virtual machine to start...
-            for i in $(seq 1 12); do
-              [ $i -gt 1 ] && sleep 5;
-              $ssh true && break;
-            done;
-
-            # Show uname
-            $ssh uname -a
-            # Copy tracexec
-            export NIX_SSHOPTS="-p ${vmSshPort} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-            # Try to load eBPF module:
-            test_exe="$1"
-            package="$2"
-            case "$test_exe" in
-              tracexec) : ;;
-              *)
-                echo "Unrecognized executable!"
-                exit 1
-                ;;
-            esac
-            if [ -z "$package" ]; then
-              echo "Missing package path!"
-              exit 1
-            fi
-            ${pkgs.nix}/bin/nix copy --to ssh://root@127.0.0.1 "$package"
-            $ssh "$package"/bin/tracexec ebpf log -- ls
-            exit $?
-          '';
-
-          ukci =
-            let
               platforms = lib.concatMapStringsSep " " (
                 { name, targetSystem, test_exe, testPackage, ... }:
                 "${name}:${targetSystem}:${test_exe}:${testPackage}"
               ) kernels;
+              defaultPackage =
+                if kernels == [ ] then
+                  ""
+                else
+                  (builtins.head kernels).testPackage;
             in
-            pkgs.writeScriptBin "ukci" ''
-              #!/usr/bin/env bash
+            let
+              runQemuDrv = pkgs.writeScriptBin runQemuName ''
+                #!/usr/bin/env bash
 
-              set -e
+                case "$1" in
+                  ${shellCases}
+                  *)
+                    echo "Invalid argument!"
+                    exit 1
+                esac
 
-              if ! [[ "$(whoami)" == root ]]; then
-                sudo "$0"
+                case "$arch" in
+                  aarch64)
+                    archSpecificArgs=(-machine virt -cpu neoverse-n2 -append "console=ttyAMA0")
+                    kernelImageFile="Image"
+                    ;;
+                  x86_64)
+                    archSpecificArgs=(-enable-kvm -append "console=ttyS0")
+                    kernelImageFile="bzImage"
+                    ;;
+                  *)
+                    archSpecificArgs=()
+                    kernelImageFile="Image"
+                    ;;
+                esac
+
+                sudo ${pkgs.qemu}/bin/qemu-system-$arch \
+                  -m 4G \
+                  -smp cores=4 \
+                  -kernel "$kernel/$kernelImageFile" \
+                  -initrd "$initrd"/initrd.gz \
+                  -device e1000,netdev=net0 \
+                  -netdev user,id=net0,hostfwd=::${vmSshPort}-:22 \
+                  -nographic \
+                  "''${archSpecificArgs[@]}"
+              '';
+              testQemuDrv = pkgs.writeScriptBin testQemuName ''
+                #!/usr/bin/env sh
+                ssh="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 -p ${vmSshPort}"
+
+                # Wait for the qemu virtual machine to start...
+                for i in $(seq 1 12); do
+                  [ $i -gt 1 ] && sleep 5;
+                  $ssh true && break;
+                done;
+
+                # Show uname
+                $ssh uname -a
+                # Copy tracexec
+                export NIX_SSHOPTS="-p ${vmSshPort} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+                # Try to load eBPF module:
+                test_exe="$1"
+                package="$2"
+                if [ -z "$package" ]; then
+                  package="${defaultPackage}"
+                fi
+                case "$test_exe" in
+                  tracexec) : ;;
+                  *)
+                    echo "Unrecognized executable!"
+                    exit 1
+                    ;;
+                esac
+                if [ -z "$package" ]; then
+                  echo "Missing package path!"
+                  exit 1
+                fi
+                ${pkgs.nix}/bin/nix copy --to ssh://root@127.0.0.1 "$package"
+                $ssh "$package"/bin/tracexec ebpf log -- ls
                 exit $?
-              fi
+              '';
+              ukciDrv = pkgs.writeScriptBin ukciName ''
+                #!/usr/bin/env bash
 
-              ssh="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 -p ${vmSshPort}"
-              for platform in ${platforms}; do
-                IFS=: read -r kernel target_system test_exe package <<< "$platform"
-                ${run-qemu}/bin/run-qemu "$kernel" &
-                ${test-qemu}/bin/test-qemu "$test_exe" "$package"
-                $ssh poweroff -f || true
-                wait < <(jobs -p)
-              done;
-            '';
-        };
+                set -e
+
+                if ! [[ "$(whoami)" == root ]]; then
+                  sudo "$0"
+                  exit $?
+                fi
+
+                ssh="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 -p ${vmSshPort}"
+                for platform in ${platforms}; do
+                  IFS=: read -r kernel target_system test_exe package <<< "$platform"
+                  ${runQemuDrv}/bin/${runQemuName} "$kernel" &
+                  ${testQemuDrv}/bin/${testQemuName} "$test_exe" "$package"
+                  $ssh poweroff -f || true
+                  wait < <(jobs -p)
+                done;
+              '';
+            in
+            {
+              run-qemu = runQemuDrv;
+              test-qemu = testQemuDrv;
+              ukci = ukciDrv;
+            };
+        in
+        let
+          nativeScripts = mkScripts { kernels = kernelsNative; };
+          mkTargetScriptAttrs =
+            targetSystem:
+            let
+              arch = getArch targetSystem;
+              scripts = mkScripts {
+                nameSuffix = "-${arch}";
+                kernels = mkKernels [ targetSystem ];
+              };
+            in
+            lib.listToAttrs [
+              (lib.nameValuePair "run-qemu-${arch}" scripts.run-qemu)
+              (lib.nameValuePair "test-qemu-${arch}" scripts.test-qemu)
+              (lib.nameValuePair "ukci-${arch}" scripts.ukci)
+            ];
+          perTargetScripts =
+            lib.foldl' lib.recursiveUpdate { } (map mkTargetScriptAttrs targetSystemsAll);
+        in
+        rec
+          {
+            inherit (nativeScripts) run-qemu test-qemu ukci;
+          }
+          // perTargetScripts;
     };
 }
