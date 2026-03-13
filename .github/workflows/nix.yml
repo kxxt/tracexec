@@ -42,14 +42,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: nixbuild/nix-quick-install-action@v30
+      - &install-nix
+        uses: nixbuild/nix-quick-install-action@v30
         with:
           nix_conf: |
             keep-env-derivations = true
             keep-outputs = true
             http2 = false
           
-      - name: Setup Attic cache (Writable)
+      - &attic-writable
+        name: Setup Attic cache (Writable)
         uses: ryanccn/attic-action@v0.4.1
         if: github.event.pull_request.head.repo.fork != true
         with:
@@ -57,7 +59,8 @@ jobs:
           cache: tracexec
           token: ${{ secrets.NIX_CACHE_JWT }}
       
-      - name: Setup Attic cache (ReadOnly)
+      - &attic-rdonly
+        name: Setup Attic cache (ReadOnly)
         uses: ryanccn/attic-action@v0.4.1
         if: github.event.pull_request.head.repo.fork == true
         with:
@@ -65,10 +68,26 @@ jobs:
           cache: tracexec
           skip-push: true
 
-      # Build and test tracexec
-      # Also builds kernels
-      - run: nix build
       # Run Userspace<->Kernel CI
       - run: nix run '.#ukci'
       - name: Add gc root for UKCI
         run: ln -s "$(nix eval --raw '.#ukci')" /nix/var/nix/gcroots/ukci
+
+  nix-cross:
+    strategy:
+      matrix:
+        arch: [riscv64]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - *install-nix
+          
+      - *attic-writable
+      
+      - *attic-rdonly
+
+      # Run Userspace<->Kernel CI
+      - run: nix run '.#ukci-${{ matrix.arch }}'
+      - name: Add gc root for UKCI
+        run: ln -s "$(nix eval --raw '.#ukci-${{ matrix.arch }}')" /nix/var/nix/gcroots/ukci
