@@ -38,17 +38,29 @@
             pkgs,
             ...
           }:
-          {
-            packages.default = self'.packages.tracexec;
-            devShells.default = pkgs.mkShell {
+          let
+            defaultShell = pkgs.mkShell {
               name = "Development Shell";
               packages = with pkgs; [
                 strace
                 nixpkgs-fmt
+                self'.packages.ukci
                 self'.packages.run-qemu
                 self'.packages.test-qemu
               ];
               shellHook = ''export TRACEXEC_LOGLEVEL=debug'';
+            };
+          in
+          {
+            packages.default = self'.packages.tracexec;
+            devShells.default = defaultShell;
+            devShells.extended = pkgs.mkShell {
+              inputsFrom = [ defaultShell ];
+              packages = [ 
+                self'.packages.ukci-aarch64
+                self'.packages.run-qemu-aarch64
+                self'.packages.test-qemu-aarch64
+              ];
             };
           };
       }
