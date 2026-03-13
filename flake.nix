@@ -36,6 +36,7 @@
             config,
             lib,
             pkgs,
+            system,
             ...
           }:
           let
@@ -56,10 +57,18 @@
             devShells.default = defaultShell;
             devShells.extended = pkgs.mkShell {
               inputsFrom = [ defaultShell ];
-              packages = [ 
+              packages = lib.optionals (system != "aarch64-linux") [ 
                 self'.packages.ukci-aarch64
                 self'.packages.run-qemu-aarch64
                 self'.packages.test-qemu-aarch64
+              ] ++ lib.optionals (system != "x86_64-linux") [ 
+                self'.packages.ukci-x86_64
+                self'.packages.run-qemu-x86_64
+                self'.packages.test-qemu-x86_64
+              ] ++ lib.optionals (system != "riscv64-linux") [ 
+                self'.packages.ukci-riscv64
+                self'.packages.run-qemu-riscv64
+                self'.packages.test-qemu-riscv64
               ];
             };
           };

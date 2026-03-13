@@ -29,6 +29,7 @@ localFlake:
               builtins.elemAt split 0;
           isAarch64 = system == "aarch64-linux";
           isX86_64 = system == "x86_64-linux";
+          isRiscv64 = system == "riscv64-linux";
           gnutlsOverlay = final: prev: {
             gnutls = prev.gnutls.overrideAttrs (prevAttrs: {
               postPatch = (prevAttrs.postPatch or "") + ''
@@ -40,9 +41,11 @@ localFlake:
           nativeTargetSystems = [ system ];
           crossTargetSystems =
             if isX86_64 then
-              [ "aarch64-linux" ]
+              [ "aarch64-linux" "riscv64-linux" ]
             else if isAarch64 then
-              [ "x86_64-linux" ]
+              [ "x86_64-linux" "riscv64-linux" ]
+            else if isRiscv64 then
+              [ "x86_64-linux" "aarch64-linux" ]
             else
               [ ];
           pkgsForTarget =
@@ -52,7 +55,9 @@ localFlake:
             else if targetSystem == "x86_64-linux" then
               pkgsWithOverlay.pkgsCross.gnu64
             else if targetSystem == "aarch64-linux" then
-              pkgs.pkgsCross.aarch64-multiplatform
+              pkgsWithOverlay.pkgsCross.aarch64-multiplatform
+            else if targetSystem == "riscv64-linux" then
+              pkgsWithOverlay.pkgsCross.riscv64
             else
               builtins.abort "Unsupported cross target ${targetSystem} on host ${system}";
           vmSshPort = "10022";
@@ -61,6 +66,7 @@ localFlake:
             let
               isTargetAarch64 = targetSystem == "aarch64-linux";
               isTargetX86_64 = targetSystem == "x86_64-linux";
+              isTargetRiscv64 = targetSystem == "riscv64-linux";
             in
             (lib.optionals isTargetX86_64 [
               {
@@ -284,6 +290,10 @@ localFlake:
                     archSpecificArgs=(-machine virt -cpu neoverse-n2 -append "console=ttyAMA0")
                     kernelImageFile="Image"
                     ;;
+                  riscv64)
+                    archSpecificArgs=(-machine virt -append "console=ttyS0 earlycon")
+                    kernelImageFile="Image"
+                    ;;
                   x86_64)
                     archSpecificArgs=(-enable-kvm -append "console=ttyS0")
                     kernelImageFile="bzImage"
@@ -293,6 +303,8 @@ localFlake:
                     kernelImageFile="Image"
                     ;;
                 esac
+
+                echo "Booting $kernel with $initrd in qemu"
 
                 sudo ${pkgs.qemu}/bin/qemu-system-$arch \
                   -m 4G \
