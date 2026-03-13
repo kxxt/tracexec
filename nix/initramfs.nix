@@ -118,6 +118,10 @@ let
     ifconfig eth0 10.0.2.15
     ip route add default via 10.0.2.2
 
+    # Enable eBPF JIT, unfortunately riscv64 does not select ARCH_WANT_DEFAULT_BPF_JIT
+    # on 6.1lts kernel, thus we cannot enable CONFIG_BPF_JIT_DEFAULT_ON for it.
+    echo 1 > /proc/sys/net/core/bpf_jit_enable
+
     mkdir -p /run/booted-system/kernel-modules/lib/modules/${kernel.modDirVersion}/build
     tar -xf /sys/kernel/kheaders.tar.xz -C /run/booted-system/kernel-modules/lib/modules/${kernel.modDirVersion}/build
 

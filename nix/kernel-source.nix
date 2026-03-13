@@ -73,6 +73,27 @@ in
     let
       isAarch64 = pkgs.stdenv.hostPlatform.system == "aarch64-linux";
       isX86_64 = pkgs.stdenv.hostPlatform.system == "x86_64-linux";
+      isRiscv64 = pkgs.stdenv.hostPlatform.system == "riscv64-linux";
+      riscv64SpecificConfig = lib.optionalAttrs isRiscv64 (
+        with lib.kernel;
+        with (lib.kernel.whenHelpers version);
+        {
+          # FUNCTION_TRACER depends on !PREEMPT on older versions of riscv kernels
+          PREEMPT = if lib.versionAtLeast version "6.18" then yes else no; 
+
+          PCIEPORTBUS = yes;
+          PCI_HOST_GENERIC = yes;
+          HIGH_RES_TIMERS = yes;
+          
+          SERIAL_OF_PLATFORM = yes;
+          # Necessary to get console working on 6.1. Thanks to ziyao!
+          SOC_VIRT = whenOlder "6.6" yes;
+
+          # Workaround RISC-V specific quirk https://github.com/nixos/nixpkgs/issues/447117
+          KERNEL_UNCOMPRESSED = whenAtLeast "6.12" yes;
+          KERNEL_GZIP = whenAtLeast "6.12" no;
+        }
+      );
       aarch64SpecificConfig = lib.optionalAttrs isAarch64 (
         with lib.kernel;
         {
@@ -146,7 +167,9 @@ in
           IRQSOFF_TRACER = yes;
 
           KGDB = yes;
-          UBSAN = yes;
+
+          # UBSAN is buggy on at least 6.1 and 6.6 for riscv64
+          UBSAN = if !isRiscv64 then yes else no;
           BUG_ON_DATA_CORRUPTION = yes;
           SCHED_STACK_END_CHECK = yes;
           "64BIT" = yes;
@@ -217,7 +240,8 @@ in
           KALLSYMS_ALL = yes;
         }
         // x86_64SpecificConfig
-        // aarch64SpecificConfig;
+        // aarch64SpecificConfig
+        // riscv64SpecificConfig;
 
       # Flags that get passed to generate-config.pl
       generateConfigFlags = {
