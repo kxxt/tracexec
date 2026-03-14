@@ -41,11 +41,20 @@ localFlake:
           nativeTargetSystems = [ system ];
           crossTargetSystems =
             if isX86_64 then
-              [ "aarch64-linux" "riscv64-linux" ]
+              [
+                "aarch64-linux"
+                "riscv64-linux"
+              ]
             else if isAarch64 then
-              [ "x86_64-linux" "riscv64-linux" ]
+              [
+                "x86_64-linux"
+                "riscv64-linux"
+              ]
             else if isRiscv64 then
-              [ "x86_64-linux" "aarch64-linux" ]
+              [
+                "x86_64-linux"
+                "aarch64-linux"
+              ]
             else
               [ ];
           pkgsForTarget =
@@ -104,6 +113,7 @@ localFlake:
             ])
             ++ [
               {
+                # MSKV for riscv64 (theoretical MSKV is 5.19 but kernel crashed after loading eBPF prog)
                 name = "6.1lts";
                 tag = "6.1.165";
                 source = "mirror";
@@ -140,6 +150,9 @@ localFlake:
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
+            ]
+            ++ (lib.optionals (!isTargetRiscv64) [
+              # BPF task local storage is broken on RISC-V after 6.19
               {
                 name = "6.19";
                 tag = "6.19.6";
@@ -160,12 +173,11 @@ localFlake:
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
-            ];
+            ]);
           sourcesForTargets =
             targetSystems:
             lib.concatMap (
-              targetSystem:
-              map (source: source // { inherit targetSystem; }) (sourcesFor targetSystem)
+              targetSystem: map (source: source // { inherit targetSystem; }) (sourcesFor targetSystem)
             ) targetSystems;
           nixpkgs = localFlake.nixpkgs;
           tracexecFor =
@@ -174,7 +186,8 @@ localFlake:
               lib = targetPkgs.lib;
               pkgs = targetPkgs;
               inherit (localFlake) crane;
-            }) { };
+            })
+              { };
           mkKernels =
             targetSystems:
             let
@@ -211,11 +224,7 @@ localFlake:
                   inherit configfile nixpkgs;
                 };
                 buildInitramfs = targetPkgs.callPackage ./initramfs.nix { };
-                kernelName =
-                  if useArchSuffix then
-                    "${source.name}-${targetArch}"
-                  else
-                    source.name;
+                kernelName = if useArchSuffix then "${source.name}-${targetArch}" else source.name;
                 testPackage = tracexecFor targetPkgs;
               in
               {
@@ -265,14 +274,16 @@ localFlake:
                 ''
               ) kernels;
               platforms = lib.concatMapStringsSep " " (
-                { name, targetSystem, test_exe, testPackage, ... }:
+                {
+                  name,
+                  targetSystem,
+                  test_exe,
+                  testPackage,
+                  ...
+                }:
                 "${name}:${targetSystem}:${test_exe}:${testPackage}"
               ) kernels;
-              defaultPackage =
-                if kernels == [ ] then
-                  ""
-                else
-                  (builtins.head kernels).testPackage;
+              defaultPackage = if kernels == [ ] then "" else (builtins.head kernels).testPackage;
             in
             let
               runQemuDrv = pkgs.writeScriptBin runQemuName ''
@@ -393,13 +404,11 @@ localFlake:
               (lib.nameValuePair "test-qemu-${arch}" scripts.test-qemu)
               (lib.nameValuePair "ukci-${arch}" scripts.ukci)
             ];
-          perTargetScripts =
-            lib.foldl' lib.recursiveUpdate { } (map mkTargetScriptAttrs targetSystemsAll);
+          perTargetScripts = lib.foldl' lib.recursiveUpdate { } (map mkTargetScriptAttrs targetSystemsAll);
         in
-        rec
-          {
-            inherit (nativeScripts) run-qemu test-qemu ukci;
-          }
-          // perTargetScripts;
+        rec {
+          inherit (nativeScripts) run-qemu test-qemu ukci;
+        }
+        // perTargetScripts;
     };
 }
