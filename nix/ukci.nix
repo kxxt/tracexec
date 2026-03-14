@@ -232,7 +232,7 @@ localFlake:
                     strace = "${targetPkgs.strace}/bin/strace";
                     nix-store = "${targetPkgs.nix}/bin/nix";
                   };
-                  storePaths = [ targetPkgs.foot.terminfo ];
+                  storePaths = [ ];
                 };
               }
             ) sources;
