@@ -1,5 +1,5 @@
 { pkgs, lib, crane }:
-{ cargoExtraArgs ? "--locked --no-default-features -F recommended" }:
+{ cargoExtraArgs ? "--locked --no-default-features -F recommended -F ebpf-debug" }:
 let
   craneLib = crane.mkLib pkgs;
   isLibbpfSys =
