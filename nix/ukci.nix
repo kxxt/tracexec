@@ -76,6 +76,12 @@ localFlake:
               isTargetAarch64 = targetSystem == "aarch64-linux";
               isTargetX86_64 = targetSystem == "x86_64-linux";
               isTargetRiscv64 = targetSystem == "riscv64-linux";
+              riscv64BpfLocalStorageFix = {
+                # BPF task local storage is broken on RISC-V after 6.19.
+                # I have posted this fix to mailing list.
+                name = "riscv64-bpf-local-storage-fix";
+                patch = ./patches/6.19-riscv64-fix-task-local-storage.patch;
+              };
             in
             (lib.optionals isTargetX86_64 [
               {
@@ -150,9 +156,6 @@ localFlake:
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
-            ]
-            ++ (lib.optionals (!isTargetRiscv64) [
-              # BPF task local storage is broken on RISC-V after 6.19
               {
                 name = "6.19";
                 tag = "6.19.6";
@@ -160,7 +163,7 @@ localFlake:
                 source = "mirror";
                 test_exe = "tracexec";
                 sha256 = "sha256-TZ8/9zIU9owBlO8C25ykt7pxMlOsEEVEHU6fNSvCLhQ=";
-                kernelPatches = [ ];
+                kernelPatches = [ riscv64BpfLocalStorageFix ];
                 extraMakeFlags = [ ];
               }
               {
@@ -170,10 +173,11 @@ localFlake:
                 source = "linus";
                 test_exe = "tracexec";
                 sha256 = "sha256-BlKlJdEYvwDN6iWJfuOvd1gcm6lN6McJ/vmMwOmzHdc=";
-                kernelPatches = [ ];
+                # Same as 6.19
+                kernelPatches = [ riscv64BpfLocalStorageFix ];
                 extraMakeFlags = [ ];
               }
-            ]);
+            ];
           sourcesForTargets =
             targetSystems:
             lib.concatMap (

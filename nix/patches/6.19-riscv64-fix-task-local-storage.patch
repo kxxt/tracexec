@@ -1,0 +1,83 @@
+From 4019db0f9ec1af0850f33f4ce23129012318be11 Mon Sep 17 00:00:00 2001
+From: Levi Zim <rsworktech@outlook.com>
+Date: Sat, 14 Mar 2026 18:11:43 +0800
+Subject: [PATCH] bpf: do not use kmalloc_nolock when !HAVE_CMPXCHG_DOUBLE
+
+kmalloc_nolock always fails for architectures that lack cmpxchg16b.
+For example, this causes bpf_task_storage_get with flag
+BPF_LOCAL_STORAGE_GET_F_CREATE to fails on riscv64 6.19 kernel.
+
+Fix it by enabling use_kmalloc_nolock only when HAVE_CMPXCHG_DOUBLE.
+But leave the PREEMPT_RT case as is because it requires kmalloc_nolock
+for correctness. Add a comment about this limitation that architecture's
+lack of CMPXCHG_DOUBLE combined with PREEMPT_RT could make
+bpf_local_storage_alloc always fail.
+
+Fixes: f484f4a3e058 ("bpf: Replace bpf memory allocator with kmalloc_nolock() in local storage")
+Cc: stable@vger.kernel.org
+Signed-off-by: Levi Zim <rsworktech@outlook.com>
+---
+ include/linux/bpf_local_storage.h | 1 +
+ kernel/bpf/bpf_cgrp_storage.c     | 3 ++-
+ kernel/bpf/bpf_local_storage.c    | 4 ++++
+ kernel/bpf/bpf_task_storage.c     | 3 ++-
+ 4 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/include/linux/bpf_local_storage.h b/include/linux/bpf_local_storage.h
+index 8157e8da61d40..d8f2c5d63a80e 100644
+--- a/include/linux/bpf_local_storage.h
++++ b/include/linux/bpf_local_storage.h
+@@ -18,6 +18,7 @@
+ #include <asm/rqspinlock.h>
+ 
+ #define BPF_LOCAL_STORAGE_CACHE_SIZE	16
++#define KMALLOC_NOLOCK_SUPPORTED IS_ENABLED(CONFIG_HAVE_CMPXCHG_DOUBLE)
+ 
+ struct bpf_local_storage_map_bucket {
+ 	struct hlist_head list;
+diff --git a/kernel/bpf/bpf_cgrp_storage.c b/kernel/bpf/bpf_cgrp_storage.c
+index c2a2ead1f466d..cd18193c44058 100644
+--- a/kernel/bpf/bpf_cgrp_storage.c
++++ b/kernel/bpf/bpf_cgrp_storage.c
+@@ -114,7 +114,8 @@ static int notsupp_get_next_key(struct bpf_map *map, void *key, void *next_key)
+ 
+ static struct bpf_map *cgroup_storage_map_alloc(union bpf_attr *attr)
+ {
+-	return bpf_local_storage_map_alloc(attr, &cgroup_cache, true);
++	return bpf_local_storage_map_alloc(attr, &cgroup_cache,
++					   KMALLOC_NOLOCK_SUPPORTED);
+ }
+ 
+ static void cgroup_storage_map_free(struct bpf_map *map)
+diff --git a/kernel/bpf/bpf_local_storage.c b/kernel/bpf/bpf_local_storage.c
+index 9c96a4477f81a..a6c240da87668 100644
+--- a/kernel/bpf/bpf_local_storage.c
++++ b/kernel/bpf/bpf_local_storage.c
+@@ -893,6 +893,10 @@ bpf_local_storage_map_alloc(union bpf_attr *attr,
+ 	/* In PREEMPT_RT, kmalloc(GFP_ATOMIC) is still not safe in non
+ 	 * preemptible context. Thus, enforce all storages to use
+ 	 * kmalloc_nolock() when CONFIG_PREEMPT_RT is enabled.
++	 *
++	 * However, kmalloc_nolock would fail on architectures that do not
++	 * have CMPXCHG_DOUBLE. On such architectures with PREEMPT_RT,
++	 * bpf_local_storage_alloc would always fail.
+ 	 */
+ 	smap->use_kmalloc_nolock = IS_ENABLED(CONFIG_PREEMPT_RT) ? true : use_kmalloc_nolock;
+ 
+diff --git a/kernel/bpf/bpf_task_storage.c b/kernel/bpf/bpf_task_storage.c
+index 605506792b5b4..6e8597edea314 100644
+--- a/kernel/bpf/bpf_task_storage.c
++++ b/kernel/bpf/bpf_task_storage.c
+@@ -212,7 +212,8 @@ static int notsupp_get_next_key(struct bpf_map *map, void *key, void *next_key)
+ 
+ static struct bpf_map *task_storage_map_alloc(union bpf_attr *attr)
+ {
+-	return bpf_local_storage_map_alloc(attr, &task_cache, true);
++	return bpf_local_storage_map_alloc(attr, &task_cache,
++					   KMALLOC_NOLOCK_SUPPORTED);
+ }
+ 
+ static void task_storage_map_free(struct bpf_map *map)
+-- 
+2.53.0
+
