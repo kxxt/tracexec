@@ -239,19 +239,21 @@ localFlake:
                     # tracexec = "${self'.packages.tracexec}/bin/tracexec";
                     # tracexec_no_rcu_kfuncs = "${self'.packages.tracexec_no_rcu_kfuncs}/bin/tracexec";
                     strace = "${targetPkgs.strace}/bin/strace";
-                    bpftrace = "${targetPkgs.bpftrace.override {
-                        bcc = (targetPkgs.bcc.override {
-                          luajit = null;
-                        }).overrideAttrs (old: {
-                          buildInputs = builtins.filter
-                            (pkg: (pkg.pname or "") != "luajit")
-                            old.buildInputs;
+                    # bpftrace is very useful for debugging nasty kernel bpf bugs.
+                    # Warning: cross-compiling it would take some time so disable it by default.
+                    # bpftrace = "${targetPkgs.bpftrace.override {
+                    #     bcc = (targetPkgs.bcc.override {
+                    #       luajit = null;
+                    #     }).overrideAttrs (old: {
+                    #       buildInputs = builtins.filter
+                    #         (pkg: (pkg.pname or "") != "luajit")
+                    #         old.buildInputs;
 
-                          nativeBuildInputs = builtins.filter
-                            (pkg: (pkg.pname or "") != "luajit")
-                            (old.nativeBuildInputs or []);
-                        });
-                    }}/bin/bpftrace";
+                    #       nativeBuildInputs = builtins.filter
+                    #         (pkg: (pkg.pname or "") != "luajit")
+                    #         (old.nativeBuildInputs or []);
+                    #     });
+                    # }}/bin/bpftrace";
                     nix-store = "${targetPkgs.nix}/bin/nix";
                   };
                   storePaths = [ ];
