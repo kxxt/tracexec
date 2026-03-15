@@ -91,7 +91,6 @@ use tracexec_core::{
     FileDescriptorInfo,
     cached_string,
     diff_env,
-    parse_failiable_envp,
   },
   pty,
   timestamp::ts_from_boot_ns,
@@ -133,8 +132,10 @@ use crate::{
   },
   event::EventStorage,
   parser::{
+    process_argv,
     process_base_filename,
     process_cred,
+    process_envp,
     process_filename,
   },
   probe::{
@@ -249,21 +250,25 @@ impl EbpfTracer {
             if event.ret != 0 && self.modifier.successful_only {
               return 0;
             }
+            let eflags = BpfEventFlags::from_bits_truncate(header.flags);
             let mut storage = event_storage.borrow_mut();
             let mut storage = storage.remove(&header.eid).unwrap();
-            let envp = storage.strings.split_off(event.count[0] as usize);
-            let argv = storage.strings;
+            let mut has_dash_env = false;
+            let envp = process_envp(
+              eflags,
+              storage.strings.split_off(event.count[0] as usize),
+              &mut has_dash_env,
+            );
+            let argv = process_argv(eflags, storage.strings);
             let cwd: OutputMsg = storage.paths.remove(&AT_FDCWD).unwrap().into();
-            let eflags = BpfEventFlags::from_bits_truncate(header.flags);
             // TODO: How should we handle possible truncation?
             let base_filename = process_base_filename(eflags, &event);
             let filename = process_filename(base_filename, &event, &cwd, &storage.fdinfo_map);
-            let (envp, has_dash_env) = parse_failiable_envp(envp);
             let cred = process_cred(eflags, &event, storage.groups);
             let exec_data = ExecData::new(
               filename,
-              Ok(argv),
-              Ok(envp),
+              argv,
+              envp,
               has_dash_env,
               cred,
               cwd,
