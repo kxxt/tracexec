@@ -9,6 +9,8 @@ char LICENSE[] SEC("license") = "GPL";
 
 const u32 BPF_BITS_ITER_MAX_BYTES = 512;
 const u32 BPF_BITS_ITER_MAX_BITS = BPF_BITS_ITER_MAX_BYTES * 8;
+const u32 READ_ARG_STRINGS = 0;
+const u32 READ_ENV_STRINGS = 1;
 
 static const struct exec_event empty_event = {};
 static u64 event_counter = 0;
@@ -291,14 +293,22 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   struct reader_context reader_ctx;
   reader_ctx.event = event;
   reader_ctx.ptr = ctx->argv;
-  reader_ctx.index = 0;
+  reader_ctx.index = READ_ARG_STRINGS;
   reader_ctx.is_compat = ctx->is_compat;
   // bpf_loop allows 1 << 23 (~8 million) loops, otherwise we cannot achieve it
-  bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
+  ret = bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
+  if (ret < 0) {
+    debug("Failed to iter over all args: %d!", ret);
+    event->header.flags |= LOOP_FAIL;
+  }
   // Read envp
   reader_ctx.ptr = ctx->envp;
-  reader_ctx.index = 1;
-  bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
+  reader_ctx.index = READ_ENV_STRINGS;
+  ret = bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
+  if (ret < 0) {
+    debug("Failed to iter over all envs: %d!", ret);
+    event->header.flags |= LOOP_FAIL;
+  }
   // Read file descriptors
   read_fds(event);
   // Read CWD
@@ -474,8 +484,7 @@ int BPF_PROG(sys_execveat_fentry, struct pt_regs *regs, int ret) {
   trace_exec_common(&common_ctx);
   pid_t pid = (pid_t)bpf_get_current_pid_tgid();
   struct exec_event *event = bpf_task_storage_get(
-      &execs, (struct task_struct *)bpf_get_current_task_btf(), NULL,
-      BPF_ANY);
+      &execs, (struct task_struct *)bpf_get_current_task_btf(), NULL, BPF_ANY);
   if (!event || !ctx)
     return 0;
 
@@ -1021,6 +1030,15 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   if (ret < 0) {
     event->header.flags |= PTR_READ_FAILURE;
     debug("Failed to read pointer to arg: %d", ret);
+    if (ctx->index == READ_ARG_STRINGS) {
+      event->header.flags |= ARGV_READ_ERR;
+    } else if (ctx->index == READ_ENV_STRINGS) {
+      event->header.flags |= ENV_READ_ERR;
+    }
+    // Because we do not know if the pointer is NULL,
+    // we don't know if the array ends here.
+    // End the iteration to avoid getting garbage data
+    // if the array actually ends here.
     return 1;
   }
   if (argp == NULL) {

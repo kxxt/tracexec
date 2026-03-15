@@ -89,6 +89,12 @@ enum exec_event_flags {
   POS_READ_ERR = 131072,
   // cred read failure
   CRED_READ_ERR = 262144,
+  // env read failure
+  // (Failed to read the whole envp)
+  ENV_READ_ERR = 524288,
+  // args read failure
+  // (Failed to read the whole argv)
+  ARGV_READ_ERR = 1048576,
 };
 
 enum event_type {
