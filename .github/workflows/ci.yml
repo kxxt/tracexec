@@ -126,13 +126,17 @@ jobs:
         with:
           add-job-id-key: false
           key: coverage
-      - name: Generate code coverage
+      - name: Generate code coverage (non-root)
         run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+      - name: Run root-only tests
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path root-lcov.info -- --ignored
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # required for private repos or protected branches
-          files: lcov.info
+          files: lcov.info,root-lcov.info
           fail_ci_if_error: true
 
   check_and_test:
@@ -248,3 +252,9 @@ jobs:
         run: cargo test --workspace --target ${{ matrix.target }} ${{ matrix.args }}
         env:
           RUST_BACKTRACE: full
+      - name: Run root-only tests
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cargo test --workspace --target ${{ matrix.target }} ${{ matrix.args }} -- --ignored
+        env:
+          RUST_BACKTRACE: full
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E
