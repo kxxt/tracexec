@@ -44,24 +44,24 @@ pub type ParentEventId = ParentEvent<EventId>;
 ///
 /// Consider the following two situations:
 ///
-/// ```ignore
-///           pid 2
-///          Proc A
-///            │  fork   pid 3
-///  pid 2     ├────────►Proc A
-/// Proc C exec│           │      pid 3
-///   ┌───◄────┘           │exec Proc B
-///   │        *           └───►────┐
-///   │*********                    │
-///   │ alt exec                    │
-/// C exec Proc D
-///
-/// We will derive the following relations:
-///
-/// Unknown ?> A
-/// |- A spawns B
-/// |- A becomes C
-///    |- C becomes D
+/// ```text
+/// #           pid 2
+/// #          Proc A
+/// #            │  fork   pid 3
+/// #  pid 2     ├────────►Proc A
+/// # Proc C exec│           │      pid 3
+/// #   ┌───◄────┘           │exec Proc B
+/// #   │        *           └───►────┐
+/// #   │*********                    │
+/// #   │ alt exec                    │
+/// # C exec Proc D
+/// #
+/// # We will derive the following relations:
+/// #
+/// # Unknown ?> A
+/// # |- A spawns B
+/// # |- A becomes C
+/// #    |- C becomes D
 /// ```
 ///
 /// To achieve this, we
