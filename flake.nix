@@ -54,6 +54,7 @@
                 [
                   strace
                   nixfmt
+                  statix
                   config.treefmt.build.wrapper
                   self'.packages.ukci
                   self'.packages.run-qemu
