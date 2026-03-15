@@ -410,6 +410,21 @@ localFlake:
                 if [ -z "$max_parallel" ] || [ "$max_parallel" -lt 1 ]; then
                   max_parallel=1
                 fi
+                if [ -t 1 ]; then
+                  RED="$(printf '\033[31m')"
+                  GREEN="$(printf '\033[32m')"
+                  YELLOW="$(printf '\033[33m')"
+                  BLUE="$(printf '\033[34m')"
+                  BOLD="$(printf '\033[1m')"
+                  RESET="$(printf '\033[0m')"
+                else
+                  RED=""
+                  GREEN=""
+                  YELLOW=""
+                  BLUE=""
+                  BOLD=""
+                  RESET=""
+                fi
                 idx=0
                 for platform in ${platforms}; do
                   IFS=: read -r kernel target_system test_exe package <<< "$platform"
@@ -426,10 +441,15 @@ localFlake:
                     while ! mkdir "$lock_dir" 2>/dev/null; do
                       sleep 0.1
                     done
-                    echo "===> $name (qemu)"
+                    echo "''${BLUE}''${BOLD}===> $name (qemu)''${RESET}"
                     cat "$qemu_log" || true
-                    echo "===> $name (test)"
+                    echo "''${BLUE}''${BOLD}===> $name (test)''${RESET}"
                     cat "$test_log" || true
+                    if [ "$test_status" -ne 0 ]; then
+                      echo "''${RED}''${BOLD}FAIL:''${RESET} ''${name} exited with status ''${test_status}"
+                    else
+                      echo "''${GREEN}''${BOLD}PASS:''${RESET} ''${name}"
+                    fi
                     rmdir "$lock_dir"
                     rm -f "$qemu_log" "$test_log"
                     exit "$test_status"
@@ -450,6 +470,10 @@ localFlake:
                   fi
                   running=$(( running - 1 ))
                 done
+
+                if [ "$status" -ne 0 ]; then
+                  echo "''${YELLOW}''${BOLD}One or more tests failed.''${RESET}"
+                fi
 
                 rm -rf "$logs_dir"
                 exit "$status"
