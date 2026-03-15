@@ -399,36 +399,56 @@ localFlake:
                 fi
 
                 logs_dir="$(mktemp -d)"
-                pids=()
-                names=()
+                lock_dir="$logs_dir/.lock"
+                status=0
+                running=0
+                if command -v nproc >/dev/null 2>&1; then
+                  max_parallel="''${UKCI_MAX_PARALLEL:-$(nproc)}"
+                else
+                  max_parallel="''${UKCI_MAX_PARALLEL:-$(getconf _NPROCESSORS_ONLN)}"
+                fi
+                if [ -z "$max_parallel" ] || [ "$max_parallel" -lt 1 ]; then
+                  max_parallel=1
+                fi
                 idx=0
                 for platform in ${platforms}; do
                   IFS=: read -r kernel target_system test_exe package <<< "$platform"
                   port=$(( ${vmSshPort} + idx ))
                   name="$kernel"
-                  names+=("$name")
                   qemu_log="$logs_dir/$name.qemu.log"
                   test_log="$logs_dir/$name.test.log"
                   (
                     ${runQemuDrv}/bin/${runQemuName} "$kernel" "$port" >"$qemu_log" 2>&1 &
                     qemu_pid=$!
                     ${testQemuDrv}/bin/${testQemuName} "$test_exe" "$package" "$port" "1" >"$test_log" 2>&1
+                    test_status=$?
                     wait "$qemu_pid"
+                    while ! mkdir "$lock_dir" 2>/dev/null; do
+                      sleep 0.1
+                    done
+                    echo "===> $name (qemu)"
+                    cat "$qemu_log" || true
+                    echo "===> $name (test)"
+                    cat "$test_log" || true
+                    rmdir "$lock_dir"
+                    rm -f "$qemu_log" "$test_log"
+                    exit "$test_status"
                   ) &
-                  pids+=($!)
+                  running=$(( running + 1 ))
+                  if [ "$running" -ge "$max_parallel" ]; then
+                    if ! wait -n; then
+                      status=1
+                    fi
+                    running=$(( running - 1 ))
+                  fi
                   idx=$(( idx + 1 ))
                 done;
 
-                status=0
-                for pid in "''${pids[@]}"; do
-                  wait "$pid" || status=$?
-                done
-
-                for name in "''${names[@]}"; do
-                  echo "===> $name (qemu)"
-                  cat "$logs_dir/$name.qemu.log" || true
-                  echo "===> $name (test)"
-                  cat "$logs_dir/$name.test.log" || true
+                while [ "$running" -gt 0 ]; do
+                  if ! wait -n; then
+                    status=1
+                  fi
+                  running=$(( running - 1 ))
                 done
 
                 rm -rf "$logs_dir"
