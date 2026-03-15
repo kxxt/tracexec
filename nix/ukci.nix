@@ -354,9 +354,15 @@ localFlake:
                 port="''${3:-${vmSshPort}}"
                 poweroff="''${4:-0}"
                 ssh="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 -p $port"
+                if [ "$poweroff" = "1" ]; then
+                  cleanup() {
+                    $ssh poweroff -f >/dev/null 2>&1 || true
+                  }
+                  trap cleanup EXIT INT TERM
+                fi
 
                 # Wait for the qemu virtual machine to start...
-                for i in $(seq 1 12); do
+                for i in $(seq 1 100); do
                   [ $i -gt 1 ] && sleep 5;
                   $ssh true && break;
                 done;
@@ -383,9 +389,6 @@ localFlake:
                 ${pkgs.nix}/bin/nix copy --to ssh://root@127.0.0.1 "$package"
                 $ssh "$package"/bin/tracexec ebpf log -- ls
                 status=$?
-                if [ "$poweroff" = "1" ]; then
-                  $ssh poweroff -f || true
-                fi
                 exit "$status"
               '';
               ukciDrv = pkgs.writeScriptBin ukciName ''
@@ -433,11 +436,16 @@ localFlake:
                   qemu_log="$logs_dir/$name.qemu.log"
                   test_log="$logs_dir/$name.test.log"
                   (
+                    set +e
                     ${runQemuDrv}/bin/${runQemuName} "$kernel" "$port" >"$qemu_log" 2>&1 &
                     qemu_pid=$!
-                    ${testQemuDrv}/bin/${testQemuName} "$test_exe" "$package" "$port" "1" >"$test_log" 2>&1
+                    ${pkgs.coreutils}/bin/timeout 600s \
+                      ${testQemuDrv}/bin/${testQemuName} "$test_exe" "$package" "$port" "1" >"$test_log" 2>&1
                     test_status=$?
-                    wait "$qemu_pid"
+                    if kill -0 "$qemu_pid" >/dev/null 2>&1; then
+                      kill "$qemu_pid" >/dev/null 2>&1 || true
+                    fi
+                    wait "$qemu_pid" 2>/dev/null || true
                     while ! mkdir "$lock_dir" 2>/dev/null; do
                       sleep 0.1
                     done
@@ -445,7 +453,9 @@ localFlake:
                     cat "$qemu_log" || true
                     echo "''${BLUE}''${BOLD}===> $name (test)''${RESET}"
                     cat "$test_log" || true
-                    if [ "$test_status" -ne 0 ]; then
+                    if [ "$test_status" -eq 124 ] || [ "$test_status" -eq 137 ]; then
+                      echo "''${RED}''${BOLD}FAIL:''${RESET} ''${name} timed out after 600s"
+                    elif [ "$test_status" -ne 0 ]; then
                       echo "''${RED}''${BOLD}FAIL:''${RESET} ''${name} exited with status ''${test_status}"
                     else
                       echo "''${GREEN}''${BOLD}PASS:''${RESET} ''${name}"
