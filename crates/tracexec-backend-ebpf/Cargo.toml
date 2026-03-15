@@ -40,3 +40,6 @@ procfs = "0.18.0"
 
 [build-dependencies]
 libbpf-cargo = { version = "0.26.1", default-features = false }
+
+[dev-dependencies]
+rusty-fork = { workspace = true }

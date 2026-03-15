@@ -69,3 +69,45 @@ impl From<Path> for OutputMsg {
     })(cached_string(s))
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use tracexec_core::{
+    event::{
+      BpfError,
+      FriendlyError,
+      OutputMsg,
+    },
+    proc::cached_string,
+  };
+
+  use super::Path;
+
+  #[test]
+  fn test_path_into_outputmsg_absolute_and_order() {
+    let path = Path {
+      is_absolute: true,
+      segments: vec![
+        OutputMsg::Ok(cached_string("bin".to_string())),
+        OutputMsg::Ok(cached_string("usr".to_string())),
+      ],
+    };
+    let out: OutputMsg = path.into();
+    assert_eq!(out.as_ref(), "/usr/bin");
+    assert!(matches!(out, OutputMsg::Ok(_)));
+  }
+
+  #[test]
+  fn test_path_into_outputmsg_partial_on_error_segment() {
+    let path = Path {
+      is_absolute: true,
+      segments: vec![
+        OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags)),
+        OutputMsg::Ok(cached_string("tmp".to_string())),
+      ],
+    };
+    let out: OutputMsg = path.into();
+    assert!(out.as_ref().contains("[err: bpf error]"));
+    assert!(matches!(out, OutputMsg::PartialOk(_)));
+  }
+}

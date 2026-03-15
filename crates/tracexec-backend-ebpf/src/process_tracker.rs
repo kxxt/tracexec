@@ -110,3 +110,52 @@ impl ProcessTracker {
       .map(|p| p.associated_events.as_slice())
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use nix::unistd::Pid;
+  use tracexec_core::event::EventId;
+
+  use super::ProcessTracker;
+
+  #[test]
+  fn test_add_remove_and_associate_events() {
+    let mut tracker = ProcessTracker::default();
+    let pid = Pid::from_raw(123);
+    tracker.add(pid);
+    tracker.associate_events(pid, [EventId::new(1), EventId::new(2)]);
+    let events = tracker.maybe_associated_events(pid).unwrap();
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0], EventId::new(1));
+    assert_eq!(events[1], EventId::new(2));
+    tracker.remove(pid);
+    assert!(tracker.maybe_associated_events(pid).is_none());
+  }
+
+  #[test]
+  fn test_force_associate_events_inserts_missing_pid() {
+    let mut tracker = ProcessTracker::default();
+    let pid = Pid::from_raw(77);
+    tracker.force_associate_events(pid, [EventId::new(9)]);
+    let events = tracker.maybe_associated_events(pid).unwrap();
+    assert_eq!(events, [EventId::new(9)]);
+  }
+
+  #[test]
+  fn test_parent_tracker_disjoint_mut_for_two_pids() {
+    let mut tracker = ProcessTracker::default();
+    let p1 = Pid::from_raw(1);
+    let p2 = Pid::from_raw(2);
+    tracker.add(p1);
+    tracker.add(p2);
+    let [t1, t2] = tracker.parent_tracker_disjoint_mut(p1, p2);
+    assert!(t1.is_some());
+    assert!(t2.is_some());
+  }
+
+  #[test]
+  fn test_maybe_remove_missing_pid_is_noop() {
+    let mut tracker = ProcessTracker::default();
+    tracker.maybe_remove(Pid::from_raw(999));
+  }
+}
