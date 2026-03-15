@@ -246,7 +246,7 @@ impl EbpfTracer {
               eid += 1;
             }
             assert_eq!(data.len(), size_of::<exec_event>());
-            let event: exec_event = unsafe { std::ptr::read(data.as_ptr() as *const _) };
+            let event: &exec_event = unsafe { &*(data.as_ptr() as *const _) };
             if event.ret != 0 && self.modifier.successful_only {
               return 0;
             }
@@ -262,9 +262,9 @@ impl EbpfTracer {
             let argv = process_argv(eflags, storage.strings);
             let cwd: OutputMsg = storage.paths.remove(&AT_FDCWD).unwrap().into();
             // TODO: How should we handle possible truncation?
-            let base_filename = process_base_filename(eflags, &event);
-            let filename = process_filename(base_filename, &event, &cwd, &storage.fdinfo_map);
-            let cred = process_cred(eflags, &event, storage.groups);
+            let base_filename = process_base_filename(eflags, event);
+            let filename = process_filename(base_filename, event, &cwd, &storage.fdinfo_map);
+            let cred = process_cred(eflags, event, storage.groups);
             let exec_data = ExecData::new(
               filename,
               argv,
