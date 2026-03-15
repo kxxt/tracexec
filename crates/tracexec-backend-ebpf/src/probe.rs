@@ -63,3 +63,73 @@ pub fn kernel_have_ftrace_with_direct_calls(
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::{
+    collections::HashMap,
+    env,
+  };
+
+  use procfs::ConfigSetting;
+  use rusty_fork::rusty_fork_test;
+
+  use super::{
+    kernel_have_ftrace_with_direct_calls,
+    kernel_have_syscall_wrappers,
+  };
+
+  rusty_fork_test! {
+    #[test]
+    fn test_kernel_have_ftrace_direct_calls_env_force_kprobe() {
+      // SAFETY: we do this in a separate subprocess.
+      unsafe {
+        env::set_var("TRACEXEC_USE_KPROBE", "1");
+        env::remove_var("TRACEXEC_USE_FENTRY");
+      }
+      assert!(!kernel_have_ftrace_with_direct_calls(None));
+    }
+
+    #[test]
+    fn test_kernel_have_ftrace_direct_calls_env_forces_fentry() {
+      // SAFETY: we do this in a separate subprocess.
+      unsafe {
+        env::set_var("TRACEXEC_USE_FENTRY", "1");
+        env::remove_var("TRACEXEC_USE_KPROBE");
+      }
+      assert!(kernel_have_ftrace_with_direct_calls(None));
+    }
+
+    #[test]
+    fn test_kernel_have_ftrace_kconfig_supports_direct_calls() {
+      // SAFETY: we do this in a separate subprocess.
+      unsafe {
+        env::remove_var("TRACEXEC_USE_KPROBE");
+        env::remove_var("TRACEXEC_USE_FENTRY");
+      }
+      let mut configs = HashMap::new();
+      configs.insert(
+        "CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS".to_string(),
+        ConfigSetting::Yes,
+      );
+      assert!(kernel_have_ftrace_with_direct_calls(Some(&configs)));
+    }
+  }
+
+  #[cfg(target_arch = "riscv64")]
+  #[test]
+  fn test_kernel_have_syscall_wrappers_with_kconfig_on_riscv64() {
+    let mut configs = HashMap::new();
+    configs.insert(
+      "CONFIG_ARCH_HAS_SYSCALL_WRAPPER".to_string(),
+      ConfigSetting::Yes,
+    );
+    assert!(kernel_have_syscall_wrappers(Some(&configs)));
+  }
+
+  #[cfg(not(target_arch = "riscv64"))]
+  #[test]
+  fn test_kernel_have_syscall_wrappers_on_non_riscv64() {
+    assert!(kernel_have_syscall_wrappers(None));
+  }
+}

@@ -3122,6 +3122,7 @@ dependencies = [
  "libbpf-sys",
  "nix 0.31.1",
  "procfs",
+ "rusty-fork",
  "tokio",
  "tracexec-core",
  "tracing",
