@@ -22,7 +22,7 @@ use tokio::{
   },
   task::spawn_blocking,
 };
-use tracexec_backend_ebpf::bpf::tracer::BuildEbpfTracer;
+use tracexec_backend_ebpf::tracer::BuildEbpfTracer;
 use tracexec_core::{
   cli::{
     Cli,

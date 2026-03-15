@@ -111,34 +111,34 @@ use tracing::{
   warn,
 };
 
-use super::{
-  BpfError,
-  cached_cow,
-  event::EventStorage,
-  interface::BpfEventFlags,
-  process_tracker::ProcessTracker,
-  skel::{
-    TracexecSystemSkel,
-    TracexecSystemSkelBuilder,
-    types::{
-      event_type,
-      exec_event,
-      exit_event,
-      fd_event,
-      fork_event,
-      path_event,
-      path_segment_event,
-      tracexec_event_header,
-    },
-  },
-  utf8_lossy_cow_from_bytes_with_nul,
-};
+use self::private::Sealed;
 use crate::{
-  bpf::tracer::private::Sealed,
+  bpf::{
+    BpfError,
+    cached_cow,
+    interface::BpfEventFlags,
+    skel::{
+      TracexecSystemSkel,
+      TracexecSystemSkelBuilder,
+      types::{
+        event_type,
+        exec_event,
+        exit_event,
+        fd_event,
+        fork_event,
+        path_event,
+        path_segment_event,
+        tracexec_event_header,
+      },
+    },
+    utf8_lossy_cow_from_bytes_with_nul,
+  },
+  event::EventStorage,
   probe::{
     kernel_have_ftrace_with_direct_calls,
     kernel_have_syscall_wrappers,
   },
+  process_tracker::ProcessTracker,
 };
 
 pub struct EbpfTracer {
