@@ -88,8 +88,6 @@ use tracexec_core::{
   },
   proc::{
     BaselineInfo,
-    Cred,
-    CredInspectError,
     FileDescriptorInfo,
     cached_string,
     diff_env,
@@ -134,6 +132,11 @@ use crate::{
     utf8_lossy_cow_from_bytes_with_nul,
   },
   event::EventStorage,
+  parser::{
+    process_base_filename,
+    process_cred,
+    process_filename,
+  },
   probe::{
     kernel_have_ftrace_with_direct_calls,
     kernel_have_syscall_wrappers,
@@ -253,48 +256,10 @@ impl EbpfTracer {
             let cwd: OutputMsg = storage.paths.remove(&AT_FDCWD).unwrap().into();
             let eflags = BpfEventFlags::from_bits_truncate(header.flags);
             // TODO: How should we handle possible truncation?
-            let base_filename = if eflags.contains(BpfEventFlags::FILENAME_READ_ERR) {
-              OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags))
-            } else {
-              cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.base_filename)).into()
-            };
-            let filename = if !unsafe { event.is_execveat.assume_init() }
-              || base_filename.is_ok_and(|s| s.starts_with('/'))
-            {
-              base_filename
-            } else {
-              match event.fd {
-                AT_FDCWD => cwd.join(base_filename),
-                fd => {
-                  // Check if it is a valid fd
-                  if let Some(fdinfo) = storage.fdinfo_map.get(fd) {
-                    fdinfo.path.clone().join(base_filename)
-                  } else {
-                    OutputMsg::PartialOk(cached_string(format!(
-                      "[err: invalid fd: {fd}]/{base_filename}"
-                    )))
-                  }
-                }
-              }
-            };
+            let base_filename = process_base_filename(eflags, &event);
+            let filename = process_filename(base_filename, &event, &cwd, &storage.fdinfo_map);
             let (envp, has_dash_env) = parse_failiable_envp(envp);
-            let cred = if let Ok(groups) = storage.groups
-              && !eflags.contains(BpfEventFlags::CRED_READ_ERR)
-            {
-              Ok(Cred {
-                groups,
-                uid_real: event.uid,
-                uid_effective: event.euid,
-                uid_saved_set: event.suid,
-                uid_fs: event.fsuid,
-                gid_real: event.gid,
-                gid_effective: event.egid,
-                gid_saved_set: event.sgid,
-                gid_fs: event.fsgid,
-              })
-            } else {
-              Err(CredInspectError::Inspect)
-            };
+            let cred = process_cred(eflags, &event, storage.groups);
             let exec_data = ExecData::new(
               filename,
               Ok(argv),
