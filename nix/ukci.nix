@@ -335,9 +335,22 @@ localFlake:
                     ;;
                 esac
 
+                use_kvm=0
+                for arg in "''${archSpecificArgs[@]}"; do
+                  if [ "$arg" = "-enable-kvm" ]; then
+                    use_kvm=1
+                    break
+                  fi
+                done
+
                 echo "Booting $kernel with $initrd in qemu"
 
-                sudo ${pkgs.qemu}/bin/qemu-system-$arch \
+                qemu_cmd=("${pkgs.qemu}/bin/qemu-system-$arch")
+                if [ "$use_kvm" = "1" ] && [ -e /dev/kvm ] && [ ! -w /dev/kvm ]; then
+                  qemu_cmd=(sudo "''${qemu_cmd[@]}")
+                fi
+
+                "''${qemu_cmd[@]}" \
                   -m 4G \
                   -smp cores=4 \
                   -kernel "$kernel/$kernelImageFile" \
@@ -395,11 +408,6 @@ localFlake:
                 #!/usr/bin/env bash
 
                 set -e
-
-                if ! [[ "$(whoami)" == root ]]; then
-                  sudo "$0"
-                  exit $?
-                fi
 
                 logs_dir="$(mktemp -d)"
                 lock_dir="$logs_dir/.lock"
