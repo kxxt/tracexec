@@ -8,9 +8,6 @@ use tracexec_core::cache::{
   StringCache,
 };
 pub use tracexec_core::event::BpfError;
-pub mod event;
-pub mod process_tracker;
-pub mod tracer;
 
 #[allow(
   clippy::use_self, // remove after https://github.com/libbpf/libbpf-rs/pull/1231 landed
@@ -22,14 +19,14 @@ pub mod skel {
 }
 
 pub mod interface {
-  include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bpf/interface.rs"));
+  include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/interface.rs"));
 }
 
-fn utf8_lossy_cow_from_bytes_with_nul(data: &[u8]) -> Cow<'_, str> {
+pub fn utf8_lossy_cow_from_bytes_with_nul(data: &[u8]) -> Cow<'_, str> {
   String::from_utf8_lossy(CStr::from_bytes_until_nul(data).unwrap().to_bytes())
 }
 
-fn cached_cow(cow: Cow<str>) -> ArcStr {
+pub fn cached_cow(cow: Cow<str>) -> ArcStr {
   match cow {
     Cow::Borrowed(s) => CACHE.get_or_insert(s),
     Cow::Owned(s) => CACHE.get_or_insert_owned(s),

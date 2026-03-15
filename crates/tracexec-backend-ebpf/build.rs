@@ -10,7 +10,7 @@ fn main() {
 
   use libbpf_cargo::SkeletonBuilder;
 
-  const BPF_SRC: &str = "src/bpf/tracexec_system.bpf.c";
+  const BPF_SRC: &str = "src/tracexec_system.bpf.c";
   let manifest_dir =
     PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
   let bpf_src = manifest_dir.join(BPF_SRC);
