@@ -1020,7 +1020,7 @@ static int read_strings(u32 index, struct reader_context *ctx) {
                               (void *)ctx->ptr + index * sizeof(u32));
   if (ret < 0) {
     event->header.flags |= PTR_READ_FAILURE;
-    debug("Failed to read pointer to arg");
+    debug("Failed to read pointer to arg: %d", ret);
     return 1;
   }
   if (argp == NULL) {
