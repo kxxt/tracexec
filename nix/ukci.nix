@@ -314,6 +314,7 @@ localFlake:
                     echo "Invalid argument!"
                     exit 1
                 esac
+                port="''${2:-${vmSshPort}}"
 
                 case "$arch" in
                   aarch64)
@@ -342,13 +343,17 @@ localFlake:
                   -kernel "$kernel/$kernelImageFile" \
                   -initrd "$initrd"/initrd.gz \
                   -device e1000,netdev=net0 \
-                  -netdev user,id=net0,hostfwd=::${vmSshPort}-:22 \
+                  -netdev user,id=net0,hostfwd=::"$port"-:22 \
                   -nographic \
                   "''${archSpecificArgs[@]}"
               '';
               testQemuDrv = pkgs.writeScriptBin testQemuName ''
                 #!/usr/bin/env sh
-                ssh="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 -p ${vmSshPort}"
+                test_exe="$1"
+                package="$2"
+                port="''${3:-${vmSshPort}}"
+                poweroff="''${4:-0}"
+                ssh="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 -p $port"
 
                 # Wait for the qemu virtual machine to start...
                 for i in $(seq 1 12); do
@@ -359,10 +364,8 @@ localFlake:
                 # Show uname
                 $ssh uname -a
                 # Copy tracexec
-                export NIX_SSHOPTS="-p ${vmSshPort} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+                export NIX_SSHOPTS="-p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
                 # Try to load eBPF module:
-                test_exe="$1"
-                package="$2"
                 if [ -z "$package" ]; then
                   package="${defaultPackage}"
                 fi
@@ -379,7 +382,11 @@ localFlake:
                 fi
                 ${pkgs.nix}/bin/nix copy --to ssh://root@127.0.0.1 "$package"
                 $ssh "$package"/bin/tracexec ebpf log -- ls
-                exit $?
+                status=$?
+                if [ "$poweroff" = "1" ]; then
+                  $ssh poweroff -f || true
+                fi
+                exit "$status"
               '';
               ukciDrv = pkgs.writeScriptBin ukciName ''
                 #!/usr/bin/env bash
@@ -391,14 +398,41 @@ localFlake:
                   exit $?
                 fi
 
-                ssh="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 -p ${vmSshPort}"
+                logs_dir="$(mktemp -d)"
+                pids=()
+                names=()
+                idx=0
                 for platform in ${platforms}; do
                   IFS=: read -r kernel target_system test_exe package <<< "$platform"
-                  ${runQemuDrv}/bin/${runQemuName} "$kernel" &
-                  ${testQemuDrv}/bin/${testQemuName} "$test_exe" "$package"
-                  $ssh poweroff -f || true
-                  wait < <(jobs -p)
+                  port=$(( ${vmSshPort} + idx ))
+                  name="$kernel"
+                  names+=("$name")
+                  qemu_log="$logs_dir/$name.qemu.log"
+                  test_log="$logs_dir/$name.test.log"
+                  (
+                    ${runQemuDrv}/bin/${runQemuName} "$kernel" "$port" >"$qemu_log" 2>&1 &
+                    qemu_pid=$!
+                    ${testQemuDrv}/bin/${testQemuName} "$test_exe" "$package" "$port" "1" >"$test_log" 2>&1
+                    wait "$qemu_pid"
+                  ) &
+                  pids+=($!)
+                  idx=$(( idx + 1 ))
                 done;
+
+                status=0
+                for pid in "''${pids[@]}"; do
+                  wait "$pid" || status=$?
+                done
+
+                for name in "''${names[@]}"; do
+                  echo "===> $name (qemu)"
+                  cat "$logs_dir/$name.qemu.log" || true
+                  echo "===> $name (test)"
+                  cat "$logs_dir/$name.test.log" || true
+                done
+
+                rm -rf "$logs_dir"
+                exit "$status"
               '';
             in
             {
