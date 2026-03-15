@@ -1,5 +1,7 @@
 //! Parsers for data structures read back from eBPF ringbuf
 
+use std::collections::BTreeMap;
+
 use enumflags2::BitFlags;
 use nix::libc::AT_FDCWD;
 use tracexec_core::{
@@ -13,7 +15,9 @@ use tracexec_core::{
     CredInspectError,
     FileDescriptorInfoCollection,
     cached_string,
+    parse_failiable_envp,
   },
+  tracer::InspectError,
 };
 
 use crate::bpf::{
@@ -82,5 +86,32 @@ pub fn process_cred(
     })
   } else {
     Err(CredInspectError::Inspect)
+  }
+}
+
+pub fn process_argv(
+  eflags: BitFlags<BpfEventFlags>,
+  argv: Vec<OutputMsg>,
+) -> Result<Vec<OutputMsg>, InspectError> {
+  // Failed to read argv pointer
+  if eflags.contains(BpfEventFlags::ARGV_READ_ERR) {
+    Err(InspectError::EFAULT)
+  } else {
+    Ok(argv)
+  }
+}
+
+pub fn process_envp(
+  eflags: BitFlags<BpfEventFlags>,
+  env: Vec<OutputMsg>,
+  has_dash_env: &mut bool,
+) -> Result<BTreeMap<OutputMsg, OutputMsg>, InspectError> {
+  // Failed to read envp pointer
+  if eflags.contains(BpfEventFlags::ENV_READ_ERR) {
+    Err(InspectError::EFAULT)
+  } else {
+    let (envp, has_dash_env_) = parse_failiable_envp(env);
+    *has_dash_env = has_dash_env_;
+    Ok(envp)
   }
 }
