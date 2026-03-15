@@ -20,11 +20,17 @@ use tracexec_core::{
   tracer::InspectError,
 };
 
-use crate::bpf::{
-  cached_cow,
-  interface::BpfEventFlags,
-  skel::types::exec_event,
-  utf8_lossy_cow_from_bytes_with_nul,
+use crate::{
+  bpf::{
+    cached_cow,
+    interface::BpfEventFlags,
+    skel::types::{
+      exec_event,
+      fd_event,
+    },
+    utf8_lossy_cow_from_bytes_with_nul,
+  },
+  event::Path,
 };
 
 pub fn process_base_filename(eflags: BitFlags<BpfEventFlags>, event: &exec_event) -> OutputMsg {
@@ -113,5 +119,21 @@ pub fn process_envp(
     let (envp, has_dash_env_) = parse_failiable_envp(env);
     *has_dash_env = has_dash_env_;
     Ok(envp)
+  }
+}
+
+pub fn process_path(
+  event: &fd_event,
+  fs: &str,
+  paths: &hashbrown::HashMap<i32, Path>,
+) -> OutputMsg {
+  match fs {
+    "pipefs" => OutputMsg::Ok(cached_string(format!("pipe:[{}]", event.ino))),
+    "sockfs" => OutputMsg::Ok(cached_string(format!("socket:[{}]", event.ino))),
+    "anon_inodefs" => OutputMsg::Ok(cached_string(format!(
+      "anon_inode:{}",
+      paths.get(&event.path_id).unwrap().segments[0].as_ref()
+    ))),
+    _ => paths.get(&event.path_id).unwrap().to_owned().into(),
   }
 }

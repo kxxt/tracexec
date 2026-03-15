@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-
+use hashbrown::HashMap;
 use nix::libc::gid_t;
 use tracexec_core::{
   event::OutputMsg,
