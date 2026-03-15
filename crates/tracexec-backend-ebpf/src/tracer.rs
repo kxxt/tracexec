@@ -89,7 +89,6 @@ use tracexec_core::{
   proc::{
     BaselineInfo,
     FileDescriptorInfo,
-    cached_string,
     diff_env,
   },
   pty,
@@ -137,6 +136,7 @@ use crate::{
     process_cred,
     process_envp,
     process_filename,
+    process_path,
   },
   probe::{
     kernel_have_ftrace_with_direct_calls,
@@ -354,15 +354,7 @@ impl EbpfTracer {
             let mut guard = event_storage.borrow_mut();
             let storage = guard.get_mut(&header.eid).unwrap();
             let fs = utf8_lossy_cow_from_bytes_with_nul(&event.fstype);
-            let path = match fs.as_ref() {
-              "pipefs" => OutputMsg::Ok(cached_string(format!("pipe:[{}]", event.ino))),
-              "sockfs" => OutputMsg::Ok(cached_string(format!("socket:[{}]", event.ino))),
-              "anon_inodefs" => OutputMsg::Ok(cached_string(format!(
-                "anon_inode:{}",
-                storage.paths.get(&event.path_id).unwrap().segments[0].as_ref()
-              ))),
-              _ => storage.paths.get(&event.path_id).unwrap().to_owned().into(),
-            };
+            let path = process_path(event, &fs, &storage.paths);
             let fdinfo = FileDescriptorInfo {
               fd: event.fd as RawFd,
               path,
