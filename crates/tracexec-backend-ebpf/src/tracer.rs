@@ -247,12 +247,12 @@ impl EbpfTracer {
             }
             assert_eq!(data.len(), size_of::<exec_event>());
             let event: &exec_event = unsafe { &*(data.as_ptr() as *const _) };
-            if event.ret != 0 && self.modifier.successful_only {
-              return 0;
-            }
             let eflags = BpfEventFlags::from_bits_truncate(header.flags);
             let mut storage = event_storage.borrow_mut();
             let mut storage = storage.remove(&header.eid).unwrap();
+            if event.ret != 0 && self.modifier.successful_only {
+              return 0;
+            }
             let mut has_dash_env = false;
             let envp = process_envp(
               eflags,
