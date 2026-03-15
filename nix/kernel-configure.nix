@@ -73,7 +73,7 @@ let
     structuredConfig = moduleStructuredConfig.settings;
   };
 in
-stdenv.mkDerivation ({
+stdenv.mkDerivation {
   kernelArch = stdenv.hostPlatform.linuxArch;
   extraMakeFlags = [ ];
 
@@ -135,4 +135,4 @@ stdenv.mkDerivation ({
   enableParallelBuilding = true;
 
   inherit passthru;
-})
+}

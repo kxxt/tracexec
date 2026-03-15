@@ -63,7 +63,7 @@ let
       };
     }).overrideAttrs
       (old: {
-        nativeBuildInputs = old.nativeBuildInputs;
+        inherit (old) nativeBuildInputs;
 
         dontStrip = true;
 

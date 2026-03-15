@@ -183,13 +183,13 @@ localFlake:
             lib.concatMap (
               targetSystem: map (source: source // { inherit targetSystem; }) (sourcesFor targetSystem)
             ) targetSystems;
-          nixpkgs = localFlake.nixpkgs;
+          inherit (localFlake) nixpkgs;
           tracexecFor =
             targetPkgs:
             (import ./tracexec-package.nix {
-              lib = targetPkgs.lib;
-              pkgs = targetPkgs;
+              inherit (targetPkgs) lib;
               inherit (localFlake) crane;
+              pkgs = targetPkgs;
             })
               { };
           mkKernels =
@@ -201,7 +201,7 @@ localFlake:
             map (
               source:
               let
-                targetSystem = source.targetSystem;
+                inherit (source) targetSystem;
                 targetPkgs = pkgsForTarget targetSystem;
                 targetArch = getArch targetSystem;
                 kernelNixConfig = s: targetPkgs.callPackage ./kernel-source.nix s;
@@ -217,7 +217,7 @@ localFlake:
                   inherit kernel nixpkgs;
                 };
                 linuxDev = targetPkgs.linuxPackagesFor kernelDrv;
-                kernel = linuxDev.kernel;
+                inherit (linuxDev) kernel;
                 kernelDrv = buildKernel {
                   inherit (kernelArgs)
                     src
@@ -303,8 +303,6 @@ localFlake:
                 "${name}:${targetSystem}:${test_exe}:${testPackage}"
               ) kernels;
               defaultPackage = if kernels == [ ] then "" else (builtins.head kernels).testPackage;
-            in
-            let
               runQemuDrv = pkgs.writeScriptBin runQemuName ''
                 #!/usr/bin/env bash
 
@@ -502,8 +500,6 @@ localFlake:
               test-qemu = testQemuDrv;
               ukci = ukciDrv;
             };
-        in
-        let
           nativeScripts = mkScripts { kernels = kernelsNative; };
           mkTargetScriptAttrs =
             targetSystem:
