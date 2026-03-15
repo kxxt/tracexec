@@ -79,12 +79,12 @@ in
         with (lib.kernel.whenHelpers version);
         {
           # FUNCTION_TRACER depends on !PREEMPT on older versions of riscv kernels
-          PREEMPT = if lib.versionAtLeast version "6.18" then yes else no; 
+          PREEMPT = if lib.versionAtLeast version "6.18" then yes else no;
 
           PCIEPORTBUS = yes;
           PCI_HOST_GENERIC = yes;
           HIGH_RES_TIMERS = yes;
-          
+
           SERIAL_OF_PLATFORM = yes;
           # Necessary to get console working on 6.1. Thanks to ziyao!
           SOC_VIRT = whenOlder "6.6" yes;
@@ -106,7 +106,7 @@ in
           PCI_HOST_GENERIC = yes;
           HIGH_RES_TIMERS = yes;
           ARM_ARCH_TIMER_EVTSTREAM = yes;
-          
+
           ARM64_ERRATUM_2067961 = yes;
           ARM64_ERRATUM_2054223 = yes;
         }

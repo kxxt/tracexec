@@ -13,15 +13,14 @@ localFlake:
     {
       packages =
         let
-          builder =
-            import ./tracexec-package.nix {
-              inherit lib;
-              inherit (localFlake) crane;
-              inherit pkgs;
-            };
+          builder = import ./tracexec-package.nix {
+            inherit lib;
+            inherit (localFlake) crane;
+            inherit pkgs;
+          };
         in
         {
-          tracexec = builder {  };
+          tracexec = builder { };
         };
     };
 }
