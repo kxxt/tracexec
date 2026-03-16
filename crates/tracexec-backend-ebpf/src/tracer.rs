@@ -46,7 +46,6 @@ use nix::{
     self,
     AT_FDCWD,
     c_int,
-    gid_t,
   },
   sys::{
     signal::{
@@ -72,7 +71,6 @@ use tracexec_core::{
   event::{
     ExecEvent,
     FilterableTracerEventDetails,
-    FriendlyError,
     OutputMsg,
     ProcessStateUpdate,
     ProcessStateUpdateEvent,
@@ -131,6 +129,9 @@ use crate::{
   },
   event::EventStorage,
   parser::{
+    parse_groups_event,
+    parse_path_segment,
+    parse_string_event,
     process_argv,
     process_base_filename,
     process_cred,
@@ -329,13 +330,7 @@ impl EbpfTracer {
             }
           }
           event_type::STRING_EVENT => {
-            let header_len = size_of::<tracexec_event_header>();
-            let flags = BpfEventFlags::from_bits_truncate(header.flags);
-            let msg = if flags.is_empty() {
-              cached_cow(utf8_lossy_cow_from_bytes_with_nul(&data[header_len..])).into()
-            } else {
-              OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags))
-            };
+            let msg = parse_string_event(header, data);
             let mut storage = event_storage.borrow_mut();
             let strings = &mut storage.entry(header.eid).or_default().strings;
             // Catch event drop
@@ -388,19 +383,13 @@ impl EbpfTracer {
             // The segments must arrive in order.
             assert_eq!(path.segments.len(), event.index as usize);
             // TODO: check for errors
-            path.segments.push(OutputMsg::Ok(cached_cow(
-              utf8_lossy_cow_from_bytes_with_nul(&event.segment),
-            )));
+            path.segments.push(parse_path_segment(data));
           }
           event_type::GROUPS_EVENT => {
-            let groups_len = data.len() - size_of::<tracexec_event_header>();
             let mut storage = event_storage.borrow_mut();
             let groups_result = &mut storage.entry(header.eid).or_default().groups;
-            assert!(groups_len.is_multiple_of(size_of::<gid_t>()));
             assert!(groups_result.is_err());
-            let groups: &[gid_t] =
-              bytemuck::cast_slice(&data[size_of::<tracexec_event_header>()..]);
-            *groups_result = Ok(groups.to_vec());
+            *groups_result = Ok(parse_groups_event(data));
           }
           event_type::EXIT_EVENT => {
             assert_eq!(data.len(), size_of::<exit_event>());

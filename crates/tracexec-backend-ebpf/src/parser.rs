@@ -1,9 +1,18 @@
 //! Parsers for data structures read back from eBPF ringbuf
 
-use std::collections::BTreeMap;
+use std::{
+  collections::BTreeMap,
+  mem::size_of,
+};
 
-use enumflags2::BitFlags;
-use nix::libc::AT_FDCWD;
+use enumflags2::{
+  BitFlag,
+  BitFlags,
+};
+use nix::libc::{
+  AT_FDCWD,
+  gid_t,
+};
 use tracexec_core::{
   event::{
     BpfError,
@@ -27,6 +36,8 @@ use crate::{
     skel::types::{
       exec_event,
       fd_event,
+      path_segment_event,
+      tracexec_event_header,
     },
     utf8_lossy_cow_from_bytes_with_nul,
   },
@@ -136,6 +147,31 @@ pub fn process_path(
     ))),
     _ => paths.get(&event.path_id).unwrap().to_owned().into(),
   }
+}
+
+pub fn parse_string_event(header: &tracexec_event_header, data: &[u8]) -> OutputMsg {
+  let header_len = size_of::<tracexec_event_header>();
+  let flags = BpfEventFlags::from_bits_truncate(header.flags);
+  if flags.is_empty() {
+    cached_cow(utf8_lossy_cow_from_bytes_with_nul(&data[header_len..])).into()
+  } else {
+    OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags))
+  }
+}
+
+pub fn parse_path_segment(data: &[u8]) -> OutputMsg {
+  assert_eq!(data.len(), size_of::<path_segment_event>());
+  let event: &path_segment_event = unsafe { &*(data.as_ptr() as *const _) };
+  OutputMsg::Ok(cached_cow(utf8_lossy_cow_from_bytes_with_nul(
+    &event.segment,
+  )))
+}
+
+pub fn parse_groups_event(data: &[u8]) -> Vec<gid_t> {
+  let groups_len = data.len() - size_of::<tracexec_event_header>();
+  assert!(groups_len.is_multiple_of(size_of::<gid_t>()));
+  let groups: &[gid_t] = bytemuck::cast_slice(&data[size_of::<tracexec_event_header>()..]);
+  groups.to_vec()
 }
 
 #[cfg(test)]
@@ -370,5 +406,69 @@ mod tests {
     let normal = process_path(&event, "ext4", &paths);
     assert_eq!(normal.as_ref(), "/usr/bin");
     assert!(matches!(normal, OutputMsg::Ok(_)));
+  }
+
+  #[test]
+  fn test_parse_string_event_ok() {
+    let header = tracexec_event_header {
+      pid: 0,
+      flags: 0,
+      eid: 0,
+      id: 0,
+      r#type: crate::bpf::skel::types::event_type::STRING_EVENT,
+    };
+    let header_len = size_of::<tracexec_event_header>();
+    let mut data = vec![0u8; header_len + 6];
+    unsafe {
+      std::ptr::copy_nonoverlapping(
+        &header as *const _ as *const u8,
+        data.as_mut_ptr(),
+        header_len,
+      );
+    }
+    data[header_len..header_len + 6].copy_from_slice(b"hello\0");
+    let msg = parse_string_event(&header, &data);
+    assert_eq!(msg.as_ref(), "hello");
+    assert!(matches!(msg, OutputMsg::Ok(_)));
+  }
+
+  #[test]
+  fn test_parse_string_event_error_flag() {
+    let header = tracexec_event_header {
+      pid: 0,
+      flags: BpfEventFlags::STR_READ_FAILURE as u32,
+      eid: 0,
+      id: 0,
+      r#type: crate::bpf::skel::types::event_type::STRING_EVENT,
+    };
+    let header_len = size_of::<tracexec_event_header>();
+    let data = vec![0u8; header_len];
+    let msg = parse_string_event(&header, &data);
+    assert!(matches!(msg, OutputMsg::Err(FriendlyError::Bpf(_))));
+  }
+
+  #[test]
+  fn test_parse_path_segment_event_ok() {
+    let mut event = path_segment_event::default();
+    event.segment[..4].copy_from_slice(b"bin\0");
+    let data: &[u8] = unsafe {
+      std::slice::from_raw_parts(
+        &event as *const _ as *const u8,
+        size_of::<path_segment_event>(),
+      )
+    };
+    let msg = parse_path_segment(data);
+    assert_eq!(msg.as_ref(), "bin");
+  }
+
+  #[test]
+  fn test_parse_groups_event_ok() {
+    let groups: [nix::libc::gid_t; 2] = [10, 20];
+    let header_len = size_of::<tracexec_event_header>();
+    let mut data = vec![0u8; header_len + std::mem::size_of_val(&groups)];
+    let groups_bytes = bytemuck::cast_slice(&groups);
+    data[header_len..].copy_from_slice(groups_bytes);
+    let parsed = parse_groups_event(&data);
+    assert_eq!(parsed, groups);
   }
 }
