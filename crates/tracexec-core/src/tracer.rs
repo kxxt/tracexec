@@ -250,6 +250,7 @@ impl ExecData {
   }
 }
 
+#[derive(Debug)]
 pub enum TracerMode {
   Tui(Option<UnixSlavePty>),
   Log { foreground: bool },

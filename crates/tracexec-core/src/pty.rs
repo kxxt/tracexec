@@ -421,6 +421,7 @@ impl PtySystem for UnixPtySystem {
   }
 }
 
+#[derive(Debug)]
 pub struct PtyFd(pub FileDescriptor);
 impl std::ops::Deref for PtyFd {
   type Target = FileDescriptor;
@@ -660,6 +661,7 @@ pub struct UnixMasterPty {
 
 /// Represents the slave end of a pty.
 /// The file descriptor will be closed when the Pty is dropped.
+#[derive(Debug)]
 pub struct UnixSlavePty {
   pub fd: PtyFd,
 }

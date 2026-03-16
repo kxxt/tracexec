@@ -653,18 +653,27 @@ pub struct RunningEbpfTracer<'obj> {
 
 impl RunningEbpfTracer<'_> {
   pub fn run_until_exit(&self) {
-    loop {
-      if self.should_exit.load(Ordering::Relaxed) {
-        break;
-      }
-      match self.rb.poll(Duration::from_millis(100)) {
-        Ok(_) => continue,
-        Err(e) => {
-          if e.kind() == libbpf_rs::ErrorKind::Interrupted {
-            continue;
-          } else {
-            panic!("Failed to poll ringbuf: {e}");
-          }
+    run_until_exit_impl(&self.should_exit, || {
+      self.rb.poll(Duration::from_millis(100))
+    })
+  }
+}
+
+fn run_until_exit_impl<F>(should_exit: &AtomicBool, mut poll: F)
+where
+  F: FnMut() -> Result<(), libbpf_rs::Error>,
+{
+  loop {
+    if should_exit.load(Ordering::Relaxed) {
+      break;
+    }
+    match poll() {
+      Ok(_) => continue,
+      Err(e) => {
+        if e.kind() == libbpf_rs::ErrorKind::Interrupted {
+          continue;
+        } else {
+          panic!("Failed to poll ringbuf: {e}");
         }
       }
     }
@@ -697,4 +706,104 @@ fn attach_kprobes_without_syscall_wrappers(skel: &mut TracexecSystemSkel) -> lib
       .attach_kprobe(true, "__se_sys_execveat")?,
   );
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use std::sync::{
+    Arc,
+    atomic::{
+      AtomicBool,
+      Ordering,
+    },
+  };
+
+  use enumflags2::BitFlags;
+  use tracexec_core::printer::{
+    ColorLevel,
+    EnvPrintFormat,
+    FdPrintFormat,
+    PrinterArgs,
+  };
+
+  use super::*;
+
+  fn test_printer_args() -> PrinterArgs {
+    PrinterArgs {
+      trace_comm: false,
+      trace_argv: true,
+      trace_env: EnvPrintFormat::None,
+      trace_fd: FdPrintFormat::None,
+      trace_cwd: false,
+      print_cmdline: false,
+      successful_only: false,
+      trace_interpreter: false,
+      trace_filename: true,
+      decode_errno: false,
+      color: ColorLevel::Less,
+      stdio_in_cmdline: false,
+      fd_in_cmdline: false,
+      hide_cloexec_fds: false,
+      inline_timestamp_format: None,
+    }
+  }
+
+  fn test_baseline() -> Arc<BaselineInfo> {
+    Arc::new(BaselineInfo::new().expect("failed to capture baseline info"))
+  }
+
+  #[test]
+  fn build_ebpf_defaults_filter_to_all() {
+    let baseline = test_baseline();
+    let printer = Printer::new(test_printer_args(), baseline.clone());
+    let tracer = TracerBuilder::new()
+      .printer(printer)
+      .baseline(baseline)
+      .mode(TracerMode::Log { foreground: false })
+      .build_ebpf();
+    assert_eq!(tracer.filter, BitFlags::all());
+  }
+
+  #[test]
+  fn build_ebpf_respects_filter_and_mode() {
+    let baseline = test_baseline();
+    let printer = Printer::new(test_printer_args(), baseline.clone());
+    let filter = BitFlags::from_flag(TracerEventDetailsKind::Exec)
+      | BitFlags::from_flag(TracerEventDetailsKind::TraceeExit);
+    let tracer = TracerBuilder::new()
+      .printer(printer)
+      .baseline(baseline)
+      .mode(TracerMode::Log { foreground: true })
+      .filter(filter)
+      .build_ebpf();
+    assert_eq!(tracer.filter, filter);
+    assert_eq!(tracer.mode, TracerMode::Log { foreground: true });
+  }
+
+  #[test]
+  fn run_until_exit_short_circuits_when_flag_set() {
+    let flag = AtomicBool::new(true);
+    let mut polls = 0;
+    run_until_exit_impl(&flag, || {
+      polls += 1;
+      Ok(())
+    });
+    assert_eq!(polls, 0);
+  }
+
+  #[test]
+  fn run_until_exit_ignores_interrupted() {
+    let flag = AtomicBool::new(false);
+    let mut polls = 0;
+    run_until_exit_impl(&flag, || {
+      polls += 1;
+      if polls == 1 {
+        Err(libbpf_rs::Error::from_raw_os_error(libc::EINTR))
+      } else {
+        flag.store(true, Ordering::Relaxed);
+        Ok(())
+      }
+    });
+    assert_eq!(polls, 2);
+  }
 }
