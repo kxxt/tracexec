@@ -294,8 +294,17 @@ mod tests {
     KeyEvent,
     KeyModifiers,
   };
-  use ratatui::text::Line;
+  use insta::assert_snapshot;
+  use ratatui::{
+    Terminal,
+    backend::TestBackend,
+    text::Line,
+  };
   use tracexec_core::event::EventId;
+  use tui_prompts::{
+    FocusState,
+    TextState,
+  };
 
   use super::*;
 
@@ -427,5 +436,36 @@ mod tests {
     let help = qb.help();
     assert!(help.iter().any(|span| span.content.contains("Esc")));
     assert!(help.iter().any(|span| span.content.contains("Enter")));
+  }
+
+  #[test]
+  fn snapshot_query_builder_editing() {
+    let mut qb = QueryBuilder::new(QueryKind::Search);
+    qb.state = TextState::new()
+      .with_focus(FocusState::Focused)
+      .with_value("find me");
+    let mut terminal = Terminal::new(TestBackend::new(40, 3)).unwrap();
+    terminal
+      .draw(|frame| {
+        frame.render_widget(&mut qb, frame.area());
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn snapshot_query_builder_non_editing() {
+    let mut qb = QueryBuilder::new(QueryKind::Search);
+    qb.editing = false;
+    qb.state = TextState::new().with_value("done");
+    let mut terminal = Terminal::new(TestBackend::new(40, 3)).unwrap();
+    terminal
+      .draw(|frame| {
+        frame.render_widget(&mut qb, frame.area());
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
   }
 }

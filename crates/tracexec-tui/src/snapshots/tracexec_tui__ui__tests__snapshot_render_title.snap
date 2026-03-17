@@ -1,0 +1,13 @@
+---
+source: crates/tracexec-tui/src/ui.rs
+expression: rendered
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 40, height: 1 },
+    content: [
+        "tracexec                                ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+    ]
+}

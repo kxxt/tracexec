@@ -49,3 +49,39 @@ impl OutputMsgTuiExt for OutputMsg {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use nix::errno::Errno;
+  use ratatui::style::Style;
+  use tracexec_core::event::{
+    FriendlyError,
+    OutputMsg,
+  };
+
+  use super::OutputMsgTuiExt;
+  use crate::theme::THEME;
+
+  #[test]
+  fn bash_escaped_with_style_quotes_ok_output() {
+    let msg = OutputMsg::Ok("hello world".into());
+    let span = msg.bash_escaped_with_style(Style::default());
+    let expected = shell_quote::QuoteRefExt::<String>::quoted("hello world", shell_quote::Bash);
+    assert_eq!(span.content.as_ref(), expected);
+  }
+
+  #[test]
+  fn bash_escaped_with_style_marks_partial_ok_as_error() {
+    let msg = OutputMsg::PartialOk("oops".into());
+    let span = msg.bash_escaped_with_style(Style::default());
+    assert_eq!(span.content.as_ref(), "oops");
+    assert_eq!(span.style, THEME.inline_tracer_error);
+  }
+
+  #[test]
+  fn styled_err_uses_friendly_error_string() {
+    let msg = OutputMsg::Err(FriendlyError::InspectError(Errno::EPERM));
+    let span = msg.styled(Style::default());
+    assert_eq!(span.content.as_ref(), "[err: failed to inspect]");
+  }
+}

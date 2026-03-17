@@ -45,3 +45,22 @@ impl Widget for SizedParagraph<'_> {
     self.inner.render(area, buf)
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use ratatui::{
+    text::Text,
+    widgets::Paragraph,
+  };
+  use tui_popup::KnownSize;
+
+  use super::SizedParagraph;
+
+  #[test]
+  fn sized_paragraph_reports_dimensions() {
+    let paragraph = Paragraph::new(Text::from("alpha\nbeta"));
+    let sized = SizedParagraph::new(paragraph, 40);
+    assert_eq!(sized.width(), 40);
+    assert_eq!(sized.height(), 2);
+  }
+}

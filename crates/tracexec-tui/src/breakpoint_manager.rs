@@ -213,6 +213,45 @@ impl BreakPointManager {
   }
 }
 
+#[cfg(test)]
+mod tests {
+  use insta::assert_snapshot;
+  use ratatui::{
+    Terminal,
+    backend::TestBackend,
+  };
+  use tracexec_core::breakpoint::{
+    BreakPoint,
+    BreakPointPattern,
+    BreakPointStop,
+    BreakPointType,
+  };
+
+  use super::BreakPointEntry;
+
+  #[test]
+  fn snapshot_breakpoint_entry() {
+    let entry = BreakPointEntry {
+      id: 7,
+      breakpoint: BreakPoint {
+        pattern: BreakPointPattern::InFilename("/bin/echo".to_string()),
+        ty: BreakPointType::Permanent,
+        activated: true,
+        stop: BreakPointStop::SyscallEnter,
+      },
+    };
+    let paragraph = entry.paragraph(true);
+    let mut terminal = Terminal::new(TestBackend::new(70, 4)).unwrap();
+    terminal
+      .draw(|frame| {
+        frame.render_widget(paragraph, frame.area());
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
+  }
+}
+
 impl BreakPointManagerState {
   pub fn new(tracer: RunningTracer) -> Self {
     let breakpoints = tracer.get_breakpoints();

@@ -168,3 +168,104 @@ impl BacktracePopupState {
     Ok(())
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::{
+    collections::BTreeMap,
+    sync::Arc,
+  };
+
+  use chrono::Local;
+  use insta::assert_snapshot;
+  use nix::{
+    errno::Errno,
+    unistd::Pid,
+  };
+  use tracexec_core::{
+    cache::ArcStr,
+    cli::args::ModifierArgs,
+    event::{
+      EventId,
+      ExecEvent,
+      OutputMsg,
+      ParentEventId,
+      TracerEventDetails,
+    },
+    proc::{
+      BaselineInfo,
+      Cred,
+      FileDescriptorInfoCollection,
+    },
+  };
+
+  use super::{
+    BacktracePopup,
+    BacktracePopupState,
+  };
+  use crate::{
+    event_list::EventList,
+    test_utils::{
+      test_area_full,
+      test_render_stateful_widget_area,
+    },
+  };
+
+  fn baseline_for_tests() -> Arc<BaselineInfo> {
+    Arc::new(BaselineInfo {
+      cwd: OutputMsg::Ok("cwd".into()),
+      env: BTreeMap::new(),
+      fdinfo: FileDescriptorInfoCollection::new_baseline().unwrap(),
+    })
+  }
+
+  fn exec_event(pid: i32, parent: Option<ParentEventId>) -> ExecEvent {
+    ExecEvent {
+      pid: Pid::from_raw(pid),
+      cwd: OutputMsg::Ok("cwd".into()),
+      comm: ArcStr::from("comm"),
+      filename: OutputMsg::Ok("/bin/echo".into()),
+      argv: Arc::new(Ok(vec![OutputMsg::Ok("echo".into())])),
+      envp: Arc::new(Ok(BTreeMap::new())),
+      has_dash_env: false,
+      cred: Ok(Cred::default()),
+      interpreter: None,
+      env_diff: Err(Errno::EPERM),
+      fdinfo: Arc::new(FileDescriptorInfoCollection::default()),
+      result: 0,
+      timestamp: Local::now(),
+      parent,
+    }
+  }
+
+  #[test]
+  fn snapshot_backtrace_popup() {
+    let mut list = EventList::new(
+      baseline_for_tests(),
+      false,
+      ModifierArgs::default(),
+      1024,
+      false,
+      false,
+      true,
+    );
+    let root_id = EventId::new(1);
+    let child_id = EventId::new(2);
+    list.push(
+      root_id,
+      TracerEventDetails::Exec(Box::new(exec_event(1001, None))),
+    );
+    list.push(
+      child_id,
+      TracerEventDetails::Exec(Box::new(exec_event(
+        1002,
+        Some(ParentEventId::Spawn(root_id)),
+      ))),
+    );
+    let event = list.get_for_test(child_id).unwrap();
+    let mut state = BacktracePopupState::new(event, &list);
+    let area = test_area_full(80, 12);
+    let rendered = test_render_stateful_widget_area(BacktracePopup, area, &mut state);
+    assert_snapshot!(rendered);
+  }
+}

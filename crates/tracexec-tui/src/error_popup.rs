@@ -100,3 +100,37 @@ pub fn err_popup_goto_parent_not_exec(title: &'static str) -> ActivePopup {
     )],
   ))
 }
+
+#[cfg(test)]
+mod tests {
+  use insta::assert_snapshot;
+  use ratatui::{
+    Terminal,
+    backend::TestBackend,
+    text::Line,
+  };
+
+  use super::{
+    InfoPopup,
+    InfoPopupState,
+  };
+
+  #[test]
+  fn snapshot_info_popup() {
+    let mut state = InfoPopupState::info(
+      "Notice".to_string(),
+      vec![
+        Line::raw("Something went wrong."),
+        Line::raw("Please retry."),
+      ],
+    );
+    let mut terminal = Terminal::new(TestBackend::new(60, 12)).unwrap();
+    terminal
+      .draw(|frame| {
+        frame.render_stateful_widget(InfoPopup, frame.area(), &mut state);
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
+  }
+}

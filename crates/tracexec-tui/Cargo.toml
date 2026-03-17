@@ -51,3 +51,6 @@ arboard = { version = "3.3.2", default-features = false, features = [
     "wayland-data-control",
 ] }
 indexset = "0.15"
+
+[dev-dependencies]
+insta = "1.41.0"
