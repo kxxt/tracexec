@@ -188,3 +188,21 @@ pub fn help<'a>(area: Rect) -> SizedParagraph<'a> {
   let perhaps_a_suitable_width = area.width.saturating_sub(6) as usize;
   SizedParagraph::new(paragraph, perhaps_a_suitable_width)
 }
+
+#[cfg(test)]
+mod tests {
+  use insta::assert_snapshot;
+
+  use super::help;
+  use crate::test_utils::{
+    test_area_full,
+    test_render_widget_area,
+  };
+
+  #[test]
+  fn snapshot_help_popup() {
+    let area = test_area_full(80, 40);
+    let rendered = test_render_widget_area(help(area), area);
+    assert_snapshot!(rendered);
+  }
+}

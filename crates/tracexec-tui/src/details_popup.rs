@@ -115,7 +115,12 @@ impl DetailsPopupState {
     let mut details = vec![];
     // timestamp
     if let Some(ts) = event.details.timestamp() {
-      details.push((" Timestamp ", Line::raw(ts.format("%c").to_string())));
+      // Use naive_utc() in tests to avoid timezone-dependent snapshot output
+      #[cfg(not(test))]
+      let formatted = ts.format("%c").to_string();
+      #[cfg(test)]
+      let formatted = ts.naive_utc().format("%c").to_string();
+      details.push((" Timestamp ", Line::raw(formatted)));
     }
     if let Some(elapsed) = event.elapsed.and_then(|x| x.to_std().ok()) {
       details.push((
@@ -797,5 +802,99 @@ impl DetailsPopup {
   fn fd_paragraph(&self, state: &DetailsPopupState) -> Paragraph<'_> {
     let text = state.fdinfo.clone().unwrap();
     Paragraph::new(text).wrap(Wrap { trim: false })
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::{
+    collections::BTreeMap,
+    sync::Arc,
+  };
+
+  use chrono::{
+    TimeZone,
+    Utc,
+  };
+  use insta::assert_snapshot;
+  use nix::{
+    errno::Errno,
+    unistd::Pid,
+  };
+  use tracexec_core::{
+    cache::ArcStr,
+    cli::args::ModifierArgs,
+    event::{
+      ExecEvent,
+      OutputMsg,
+      TracerEventDetails,
+    },
+    proc::{
+      BaselineInfo,
+      Cred,
+      FileDescriptorInfoCollection,
+    },
+  };
+
+  use super::{
+    DetailsPopup,
+    DetailsPopupState,
+  };
+  use crate::{
+    event_list::EventList,
+    test_utils::{
+      test_area_full,
+      test_render_stateful_widget_area,
+    },
+  };
+
+  fn baseline_for_tests() -> Arc<BaselineInfo> {
+    Arc::new(BaselineInfo {
+      cwd: OutputMsg::Ok("cwd".into()),
+      env: BTreeMap::new(),
+      fdinfo: FileDescriptorInfoCollection::new_baseline().unwrap(),
+    })
+  }
+
+  fn exec_event() -> ExecEvent {
+    ExecEvent {
+      pid: Pid::from_raw(4242),
+      cwd: OutputMsg::Ok("cwd".into()),
+      comm: ArcStr::from("comm"),
+      filename: OutputMsg::Ok("/bin/echo".into()),
+      argv: Arc::new(Ok(vec![OutputMsg::Ok("echo".into())])),
+      envp: Arc::new(Ok(BTreeMap::new())),
+      has_dash_env: false,
+      cred: Ok(Cred::default()),
+      interpreter: None,
+      env_diff: Err(Errno::EPERM),
+      fdinfo: Arc::new(FileDescriptorInfoCollection::default()),
+      result: 0,
+      timestamp: Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap().into(),
+      parent: None,
+    }
+  }
+
+  #[test]
+  fn snapshot_details_popup_exec_event() {
+    let list = EventList::new(
+      baseline_for_tests(),
+      false,
+      ModifierArgs::default(),
+      1024,
+      false,
+      false,
+      true,
+    );
+    let event = super::Event {
+      details: Arc::new(TracerEventDetails::Exec(Box::new(exec_event()))),
+      status: Some(tracexec_core::event::EventStatus::ProcessRunning),
+      elapsed: None,
+      id: tracexec_core::event::EventId::new(1),
+    };
+    let mut state = DetailsPopupState::new(&event, &list);
+    let area = test_area_full(80, 18);
+    let rendered = test_render_stateful_widget_area(DetailsPopup::new(false), area, &mut state);
+    assert_snapshot!(rendered);
   }
 }

@@ -255,6 +255,11 @@ impl EventList {
     self.event_map.get(&id).map(|(_, x)| Rc::clone(x))
   }
 
+  #[cfg(test)]
+  pub fn get_for_test(&self, id: EventId) -> Option<Rc<RefCell<Event>>> {
+    self.get(id)
+  }
+
   pub fn get_map<T>(&self, id: EventId, f: impl FnOnce(&Event) -> T) -> Option<T> {
     self.event_map.get(&id).map(|e| {
       let e = e.1.borrow();

@@ -452,6 +452,38 @@ impl HitManagerState {
   }
 }
 
+#[cfg(test)]
+mod tests {
+  use insta::assert_snapshot;
+  use nix::unistd::Pid;
+  use ratatui::{
+    Terminal,
+    backend::TestBackend,
+  };
+  use tracexec_core::breakpoint::BreakPointStop;
+
+  use super::BreakPointHitEntry;
+
+  #[test]
+  fn snapshot_hit_entry() {
+    let entry = BreakPointHitEntry {
+      bid: 12,
+      pid: Pid::from_raw(4321),
+      stop: BreakPointStop::SyscallExit,
+      breakpoint_pattern: Some("argv-regex:curl".to_string()),
+    };
+    let paragraph = entry.paragraph(true);
+    let mut terminal = Terminal::new(TestBackend::new(70, 3)).unwrap();
+    terminal
+      .draw(|frame| {
+        frame.render_widget(paragraph, frame.area());
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
+  }
+}
+
 pub struct HitManager;
 
 impl HitManager {}

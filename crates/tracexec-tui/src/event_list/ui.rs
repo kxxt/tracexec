@@ -282,3 +282,113 @@ pub(super) fn pstate_update_to_status(update: &ProcessStateUpdate) -> Option<Eve
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::{
+    collections::BTreeMap,
+    sync::Arc,
+  };
+
+  use insta::assert_snapshot;
+  use nix::unistd::Pid;
+  use ratatui::{
+    Terminal,
+    backend::TestBackend,
+    layout::Rect,
+  };
+  use tracexec_core::{
+    cli::args::ModifierArgs,
+    event::{
+      EventId,
+      OutputMsg,
+      TracerEventDetails,
+      TracerEventMessage,
+    },
+    proc::{
+      BaselineInfo,
+      FileDescriptorInfoCollection,
+    },
+  };
+
+  use super::EventList;
+
+  fn baseline_for_tests() -> Arc<BaselineInfo> {
+    Arc::new(BaselineInfo {
+      cwd: OutputMsg::Ok("cwd".into()),
+      env: BTreeMap::new(),
+      fdinfo: FileDescriptorInfoCollection::default(),
+    })
+  }
+
+  fn make_list_with_msgs(msgs: &[&str]) -> EventList {
+    let mut list = EventList::new(
+      baseline_for_tests(),
+      false,
+      ModifierArgs::default(),
+      1024,
+      false,
+      false,
+      true,
+    );
+    for (idx, msg) in msgs.iter().enumerate() {
+      list.push(
+        EventId::new(idx as u64),
+        TracerEventDetails::Info(TracerEventMessage {
+          pid: Some(Pid::from_raw(1234)),
+          timestamp: None,
+          msg: msg.to_string(),
+        }),
+      );
+    }
+    if !msgs.is_empty() {
+      list.state.select(Some(0));
+    }
+    list
+  }
+
+  fn render_list(list: &mut EventList, term: (u16, u16), area: Rect) -> String {
+    let mut terminal = Terminal::new(TestBackend::new(term.0, term.1)).unwrap();
+    terminal
+      .draw(|frame| frame.render_widget(list, area))
+      .unwrap();
+    format!("{:?}", terminal.backend().buffer())
+  }
+
+  #[test]
+  fn snapshot_event_list_basic() {
+    let mut list = make_list_with_msgs(&["first", "second", "third"]);
+    list.set_window((0, 3));
+    list.state.select(Some(1));
+    let area = Rect::new(0, 0, 60, 5);
+    let rendered = render_list(&mut list, (60, 5), area);
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn snapshot_event_list_with_vertical_scrollbar() {
+    let mut list = make_list_with_msgs(&[
+      "event 1", "event 2", "event 3", "event 4", "event 5", "event 6", "event 7", "event 8",
+    ]);
+    list.set_window((0, 4));
+    list.state.select(Some(2));
+    let area = Rect::new(0, 0, 40, 4);
+    let rendered = render_list(&mut list, (41, 4), area);
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn snapshot_event_list_with_horizontal_scrollbar() {
+    let mut list = make_list_with_msgs(&[
+      "a very long event line that should overflow the view and require scrolling",
+      "short",
+      "another line",
+    ]);
+    list.set_window((0, 3));
+    list.horizontal_offset = 10;
+    list.state.select(Some(0));
+    let area = Rect::new(0, 0, 40, 3);
+    let rendered = render_list(&mut list, (40, 4), area);
+    assert_snapshot!(rendered);
+  }
+}

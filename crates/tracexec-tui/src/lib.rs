@@ -83,6 +83,9 @@ mod ui;
 
 pub use event::TracerEventDetailsTuiExt;
 
+#[cfg(test)]
+pub mod test_utils;
+
 pub struct Tui {
   pub terminal: ratatui::Terminal<Backend<std::io::Stderr>>,
   pub task: JoinHandle<()>,

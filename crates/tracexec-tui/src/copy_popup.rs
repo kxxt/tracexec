@@ -241,3 +241,36 @@ fn centered_popup_rect(width: u16, height: u16, area: Rect) -> Rect {
     height: min(height, area.height),
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::sync::Arc;
+
+  use insta::assert_snapshot;
+  use tracexec_core::event::{
+    TracerEventDetails,
+    TracerEventMessage,
+  };
+
+  use super::{
+    CopyPopup,
+    CopyPopupState,
+  };
+  use crate::test_utils::{
+    test_area_full,
+    test_render_stateful_widget_area,
+  };
+
+  #[test]
+  fn snapshot_copy_popup_info_event() {
+    let event = Arc::new(TracerEventDetails::Info(TracerEventMessage {
+      pid: None,
+      timestamp: None,
+      msg: "hello".to_string(),
+    }));
+    let mut state = CopyPopupState::new(event);
+    let area = test_area_full(40, 40);
+    let rendered = test_render_stateful_widget_area(CopyPopup, area, &mut state);
+    assert_snapshot!(rendered);
+  }
+}

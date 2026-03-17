@@ -249,3 +249,112 @@ impl EventList {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::{
+    cell::RefCell,
+    collections::BTreeMap,
+    rc::Rc,
+    sync::Arc,
+  };
+
+  use tracexec_core::{
+    cli::args::ModifierArgs,
+    event::{
+      EventId,
+      OutputMsg,
+      TracerEventDetails,
+      TracerEventMessage,
+    },
+    proc::{
+      BaselineInfo,
+      FileDescriptorInfoCollection,
+    },
+  };
+
+  use super::EventList;
+  use crate::event_list::Event;
+
+  fn baseline_for_tests() -> Arc<BaselineInfo> {
+    Arc::new(BaselineInfo {
+      cwd: OutputMsg::Ok("cwd".into()),
+      env: BTreeMap::new(),
+      fdinfo: FileDescriptorInfoCollection::default(),
+    })
+  }
+
+  fn make_list(len: usize, window_len: usize) -> EventList {
+    let mut list = EventList::new(
+      baseline_for_tests(),
+      false,
+      ModifierArgs::default(),
+      1024,
+      false,
+      false,
+      true,
+    );
+    list.max_window_len = window_len.max(1);
+    list.window = (0, window_len.min(len));
+    list.nr_items_in_window = list.window.1.saturating_sub(list.window.0);
+    list.inner_width = 20;
+    list.max_width = 80;
+    for i in 0..len {
+      let details = Arc::new(TracerEventDetails::Info(TracerEventMessage {
+        pid: None,
+        timestamp: None,
+        msg: format!("event {i}"),
+      }));
+      let event = Event {
+        details,
+        status: None,
+        elapsed: None,
+        id: EventId::new(i as u64),
+      };
+      list.events.push_back(Rc::new(RefCell::new(event)));
+    }
+    if len > 0 {
+      list.state.select(Some(0));
+    }
+    list
+  }
+
+  #[test]
+  fn next_and_previous_window_slide() {
+    let mut list = make_list(5, 3);
+    assert!(list.next_window());
+    assert_eq!(list.window, (1, 4));
+    assert!(list.previous_window());
+    assert_eq!(list.window, (0, 3));
+  }
+
+  #[test]
+  fn next_advances_selection_and_window() {
+    let mut list = make_list(5, 3);
+    list.state.select(Some(2));
+    list.next();
+    assert_eq!(list.window, (1, 4));
+    assert_eq!(list.state.selected(), Some(2));
+  }
+
+  #[test]
+  fn scroll_to_id_moves_window_and_selection() {
+    let mut list = make_list(6, 3);
+    list.scroll_to_id(Some(EventId::new(4)));
+    assert_eq!(list.window, (3, 6));
+    assert_eq!(list.state.selected(), Some(1));
+  }
+
+  #[test]
+  fn horizontal_scroll_respects_bounds() {
+    let mut list = make_list(1, 1);
+    list.scroll_left();
+    assert_eq!(list.horizontal_offset, 0);
+    list.scroll_right();
+    assert_eq!(list.horizontal_offset, 1);
+    list.scroll_to_end();
+    assert_eq!(list.horizontal_offset, 60);
+    list.scroll_to_start();
+    assert_eq!(list.horizontal_offset, 0);
+  }
+}

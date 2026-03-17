@@ -1,0 +1,20 @@
+---
+source: crates/tracexec-tui/src/query.rs
+expression: rendered
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 40, height: 3 },
+    content: [
+        "? 🔍 › done                             ", // hidden by multi-width symbols: [(3, " ")]
+        "                                        ",
+        "                                        ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Cyan, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 2, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 3, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 4, y: 0, fg: Cyan, bg: Reset, underline: Reset, modifier: DIM,
+        x: 7, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

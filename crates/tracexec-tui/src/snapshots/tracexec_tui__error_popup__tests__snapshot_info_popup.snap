@@ -1,0 +1,38 @@
+---
+source: crates/tracexec-tui/src/error_popup.rs
+expression: rendered
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 60, height: 12 },
+    content: [
+        "                                                            ",
+        "                                                            ",
+        "                                                            ",
+        "        ┌──────────────────Notice──────────────────┐        ",
+        "        │Something went wrong.                     │        ",
+        "        │Please retry.                             │        ",
+        "        │                                          │        ",
+        "        │     Press any key to close this popup    │        ",
+        "        └──────────────────────────────────────────┘        ",
+        "                                                            ",
+        "                                                            ",
+        "                                                            ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 8, y: 3, fg: Black, bg: White, underline: Reset, modifier: NONE,
+        x: 52, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 8, y: 4, fg: Black, bg: White, underline: Reset, modifier: NONE,
+        x: 52, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 8, y: 5, fg: Black, bg: White, underline: Reset, modifier: NONE,
+        x: 52, y: 5, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 8, y: 6, fg: Black, bg: White, underline: Reset, modifier: NONE,
+        x: 52, y: 6, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 8, y: 7, fg: Black, bg: White, underline: Reset, modifier: NONE,
+        x: 14, y: 7, fg: Black, bg: White, underline: Reset, modifier: BOLD,
+        x: 47, y: 7, fg: Black, bg: White, underline: Reset, modifier: NONE,
+        x: 52, y: 7, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 8, y: 8, fg: Black, bg: White, underline: Reset, modifier: NONE,
+        x: 52, y: 8, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}
