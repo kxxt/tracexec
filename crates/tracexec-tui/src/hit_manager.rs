@@ -464,6 +464,7 @@ mod tests {
   use ratatui::{
     Terminal,
     backend::TestBackend,
+    layout::Rect,
   };
   use tracexec_backend_ptrace::ptrace::RunningTracer;
   use tracexec_core::breakpoint::{
@@ -477,11 +478,15 @@ mod tests {
   use super::{
     BreakPointHitEntry,
     EditingTarget,
+    HitManager,
     HitManagerState,
   };
-  use crate::action::{
-    Action,
-    ActivePopup,
+  use crate::{
+    action::{
+      Action,
+      ActivePopup,
+    },
+    error_popup::InfoPopup,
   };
 
   fn make_breakpoint(pattern: &str) -> BreakPoint {
@@ -505,6 +510,16 @@ mod tests {
     for ch in text.chars() {
       state.handle_key_event(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE));
     }
+  }
+
+  fn render_hit_manager(state: &mut HitManagerState, width: u16, height: u16) -> String {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal
+      .draw(|frame| {
+        frame.render_stateful_widget(HitManager, Rect::new(0, 2, width, height - 2), state);
+      })
+      .unwrap();
+    format!("{:?}", terminal.backend().buffer())
   }
 
   #[test]
@@ -565,6 +580,58 @@ mod tests {
   }
 
   #[test]
+  fn snapshot_hit_manager_with_hits_and_default_command() {
+    let tracer = RunningTracer::mock();
+    let bid1 = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
+    let bid2 = tracer.add_breakpoint(make_breakpoint("exact-filename:/bin/sleep"));
+    let mut state = HitManagerState::new(tracer, Some("echo {{PID}}".to_string())).unwrap();
+    add_hit(&mut state, bid1, 4321);
+    add_hit(&mut state, bid2, 9876);
+    let rendered = render_hit_manager(&mut state, 70, 12);
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn snapshot_hit_manager_no_default_command() {
+    let tracer = RunningTracer::mock();
+    let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
+    let mut state = HitManagerState::new(tracer, None).unwrap();
+    add_hit(&mut state, bid, 4321);
+    let rendered = render_hit_manager(&mut state, 70, 12);
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn snapshot_hit_manager_editing_default_command() {
+    let tracer = RunningTracer::mock();
+    let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
+    let mut state = HitManagerState::new(tracer, None).unwrap();
+    add_hit(&mut state, bid, 4321);
+    state.handle_key_event(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+    let rendered = render_hit_manager(&mut state, 70, 12);
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn snapshot_hit_manager_help_popup() {
+    let tracer = RunningTracer::mock();
+    let mut state = HitManagerState::new(tracer, None).unwrap();
+    let action = state.handle_key_event(KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE));
+    let mut popup = match action {
+      Some(Action::SetActivePopup(ActivePopup::InfoPopup(state))) => state,
+      other => panic!("unexpected action: {other:?}"),
+    };
+    let mut terminal = Terminal::new(TestBackend::new(80, 18)).unwrap();
+    terminal
+      .draw(|frame| {
+        frame.render_stateful_widget(InfoPopup, frame.area(), &mut popup);
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
   fn test_hit_manager_state_add_hit_captures_pattern() {
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
@@ -582,8 +649,7 @@ mod tests {
   #[test]
   fn test_hit_manager_state_edit_default_command_sets_value() {
     let tracer = RunningTracer::mock();
-    let mut state =
-      HitManagerState::new(tracer, Some("echo {{PID}}".to_string())).unwrap();
+    let mut state = HitManagerState::new(tracer, Some("echo {{PID}}".to_string())).unwrap();
     state.handle_key_event(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
     assert!(matches!(state.editing, Some(EditingTarget::DefaultCommand)));
     assert!(state.cursor().is_some());
@@ -638,8 +704,7 @@ mod tests {
   fn test_hit_manager_state_enter_detach_and_launch_default_command() {
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
-    let mut state =
-      HitManagerState::new(tracer, Some("echo {{PID}}".to_string())).unwrap();
+    let mut state = HitManagerState::new(tracer, Some("echo {{PID}}".to_string())).unwrap();
     let hid = add_hit(&mut state, bid, 4321);
     state.list_state.select(Some(0));
     let action = state.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));

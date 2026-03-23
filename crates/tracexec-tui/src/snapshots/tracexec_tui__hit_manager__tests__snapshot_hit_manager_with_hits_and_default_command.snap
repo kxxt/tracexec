@@ -1,0 +1,53 @@
+---
+source: crates/tracexec-tui/src/hit_manager.rs
+expression: rendered
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 70, height: 12 },
+    content: [
+        "                                                             F1  Help ",
+        "🚀 default command: echo {{PID}}                                      ", // hidden by multi-width symbols: [(1, " ")]
+        "┌─────────────────────────── Hit Manager ────────────────────────────┐",
+        "│4321 hit breakpoint #7(in-filename:/bin/echo) at SyscallExit        │",
+        "│9876 hit breakpoint #8(exact-filename:/bin/sleep) at SyscallExit    │",
+        "│                                                                    │",
+        "│                                                                    │",
+        "│                                                                    │",
+        "│                                                                    │",
+        "│                                                                    │",
+        "│                                                                    │",
+        "└────────────────────────────────────────────────────────────────────┘",
+    ],
+    styles: [
+        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 60, y: 0, fg: Black, bg: Cyan, underline: Reset, modifier: BOLD,
+        x: 64, y: 0, fg: LightGreen, bg: DarkGray, underline: Reset, modifier: BOLD | ITALIC,
+        x: 0, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 20, y: 1, fg: LightCyan, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 32, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 3, fg: LightMagenta, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 5, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 6, y: 3, fg: White, bg: Reset, underline: Reset, modifier: BOLD | REVERSED,
+        x: 9, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 10, y: 3, fg: White, bg: Reset, underline: Reset, modifier: BOLD | REVERSED,
+        x: 23, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 24, y: 3, fg: Cyan, bg: Reset, underline: Reset, modifier: BOLD | REVERSED,
+        x: 45, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 47, y: 3, fg: White, bg: Reset, underline: Reset, modifier: BOLD | REVERSED,
+        x: 49, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 50, y: 3, fg: Yellow, bg: Reset, underline: Reset, modifier: BOLD | REVERSED,
+        x: 61, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 1, y: 4, fg: LightMagenta, bg: Reset, underline: Reset, modifier: NONE,
+        x: 5, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 6, y: 4, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 9, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 10, y: 4, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 23, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 24, y: 4, fg: Cyan, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 49, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 51, y: 4, fg: White, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 53, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 54, y: 4, fg: Yellow, bg: Reset, underline: Reset, modifier: BOLD,
+        x: 65, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}
