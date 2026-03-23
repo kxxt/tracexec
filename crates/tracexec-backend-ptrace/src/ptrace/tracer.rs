@@ -261,6 +261,13 @@ impl Tracer {
 
 static BREAKPOINT_ID: AtomicU32 = AtomicU32::new(0);
 
+#[doc(hidden)]
+#[allow(unused)]
+/// Only meant for tests
+pub fn clear_breakpoint_id_counter() {
+  BREAKPOINT_ID.store(0, Ordering::SeqCst);
+}
+
 /// Breakpoint management
 impl RunningTracer {
   pub fn add_breakpoint(&self, breakpoint: BreakPoint) -> u32 {

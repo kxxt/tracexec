@@ -8,8 +8,8 @@ Buffer {
         "                                                             F1  Help ",
         "🚀 default command: echo {{PID}}                                      ", // hidden by multi-width symbols: [(1, " ")]
         "┌─────────────────────────── Hit Manager ────────────────────────────┐",
-        "│4321 hit breakpoint #7(in-filename:/bin/echo) at SyscallExit        │",
-        "│9876 hit breakpoint #8(exact-filename:/bin/sleep) at SyscallExit    │",
+        "│4321 hit breakpoint #0(in-filename:/bin/echo) at SyscallExit        │",
+        "│9876 hit breakpoint #1(exact-filename:/bin/sleep) at SyscallExit    │",
         "│                                                                    │",
         "│                                                                    │",
         "│                                                                    │",

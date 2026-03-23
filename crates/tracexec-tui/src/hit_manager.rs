@@ -466,7 +466,11 @@ mod tests {
     backend::TestBackend,
     layout::Rect,
   };
-  use tracexec_backend_ptrace::ptrace::RunningTracer;
+  use serial_test::file_serial;
+  use tracexec_backend_ptrace::ptrace::{
+    RunningTracer,
+    clear_breakpoint_id_counter,
+  };
   use tracexec_core::breakpoint::{
     BreakPoint,
     BreakPointHit,
@@ -580,7 +584,9 @@ mod tests {
   }
 
   #[test]
+  #[file_serial(breakpoint_id)]
   fn snapshot_hit_manager_with_hits_and_default_command() {
+    clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid1 = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
     let bid2 = tracer.add_breakpoint(make_breakpoint("exact-filename:/bin/sleep"));
@@ -592,7 +598,9 @@ mod tests {
   }
 
   #[test]
+  #[file_serial(breakpoint_id)]
   fn snapshot_hit_manager_no_default_command() {
+    clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
     let mut state = HitManagerState::new(tracer, None).unwrap();
@@ -602,7 +610,9 @@ mod tests {
   }
 
   #[test]
+  #[file_serial(breakpoint_id)]
   fn snapshot_hit_manager_editing_default_command() {
+    clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
     let mut state = HitManagerState::new(tracer, None).unwrap();
@@ -632,7 +642,9 @@ mod tests {
   }
 
   #[test]
+  #[file_serial(breakpoint_id)]
   fn test_hit_manager_state_add_hit_captures_pattern() {
+    clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
     let mut state = HitManagerState::new(tracer, None).unwrap();
@@ -676,7 +688,9 @@ mod tests {
   }
 
   #[test]
+  #[file_serial(breakpoint_id)]
   fn test_hit_manager_state_detach_removes_hit() {
+    clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
     let mut state = HitManagerState::new(tracer, None).unwrap();
