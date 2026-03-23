@@ -8,3 +8,4 @@ ignore:
   - "fixtures"  # ignore test fixtures
   - "demonstration" # ignore demos
   - "crates/perfetto-trace-proto" # ignore perfetto protobuf binding
+  - "crates/tracexec-exporter-perfetto/src/proto.rs" # ignore minified perfetto protobuf binding
