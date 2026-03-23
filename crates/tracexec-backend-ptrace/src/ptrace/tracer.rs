@@ -357,6 +357,21 @@ impl RunningTracer {
   pub fn seccomp_bpf(&self) -> bool {
     self.seccomp_bpf == SeccompBpf::On
   }
+
+  /// Create a mock tracer for unit tests.
+  #[doc(hidden)]
+  pub fn mock() -> Self {
+    let (req_tx, req_rx) = unbounded_channel();
+    // Keep receiver alive so request_* calls don't fail in tests.
+    std::mem::forget(req_rx);
+    Self {
+      tid: unsafe { pthread_self() },
+      breakpoints: Arc::new(RwLock::new(BTreeMap::new())),
+      req_tx,
+      seccomp_bpf: SeccompBpf::Off,
+      blocking: false,
+    }
+  }
 }
 
 impl Tracer {
