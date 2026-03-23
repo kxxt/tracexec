@@ -250,6 +250,157 @@ mod tests {
     let rendered = format!("{:?}", terminal.backend().buffer());
     assert_snapshot!(rendered);
   }
+
+  #[test]
+  fn snapshot_breakpoint_entry_unselected() {
+    let entry = BreakPointEntry {
+      id: 7,
+      breakpoint: BreakPoint {
+        pattern: BreakPointPattern::InFilename("/bin/echo".to_string()),
+        ty: BreakPointType::Permanent,
+        activated: true,
+        stop: BreakPointStop::SyscallEnter,
+      },
+    };
+    let paragraph = entry.paragraph(false);
+    let mut terminal = Terminal::new(TestBackend::new(70, 4)).unwrap();
+    terminal
+      .draw(|frame| {
+        frame.render_widget(paragraph, frame.area());
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn snapshot_breakpoint_entry_inactive() {
+    let entry = BreakPointEntry {
+      id: 7,
+      breakpoint: BreakPoint {
+        pattern: BreakPointPattern::InFilename("/bin/echo".to_string()),
+        ty: BreakPointType::Permanent,
+        activated: false,
+        stop: BreakPointStop::SyscallEnter,
+      },
+    };
+    let paragraph = entry.paragraph(true);
+    let mut terminal = Terminal::new(TestBackend::new(70, 4)).unwrap();
+    terminal
+      .draw(|frame| {
+        frame.render_widget(paragraph, frame.area());
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn snapshot_breakpoint_entry_once_type() {
+    let entry = BreakPointEntry {
+      id: 7,
+      breakpoint: BreakPoint {
+        pattern: BreakPointPattern::InFilename("/bin/echo".to_string()),
+        ty: BreakPointType::Once,
+        activated: true,
+        stop: BreakPointStop::SyscallEnter,
+      },
+    };
+    let paragraph = entry.paragraph(true);
+    let mut terminal = Terminal::new(TestBackend::new(70, 4)).unwrap();
+    terminal
+      .draw(|frame| {
+        frame.render_widget(paragraph, frame.area());
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn snapshot_breakpoint_entry_syscall_exit() {
+    let entry = BreakPointEntry {
+      id: 7,
+      breakpoint: BreakPoint {
+        pattern: BreakPointPattern::InFilename("/bin/echo".to_string()),
+        ty: BreakPointType::Permanent,
+        activated: true,
+        stop: BreakPointStop::SyscallExit,
+      },
+    };
+    let paragraph = entry.paragraph(true);
+    let mut terminal = Terminal::new(TestBackend::new(70, 4)).unwrap();
+    terminal
+      .draw(|frame| {
+        frame.render_widget(paragraph, frame.area());
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn snapshot_breakpoint_entry_exact_filename() {
+    let entry = BreakPointEntry {
+      id: 7,
+      breakpoint: BreakPoint {
+        pattern: BreakPointPattern::ExactFilename("/bin/echo".to_string()),
+        ty: BreakPointType::Permanent,
+        activated: true,
+        stop: BreakPointStop::SyscallEnter,
+      },
+    };
+    let paragraph = entry.paragraph(true);
+    let mut terminal = Terminal::new(TestBackend::new(70, 4)).unwrap();
+    terminal
+      .draw(|frame| {
+        frame.render_widget(paragraph, frame.area());
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn snapshot_breakpoint_entry_argv_regex() {
+    let entry = BreakPointEntry {
+      id: 7,
+      breakpoint: BreakPoint {
+        pattern: BreakPointPattern::from_editable("argv-regex:curl.*google").unwrap(),
+        ty: BreakPointType::Permanent,
+        activated: true,
+        stop: BreakPointStop::SyscallEnter,
+      },
+    };
+    let paragraph = entry.paragraph(true);
+    let mut terminal = Terminal::new(TestBackend::new(70, 4)).unwrap();
+    terminal
+      .draw(|frame| {
+        frame.render_widget(paragraph, frame.area());
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn test_breakpoint_manager_help() {
+    let help = super::BreakPointManager::help();
+    assert_eq!(help.title, "How to use Breakpoints");
+    assert!(!help.message.is_empty());
+    // Check that the help contains expected content
+    let content = help
+      .message
+      .iter()
+      .map(|line: &ratatui::text::Line| line.to_string())
+      .collect::<Vec<_>>()
+      .join("\n");
+    assert!(content.contains("syscall-enter"));
+    assert!(content.contains("syscall-exit"));
+    assert!(content.contains("in-filename"));
+    assert!(content.contains("exact-filename"));
+    assert!(content.contains("argv-regex"));
+  }
 }
 
 impl BreakPointManagerState {
