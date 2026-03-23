@@ -1,0 +1,27 @@
+---
+source: crates/tracexec-tui/src/hit_manager.rs
+assertion_line: 521
+expression: rendered
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 70, height: 3 },
+    content: [
+        "4321 hit breakpoint #12(argv-regex:curl) at SyscallEnter              ",
+        "                                                                      ",
+        "                                                                      ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: LightMagenta, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 4, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 5, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD | REVERSED,
+        x: 8, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 9, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD | REVERSED,
+        x: 23, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 24, y: 0, fg: Cyan, bg: Reset, underline: Reset, modifier: BOLD | REVERSED,
+        x: 39, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 41, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD | REVERSED,
+        x: 43, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 44, y: 0, fg: Yellow, bg: Reset, underline: Reset, modifier: BOLD | REVERSED,
+        x: 56, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

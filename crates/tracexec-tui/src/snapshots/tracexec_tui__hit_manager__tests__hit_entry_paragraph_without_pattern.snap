@@ -1,0 +1,27 @@
+---
+source: crates/tracexec-tui/src/hit_manager.rs
+assertion_line: 502
+expression: rendered
+---
+Buffer {
+    area: Rect { x: 0, y: 0, width: 70, height: 3 },
+    content: [
+        "4321 hit breakpoint #12(deleted) at SyscallExit                       ",
+        "                                                                      ",
+        "                                                                      ",
+    ],
+    styles: [
+        x: 0, y: 0, fg: LightMagenta, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 4, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 5, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD | REVERSED,
+        x: 8, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 9, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD | REVERSED,
+        x: 23, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 24, y: 0, fg: LightRed, bg: Reset, underline: Reset, modifier: BOLD | REVERSED,
+        x: 31, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 33, y: 0, fg: White, bg: Reset, underline: Reset, modifier: BOLD | REVERSED,
+        x: 35, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: REVERSED,
+        x: 36, y: 0, fg: Yellow, bg: Reset, underline: Reset, modifier: BOLD | REVERSED,
+        x: 47, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+    ]
+}

@@ -482,6 +482,44 @@ mod tests {
     let rendered = format!("{:?}", terminal.backend().buffer());
     assert_snapshot!(rendered);
   }
+
+  #[test]
+  fn test_hit_entry_paragraph_without_pattern() {
+    let entry = BreakPointHitEntry {
+      bid: 12,
+      pid: Pid::from_raw(4321),
+      stop: BreakPointStop::SyscallExit,
+      breakpoint_pattern: None,
+    };
+    let paragraph = entry.paragraph(true);
+    let mut terminal = Terminal::new(TestBackend::new(70, 3)).unwrap();
+    terminal
+      .draw(|frame| {
+        frame.render_widget(paragraph, frame.area());
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn test_hit_entry_paragraph_with_syscall_enter() {
+    let entry = BreakPointHitEntry {
+      bid: 12,
+      pid: Pid::from_raw(4321),
+      stop: BreakPointStop::SyscallEnter,
+      breakpoint_pattern: Some("argv-regex:curl".to_string()),
+    };
+    let paragraph = entry.paragraph(true);
+    let mut terminal = Terminal::new(TestBackend::new(70, 3)).unwrap();
+    terminal
+      .draw(|frame| {
+        frame.render_widget(paragraph, frame.area());
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
+  }
 }
 
 pub struct HitManager;
