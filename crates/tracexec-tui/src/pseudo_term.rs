@@ -254,3 +254,104 @@ impl Widget for &PseudoTerminalPane {
     pseudo_term.render(area, buf);
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use crossterm::event::{
+    KeyCode,
+    KeyEvent,
+    KeyModifiers,
+  };
+  use ratatui::prelude::{
+    Buffer,
+    Rect,
+  };
+  use tracexec_core::pty::{
+    PtySize,
+    PtySystem,
+    native_pty_system,
+  };
+
+  use super::*;
+
+  #[tokio::test]
+  async fn pseudo_terminal_handle_key_event_various_keys() -> color_eyre::Result<()> {
+    let pty_system = native_pty_system();
+    let pty_pair = pty_system.openpty(PtySize {
+      rows: 12,
+      cols: 40,
+      pixel_width: 0,
+      pixel_height: 0,
+    })?;
+    let mut term = PseudoTerminalPane::new(
+      PtySize {
+        rows: 12,
+        cols: 40,
+        pixel_width: 0,
+        pixel_height: 0,
+      },
+      pty_pair.master,
+    )?;
+
+    assert!(
+      term
+        .handle_key_event(&KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE))
+        .await
+    );
+    assert!(
+      term
+        .handle_key_event(&KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+        .await
+    );
+    assert!(
+      term
+        .handle_key_event(&KeyEvent::new(KeyCode::Char('d'), KeyModifiers::ALT))
+        .await
+    );
+    assert!(
+      term
+        .handle_key_event(&KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE))
+        .await
+    );
+    assert!(
+      term
+        .handle_key_event(&KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
+        .await
+    );
+    assert!(
+      term
+        .handle_key_event(&KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE))
+        .await
+    );
+    assert!(
+      term
+        .handle_key_event(&KeyEvent::new(KeyCode::F(99), KeyModifiers::NONE))
+        .await
+    );
+
+    // Verify resize and focus operations cover the respective paths.
+    term.resize(PtySize {
+      rows: 20,
+      cols: 80,
+      pixel_width: 0,
+      pixel_height: 0,
+    })?;
+    assert_eq!(term.size.rows, 20);
+    assert_eq!(term.size.cols, 80);
+
+    term.focus(true);
+    assert!(term.focus);
+    term.focus(false);
+    assert!(!term.focus);
+
+    // Rendering should not panic and uses currently captured parser state.
+    let mut buffer = Buffer::empty(Rect::new(0, 0, 20, 5));
+    (&term).render(Rect::new(0, 0, 20, 5), &mut buffer);
+
+    term.exit();
+
+    // It should not hang after calling exit
+
+    Ok(())
+  }
+}

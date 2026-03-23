@@ -51,6 +51,15 @@ pub enum QueryValue {
   Text(String),
 }
 
+impl PartialEq for QueryValue {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (Self::Text(a), Self::Text(b)) => a == b,
+      _ => false, // Can't compare Regex
+    }
+  }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QueryKind {
   Search,
