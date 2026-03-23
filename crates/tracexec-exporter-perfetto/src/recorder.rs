@@ -55,3 +55,20 @@ impl<W: std::io::Write> Drop for PerfettoTraceRecorder<W> {
     let _ = self.flush();
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::PerfettoTraceRecorder;
+  use crate::proto::TracePacket;
+
+  #[test]
+  fn test_record_and_flush_writes_bytes() {
+    let mut recorder = PerfettoTraceRecorder::new(Vec::new());
+    recorder.record(TracePacket::default()).unwrap();
+    recorder.record(TracePacket::default()).unwrap();
+    assert!(!recorder.buf.is_empty());
+    recorder.flush().unwrap();
+    assert!(recorder.buf.is_empty());
+    assert!(!recorder.writer.is_empty());
+  }
+}

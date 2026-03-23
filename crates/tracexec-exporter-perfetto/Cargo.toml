@@ -35,3 +35,4 @@ serde = { workspace = true }
 prost = { workspace = true }
 bytes = { workspace = true }
 tokio = { workspace = true }
+nix = { workspace = true }
