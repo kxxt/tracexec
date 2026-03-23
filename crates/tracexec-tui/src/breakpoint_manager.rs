@@ -215,11 +215,17 @@ impl BreakPointManager {
 
 #[cfg(test)]
 mod tests {
+  use crossterm::event::{
+    KeyCode,
+    KeyEvent,
+    KeyModifiers,
+  };
   use insta::assert_snapshot;
   use ratatui::{
     Terminal,
     backend::TestBackend,
   };
+  use tracexec_backend_ptrace::ptrace::RunningTracer;
   use tracexec_core::breakpoint::{
     BreakPoint,
     BreakPointPattern,
@@ -227,7 +233,25 @@ mod tests {
     BreakPointType,
   };
 
-  use super::BreakPointEntry;
+  use super::{
+    BreakPointEntry,
+    BreakPointManagerState,
+  };
+
+  fn make_breakpoint(pattern: &str, stop: BreakPointStop, activated: bool) -> BreakPoint {
+    BreakPoint {
+      pattern: BreakPointPattern::from_editable(pattern).unwrap(),
+      ty: BreakPointType::Permanent,
+      activated,
+      stop,
+    }
+  }
+
+  fn feed_text(state: &mut BreakPointManagerState, text: &str) {
+    for ch in text.chars() {
+      state.handle_key_event(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE));
+    }
+  }
 
   #[test]
   fn snapshot_breakpoint_entry() {
@@ -400,6 +424,90 @@ mod tests {
     assert!(content.contains("in-filename"));
     assert!(content.contains("exact-filename"));
     assert!(content.contains("argv-regex"));
+  }
+
+  #[test]
+  fn test_breakpoint_manager_state_new_copies_breakpoints() {
+    let tracer = RunningTracer::mock();
+    let id = tracer.add_breakpoint(make_breakpoint(
+      "in-filename:/bin/echo",
+      BreakPointStop::SyscallEnter,
+      true,
+    ));
+    let state = BreakPointManagerState::new(tracer.clone());
+    assert_eq!(state.breakpoints.len(), 1);
+    let breakpoint = state.breakpoints.get(&id).unwrap().clone();
+    assert_eq!(breakpoint.pattern.to_editable(), "in-filename:/bin/echo");
+    assert_eq!(breakpoint.stop, BreakPointStop::SyscallEnter);
+    assert!(breakpoint.activated);
+    assert!(matches!(breakpoint.ty, BreakPointType::Permanent));
+  }
+
+  #[test]
+  fn test_breakpoint_manager_state_new_breakpoint_flow() {
+    let tracer = RunningTracer::mock();
+    let mut state = BreakPointManagerState::new(tracer.clone());
+    state.handle_key_event(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+    feed_text(&mut state, "in-filename:/bin/echo");
+    state.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(state.editor.is_none());
+    assert_eq!(state.breakpoints.len(), 1);
+    let (id, breakpoint) = state.breakpoints.iter().next().unwrap();
+    let breakpoint = breakpoint.clone();
+    assert_eq!(breakpoint.pattern.to_editable(), "in-filename:/bin/echo");
+    assert_eq!(breakpoint.stop, BreakPointStop::SyscallExit);
+    assert!(breakpoint.activated);
+    assert!(matches!(breakpoint.ty, BreakPointType::Permanent));
+    let tracer_breakpoints = tracer.get_breakpoints();
+    assert!(tracer_breakpoints.contains_key(id));
+  }
+
+  #[test]
+  fn test_breakpoint_manager_state_edit_toggles_and_saves() {
+    let tracer = RunningTracer::mock();
+    let id = tracer.add_breakpoint(make_breakpoint(
+      "in-filename:/bin/echo",
+      BreakPointStop::SyscallExit,
+      true,
+    ));
+    let mut state = BreakPointManagerState::new(tracer.clone());
+    state.list_state.select(Some(0));
+    state.handle_key_event(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+    state.handle_key_event(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::ALT));
+    state.handle_key_event(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::ALT));
+    state.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let breakpoint = state.breakpoints.get(&id).unwrap();
+    assert_eq!(breakpoint.stop, BreakPointStop::SyscallEnter);
+    assert!(!breakpoint.activated);
+    let tracer_breakpoints = tracer.get_breakpoints();
+    let tracer_breakpoint = tracer_breakpoints.get(&id).unwrap();
+    assert_eq!(tracer_breakpoint.stop, BreakPointStop::SyscallEnter);
+    assert!(!tracer_breakpoint.activated);
+  }
+
+  #[test]
+  fn test_breakpoint_manager_state_delete_breakpoint() {
+    let tracer = RunningTracer::mock();
+    let id1 = tracer.add_breakpoint(make_breakpoint(
+      "in-filename:/bin/echo",
+      BreakPointStop::SyscallExit,
+      true,
+    ));
+    let id2 = tracer.add_breakpoint(make_breakpoint(
+      "exact-filename:/bin/sleep",
+      BreakPointStop::SyscallEnter,
+      true,
+    ));
+    let mut state = BreakPointManagerState::new(tracer.clone());
+    state.list_state.select(Some(1));
+    state.handle_key_event(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+    assert_eq!(state.breakpoints.len(), 1);
+    assert!(state.breakpoints.contains_key(&id1));
+    assert!(!state.breakpoints.contains_key(&id2));
+    assert_eq!(state.list_state.selected, Some(0));
+    let tracer_breakpoints = tracer.get_breakpoints();
+    assert!(tracer_breakpoints.contains_key(&id1));
+    assert!(!tracer_breakpoints.contains_key(&id2));
   }
 }
 
