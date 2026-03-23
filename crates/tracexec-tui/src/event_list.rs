@@ -616,4 +616,113 @@ mod test {
     assert_eq!(result.0, &[] as &[i32]);
     assert_eq!(result.1, &[] as &[i32]);
   }
+
+  #[tokio::test]
+  async fn test_handle_key_event_down() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::NextItem));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_up() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let mut actions = vec![];
+    while let Some(action) = rx.receive() {
+      actions.push(action);
+    }
+    assert!(actions.iter().any(|a| matches!(a, Action::StopFollow)));
+    assert!(actions.iter().any(|a| matches!(a, Action::PrevItem)));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_page_down() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::PageDown));
+
+    let ke = KeyEvent::new(KeyCode::Down, KeyModifiers::CONTROL);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::PageDown));
+  }
 }

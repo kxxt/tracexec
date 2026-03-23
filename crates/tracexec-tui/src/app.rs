@@ -200,6 +200,11 @@ impl App {
     })
   }
 
+  pub fn disable_clipboard(&mut self) {
+    self.clipboard = None;
+    self.event_list.has_clipboard = false;
+  }
+
   pub fn activate_experiment(&mut self, experiment: &'static str) {
     self.active_experiments.push(experiment);
   }
@@ -757,5 +762,105 @@ impl<T> OptionalAccessMut<T> for Option<T> {
     if let Some(v) = self.as_mut() {
       f(v)
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use insta::assert_snapshot;
+  use nix::{
+    sys::signal::Signal,
+    unistd::Pid,
+  };
+  use ratatui::{
+    Terminal,
+    backend::TestBackend,
+  };
+  use tracexec_core::{
+    cli::args::{
+      LogModeArgs,
+      ModifierArgs,
+      TuiModeArgs,
+    },
+    event::{
+      EventId,
+      TracerEventMessage,
+    },
+    proc::BaselineInfo,
+  };
+
+  use super::*;
+
+  #[test]
+  fn app_no_pty_shrink_grow_noop_and_inspect_event_list() -> color_eyre::Result<()> {
+    let baseline = std::sync::Arc::new(BaselineInfo::new()?);
+    let mut app = App::new(
+      None,
+      &LogModeArgs::default(),
+      &ModifierArgs::default(),
+      TuiModeArgs::default(),
+      baseline.clone(),
+      None,
+    )?;
+
+    assert_eq!(app.split_percentage, 100);
+    app.shrink_pane();
+    assert_eq!(app.split_percentage, 100);
+    app.grow_pane();
+    assert_eq!(app.split_percentage, 100);
+
+    app.activate_experiment("test-experiment");
+    assert_eq!(app.active_experiments, vec!["test-experiment"]);
+
+    assert!(app.signal_root_process(Signal::SIGTERM).is_ok());
+    assert!(app.exit().is_ok());
+
+    assert_eq!(app.active_event_list().is_following(), false);
+    app.inspect_all_event_list_mut(|list| list.toggle_follow());
+    assert_eq!(app.event_list.is_following(), true);
+
+    Ok(())
+  }
+
+  #[test]
+  fn optional_access_mut_works() {
+    let mut maybe = Some(2);
+    maybe.access_some_mut(|x| *x = 3);
+    assert_eq!(maybe, Some(3));
+
+    let mut none: Option<u32> = None;
+    none.access_some_mut(|x| *x = 4);
+    assert_eq!(none, None);
+  }
+
+  #[test]
+  fn snapshot_app_render() {
+    let baseline = std::sync::Arc::new(BaselineInfo::new().unwrap());
+    let mut app = App::new(
+      None,
+      &LogModeArgs::default(),
+      &ModifierArgs::default(),
+      TuiModeArgs::default(),
+      baseline,
+      None,
+    )
+    .unwrap();
+
+    // Add a test event
+    let event = std::sync::Arc::new(TracerEventDetails::Info(TracerEventMessage {
+      pid: Some(Pid::from_raw(123)),
+      timestamp: None,
+      msg: "Test event".to_string(),
+    }));
+    app.event_list.push(EventId::new(0), event);
+
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal
+      .draw(|f| {
+        app.render(f.area(), f.buffer_mut());
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
   }
 }
