@@ -1324,3 +1324,178 @@ impl TracerInner {
     self.seccomp_bpf == SeccompBpf::On
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::{
+    collections::BTreeMap,
+    sync::Arc,
+  };
+
+  use enumflags2::BitFlags;
+  use nix::{
+    errno::Errno,
+    unistd::{
+      Pid,
+      getpid,
+    },
+  };
+  use tokio::sync::mpsc::UnboundedReceiver;
+  use tracexec_core::{
+    cli::{
+      args::{
+        LogModeArgs,
+        ModifierArgs,
+      },
+      options::SeccompBpf,
+    },
+    event::{
+      TracerEvent,
+      TracerEventDetails,
+      TracerEventDetailsKind,
+      TracerEventMessage,
+      TracerMessage,
+    },
+    proc::{
+      BaselineInfo,
+      cached_string,
+    },
+    timestamp::TimestampFormat,
+    tracer::{
+      TracerBuilder,
+      TracerMode,
+    },
+  };
+
+  use super::TracerInner;
+  use crate::ptrace::BuildPtraceTracer;
+
+  fn build_inner(
+    mut modifier_args: ModifierArgs,
+    filter: BitFlags<TracerEventDetailsKind>,
+    seccomp_bpf: SeccompBpf,
+  ) -> (TracerInner, UnboundedReceiver<TracerMessage>) {
+    let tracer_mode = TracerMode::Log { foreground: false };
+    let tracing_args = LogModeArgs::default();
+    modifier_args.inline_timestamp_format =
+      Some(TimestampFormat::try_new("%Y-%m-%d %H:%M:%S").unwrap());
+    let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+    let baseline = BaselineInfo::new().unwrap();
+    let (tracer, _token) = TracerBuilder::new()
+      .mode(tracer_mode)
+      .modifier(modifier_args)
+      .filter(filter)
+      .tracer_tx(msg_tx)
+      .baseline(Arc::new(baseline))
+      .printer_from_cli(&tracing_args)
+      .seccomp_bpf(seccomp_bpf)
+      .build_ptrace()
+      .unwrap();
+    let inner = TracerInner::new(
+      tracer,
+      Arc::new(std::sync::RwLock::new(BTreeMap::new())),
+      None,
+    )
+    .unwrap();
+    (inner, msg_rx)
+  }
+
+  #[test]
+  fn test_get_filename_for_display_resolves_proc_self_exe() {
+    let mut modifier = ModifierArgs::default();
+    modifier.resolve_proc_self_exe = true;
+    let (inner, _rx) = build_inner(modifier, BitFlags::empty(), SeccompBpf::Off);
+    let pid = getpid();
+    let filename = cached_string("/proc/self/exe".to_string());
+    let resolved = inner
+      .get_filename_for_display(pid, Ok(filename))
+      .unwrap()
+      .unwrap();
+    let expected = std::fs::read_link("/proc/self/exe")
+      .unwrap()
+      .to_string_lossy()
+      .to_string();
+    assert_eq!(resolved.as_ref(), expected);
+  }
+
+  #[test]
+  fn test_get_filename_for_display_passthrough_error() {
+    let (inner, _rx) = build_inner(ModifierArgs::default(), BitFlags::empty(), SeccompBpf::Off);
+    let pid = getpid();
+    let result = inner
+      .get_filename_for_display(pid, Err(Errno::ENOENT))
+      .unwrap();
+    assert!(matches!(result, Err(Errno::ENOENT)));
+  }
+
+  #[test]
+  fn test_warn_for_argv_and_envp_emit_warnings() {
+    let filter = BitFlags::from_flag(TracerEventDetailsKind::Warning);
+    let (inner, mut rx) = build_inner(ModifierArgs::default(), filter, SeccompBpf::Off);
+    inner
+      .warn_for_argv(&Ok::<Vec<i32>, _>(Vec::new()), Pid::from_raw(1))
+      .unwrap();
+    let received = rx.try_recv().unwrap();
+    let TracerMessage::Event(TracerEvent {
+      details: TracerEventDetails::Warning(TracerEventMessage { msg, .. }),
+      ..
+    }) = received
+    else {
+      panic!("unexpected message: {received:?}");
+    };
+    assert!(msg.contains("Empty argv"));
+
+    inner
+      .warn_for_envp::<Vec<i32>>(&Err(Errno::EPERM), Pid::from_raw(1))
+      .unwrap();
+    let received = rx.try_recv().unwrap();
+    let TracerMessage::Event(TracerEvent {
+      details: TracerEventDetails::Warning(TracerEventMessage { msg, .. }),
+      ..
+    }) = received
+    else {
+      panic!("unexpected message: {received:?}");
+    };
+    assert!(msg.contains("Failed to read envp"));
+  }
+
+  #[test]
+  fn test_warn_for_filename_emits_warning_on_error() {
+    let filter = BitFlags::from_flag(TracerEventDetailsKind::Warning);
+    let (inner, mut rx) = build_inner(ModifierArgs::default(), filter, SeccompBpf::Off);
+    inner
+      .warn_for_filename(&Err(Errno::EACCES), Pid::from_raw(2))
+      .unwrap();
+    let received = rx.try_recv().unwrap();
+    let TracerMessage::Event(TracerEvent {
+      details: TracerEventDetails::Warning(TracerEventMessage { msg, .. }),
+      ..
+    }) = received
+    else {
+      panic!("unexpected message: {received:?}");
+    };
+    assert!(msg.contains("Failed to read filename"));
+  }
+
+  #[test]
+  fn test_warn_for_argv_filtered_out() {
+    let (inner, mut rx) = build_inner(ModifierArgs::default(), BitFlags::empty(), SeccompBpf::Off);
+    inner
+      .warn_for_argv::<i32>(&Err(Errno::EPERM), Pid::from_raw(1))
+      .unwrap();
+    assert!(rx.try_recv().is_err());
+  }
+
+  #[test]
+  fn test_timestamp_now_and_seccomp_bpf() {
+    let mut modifier = ModifierArgs::default();
+    modifier.timestamp = true;
+    let (inner, _rx) = build_inner(modifier, BitFlags::empty(), SeccompBpf::On);
+    assert!(inner.timestamp_now().is_some());
+    assert!(inner.seccomp_bpf());
+
+    let (inner, _rx) = build_inner(ModifierArgs::default(), BitFlags::empty(), SeccompBpf::Off);
+    assert!(inner.timestamp_now().is_none());
+    assert!(!inner.seccomp_bpf());
+  }
+}
