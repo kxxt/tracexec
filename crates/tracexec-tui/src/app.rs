@@ -845,6 +845,8 @@ mod tests {
       None,
     )
     .unwrap();
+    // Disable clipboard as it relies on autodetect.
+    app.disable_clipboard();
 
     // Add a test event
     let event = std::sync::Arc::new(TracerEventDetails::Info(TracerEventMessage {
