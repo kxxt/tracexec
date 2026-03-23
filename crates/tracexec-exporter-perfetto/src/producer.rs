@@ -508,3 +508,135 @@ impl TracePacketProducer {
     })
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::{
+    collections::BTreeMap,
+    sync::Arc,
+  };
+
+  use nix::{
+    errno::Errno,
+    unistd::Pid,
+  };
+  use tracexec_core::{
+    event::{
+      EventId,
+      ExecEvent,
+      OutputMsg,
+      ParentEvent,
+      ProcessStateUpdate,
+      ProcessStateUpdateEvent,
+      TracerEvent,
+      TracerEventDetails,
+      TracerMessage,
+    },
+    proc::{
+      BaselineInfo,
+      Cred,
+      FileDescriptorInfoCollection,
+      cached_str,
+    },
+    timestamp::ts_from_boot_ns,
+    tracer::ProcessExit,
+  };
+
+  use super::TracePacketProducer;
+
+  fn make_exec_event(
+    pid: i32,
+    filename: &str,
+    result: i64,
+    parent: Option<ParentEvent<EventId>>,
+  ) -> ExecEvent {
+    ExecEvent {
+      pid: Pid::from_raw(pid),
+      cwd: OutputMsg::from(cached_str("/tmp")),
+      comm: cached_str("cmd"),
+      filename: OutputMsg::from(cached_str(filename)),
+      argv: Arc::new(Ok(vec![OutputMsg::from(cached_str(filename))])),
+      envp: Arc::new(Ok(BTreeMap::new())),
+      has_dash_env: false,
+      cred: Ok(Cred::default()),
+      interpreter: None,
+      env_diff: Err(Errno::EPERM),
+      fdinfo: Arc::new(FileDescriptorInfoCollection::default()),
+      result,
+      timestamp: ts_from_boot_ns(0),
+      parent,
+    }
+  }
+
+  #[test]
+  fn test_trace_packet_producer_exec_success_and_exit() {
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let (mut producer, _initial) = TracePacketProducer::new(baseline);
+    let id = EventId::new(1);
+    let exec = make_exec_event(1234, "/bin/echo", 0, None);
+    let exec_event = TracerMessage::Event(TracerEvent {
+      id,
+      details: TracerEventDetails::Exec(Box::new(exec)),
+    });
+    let packets = producer.process(exec_event).unwrap();
+    assert_eq!(packets.len(), 2);
+    let update = ProcessStateUpdateEvent {
+      update: ProcessStateUpdate::Exit {
+        status: ProcessExit::Code(0),
+        timestamp: ts_from_boot_ns(1),
+      },
+      pid: Pid::from_raw(1234),
+      ids: vec![id],
+    };
+    let packets = producer
+      .process(TracerMessage::StateUpdate(update))
+      .unwrap();
+    assert_eq!(packets.len(), 1);
+  }
+
+  #[test]
+  fn test_trace_packet_producer_exec_failure_parentless_track_reuse() {
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let (mut producer, _initial) = TracePacketProducer::new(baseline);
+    let exec_fail = make_exec_event(1234, "/bin/echo", -1, None);
+    let packets = producer
+      .process(TracerMessage::Event(TracerEvent {
+        id: EventId::new(1),
+        details: TracerEventDetails::Exec(Box::new(exec_fail)),
+      }))
+      .unwrap();
+    assert_eq!(packets.len(), 2);
+
+    let exec_fail2 = make_exec_event(1234, "/bin/echo", -1, None);
+    let packets = producer
+      .process(TracerMessage::Event(TracerEvent {
+        id: EventId::new(2),
+        details: TracerEventDetails::Exec(Box::new(exec_fail2)),
+      }))
+      .unwrap();
+    assert_eq!(packets.len(), 1);
+  }
+
+  #[test]
+  fn test_trace_packet_producer_spawn_child_allocates_track() {
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let (mut producer, _initial) = TracePacketProducer::new(baseline);
+    let parent_id = EventId::new(1);
+    let parent = make_exec_event(2000, "/bin/parent", 0, None);
+    let parent_event = TracerMessage::Event(TracerEvent {
+      id: parent_id,
+      details: TracerEventDetails::Exec(Box::new(parent)),
+    });
+    let packets = producer.process(parent_event).unwrap();
+    assert_eq!(packets.len(), 2);
+
+    let child = make_exec_event(2001, "/bin/child", 0, Some(ParentEvent::Spawn(parent_id)));
+    let packets = producer
+      .process(TracerMessage::Event(TracerEvent {
+        id: EventId::new(2),
+        details: TracerEventDetails::Exec(Box::new(child)),
+      }))
+      .unwrap();
+    assert!(!packets.is_empty());
+  }
+}
