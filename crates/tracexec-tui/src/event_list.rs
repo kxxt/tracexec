@@ -725,4 +725,716 @@ mod test {
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::PageDown));
   }
+
+  #[tokio::test]
+  async fn test_handle_key_event_left() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Left, KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::ScrollLeft));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_home() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Home, KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let mut actions = vec![];
+    while let Some(action) = rx.receive() {
+      actions.push(action);
+    }
+    assert!(actions.iter().any(|a| matches!(a, Action::StopFollow)));
+    assert!(actions.iter().any(|a| matches!(a, Action::ScrollToTop)));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_end() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::End, KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::ScrollToBottom));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_f1() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::{
+      Action,
+      ActivePopup,
+    };
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::SetActivePopup(ActivePopup::Help)));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_toggle_env() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::ToggleEnvDisplay));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_toggle_cwd() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::ToggleCwdDisplay));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_grow_pane() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::GrowPane));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_shrink_pane() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::ShrinkPane));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_right() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Right, KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::ScrollRight));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_pageup() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let mut actions = vec![];
+    while let Some(action) = rx.receive() {
+      actions.push(action);
+    }
+    assert!(actions.iter().any(|a| matches!(a, Action::StopFollow)));
+    assert!(actions.iter().any(|a| matches!(a, Action::PageUp)));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_ctrl_left() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::PageLeft));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_ctrl_right() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::PageRight));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_home_shift() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Home, KeyModifiers::SHIFT);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::ScrollToStart));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_end_shift() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::End, KeyModifiers::SHIFT);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::ScrollToEnd));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_ctrl_up() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Up, KeyModifiers::CONTROL);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let mut actions = vec![];
+    while let Some(action) = rx.receive() {
+      actions.push(action);
+    }
+    assert!(actions.iter().any(|a| matches!(a, Action::StopFollow)));
+    assert!(actions.iter().any(|a| matches!(a, Action::PageUp)));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_vim_j() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::NextItem));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_vim_k() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let mut actions = vec![];
+    while let Some(action) = rx.receive() {
+      actions.push(action);
+    }
+    assert!(actions.iter().any(|a| matches!(a, Action::StopFollow)));
+    assert!(actions.iter().any(|a| matches!(a, Action::PrevItem)));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_vim_h() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::ScrollLeft));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_vim_l() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::ScrollRight));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_toggle_follow() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::ToggleFollow));
+  }
+
+  #[tokio::test]
+  async fn test_handle_key_event_begin_search() {
+    use std::sync::Arc;
+
+    use crossterm::event::{
+      KeyCode,
+      KeyEvent,
+      KeyModifiers,
+    };
+    use tracexec_core::primitives::local_chan;
+
+    use super::*;
+    use crate::action::Action;
+
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let event_list = EventList::new(
+      baseline,
+      false,
+      ModifierArgs::default(),
+      1000,
+      false,
+      false,
+      true,
+    );
+    let (tx, rx) = local_chan::unbounded();
+
+    let ke = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL);
+    event_list.handle_key_event(ke, &tx).await.unwrap();
+
+    let action = rx.receive().unwrap();
+    assert!(matches!(action, Action::BeginSearch));
+  }
 }

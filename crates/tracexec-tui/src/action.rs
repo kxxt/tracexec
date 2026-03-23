@@ -113,3 +113,41 @@ pub enum ActivePopup {
   CopyTargetSelection(CopyPopupState),
   InfoPopup(InfoPopupState),
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::theme::THEME;
+
+  #[test]
+  fn test_show_error_popup_creates_popup() {
+    let action = Action::show_error_popup("Test Error".to_string(), "Something went wrong");
+    match action {
+      Action::SetActivePopup(ActivePopup::InfoPopup(popup_state)) => {
+        assert_eq!(popup_state.title, "Test Error");
+        assert_eq!(popup_state.style, THEME.error_popup);
+        assert_eq!(popup_state.message.len(), 1);
+        assert_eq!(
+          popup_state.message[0].spans[0].content.as_ref(),
+          "Something went wrong"
+        );
+      }
+      _ => panic!("Expected SetActivePopup with InfoPopup"),
+    }
+  }
+
+  #[test]
+  fn test_show_error_popup_with_display_trait() {
+    let error_code = 42;
+    let action = Action::show_error_popup("Error Code".to_string(), error_code);
+    match action {
+      Action::SetActivePopup(ActivePopup::InfoPopup(popup_state)) => {
+        assert_eq!(popup_state.title, "Error Code");
+        assert_eq!(popup_state.style, THEME.error_popup);
+        assert_eq!(popup_state.message.len(), 1);
+        assert_eq!(popup_state.message[0].spans[0].content.as_ref(), "42");
+      }
+      _ => panic!("Expected SetActivePopup with InfoPopup"),
+    }
+  }
+}
