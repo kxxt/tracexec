@@ -710,15 +710,21 @@ fn attach_kprobes_without_syscall_wrappers(skel: &mut TracexecSystemSkel) -> lib
 
 #[cfg(test)]
 mod tests {
-  use std::sync::{
-    Arc,
-    atomic::{
-      AtomicBool,
-      Ordering,
+  use std::{
+    env,
+    mem::MaybeUninit,
+    path::PathBuf,
+    sync::{
+      Arc,
+      atomic::{
+        AtomicBool,
+        Ordering,
+      },
     },
   };
 
   use enumflags2::BitFlags;
+  use tokio::sync::mpsc::unbounded_channel;
   use tracexec_core::printer::{
     ColorLevel,
     EnvPrintFormat,
@@ -750,6 +756,49 @@ mod tests {
 
   fn test_baseline() -> Arc<BaselineInfo> {
     Arc::new(BaselineInfo::new().expect("failed to capture baseline info"))
+  }
+
+  fn find_in_path(bin: &str) -> PathBuf {
+    env::var_os("PATH")
+      .and_then(|paths| {
+        env::split_paths(&paths)
+          .filter_map(|dir| {
+            let full_path = dir.join(bin);
+            if full_path.is_file() {
+              Some(full_path)
+            } else {
+              None
+            }
+          })
+          .next()
+      })
+      .unwrap_or_else(|| PathBuf::from(bin))
+  }
+
+  fn run_ebpf_and_collect(
+    cmd: Vec<String>,
+    filter: BitFlags<TracerEventDetailsKind>,
+  ) -> Vec<TracerMessage> {
+    let baseline = test_baseline();
+    let printer = Printer::new(test_printer_args(), baseline.clone());
+    let (tx, mut rx) = unbounded_channel();
+    let tracer = TracerBuilder::new()
+      .printer(printer)
+      .baseline(baseline)
+      .mode(TracerMode::Log { foreground: false })
+      .filter(filter)
+      .tracer_tx(tx)
+      .build_ebpf();
+    let mut obj = MaybeUninit::uninit();
+    let running = tracer
+      .spawn(&cmd, &mut obj, None)
+      .expect("failed to spawn eBPF tracer");
+    running.run_until_exit();
+    let mut msgs = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+      msgs.push(msg);
+    }
+    msgs
   }
 
   #[test]
@@ -805,5 +854,53 @@ mod tests {
       }
     });
     assert_eq!(polls, 2);
+  }
+
+  #[test]
+  #[ignore = "root"]
+  fn ebpf_tracer_emits_exec_and_exit_events() {
+    let true_path = find_in_path("true");
+    let filter = BitFlags::from_flag(TracerEventDetailsKind::Exec)
+      | BitFlags::from_flag(TracerEventDetailsKind::TraceeExit);
+    let events = run_ebpf_and_collect(vec![true_path.to_string_lossy().to_string()], filter);
+    let mut saw_exec = false;
+    let mut saw_exit = false;
+    for event in events {
+      if let TracerMessage::Event(TracerEvent { details, .. }) = event {
+        match details {
+          TracerEventDetails::Exec(_) => saw_exec = true,
+          TracerEventDetails::TraceeExit { .. } => saw_exit = true,
+          _ => {}
+        }
+      }
+    }
+    assert!(saw_exec, "expected at least one exec event");
+    assert!(saw_exit, "expected a tracee exit event");
+  }
+
+  #[test]
+  #[ignore = "root"]
+  fn ebpf_tracer_reports_signal_exit() {
+    let sh_path = find_in_path("sh");
+    let filter = BitFlags::from_flag(TracerEventDetailsKind::TraceeExit);
+    let events = run_ebpf_and_collect(
+      vec![
+        sh_path.to_string_lossy().to_string(),
+        "-c".to_string(),
+        "kill -TERM $$".to_string(),
+      ],
+      filter,
+    );
+    let mut saw_signal_exit = false;
+    for event in events {
+      if let TracerMessage::Event(TracerEvent {
+        details: TracerEventDetails::TraceeExit { signal, .. },
+        ..
+      }) = event
+      {
+        saw_signal_exit = signal == Some(Signal::Standard(nix::sys::signal::Signal::SIGTERM));
+      }
+    }
+    assert!(saw_signal_exit, "expected a signal-based exit event");
   }
 }
