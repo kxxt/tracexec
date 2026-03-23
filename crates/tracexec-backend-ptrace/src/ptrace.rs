@@ -11,5 +11,6 @@ pub use tracer::{
   BuildPtraceTracer,
   RunningTracer,
   Tracer,
+  clear_breakpoint_id_counter,
 };
 pub use waitpid::*;

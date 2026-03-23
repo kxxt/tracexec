@@ -8,7 +8,7 @@ Buffer {
         "                                                             F1  Help ",
         "? default command ›                                                   ",
         "┌─────────────────────────── Hit Manager ────────────────────────────┐",
-        "│4321 hit breakpoint #5(in-filename:/bin/echo) at SyscallExit        │",
+        "│4321 hit breakpoint #0(in-filename:/bin/echo) at SyscallExit        │",
         "│                                                                    │",
         "│                                                                    │",
         "│                                                                    │",
