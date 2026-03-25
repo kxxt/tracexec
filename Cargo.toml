@@ -168,3 +168,7 @@ path = "fixtures/corrupted-envp.rs"
 [[bin]]
 name = "exec-stress"
 path = "fixtures/exec-stress.rs"
+
+[[bin]]
+name = "exec-in-thread"
+path = "fixtures/exec-in-thread.rs"
