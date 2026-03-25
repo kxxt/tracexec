@@ -328,7 +328,6 @@ pub struct PtraceExitStopGuard<'a> {
 
 #[derive(Debug)]
 pub struct PtraceExecStopGuard<'a> {
-  #[allow(unused)]
   pub(super) former_tid: Result<Pid, Errno>,
   pub(super) guard: PtraceOpaqueStopGuard<'a>,
 }

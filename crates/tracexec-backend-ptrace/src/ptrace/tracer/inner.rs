@@ -524,15 +524,44 @@ impl TracerInner {
         }
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Exec(guard)) => {
           trace!("exec event");
-          let pid = guard.pid();
+          let pid = guard.pid(); // The TGID for the new process after exec
+          // The (former) thread id that called exec
+          let former_tid = guard.former_tid.context(OSSnafu)?;
           let mut store = self.store.borrow_mut();
-          let p = store.get_current_mut(pid).unwrap();
-          assert!(!p.presyscall);
+          let p = if former_tid == pid {
+            let p = store.get_current_mut(pid).unwrap();
+            assert!(!p.presyscall);
+            p
+          } else {
+            trace!("exec from non-main thread: {former_tid}, pid: {pid}");
+            // When a non-main thread calls exec, at the syscall entry stop
+            // or seccomp stop the tracer observes the thread's tid.
+            // However, for exec stop and syscall exit stop, the tracer
+            // observes the tgid of the process instead of the thread's tid.
+            //
+            // We need to transfer some state from the (now dead) tid to the tgid.
+            let [former_thread, p] = store.get_current_disjoint_mut(former_tid, pid);
+            let former_thread = former_thread.unwrap();
+            let p = p.unwrap();
+            p.exec_data = former_thread.exec_data.take();
+            p.comm = former_thread.comm.clone();
+            p.presyscall = former_thread.presyscall;
+            p.syscall = former_thread.syscall;
+            let pending_detach = former_thread.pending_detach.take();
+            if p.pending_detach.is_none() {
+              p.pending_detach = pending_detach;
+            }
+            assert!(!p.presyscall);
+            // parent_tracker state is not transferred
+            p
+          };
+
           // After execve or execveat, in syscall exit event,
           // the registers might be clobbered(e.g. aarch64).
           // So we need to determine whether exec is successful here.
           // PTRACE_EVENT_EXEC only happens for successful exec.
           p.is_exec_successful = true;
+
           // Exec event comes first before our special SENTINEL_SIGNAL is sent to tracee! (usually happens on syscall-enter)
           #[allow(clippy::branches_sharing_code)]
           if p.pending_detach.is_none() {

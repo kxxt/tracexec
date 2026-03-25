@@ -1,9 +1,15 @@
 use std::{
   env,
+  ffi::CString,
+  os::unix::ffi::OsStrExt,
   path::PathBuf,
   sync::Arc,
 };
 
+use nix::{
+  libc,
+  sys::signal::Signal as NixSignal,
+};
 use rstest::{
   fixture,
   rstest,
@@ -28,7 +34,15 @@ use tracexec_core::{
     BaselineInfo,
     Interpreter,
   },
-  tracer::TracerBuilder,
+  pty::{
+    PtySize,
+    PtySystem,
+    native_pty_system,
+  },
+  tracer::{
+    Signal,
+    TracerBuilder,
+  },
 };
 use tracing::info;
 use tracing_test::traced_test;
@@ -40,13 +54,12 @@ use super::{
   TracerMode,
 };
 
-#[fixture]
-fn true_executable() -> PathBuf {
+fn find_executable(name: &str) -> PathBuf {
   env::var_os("PATH")
     .and_then(|paths| {
       env::split_paths(&paths)
         .filter_map(|dir| {
-          let full_path = dir.join("true");
+          let full_path = dir.join(name);
           if full_path.is_file() {
             Some(full_path)
           } else {
@@ -55,7 +68,17 @@ fn true_executable() -> PathBuf {
         })
         .next()
     })
-    .expect("executable `true` not found")
+    .unwrap_or_else(|| panic!("executable `{name}` not found"))
+}
+
+#[fixture]
+fn true_executable() -> PathBuf {
+  find_executable("true")
+}
+
+#[fixture]
+fn sh_executable() -> PathBuf {
+  find_executable("sh")
 }
 
 #[fixture]
@@ -216,4 +239,181 @@ async fn tracer_emits_exec_event(
     }
   }
   panic!("Corresponding exec event not found")
+}
+
+#[traced_test]
+#[rstest]
+#[file_serial]
+#[tokio::test]
+async fn tracer_emits_exec_event_with_tui_enabled(true_executable: PathBuf) {
+  let pty = native_pty_system()
+    .openpty(PtySize::default())
+    .expect("openpty failed");
+  let tracexec_core::pty::PtyPair { master, slave } = pty;
+  let _master = master;
+
+  let tracer_mod = TracerMode::Tui(Some(slave));
+  let tracing_args = LogModeArgs::default();
+  let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+  let baseline = BaselineInfo::new().unwrap();
+  let (tracer, token) = TracerBuilder::new()
+    .mode(tracer_mod)
+    .modifier(Default::default())
+    .tracer_tx(msg_tx)
+    .baseline(Arc::new(baseline))
+    .printer_from_cli(&tracing_args)
+    .seccomp_bpf(SeccompBpf::Auto)
+    .build_ptrace()
+    .unwrap();
+
+  let true_executable = true_executable.to_string_lossy().to_string();
+  let events = run_exe_and_collect_msgs(tracer, msg_rx, token, vec![true_executable.clone()]).await;
+  for event in events {
+    if let TracerMessage::Event(TracerEvent {
+      details: TracerEventDetails::Exec(exec),
+      ..
+    }) = event
+    {
+      let argv = exec.argv.as_deref().unwrap();
+      assert_eq!(argv, &[OutputMsg::Ok(true_executable.as_str().into())]);
+      let OutputMsg::Ok(filename) = exec.filename else {
+        panic!("Failed to inspect filename")
+      };
+      assert_eq!(filename, true_executable);
+      return;
+    }
+  }
+  panic!("Corresponding exec event not found")
+}
+
+#[traced_test]
+#[rstest]
+#[file_serial]
+#[tokio::test]
+async fn tracer_reports_root_tracee_signaled(
+  #[with(Default::default())] tracer: TracerFixture,
+  sh_executable: PathBuf,
+) {
+  let (tracer, rx, req_rx) = tracer;
+  let sh_executable = sh_executable.to_string_lossy().to_string();
+  let events = run_exe_and_collect_msgs(
+    tracer,
+    rx,
+    req_rx,
+    vec![sh_executable, "-c".to_string(), "kill -TERM $$".to_string()],
+  )
+  .await;
+
+  let mut saw_tracee_exit = false;
+  for event in events {
+    if let TracerMessage::Event(TracerEvent {
+      details: TracerEventDetails::TraceeExit {
+        signal, exit_code, ..
+      },
+      ..
+    }) = event
+    {
+      assert_eq!(signal, Some(Signal::Standard(NixSignal::SIGTERM)));
+      assert_eq!(exit_code, 128 + NixSignal::SIGTERM as i32);
+      saw_tracee_exit = true;
+    }
+  }
+  assert!(saw_tracee_exit, "TraceeExit event not found");
+}
+
+#[traced_test]
+#[rstest]
+#[file_serial]
+#[tokio::test]
+async fn tracer_handles_execveat_syscall(
+  #[with(Default::default())] tracer: TracerFixture,
+  sh_executable: PathBuf,
+) {
+  let (tracer, rx, req_rx) = tracer;
+  let sh_executable = sh_executable.to_string_lossy().to_string();
+  let events = run_exe_and_collect_msgs(
+    tracer,
+    rx,
+    req_rx,
+    vec![
+      "/proc/self/exe".to_string(),
+      "--ignored".to_string(),
+      "ptrace_execveat_helper".to_string(),
+    ],
+  )
+  .await;
+
+  for event in events {
+    if let TracerMessage::Event(TracerEvent {
+      details: TracerEventDetails::Exec(exec),
+      ..
+    }) = event
+    {
+      let OutputMsg::Ok(filename) = exec.filename else {
+        continue;
+      };
+      if filename != sh_executable {
+        continue;
+      }
+      let argv = exec.argv.as_deref().unwrap();
+      assert_eq!(
+        argv,
+        &[
+          OutputMsg::Ok("sh".into()),
+          OutputMsg::Ok("-c".into()),
+          OutputMsg::Ok("true".into())
+        ]
+      );
+      return;
+    }
+  }
+  panic!("Corresponding exec event (execveat) not found");
+}
+
+#[test]
+#[ignore]
+fn ptrace_execveat_helper() {
+  let sh_path = find_executable("sh");
+  let sh_dir = sh_path.parent().expect("sh has no parent directory");
+  let sh_name = sh_path
+    .file_name()
+    .expect("sh has no file name")
+    .to_os_string();
+
+  let dir_c = CString::new(sh_dir.as_os_str().as_bytes()).unwrap();
+  let name_c = CString::new(sh_name.as_os_str().as_bytes()).unwrap();
+
+  let dirfd = unsafe { libc::open(dir_c.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY) };
+  assert!(
+    dirfd >= 0,
+    "open dir failed: {}",
+    std::io::Error::last_os_error()
+  );
+
+  let arg0 = CString::new("sh").unwrap();
+  let arg1 = CString::new("-c").unwrap();
+  let arg2 = CString::new("true").unwrap();
+  let argv = [
+    arg0.as_ptr(),
+    arg1.as_ptr(),
+    arg2.as_ptr(),
+    std::ptr::null(),
+  ];
+  let envp: [*const libc::c_char; 1] = [std::ptr::null()];
+
+  let ret = unsafe {
+    libc::syscall(
+      libc::SYS_execveat,
+      dirfd,
+      name_c.as_ptr(),
+      argv.as_ptr(),
+      envp.as_ptr(),
+      0,
+    )
+  };
+  let errno = std::io::Error::last_os_error();
+  unsafe {
+    libc::close(dirfd);
+  }
+  panic!("execveat failed (ret={ret}): {errno}");
 }
