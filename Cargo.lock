@@ -3269,6 +3269,7 @@ dependencies = [
  "tracexec-backend-ptrace",
  "tracexec-core",
  "tracing",
+ "tracing-test",
  "tui-popup",
  "tui-prompts",
  "tui-scrollview",

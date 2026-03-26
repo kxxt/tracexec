@@ -27,6 +27,7 @@ use std::{
     BufWriter,
     Write,
   },
+  ops::Deref,
   sync::{
     Arc,
     RwLock,
@@ -61,6 +62,7 @@ use tui_term::widget::{
   Cursor,
   PseudoTerminal,
 };
+use vt100::Parser;
 
 pub struct PseudoTerminalPane {
   // cannot move out of `parser` because it is borrowed
@@ -168,16 +170,19 @@ impl PseudoTerminalPane {
       let mut parser = self.parser.write().unwrap();
       let screen = parser.screen_mut();
       let viewport_height = self.size.rows as usize;
-      let max_offset = self
-        .scrollback_lines
-        // .min(screen.scrollback_len()) Waiting for https://github.com/doy/vt100-rust/pull/27
-        .saturating_sub(viewport_height);
+      let max_offset = self.scrollback_lines;
+      // .min(screen.scrollback_len()) Waiting for https://github.com/doy/vt100-rust/pull/27
 
       match key.code {
         KeyCode::Up => {
           let current = screen.scrollback();
           if current < max_offset {
+            trace!(
+              "Scrolling up: current={}, max_offset={}",
+              current, max_offset
+            );
             screen.set_scrollback(current + 1);
+            trace!("New scrollback offset: {}", screen.scrollback());
           }
           return true;
         }
@@ -307,6 +312,14 @@ impl PseudoTerminalPane {
     self.scrollback_mode.get()
   }
 
+  pub fn scrollback(&self) -> usize {
+    self.parser.read().unwrap().screen().scrollback()
+  }
+
+  pub fn parser(&self) -> impl Deref<Target = Parser> {
+    self.parser.read().unwrap()
+  }
+
   /// Closes pty master
   pub fn exit(&self) {
     self.master_cancellation_token.cancel()
@@ -333,6 +346,8 @@ impl Widget for &PseudoTerminalPane {
 
 #[cfg(test)]
 mod tests {
+  use std::time::Duration;
+
   use crossterm::event::{
     KeyCode,
     KeyEvent,
@@ -342,11 +357,15 @@ mod tests {
     Buffer,
     Rect,
   };
-  use tracexec_core::pty::{
-    PtySize,
-    PtySystem,
-    native_pty_system,
+  use tracexec_core::{
+    pty::{
+      PtySize,
+      PtySystem,
+      native_pty_system,
+    },
+    tracee,
   };
+  use tracing::debug;
 
   use super::*;
 
@@ -428,6 +447,319 @@ mod tests {
     term.exit();
 
     // It should not hang after calling exit
+
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn scrollback_toggle_mode() -> color_eyre::Result<()> {
+    let pty_system = native_pty_system();
+    let pty_pair = pty_system.openpty(PtySize {
+      rows: 12,
+      cols: 40,
+      pixel_width: 0,
+      pixel_height: 0,
+    })?;
+    let term = PseudoTerminalPane::new(
+      PtySize {
+        rows: 12,
+        cols: 40,
+        pixel_width: 0,
+        pixel_height: 0,
+      },
+      pty_pair.master,
+      10,
+    )?;
+
+    // Initially not in scrollback mode
+    assert!(!term.is_scrollback_mode());
+
+    // Toggle on with Ctrl+U
+    term
+      .handle_key_event(&KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+      .await;
+    assert!(term.is_scrollback_mode());
+
+    // Toggle off with Ctrl+U
+    term
+      .handle_key_event(&KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+      .await;
+    assert!(!term.is_scrollback_mode());
+
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn scrollback_get_initial_state() -> color_eyre::Result<()> {
+    let pty_system = native_pty_system();
+    let pty_pair = pty_system.openpty(PtySize {
+      rows: 12,
+      cols: 40,
+      pixel_width: 0,
+      pixel_height: 0,
+    })?;
+    let term = PseudoTerminalPane::new(
+      PtySize {
+        rows: 12,
+        cols: 40,
+        pixel_width: 0,
+        pixel_height: 0,
+      },
+      pty_pair.master,
+      100,
+    )?;
+
+    // Initial scrollback offset should be 0 (live view)
+    assert_eq!(term.scrollback(), 0);
+
+    // After entering scrollback mode, it should still be 0 (reset to live)
+    term
+      .handle_key_event(&KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+      .await;
+    assert!(term.is_scrollback_mode());
+    assert_eq!(term.scrollback(), 0);
+
+    Ok(())
+  }
+
+  #[tokio::test]
+  #[tracing_test::traced_test]
+  async fn scrollback_scroll_up_down() -> color_eyre::Result<()> {
+    // console_subscriber::init();
+    use nix::sys::wait::waitpid;
+    use tracexec_core::{
+      cmdbuilder::CommandBuilder,
+      pty,
+    };
+
+    let pty_system = native_pty_system();
+    let pty_pair = pty_system.openpty(PtySize {
+      rows: 3,
+      cols: 40,
+      pixel_width: 0,
+      pixel_height: 0,
+    })?;
+    let term = PseudoTerminalPane::new(
+      PtySize {
+        rows: 3,
+        cols: 40,
+        pixel_width: 0,
+        pixel_height: 0,
+      },
+      pty_pair.master,
+      100,
+    )?;
+
+    // Spawn a shell command through the PTY that generates 150 lines of output
+    let mut cmd = CommandBuilder::new("sh");
+    cmd.arg("-c");
+    cmd.arg("for i in $(seq 1 150); do echo \"Line $i: test output\"; done");
+
+    debug!("Spawning command through PTY: {:?}", cmd);
+
+    let child_pid = pty::spawn_command(Some(&pty_pair.slave), cmd, move |_| {
+      tracee::lead_session_and_control_terminal()?;
+      Ok(())
+    })?;
+
+    // Reap the child process
+    waitpid(child_pid, None)?;
+
+    // Wait for the reader task to process all output and update the parser state
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    // Enter scrollback mode
+    term
+      .handle_key_event(&KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+      .await;
+    assert!(term.is_scrollback_mode());
+    assert_eq!(term.scrollback(), 0);
+
+    // Scroll up (increase offset)
+    let result = term
+      .handle_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+      .await;
+    assert!(result);
+    assert!(term.is_scrollback_mode());
+    assert_eq!(term.scrollback(), 1);
+
+    // Scroll up more
+    let result = term
+      .handle_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+      .await;
+    assert!(result); // Key is consumed
+    assert!(term.is_scrollback_mode());
+    assert_eq!(term.scrollback(), 2);
+
+    // Scroll down (decrease offset)
+    let result = term
+      .handle_key_event(&KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
+      .await;
+    assert!(result); // Key is consumed
+    assert!(term.is_scrollback_mode());
+    assert_eq!(term.scrollback(), 1);
+
+    // Switch back resets offset
+    let result = term
+      .handle_key_event(&KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+      .await;
+    assert!(result); // Key is consumed
+    assert!(!term.is_scrollback_mode());
+    assert_eq!(term.scrollback(), 0);
+
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn scrollback_page_navigation() -> color_eyre::Result<()> {
+    use nix::sys::wait::waitpid;
+    use tracexec_core::{
+      cmdbuilder::CommandBuilder,
+      pty,
+    };
+
+    let pty_system = native_pty_system();
+    let pty_pair = pty_system.openpty(PtySize {
+      rows: 24,
+      cols: 80,
+      pixel_width: 0,
+      pixel_height: 0,
+    })?;
+    let term = PseudoTerminalPane::new(
+      PtySize {
+        rows: 24,
+        cols: 80,
+        pixel_width: 0,
+        pixel_height: 0,
+      },
+      pty_pair.master,
+      100,
+    )?;
+
+    // Spawn a shell command through the PTY that generates 100 lines of output
+    let mut cmd = CommandBuilder::new("sh");
+    cmd.arg("-c");
+    cmd.arg("for i in $(seq 1 100); do echo \"Line $i\"; done");
+
+    let child_pid = pty::spawn_command(Some(&pty_pair.slave), cmd, move |_| {
+      tracee::lead_session_and_control_terminal()?;
+      Ok(())
+    })?;
+
+    // Reap child
+    waitpid(child_pid, None)?;
+
+    // Give the reader task time to process the output
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+    // Enter scrollback mode
+    term
+      .handle_key_event(&KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+      .await;
+
+    // Page up should shift by viewport height (24)
+    let result = term
+      .handle_key_event(&KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE))
+      .await;
+    assert!(result);
+    assert_eq!(term.scrollback(), 24);
+
+    // Page up again
+    let result = term
+      .handle_key_event(&KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE))
+      .await;
+    assert!(result);
+    assert_eq!(term.scrollback(), 48);
+
+    // Page down should decrease offset
+    let result = term
+      .handle_key_event(&KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE))
+      .await;
+    assert!(result);
+    assert_eq!(term.scrollback(), 24);
+
+    // Page down back to live
+    let result = term
+      .handle_key_event(&KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE))
+      .await;
+    assert!(result);
+    assert_eq!(term.scrollback(), 0);
+
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn scrollback_home_end_navigation() -> color_eyre::Result<()> {
+    use nix::sys::wait::waitpid;
+    use tracexec_core::{
+      cmdbuilder::CommandBuilder,
+      pty,
+    };
+
+    let pty_system = native_pty_system();
+    let pty_pair = pty_system.openpty(PtySize {
+      rows: 12,
+      cols: 40,
+      pixel_width: 0,
+      pixel_height: 0,
+    })?;
+    let term = PseudoTerminalPane::new(
+      PtySize {
+        rows: 12,
+        cols: 40,
+        pixel_width: 0,
+        pixel_height: 0,
+      },
+      pty_pair.master,
+      100,
+    )?;
+
+    // Spawn a shell command through the PTY that generates 120 lines of output
+    let mut cmd = CommandBuilder::new("sh");
+    cmd.arg("-c");
+    cmd.arg("for i in $(seq 1 120); do echo \"Line $i\"; done");
+
+    let child_pid = pty::spawn_command(Some(&pty_pair.slave), cmd, move |_| {
+      tracee::lead_session_and_control_terminal()?;
+      Ok(())
+    })?;
+    // Give the reader task time to process the output
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+    // Reap child
+    waitpid(child_pid, None)?;
+
+    // Enter scrollback mode
+    term
+      .handle_key_event(&KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+      .await;
+
+    // Scroll up a bit
+    term
+      .handle_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+      .await;
+    term
+      .handle_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+      .await;
+    term
+      .handle_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+      .await;
+    assert_eq!(term.scrollback(), 3);
+
+    // Home should jump to max offset
+    let result = term
+      .handle_key_event(&KeyEvent::new(KeyCode::Home, KeyModifiers::NONE))
+      .await;
+    assert!(result);
+    // max_offset = 100 (scrollback_lines configured)
+    assert_eq!(term.scrollback(), 100);
+
+    // End should jump back to 0 (live)
+    let result = term
+      .handle_key_event(&KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+      .await;
+    assert!(result);
+    assert_eq!(term.scrollback(), 0);
 
     Ok(())
   }
