@@ -22,6 +22,7 @@
 // SOFTWARE.
 
 use std::{
+  cell::Cell,
   io::{
     BufWriter,
     Write,
@@ -74,16 +75,20 @@ pub struct PseudoTerminalPane {
   master_cancellation_token: CancellationToken,
   size: PtySize,
   focus: bool,
+  scrollback_mode: Cell<bool>,
+  scrollback_lines: usize,
 }
 
 const ESCAPE: u8 = 27;
 
 impl PseudoTerminalPane {
-  pub fn new(size: PtySize, pty_master: UnixMasterPty) -> color_eyre::Result<Self> {
-    let parser = vt100::Parser::new(size.rows, size.cols, 0);
-    // let screen = parser.screen();
+  pub fn new(
+    size: PtySize,
+    pty_master: UnixMasterPty,
+    scrollback_lines: usize,
+  ) -> color_eyre::Result<Self> {
+    let parser = vt100::Parser::new(size.rows, size.cols, scrollback_lines);
     let parser = Arc::new(RwLock::new(parser));
-    // let term = PseudoTerminal::new(screen);
 
     let reader_task = {
       let mut reader = pty_master.try_clone_reader()?;
@@ -141,10 +146,74 @@ impl PseudoTerminalPane {
       master_tx: tx,
       master_cancellation_token,
       focus: false,
+      scrollback_mode: Cell::new(false),
+      scrollback_lines,
     })
   }
 
   pub async fn handle_key_event(&self, key: &KeyEvent) -> bool {
+    if let KeyCode::Char(ch) = key.code
+      && (ch == 'u' || ch == 'U')
+      && key.modifiers == KeyModifiers::CONTROL
+    {
+      self.scrollback_mode.set(!self.scrollback_mode.get());
+      let mut parser = self.parser.write().unwrap();
+      let screen = parser.screen_mut();
+      screen.set_scrollback(0);
+      return true;
+    }
+
+    // Handle scrollback navigation when in scrollback mode
+    if self.scrollback_mode.get() {
+      let mut parser = self.parser.write().unwrap();
+      let screen = parser.screen_mut();
+      let viewport_height = self.size.rows as usize;
+      let max_offset = self
+        .scrollback_lines
+        // .min(screen.scrollback_len()) Waiting for https://github.com/doy/vt100-rust/pull/27
+        .saturating_sub(viewport_height);
+
+      match key.code {
+        KeyCode::Up => {
+          let current = screen.scrollback();
+          if current < max_offset {
+            screen.set_scrollback(current + 1);
+          }
+          return true;
+        }
+        KeyCode::Down => {
+          let current = screen.scrollback();
+          if current > 0 {
+            screen.set_scrollback(current - 1);
+          }
+          return true;
+        }
+        KeyCode::PageUp => {
+          let current = screen.scrollback();
+          let available_above = max_offset.saturating_sub(current);
+          let step = viewport_height.min(available_above);
+          screen.set_scrollback(current + step);
+          return true;
+        }
+        KeyCode::PageDown => {
+          let current = screen.scrollback();
+          let step = viewport_height.min(current);
+          screen.set_scrollback(current - step);
+          return true;
+        }
+        KeyCode::Home => {
+          screen.set_scrollback(max_offset);
+          return true;
+        }
+        KeyCode::End => {
+          screen.set_scrollback(0);
+          return true;
+        }
+        _ => {}
+      }
+      return true;
+    }
+
     let input_bytes = match key.code {
       KeyCode::Char(ch) => {
         let mut send = vec![0; 4];
@@ -234,6 +303,10 @@ impl PseudoTerminalPane {
     self.focus = focus;
   }
 
+  pub fn is_scrollback_mode(&self) -> bool {
+    self.scrollback_mode.get()
+  }
+
   /// Closes pty master
   pub fn exit(&self) {
     self.master_cancellation_token.cancel()
@@ -250,7 +323,10 @@ impl Widget for &PseudoTerminalPane {
     if !self.focus {
       cursor.hide();
     }
-    let pseudo_term = PseudoTerminal::new(parser.screen()).cursor(cursor);
+
+    let screen = parser.screen();
+
+    let pseudo_term = PseudoTerminal::new(screen).cursor(cursor);
     pseudo_term.render(area, buf);
   }
 }
@@ -291,6 +367,7 @@ mod tests {
         pixel_height: 0,
       },
       pty_pair.master,
+      10,
     )?;
 
     assert!(

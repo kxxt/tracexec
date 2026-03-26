@@ -490,6 +490,12 @@ pub struct TuiModeArgs {
     help = "Max number of events to keep in TUI (0=unlimited)"
   )]
   pub max_events: Option<u64>,
+  #[clap(
+    long,
+    help = "Number of scrollback lines to keep in the pseudo terminal (1000 by default)",
+    requires = "tty"
+  )]
+  pub scrollback_lines: Option<usize>,
 }
 
 #[derive(Args, Debug, Default, Clone)]
@@ -515,6 +521,7 @@ impl TuiModeArgs {
     self.layout = self.layout.or(config.layout);
     self.frame_rate = self.frame_rate.or(config.frame_rate);
     self.max_events = self.max_events.or(config.max_events);
+    self.scrollback_lines = self.scrollback_lines.or(config.scrollback_lines);
     self.follow |= config.follow.unwrap_or_default();
     if (!self.terminate_on_exit) && (!self.kill_on_exit) {
       match config.exit_handling {
