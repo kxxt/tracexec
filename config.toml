@@ -75,6 +75,93 @@
 # Number of scrollback lines to keep in the pseudo terminal
 # scrollback_lines = 1000
 
+# Key bindings for the TUI
+#
+# Use a list to bind multiple shortcuts to the same action
+[tui.keys]
+# quit = "q"
+# switch_pane = "Ctrl+s"
+# switch_layout = "Alt+l"
+# close_popup = "q"
+# help = "F1"
+# page_down = ["Ctrl+Down", "Ctrl+j", "PgDn"]
+# page_up = ["Ctrl+Up", "Ctrl+k", "PgUp"]
+# page_left = ["Ctrl+Left", "Ctrl+h"]
+# page_right = ["Ctrl+Right", "Ctrl+l"]
+# scroll_left = ["Left", "h"]
+# scroll_right = ["Right", "l"]
+# scroll_top = "Home"
+# scroll_bottom = "End"
+# scroll_start = "Shift+Home"
+# scroll_end = "Shift+End"
+# event_grow_pane = "g"
+# event_shrink_pane = "s"
+# event_send_ctrl_s = "Alt+s"
+# event_toggle_follow = "f"
+# event_search = "Ctrl+f"
+# event_toggle_env = "e"
+# event_toggle_cwd = "w"
+# event_view_details = "v"
+# event_go_to_parent = "u"
+# event_backtrace = "t"
+# event_copy = "c"
+# event_breakpoints = "b"
+# event_hits = "z"
+# query_execute = "Enter"
+# query_cancel = "Esc"
+# query_toggle_case = "Alt+i"
+# query_toggle_regex = "Alt+r"
+# query_next_match = "n"
+# query_prev_match = "p"
+# query_clear = "Ctrl+u"
+# details_scroll_down = ["Down", "j"]
+# details_scroll_up = ["Up", "k"]
+# details_next_tab = ["Right", "l"]
+# details_prev_tab = ["Left", "h"]
+# details_cycle_tab = "Tab"
+# details_prev_field = "w"
+# details_next_field = "s"
+# details_copy = "c"
+# details_view_parent = "u"
+# next_item = ["Down", "j"]
+# prev_item = ["Up", "k"]
+# copy_choose = "Enter"
+# copy_target_cmdline = "c"
+# copy_target_cmdline_full_env = "o"
+# copy_target_cmdline_stdio = "s"
+# copy_target_cmdline_fds = "f"
+# copy_target_env = "e"
+# copy_target_env_diff = "d"
+# copy_target_argv = "a"
+# copy_target_filename = "n"
+# copy_target_syscall_result = "r"
+# copy_target_line = "l"
+# go_back = "q"
+# breakpoint_delete = ["Del", "d"]
+# breakpoint_toggle_active = "Space"
+# breakpoint_edit = ["Enter", "e"]
+# breakpoint_new = "n"
+# breakpoint_editor_save = "Enter"
+# breakpoint_editor_cancel = "Ctrl+c"
+# breakpoint_editor_toggle_stop = "Alt+s"
+# breakpoint_editor_toggle_active = "Alt+a"
+# hit_close = "q"
+# hit_detach = "d"
+# hit_resume = "r"
+# hit_edit_default_command = "e"
+# hit_run_default_command = "Enter"
+# hit_run_custom_command = "Alt+Enter"
+# hit_editor_save = "Enter"
+# hit_editor_cancel = ["Esc", "Ctrl+c"]
+# hit_editor_clear = "Ctrl+u"
+# terminal_toggle_scrollback = "Ctrl+u"
+# terminal_scroll_up = "Up"
+# terminal_scroll_down = "Down"
+# terminal_page_up = "PgUp"
+# terminal_page_down = "PgDn"
+# terminal_scroll_top = "Home"
+# terminal_scroll_bottom = "End"
+
 #
 # Config for Log mode
 #

@@ -49,10 +49,13 @@ use ratatui::{
 };
 use tokio::sync::mpsc::channel;
 use tokio_util::sync::CancellationToken;
-use tracexec_core::pty::{
-  MasterPty,
-  PtySize,
-  UnixMasterPty,
+use tracexec_core::{
+  cli::keys::TuiKeyBindings,
+  pty::{
+    MasterPty,
+    PtySize,
+    UnixMasterPty,
+  },
 };
 use tracing::{
   trace,
@@ -153,11 +156,8 @@ impl PseudoTerminalPane {
     })
   }
 
-  pub async fn handle_key_event(&self, key: &KeyEvent) -> bool {
-    if let KeyCode::Char(ch) = key.code
-      && (ch == 'u' || ch == 'U')
-      && key.modifiers == KeyModifiers::CONTROL
-    {
+  pub async fn handle_key_event(&self, key: &KeyEvent, keys: &TuiKeyBindings) -> bool {
+    if keys.terminal_toggle_scrollback.matches(*key) {
       self.scrollback_mode.set(!self.scrollback_mode.get());
       let mut parser = self.parser.write().unwrap();
       let screen = parser.screen_mut();
@@ -173,48 +173,45 @@ impl PseudoTerminalPane {
       let max_offset = self.scrollback_lines;
       // .min(screen.scrollback_len()) Waiting for https://github.com/doy/vt100-rust/pull/27
 
-      match key.code {
-        KeyCode::Up => {
-          let current = screen.scrollback();
-          if current < max_offset {
-            trace!(
-              "Scrolling up: current={}, max_offset={}",
-              current, max_offset
-            );
-            screen.set_scrollback(current + 1);
-            trace!("New scrollback offset: {}", screen.scrollback());
-          }
-          return true;
+      if keys.terminal_scroll_up.matches(*key) {
+        let current = screen.scrollback();
+        if current < max_offset {
+          trace!(
+            "Scrolling up: current={}, max_offset={}",
+            current, max_offset
+          );
+          screen.set_scrollback(current + 1);
+          trace!("New scrollback offset: {}", screen.scrollback());
         }
-        KeyCode::Down => {
-          let current = screen.scrollback();
-          if current > 0 {
-            screen.set_scrollback(current - 1);
-          }
-          return true;
+        return true;
+      }
+      if keys.terminal_scroll_down.matches(*key) {
+        let current = screen.scrollback();
+        if current > 0 {
+          screen.set_scrollback(current - 1);
         }
-        KeyCode::PageUp => {
-          let current = screen.scrollback();
-          let available_above = max_offset.saturating_sub(current);
-          let step = viewport_height.min(available_above);
-          screen.set_scrollback(current + step);
-          return true;
-        }
-        KeyCode::PageDown => {
-          let current = screen.scrollback();
-          let step = viewport_height.min(current);
-          screen.set_scrollback(current - step);
-          return true;
-        }
-        KeyCode::Home => {
-          screen.set_scrollback(max_offset);
-          return true;
-        }
-        KeyCode::End => {
-          screen.set_scrollback(0);
-          return true;
-        }
-        _ => {}
+        return true;
+      }
+      if keys.terminal_page_up.matches(*key) {
+        let current = screen.scrollback();
+        let available_above = max_offset.saturating_sub(current);
+        let step = viewport_height.min(available_above);
+        screen.set_scrollback(current + step);
+        return true;
+      }
+      if keys.terminal_page_down.matches(*key) {
+        let current = screen.scrollback();
+        let step = viewport_height.min(current);
+        screen.set_scrollback(current - step);
+        return true;
+      }
+      if keys.terminal_scroll_top.matches(*key) {
+        screen.set_scrollback(max_offset);
+        return true;
+      }
+      if keys.terminal_scroll_bottom.matches(*key) {
+        screen.set_scrollback(0);
+        return true;
       }
       return true;
     }
@@ -346,7 +343,10 @@ impl Widget for &PseudoTerminalPane {
 
 #[cfg(test)]
 mod tests {
-  use std::time::Duration;
+  use std::{
+    sync::LazyLock,
+    time::Duration,
+  };
 
   use crossterm::event::{
     KeyCode,
@@ -358,6 +358,7 @@ mod tests {
     Rect,
   };
   use tracexec_core::{
+    cli::keys::TuiKeyBindings,
     pty::{
       PtySize,
       PtySystem,
@@ -368,6 +369,12 @@ mod tests {
   use tracing::debug;
 
   use super::*;
+
+  static KEY_BINDINGS: LazyLock<TuiKeyBindings> = LazyLock::new(TuiKeyBindings::default);
+
+  fn keys() -> &'static TuiKeyBindings {
+    &KEY_BINDINGS
+  }
 
   #[tokio::test]
   async fn pseudo_terminal_handle_key_event_various_keys() -> color_eyre::Result<()> {
@@ -391,37 +398,49 @@ mod tests {
 
     assert!(
       term
-        .handle_key_event(&KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE))
+        .handle_key_event(
+          &KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE),
+          keys()
+        )
         .await
     );
     assert!(
       term
-        .handle_key_event(&KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+        .handle_key_event(
+          &KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+          keys()
+        )
         .await
     );
     assert!(
       term
-        .handle_key_event(&KeyEvent::new(KeyCode::Char('d'), KeyModifiers::ALT))
+        .handle_key_event(
+          &KeyEvent::new(KeyCode::Char('d'), KeyModifiers::ALT),
+          keys()
+        )
         .await
     );
     assert!(
       term
-        .handle_key_event(&KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE))
+        .handle_key_event(
+          &KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
+          keys()
+        )
         .await
     );
     assert!(
       term
-        .handle_key_event(&KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
+        .handle_key_event(&KeyEvent::new(KeyCode::Left, KeyModifiers::NONE), keys())
         .await
     );
     assert!(
       term
-        .handle_key_event(&KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE))
+        .handle_key_event(&KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE), keys())
         .await
     );
     assert!(
       term
-        .handle_key_event(&KeyEvent::new(KeyCode::F(99), KeyModifiers::NONE))
+        .handle_key_event(&KeyEvent::new(KeyCode::F(99), KeyModifiers::NONE), keys())
         .await
     );
 
@@ -476,13 +495,19 @@ mod tests {
 
     // Toggle on with Ctrl+U
     term
-      .handle_key_event(&KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+      .handle_key_event(
+        &KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
+        keys(),
+      )
       .await;
     assert!(term.is_scrollback_mode());
 
     // Toggle off with Ctrl+U
     term
-      .handle_key_event(&KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+      .handle_key_event(
+        &KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
+        keys(),
+      )
       .await;
     assert!(!term.is_scrollback_mode());
 
@@ -514,7 +539,10 @@ mod tests {
 
     // After entering scrollback mode, it should still be 0 (reset to live)
     term
-      .handle_key_event(&KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+      .handle_key_event(
+        &KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
+        keys(),
+      )
       .await;
     assert!(term.is_scrollback_mode());
     assert_eq!(term.scrollback(), 0);
@@ -570,14 +598,17 @@ mod tests {
 
     // Enter scrollback mode
     term
-      .handle_key_event(&KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+      .handle_key_event(
+        &KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
+        keys(),
+      )
       .await;
     assert!(term.is_scrollback_mode());
     assert_eq!(term.scrollback(), 0);
 
     // Scroll up (increase offset)
     let result = term
-      .handle_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+      .handle_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE), keys())
       .await;
     assert!(result);
     assert!(term.is_scrollback_mode());
@@ -585,7 +616,7 @@ mod tests {
 
     // Scroll up more
     let result = term
-      .handle_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+      .handle_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE), keys())
       .await;
     assert!(result); // Key is consumed
     assert!(term.is_scrollback_mode());
@@ -593,7 +624,7 @@ mod tests {
 
     // Scroll down (decrease offset)
     let result = term
-      .handle_key_event(&KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
+      .handle_key_event(&KeyEvent::new(KeyCode::Down, KeyModifiers::NONE), keys())
       .await;
     assert!(result); // Key is consumed
     assert!(term.is_scrollback_mode());
@@ -601,7 +632,10 @@ mod tests {
 
     // Switch back resets offset
     let result = term
-      .handle_key_event(&KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+      .handle_key_event(
+        &KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
+        keys(),
+      )
       .await;
     assert!(result); // Key is consumed
     assert!(!term.is_scrollback_mode());
@@ -654,33 +688,42 @@ mod tests {
 
     // Enter scrollback mode
     term
-      .handle_key_event(&KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+      .handle_key_event(
+        &KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
+        keys(),
+      )
       .await;
 
     // Page up should shift by viewport height (24)
     let result = term
-      .handle_key_event(&KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE))
+      .handle_key_event(&KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE), keys())
       .await;
     assert!(result);
     assert_eq!(term.scrollback(), 24);
 
     // Page up again
     let result = term
-      .handle_key_event(&KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE))
+      .handle_key_event(&KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE), keys())
       .await;
     assert!(result);
     assert_eq!(term.scrollback(), 48);
 
     // Page down should decrease offset
     let result = term
-      .handle_key_event(&KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE))
+      .handle_key_event(
+        &KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE),
+        keys(),
+      )
       .await;
     assert!(result);
     assert_eq!(term.scrollback(), 24);
 
     // Page down back to live
     let result = term
-      .handle_key_event(&KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE))
+      .handle_key_event(
+        &KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE),
+        keys(),
+      )
       .await;
     assert!(result);
     assert_eq!(term.scrollback(), 0);
@@ -731,24 +774,27 @@ mod tests {
 
     // Enter scrollback mode
     term
-      .handle_key_event(&KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL))
+      .handle_key_event(
+        &KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
+        keys(),
+      )
       .await;
 
     // Scroll up a bit
     term
-      .handle_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+      .handle_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE), keys())
       .await;
     term
-      .handle_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+      .handle_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE), keys())
       .await;
     term
-      .handle_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE))
+      .handle_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE), keys())
       .await;
     assert_eq!(term.scrollback(), 3);
 
     // Home should jump to max offset
     let result = term
-      .handle_key_event(&KeyEvent::new(KeyCode::Home, KeyModifiers::NONE))
+      .handle_key_event(&KeyEvent::new(KeyCode::Home, KeyModifiers::NONE), keys())
       .await;
     assert!(result);
     // max_offset = 100 (scrollback_lines configured)
@@ -756,7 +802,7 @@ mod tests {
 
     // End should jump back to 0 (live)
     let result = term
-      .handle_key_event(&KeyEvent::new(KeyCode::End, KeyModifiers::NONE))
+      .handle_key_event(&KeyEvent::new(KeyCode::End, KeyModifiers::NONE), keys())
       .await;
     assert!(result);
     assert_eq!(term.scrollback(), 0);

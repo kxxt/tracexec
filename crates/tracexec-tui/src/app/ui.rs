@@ -158,7 +158,7 @@ impl Widget for &mut App {
     for popup in self.popup.iter_mut() {
       match popup {
         ActivePopup::Help => {
-          let popup = Popup::new(help(rest_area))
+          let popup = Popup::new(help(rest_area, &self.key_bindings))
             .title("Help")
             .style(THEME.help_popup);
           Widget::render(popup, area, buf);
@@ -182,80 +182,146 @@ impl Widget for &mut App {
 
 impl App {
   fn render_help(&self, area: Rect, buf: &mut Buffer) {
+    /// Compat arrow key pairs into a single item for more concise help display.
+    fn compact_pair(a: String, b: String) -> String {
+      let is_simple = |s: &str| s.chars().count() == 1;
+      let is_alpha = |s: &str| s.chars().all(|ch| ch.is_ascii_alphabetic());
+      if is_simple(&a) && is_simple(&b) && !is_alpha(&a) && !is_alpha(&b) {
+        format!("{a}{b}")
+      } else {
+        format!("{a}/{b}")
+      }
+    }
+
     let mut items = Vec::from_iter(
-      Some(help_item!("Ctrl+S", "Switch\u{00a0}Pane"))
-        .filter(|_| self.term.is_some())
-        .into_iter()
-        .flatten(),
+      Some(help_item!(
+        self.key_bindings.switch_pane.display(),
+        "Switch\u{00a0}Pane"
+      ))
+      .filter(|_| self.term.is_some())
+      .into_iter()
+      .flatten(),
     );
 
     if let Some(popup) = &self.popup.last() {
-      items.extend(help_item!("Q", "Close\u{00a0}Popup"));
+      items.extend(help_item!(
+        self.key_bindings.close_popup.display(),
+        "Close\u{00a0}Popup"
+      ));
       match popup {
         ActivePopup::ViewDetails(state) => {
-          state.update_help(&mut items);
+          state.update_help(&self.key_bindings, &mut items);
         }
         ActivePopup::CopyTargetSelection(state) => {
-          items.extend(help_item!("Enter", "Choose"));
+          items.extend(help_item!(
+            self.key_bindings.copy_choose.display(),
+            "Choose"
+          ));
           items.extend(state.help_items())
         }
         ActivePopup::Backtrace(state) => {
-          state.list.update_help(&mut items);
+          state.list.update_help(&self.key_bindings, &mut items);
         }
         _ => {}
       }
     } else if let Some(breakpoint_manager) = self.breakpoint_manager.as_ref() {
-      items.extend(breakpoint_manager.help());
+      items.extend(breakpoint_manager.help(&self.key_bindings));
     } else if self.hit_manager_state.as_ref().is_some_and(|x| x.visible) {
-      items.extend(self.hit_manager_state.as_ref().unwrap().help());
+      items.extend(
+        self
+          .hit_manager_state
+          .as_ref()
+          .unwrap()
+          .help(&self.key_bindings),
+      );
     } else if let Some(query_builder) = self.query_builder.as_ref().filter(|q| q.editing()) {
-      items.extend(query_builder.help());
+      items.extend(query_builder.help(&self.key_bindings));
     } else if self.active_pane == ActivePane::Events {
-      items.extend(help_item!("F1", "Help"));
-      self.event_list.update_help(&mut items);
+      items.extend(help_item!(self.key_bindings.help.display(), "Help"));
+      self.event_list.update_help(&self.key_bindings, &mut items);
       if self.term.is_some() {
-        items.extend(help_item!("G/S", "Grow/Shrink\u{00a0}Pane"));
-        items.extend(help_item!("Alt+L", "Layout"));
+        items.extend(help_item!(
+          format!(
+            "{}/{}",
+            self.key_bindings.event_grow_pane.display(),
+            self.key_bindings.event_shrink_pane.display()
+          ),
+          "Grow/Shrink\u{00a0}Pane"
+        ));
+        items.extend(help_item!(
+          self.key_bindings.switch_layout.display(),
+          "Layout"
+        ));
       }
       if let Some(h) = self.hit_manager_state.as_ref() {
-        items.extend(help_item!("B", "Breakpoints"));
+        items.extend(help_item!(
+          self.key_bindings.event_breakpoints.display(),
+          "Breakpoints"
+        ));
         if h.count() > 0 {
           items.extend([
-            help_key("Z"),
+            help_key(self.key_bindings.event_hits.display()),
             fancy_help_desc(format!("Hits({})", h.count())),
             "\u{200b}".into(),
           ])
         } else {
-          items.extend(help_item!("Z", "Hits"));
+          items.extend(help_item!(self.key_bindings.event_hits.display(), "Hits"));
         }
       }
       if let Some(query_builder) = self.query_builder.as_ref() {
-        items.extend(query_builder.help());
+        items.extend(query_builder.help(&self.key_bindings));
       }
-      items.extend(help_item!("Q", "Quit"));
+      items.extend(help_item!(self.key_bindings.quit.display(), "Quit"));
     } else {
       // Terminal
       if let Some(term) = self.term.as_ref() {
         if term.is_scrollback_mode() {
           // In scrollback mode - show navigation keys highlighted
           items.extend([
-            help_key("Ctrl+U"),
+            help_key(self.key_bindings.terminal_toggle_scrollback.display()),
             fancy_help_desc("Exit\u{00a0}Scroll"),
             "\u{200b}".into(),
           ]);
-          items.extend(help_item!("↑↓", "Scroll"));
-          items.extend(help_item!("PgUp/PgDn", "Page"));
-          items.extend(help_item!("Home/End", "Jump"));
+          items.extend(help_item!(
+            compact_pair(
+              self.key_bindings.terminal_scroll_up.display(),
+              self.key_bindings.terminal_scroll_down.display()
+            ),
+            "Scroll"
+          ));
+          items.extend(help_item!(
+            format!(
+              "{}/{}",
+              self.key_bindings.terminal_page_up.display(),
+              self.key_bindings.terminal_page_down.display()
+            ),
+            "Page"
+          ));
+          items.extend(help_item!(
+            format!(
+              "{}/{}",
+              self.key_bindings.terminal_scroll_top.display(),
+              self.key_bindings.terminal_scroll_bottom.display()
+            ),
+            "Jump"
+          ));
         } else {
           // Normal mode - show how to enter scrollback
-          items.extend(help_item!("Ctrl+U", "Scroll"));
+          items.extend(help_item!(
+            self.key_bindings.terminal_toggle_scrollback.display(),
+            "Scroll"
+          ));
         }
       }
       if let Some(h) = self.hit_manager_state.as_ref()
         && h.count() > 0
       {
         items.extend([
-          help_key("Ctrl+S,\u{00a0}Z"),
+          help_key(format!(
+            "{},\u{00a0}{}",
+            self.key_bindings.switch_pane.display(),
+            self.key_bindings.event_hits.display()
+          )),
           fancy_help_desc(format!("Hits({})", h.count())),
           "\u{200b}".into(),
         ]);

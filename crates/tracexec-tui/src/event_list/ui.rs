@@ -27,6 +27,7 @@ use ratatui::{
   },
 };
 use tracexec_core::{
+  cli::keys::TuiKeyBindings,
   event::{
     EventStatus,
     ProcessStateUpdate,
@@ -193,23 +194,23 @@ impl EventList {
     .alignment(Alignment::Right)
   }
 
-  pub fn update_help(&self, items: &mut Vec<Span<'_>>) {
+  pub fn update_help(&self, keys: &TuiKeyBindings, items: &mut Vec<Span<'_>>) {
     if self.is_primary {
       items.extend(chain!(
         help_item!(
-          "F",
+          keys.event_toggle_follow.display(),
           if self.is_following() {
             "Unfollow"
           } else {
             "Follow"
           }
         ),
-        help_item!("Ctrl+F", "Search"),
+        help_item!(keys.event_search.display(), "Search"),
       ))
     }
     items.extend(chain!(
       help_item!(
-        "E",
+        keys.event_toggle_env.display(),
         if self.is_env_in_cmdline() {
           "Hide\u{00a0}Env"
         } else {
@@ -217,21 +218,21 @@ impl EventList {
         }
       ),
       help_item!(
-        "W",
+        keys.event_toggle_cwd.display(),
         if self.is_cwd_in_cmdline() {
           "Hide\u{00a0}CWD"
         } else {
           "Show\u{00a0}CWD"
         }
       ),
-      help_item!("V", "View"),
+      help_item!(keys.event_view_details.display(), "View"),
     ));
     if self.is_primary && self.selection_index().is_some() {
-      items.extend(help_item!("U", "GoTo Parent"));
-      items.extend(help_item!("T", "Backtrace"));
+      items.extend(help_item!(keys.event_go_to_parent.display(), "GoTo Parent"));
+      items.extend(help_item!(keys.event_backtrace.display(), "Backtrace"));
     }
     if self.has_clipboard {
-      items.extend(help_item!("C", "Copy"));
+      items.extend(help_item!(keys.event_copy.display(), "Copy"));
     }
   }
 }

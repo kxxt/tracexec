@@ -1,5 +1,9 @@
 use std::borrow::Cow;
 
+use crossterm::event::{
+  KeyCode,
+  KeyModifiers,
+};
 use ratatui::{
   layout::Rect,
   style::{
@@ -16,7 +20,14 @@ use ratatui::{
     Wrap,
   },
 };
-use tracexec_core::event::EventStatus;
+use tracexec_core::{
+  cli::keys::{
+    KeyBinding,
+    KeyList,
+    TuiKeyBindings,
+  },
+  event::EventStatus,
+};
 
 use super::{
   sized_paragraph::SizedParagraph,
@@ -71,7 +82,151 @@ macro_rules! help_item {
 
 pub(crate) use help_item;
 
-pub fn help<'a>(area: Rect) -> SizedParagraph<'a> {
+fn format_nav_keys(keys: &TuiKeyBindings) -> String {
+  let mut parts = Vec::new();
+  for list in [
+    &keys.scroll_left,
+    &keys.next_item,
+    &keys.prev_item,
+    &keys.scroll_right,
+  ] {
+    if let Some(ch) = list
+      .0
+      .iter()
+      .find_map(|binding| binding.plain_char())
+      .filter(|ch| ch.is_ascii_alphabetic())
+    {
+      parts.push(ch.to_ascii_uppercase().to_string());
+    } else {
+      return format!(
+        "{}/{}/{}/{}",
+        keys.scroll_left.display(),
+        keys.next_item.display(),
+        keys.prev_item.display(),
+        keys.scroll_right.display()
+      );
+    }
+  }
+  parts.join("/")
+}
+
+fn list_has_code(list: &KeyList, code: KeyCode) -> bool {
+  list
+    .0
+    .iter()
+    .any(|binding| binding.code == code && binding.modifiers == KeyModifiers::NONE)
+}
+
+fn nav_has_arrows(keys: &TuiKeyBindings) -> bool {
+  list_has_code(&keys.next_item, KeyCode::Down)
+    && list_has_code(&keys.prev_item, KeyCode::Up)
+    && list_has_code(&keys.scroll_left, KeyCode::Left)
+    && list_has_code(&keys.scroll_right, KeyCode::Right)
+}
+
+fn ctrl_label_for_code(list: &KeyList, code: KeyCode) -> Option<String> {
+  list.0.iter().find_map(|binding| {
+    if binding.code == code && binding.modifiers == KeyModifiers::CONTROL {
+      Some(binding.display_without_modifiers())
+    } else {
+      None
+    }
+  })
+}
+
+fn ctrl_label_for_char(list: &KeyList, ch: char) -> Option<String> {
+  list
+    .0
+    .iter()
+    .find_map(|binding| match (binding.code, binding.modifiers) {
+      (KeyCode::Char(c), KeyModifiers::CONTROL) if c.eq_ignore_ascii_case(&ch) => {
+        Some(binding.display_without_modifiers())
+      }
+      _ => None,
+    })
+}
+
+fn format_fast_ctrl_keys(keys: &TuiKeyBindings) -> String {
+  let labels = [
+    ctrl_label_for_code(&keys.page_up, KeyCode::Up),
+    ctrl_label_for_code(&keys.page_down, KeyCode::Down),
+    ctrl_label_for_code(&keys.page_left, KeyCode::Left),
+    ctrl_label_for_code(&keys.page_right, KeyCode::Right),
+    ctrl_label_for_char(&keys.page_left, 'h'),
+    ctrl_label_for_char(&keys.page_down, 'j'),
+    ctrl_label_for_char(&keys.page_up, 'k'),
+    ctrl_label_for_char(&keys.page_right, 'l'),
+  ];
+  if labels.iter().all(|item| item.is_some()) {
+    let joined = labels
+      .iter()
+      .filter_map(|item| item.as_ref())
+      .cloned()
+      .collect::<Vec<_>>()
+      .join("/");
+    format!("Ctrl+{joined}")
+  } else {
+    format!(
+      "{}/{}/{}/{}",
+      keys.page_up.display(),
+      keys.page_down.display(),
+      keys.page_left.display(),
+      keys.page_right.display()
+    )
+  }
+}
+
+fn label_for_code(list: &KeyList, code: KeyCode) -> Option<String> {
+  list.0.iter().find_map(|binding| {
+    if binding.code == code && binding.modifiers == KeyModifiers::NONE {
+      Some(binding.display_without_modifiers())
+    } else {
+      None
+    }
+  })
+}
+
+fn format_page_keys(keys: &TuiKeyBindings) -> String {
+  let up = label_for_code(&keys.page_up, KeyCode::PageUp);
+  let down = label_for_code(&keys.page_down, KeyCode::PageDown);
+  if let (Some(up), Some(down)) = (up, down) {
+    format!("{}/{}", up, down)
+  } else {
+    format!("{}/{}", keys.page_up.display(), keys.page_down.display())
+  }
+}
+
+fn format_jump_keys(keys: &TuiKeyBindings) -> String {
+  let home = label_for_code(&keys.scroll_top, KeyCode::Home);
+  let end = label_for_code(&keys.scroll_bottom, KeyCode::End);
+  let shift_home = keys
+    .scroll_start
+    .0
+    .iter()
+    .any(|binding| binding.code == KeyCode::Home && binding.modifiers == KeyModifiers::SHIFT);
+  let shift_end = keys
+    .scroll_end
+    .0
+    .iter()
+    .any(|binding| binding.code == KeyCode::End && binding.modifiers == KeyModifiers::SHIFT);
+  if home.is_some() && end.is_some() && shift_home && shift_end {
+    "(Shift +) Home/End".to_string()
+  } else {
+    format!(
+      "{}/{}/{}/{}",
+      keys.scroll_top.display(),
+      keys.scroll_bottom.display(),
+      keys.scroll_start.display(),
+      keys.scroll_end.display()
+    )
+  }
+}
+
+pub fn help<'a>(area: Rect, keys: &TuiKeyBindings) -> SizedParagraph<'a> {
+  let vim_nav_keys = format_nav_keys(keys);
+  let fast_ctrl_keys = format_fast_ctrl_keys(keys);
+  let page_keys = format_page_keys(keys);
+  let jump_keys = format_jump_keys(keys);
   let line1 = Line::default().spans(vec![
       "W".bold().black(),
       "elcome to tracexec! The TUI consists of at most two panes: the event list and optionally the pseudo terminal if ".into(),
@@ -79,41 +234,49 @@ pub fn help<'a>(area: Rect) -> SizedParagraph<'a> {
       " is enabled. The event list displays the events emitted by the tracer. \
        The active pane's border is highlighted in cyan. \
        To switch active pane, press ".into(),
-      help_key("Ctrl+S"),
+      help_key(keys.switch_pane.display()),
       ". To send ".into(),
-      help_key("Ctrl+S"),
+      help_key(KeyBinding::ctrl('s').display()),
       " to the pseudo terminal, press ".into(),
-      help_key("Alt+S"),
+      help_key(keys.event_send_ctrl_s.display()),
       " when event list is active. The keybinding list at the bottom of the screen shows the available keys for currently active pane or popup.".into(),
     ]);
   let line2 = Line::default().spans(vec![
     "Y".bold().black(),
-    "ou can navigate the event list using the arrow keys or ".into(),
-    help_key("H/J/K/L"),
+    if nav_has_arrows(keys) {
+      "ou can navigate the event list using the arrow keys or ".into()
+    } else {
+      "ou can navigate the event list using ".into()
+    },
+    help_key(vim_nav_keys),
     ". To scroll faster, use ".into(),
-    help_key("Ctrl+↑/↓/←/→/H/J/K/L"),
+    help_key(fast_ctrl_keys),
     " or ".into(),
-    help_key("PgUp/PgDn"),
+    help_key(page_keys),
     ". Use ".into(),
-    help_key("(Shift +) Home/End"),
+    help_key(jump_keys),
     " to scroll to the (line start/line end)/top/bottom. Press ".into(),
-    help_key("F"),
+    help_key(keys.event_toggle_follow.display()),
     " to toggle follow mode, which will keep the list scrolled to bottom. ".into(),
     "To change pane size, press ".into(),
-    help_key("G/S"),
+    help_key(format!(
+      "{}/{}",
+      keys.event_grow_pane.display(),
+      keys.event_shrink_pane.display()
+    )),
     " when the active pane is event list. ".into(),
     "To switch between horizontal and vertical layout, press ".into(),
-    help_key("Alt+L"),
+    help_key(keys.switch_layout.display()),
     ". To view the details of the selected event, press ".into(),
-    help_key("V"),
+    help_key(keys.event_view_details.display()),
     ". To copy the selected event to the clipboard, press ".into(),
-    help_key("C"),
+    help_key(keys.event_copy.display()),
     " then select what to copy. To jump to the parent exec event of the currently selected event, press ".into(),
-    help_key("U"),
+    help_key(keys.event_go_to_parent.display()),
     ". To show the backtrace of the currently selected event, press ".into(),
-    help_key("T"),
+    help_key(keys.event_backtrace.display()),
     ". To quit, press ".into(),
-    help_key("Q"),
+    help_key(keys.quit.display()),
     " while the event list is active.".into(),
   ]);
   let line3 = Line::default().spans(vec![
@@ -193,7 +356,10 @@ pub fn help<'a>(area: Rect) -> SizedParagraph<'a> {
 mod tests {
   use insta::assert_snapshot;
 
-  use super::help;
+  use super::{
+    TuiKeyBindings,
+    help,
+  };
   use crate::test_utils::{
     test_area_full,
     test_render_widget_area,
@@ -202,7 +368,8 @@ mod tests {
   #[test]
   fn snapshot_help_popup() {
     let area = test_area_full(80, 40);
-    let rendered = test_render_widget_area(help(area), area);
+    let keys = TuiKeyBindings::default();
+    let rendered = test_render_widget_area(help(area, &keys), area);
     assert_snapshot!(rendered);
   }
 }

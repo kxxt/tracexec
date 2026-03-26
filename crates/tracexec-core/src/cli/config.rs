@@ -20,7 +20,10 @@ use super::options::{
   AppLayout,
   SeccompBpf,
 };
-use crate::timestamp::TimestampFormat;
+use crate::{
+  cli::keys::TuiKeyBindingsConfig,
+  timestamp::TimestampFormat,
+};
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Config {
@@ -97,6 +100,8 @@ pub struct TuiModeConfig {
   pub frame_rate: Option<f64>,
   pub max_events: Option<u64>,
   pub scrollback_lines: Option<usize>,
+  #[serde(default)]
+  pub keys: Option<TuiKeyBindingsConfig>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]

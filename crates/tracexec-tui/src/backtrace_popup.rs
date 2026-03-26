@@ -5,10 +5,7 @@ use std::{
   sync::LazyLock,
 };
 
-use crossterm::event::{
-  KeyCode,
-  KeyEvent,
-};
+use crossterm::event::KeyEvent;
 use ratatui::{
   buffer::Buffer,
   layout::{
@@ -26,6 +23,7 @@ use ratatui::{
   },
 };
 use tracexec_core::{
+  cli::keys::TuiKeyBindings,
   event::{
     ParentEventId,
     TracerEventDetails,
@@ -158,12 +156,13 @@ impl BacktracePopupState {
   pub async fn handle_key_event(
     &self,
     ke: KeyEvent,
+    keys: &TuiKeyBindings,
     action_tx: &LocalUnboundedSender<Action>,
   ) -> color_eyre::Result<()> {
-    if ke.code == KeyCode::Char('q') {
+    if keys.close_popup.matches(ke) {
       action_tx.send(Action::CancelCurrentPopup)
     } else {
-      self.list.handle_key_event(ke, action_tx).await?
+      self.list.handle_key_event(ke, keys, action_tx).await?
     }
     Ok(())
   }

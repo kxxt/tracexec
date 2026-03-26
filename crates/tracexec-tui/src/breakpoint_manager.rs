@@ -1,10 +1,9 @@
-use std::collections::BTreeMap;
-
-use crossterm::event::{
-  KeyCode,
-  KeyEvent,
-  KeyModifiers,
+use std::{
+  collections::BTreeMap,
+  sync::Arc,
 };
+
+use crossterm::event::KeyEvent;
 use itertools::{
   Itertools,
   chain,
@@ -36,11 +35,14 @@ use ratatui::{
   },
 };
 use tracexec_backend_ptrace::ptrace::RunningTracer;
-use tracexec_core::breakpoint::{
-  BreakPoint,
-  BreakPointPattern,
-  BreakPointStop,
-  BreakPointType,
+use tracexec_core::{
+  breakpoint::{
+    BreakPoint,
+    BreakPointPattern,
+    BreakPointStop,
+    BreakPointType,
+  },
+  cli::keys::TuiKeyBindings,
 };
 use tui_prompts::{
   State,
@@ -140,6 +142,7 @@ pub struct BreakPointManagerState {
   breakpoints: BTreeMap<u32, BreakPoint>,
   list_state: tui_widget_list::ListState,
   tracer: RunningTracer,
+  key_bindings: Arc<TuiKeyBindings>,
   editor: Option<tui_prompts::TextState<'static>>,
   /// The stop for the currently editing breakpoint
   stop: BreakPointStop,
@@ -149,7 +152,7 @@ pub struct BreakPointManagerState {
 }
 
 impl BreakPointManager {
-  fn help() -> InfoPopupState {
+  fn help(keys: &TuiKeyBindings) -> InfoPopupState {
     InfoPopupState::info(
       "How to use Breakpoints".to_string(),
       vec![
@@ -181,9 +184,9 @@ impl BreakPointManager {
         ]),
         Line::default().spans(vec![
           "Press ".into(),
-          help_key("N"),
+          help_key(keys.breakpoint_new.display()),
           " to create a new breakpoint. Press ".into(),
-          help_key("Enter/E"),
+          help_key(keys.breakpoint_edit.display()),
           " when a breakpoint is selected to edit it. \
           While editing a breakpoint, the editor is shown on top of the screen. \
           The editor accepts breakpoint pattern in the following format: "
@@ -199,9 +202,9 @@ impl BreakPointManager {
           "pattern-string".cyan().bold().italic(),
           ". To change the breakpoint stop or disable the breakpoint, please follow on screen instructions. \
           Press ".into(),
-          help_key("Enter"),
+          help_key(keys.breakpoint_editor_save.display()),
           " to save the breakpoint. Press ".into(),
-          help_key("Ctrl+C"),
+          help_key(keys.breakpoint_editor_cancel.display()),
           " to cancel the editing.".into(),
         ]),
         Line::default().spans(vec![
@@ -215,6 +218,11 @@ impl BreakPointManager {
 
 #[cfg(test)]
 mod tests {
+  use std::sync::{
+    Arc,
+    LazyLock,
+  };
+
   use crossterm::event::{
     KeyCode,
     KeyEvent,
@@ -226,17 +234,27 @@ mod tests {
     backend::TestBackend,
   };
   use tracexec_backend_ptrace::ptrace::RunningTracer;
-  use tracexec_core::breakpoint::{
-    BreakPoint,
-    BreakPointPattern,
-    BreakPointStop,
-    BreakPointType,
+  use tracexec_core::{
+    breakpoint::{
+      BreakPoint,
+      BreakPointPattern,
+      BreakPointStop,
+      BreakPointType,
+    },
+    cli::keys::TuiKeyBindings,
   };
 
   use super::{
     BreakPointEntry,
     BreakPointManagerState,
   };
+
+  static KEY_BINDINGS: LazyLock<Arc<TuiKeyBindings>> =
+    LazyLock::new(|| Arc::new(TuiKeyBindings::default()));
+
+  fn keys() -> &'static Arc<TuiKeyBindings> {
+    &KEY_BINDINGS
+  }
 
   fn make_breakpoint(pattern: &str, stop: BreakPointStop, activated: bool) -> BreakPoint {
     BreakPoint {
@@ -249,7 +267,10 @@ mod tests {
 
   fn feed_text(state: &mut BreakPointManagerState, text: &str) {
     for ch in text.chars() {
-      state.handle_key_event(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE));
+      state.handle_key_event(
+        KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE),
+        keys().as_ref(),
+      );
     }
   }
 
@@ -409,7 +430,7 @@ mod tests {
 
   #[test]
   fn test_breakpoint_manager_help() {
-    let help = super::BreakPointManager::help();
+    let help = super::BreakPointManager::help(keys().as_ref());
     assert_eq!(help.title, "How to use Breakpoints");
     assert!(!help.message.is_empty());
     // Check that the help contains expected content
@@ -434,7 +455,7 @@ mod tests {
       BreakPointStop::SyscallEnter,
       true,
     ));
-    let state = BreakPointManagerState::new(tracer.clone());
+    let state = BreakPointManagerState::new(tracer.clone(), keys().clone());
     assert_eq!(state.breakpoints.len(), 1);
     let breakpoint = state.breakpoints.get(&id).unwrap().clone();
     assert_eq!(breakpoint.pattern.to_editable(), "in-filename:/bin/echo");
@@ -446,10 +467,16 @@ mod tests {
   #[test]
   fn test_breakpoint_manager_state_new_breakpoint_flow() {
     let tracer = RunningTracer::mock();
-    let mut state = BreakPointManagerState::new(tracer.clone());
-    state.handle_key_event(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+    let mut state = BreakPointManagerState::new(tracer.clone(), keys().clone());
+    state.handle_key_event(
+      KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE),
+      keys().as_ref(),
+    );
     feed_text(&mut state, "in-filename:/bin/echo");
-    state.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    state.handle_key_event(
+      KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+      keys().as_ref(),
+    );
     assert!(state.editor.is_none());
     assert_eq!(state.breakpoints.len(), 1);
     let (id, breakpoint) = state.breakpoints.iter().next().unwrap();
@@ -470,12 +497,24 @@ mod tests {
       BreakPointStop::SyscallExit,
       true,
     ));
-    let mut state = BreakPointManagerState::new(tracer.clone());
+    let mut state = BreakPointManagerState::new(tracer.clone(), keys().clone());
     state.list_state.select(Some(0));
-    state.handle_key_event(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
-    state.handle_key_event(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::ALT));
-    state.handle_key_event(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::ALT));
-    state.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    state.handle_key_event(
+      KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE),
+      keys().as_ref(),
+    );
+    state.handle_key_event(
+      KeyEvent::new(KeyCode::Char('s'), KeyModifiers::ALT),
+      keys().as_ref(),
+    );
+    state.handle_key_event(
+      KeyEvent::new(KeyCode::Char('a'), KeyModifiers::ALT),
+      keys().as_ref(),
+    );
+    state.handle_key_event(
+      KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+      keys().as_ref(),
+    );
     let breakpoint = state.breakpoints.get(&id).unwrap();
     assert_eq!(breakpoint.stop, BreakPointStop::SyscallEnter);
     assert!(!breakpoint.activated);
@@ -498,9 +537,12 @@ mod tests {
       BreakPointStop::SyscallEnter,
       true,
     ));
-    let mut state = BreakPointManagerState::new(tracer.clone());
+    let mut state = BreakPointManagerState::new(tracer.clone(), keys().clone());
     state.list_state.select(Some(1));
-    state.handle_key_event(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+    state.handle_key_event(
+      KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE),
+      keys().as_ref(),
+    );
     assert_eq!(state.breakpoints.len(), 1);
     assert!(state.breakpoints.contains_key(&id1));
     assert!(!state.breakpoints.contains_key(&id2));
@@ -512,12 +554,13 @@ mod tests {
 }
 
 impl BreakPointManagerState {
-  pub fn new(tracer: RunningTracer) -> Self {
+  pub fn new(tracer: RunningTracer, key_bindings: Arc<TuiKeyBindings>) -> Self {
     let breakpoints = tracer.get_breakpoints();
     Self {
       breakpoints,
       list_state: tui_widget_list::ListState::default(),
       tracer,
+      key_bindings,
       editor: None,
       stop: BreakPointStop::SyscallExit,
       active: true,
@@ -536,128 +579,117 @@ impl BreakPointManagerState {
     self.editing = None;
   }
 
-  pub fn handle_key_event(&mut self, key: KeyEvent) -> Option<Action> {
+  pub fn handle_key_event(&mut self, key: KeyEvent, keys: &TuiKeyBindings) -> Option<Action> {
     if let Some(editor) = self.editor.as_mut() {
-      match key.code {
-        KeyCode::Enter => {
-          if editor.is_empty() {
-            self.clear_editor();
-            return None;
-          }
-          let pattern = match BreakPointPattern::from_editable(editor.value()) {
-            Ok(pattern) => pattern,
-            Err(message) => {
-              return Some(Action::SetActivePopup(ActivePopup::InfoPopup(
-                InfoPopupState::error(
-                  "Breakpoint Editor Error".to_string(),
-                  vec![Line::from(message)],
-                ),
-              )));
-            }
-          };
-          let new = BreakPoint {
-            pattern,
-            ty: BreakPointType::Permanent,
-            activated: self.active,
-            stop: self.stop,
-          };
-          // Finish editing
-          if let Some(id) = self.editing {
-            // Existing breakpoint
-            self.breakpoints.insert(id, new.clone());
-            self.tracer.replace_breakpoint(id, new);
-          } else {
-            // New Breakpoint
-            let id = self.tracer.add_breakpoint(new.clone());
-            self.breakpoints.insert(id, new);
-          }
+      if keys.breakpoint_editor_save.matches(key) {
+        if editor.is_empty() {
           self.clear_editor();
+          return None;
         }
-        KeyCode::Char('s') if key.modifiers == KeyModifiers::ALT => {
-          self.stop.toggle();
+        let pattern = match BreakPointPattern::from_editable(editor.value()) {
+          Ok(pattern) => pattern,
+          Err(message) => {
+            return Some(Action::SetActivePopup(ActivePopup::InfoPopup(
+              InfoPopupState::error(
+                "Breakpoint Editor Error".to_string(),
+                vec![Line::from(message)],
+              ),
+            )));
+          }
+        };
+        let new = BreakPoint {
+          pattern,
+          ty: BreakPointType::Permanent,
+          activated: self.active,
+          stop: self.stop,
+        };
+        // Finish editing
+        if let Some(id) = self.editing {
+          // Existing breakpoint
+          self.breakpoints.insert(id, new.clone());
+          self.tracer.replace_breakpoint(id, new);
+        } else {
+          // New Breakpoint
+          let id = self.tracer.add_breakpoint(new.clone());
+          self.breakpoints.insert(id, new);
         }
-        KeyCode::Char('a') if key.modifiers == KeyModifiers::ALT => {
-          self.active = !self.active;
-        }
-        KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => {
-          self.clear_editor();
-        }
-        _ => {
-          editor.handle_key_event(key);
-        }
+        self.clear_editor();
+      } else if keys.breakpoint_editor_toggle_stop.matches(key) {
+        self.stop.toggle();
+      } else if keys.breakpoint_editor_toggle_active.matches(key) {
+        self.active = !self.active;
+      } else if keys.breakpoint_editor_cancel.matches(key) {
+        self.clear_editor();
+      } else {
+        editor.handle_key_event(key);
       }
       return None;
     }
-    if key.modifiers == KeyModifiers::NONE {
-      match key.code {
-        KeyCode::F(1) => {
-          return Some(Action::SetActivePopup(ActivePopup::InfoPopup(
-            BreakPointManager::help(),
-          )));
+    if keys.help.matches(key) {
+      return Some(Action::SetActivePopup(ActivePopup::InfoPopup(
+        BreakPointManager::help(keys),
+      )));
+    }
+    if keys.go_back.matches(key) {
+      return Some(Action::CloseBreakpointManager);
+    }
+    if keys.next_item.matches(key) {
+      self.list_state.next();
+    } else if keys.prev_item.matches(key) {
+      self.list_state.previous();
+    } else if keys.breakpoint_delete.matches(key) {
+      if let Some(selected) = self.list_state.selected {
+        if selected > 0 {
+          self.list_state.select(Some(selected - 1));
+        } else if selected + 1 < self.breakpoints.len() {
+          self.list_state.select(Some(selected + 1));
+        } else {
+          self.list_state.select(None);
         }
-        KeyCode::Char('q') => return Some(Action::CloseBreakpointManager),
-        KeyCode::Down | KeyCode::Char('j') => {
-          self.list_state.next();
-        }
-        KeyCode::Up | KeyCode::Char('k') => {
-          self.list_state.previous();
-        }
-        KeyCode::Delete | KeyCode::Char('d') => {
-          if let Some(selected) = self.list_state.selected {
-            if selected > 0 {
-              self.list_state.select(Some(selected - 1));
-            } else if selected + 1 < self.breakpoints.len() {
-              self.list_state.select(Some(selected + 1));
-            } else {
-              self.list_state.select(None);
-            }
-            let id = *self.breakpoints.keys().nth(selected).unwrap();
-            self.tracer.remove_breakpoint(id);
-            self.breakpoints.remove(&id);
-          }
-        }
-        KeyCode::Char(' ') => {
-          if let Some(selected) = self.list_state.selected {
-            let id = *self.breakpoints.keys().nth(selected).unwrap();
-            let breakpoint = self.breakpoints.get_mut(&id).unwrap();
-            self.tracer.set_breakpoint(id, !breakpoint.activated);
-            breakpoint.activated = !breakpoint.activated;
-          }
-        }
-        KeyCode::Char('e') | KeyCode::Enter => {
-          if let Some(selected) = self.list_state.selected {
-            let id = *self.breakpoints.keys().nth(selected).unwrap();
-            let breakpoint = self.breakpoints.get(&id).unwrap();
-            self.stop = breakpoint.stop;
-            self.active = breakpoint.activated;
-            self.editing = Some(id);
-            let mut editor_state = TextState::new().with_value(breakpoint.pattern.to_editable());
-            editor_state.move_end();
-            self.editor = Some(editor_state);
-          }
-        }
-        KeyCode::Char('n') => {
-          self.editor = Some(TextState::new());
-          self.stop = BreakPointStop::SyscallExit;
-          self.active = true;
-        }
-        _ => {}
+        let id = *self.breakpoints.keys().nth(selected).unwrap();
+        self.tracer.remove_breakpoint(id);
+        self.breakpoints.remove(&id);
       }
+    } else if keys.breakpoint_toggle_active.matches(key) {
+      if let Some(selected) = self.list_state.selected {
+        let id = *self.breakpoints.keys().nth(selected).unwrap();
+        let breakpoint = self.breakpoints.get_mut(&id).unwrap();
+        self.tracer.set_breakpoint(id, !breakpoint.activated);
+        breakpoint.activated = !breakpoint.activated;
+      }
+    } else if keys.breakpoint_edit.matches(key) {
+      if let Some(selected) = self.list_state.selected {
+        let id = *self.breakpoints.keys().nth(selected).unwrap();
+        let breakpoint = self.breakpoints.get(&id).unwrap();
+        self.stop = breakpoint.stop;
+        self.active = breakpoint.activated;
+        self.editing = Some(id);
+        let mut editor_state = TextState::new().with_value(breakpoint.pattern.to_editable());
+        editor_state.move_end();
+        self.editor = Some(editor_state);
+      }
+    } else if keys.breakpoint_new.matches(key) {
+      self.editor = Some(TextState::new());
+      self.stop = BreakPointStop::SyscallExit;
+      self.active = true;
     }
     None
   }
 
-  pub fn help(&self) -> impl Iterator<Item = Span<'_>> {
+  pub fn help(&self, keys: &TuiKeyBindings) -> impl Iterator<Item = Span<'_>> {
     chain!(
       [
-        help_item!("Q", "Close Mgr"),
-        help_item!("Del/D", "Delete"),
-        help_item!("Enter/E", "Edit"),
-        help_item!("Space", "Enable/Disable"),
-        help_item!("N", "New\u{00a0}Breakpoint"),
+        help_item!(keys.go_back.display(), "Close Mgr"),
+        help_item!(keys.breakpoint_delete.display(), "Delete"),
+        help_item!(keys.breakpoint_edit.display(), "Edit"),
+        help_item!(keys.breakpoint_toggle_active.display(), "Enable/Disable"),
+        help_item!(keys.breakpoint_new.display(), "New\u{00a0}Breakpoint"),
       ],
       if self.editor.is_some() {
-        Some(help_item!("Ctrl+C", "Cancel"))
+        Some(help_item!(
+          keys.breakpoint_editor_cancel.display(),
+          "Cancel"
+        ))
       } else {
         None
       }
@@ -690,7 +722,7 @@ impl StatefulWidgetRef for BreakPointManager {
       TextPrompt::new("🐛".into()).render(editor_area, buf, editing);
       Line::default()
         .spans(help_item!(
-          "Alt+S", // 5 + 2 = 7
+          state.key_bindings.breakpoint_editor_toggle_stop.display(),
           match state.stop {
             BreakPointStop::SyscallEnter => "Syscall Enter", // 13 + 2 = 15
             BreakPointStop::SyscallExit => "Syscall  Exit",
@@ -699,7 +731,7 @@ impl StatefulWidgetRef for BreakPointManager {
         .render(stop_toggle_area, buf);
       Line::default()
         .spans(help_item!(
-          "Alt+A", // 5 + 2 = 7
+          state.key_bindings.breakpoint_editor_toggle_active.display(),
           match state.active {
             true => " Active ", // 8 + 2 = 10
             false => "Inactive",
@@ -715,7 +747,7 @@ impl StatefulWidgetRef for BreakPointManager {
       };
       Clear.render(help_area, buf);
       Line::default()
-        .spans(help_item!("F1", "Help"))
+        .spans(help_item!(state.key_bindings.help.display(), "Help"))
         .render(help_area, buf);
     }
     Clear.render(area, buf);

@@ -1,17 +1,9 @@
 use std::{
   cmp::min,
-  collections::BTreeMap,
-  sync::{
-    Arc,
-    LazyLock,
-  },
+  sync::Arc,
 };
 
-use crossterm::event::{
-  KeyCode,
-  KeyEvent,
-  KeyModifiers,
-};
+use crossterm::event::KeyEvent;
 use ratatui::{
   buffer::Buffer,
   layout::{
@@ -36,7 +28,10 @@ use ratatui::{
     Widget,
   },
 };
-use tracexec_core::event::TracerEventDetails;
+use tracexec_core::{
+  cli::keys::TuiKeyBindings,
+  event::TracerEventDetails,
+};
 
 use super::help::help_item;
 use crate::action::{
@@ -52,45 +47,95 @@ pub struct CopyPopup;
 pub struct CopyPopupState {
   pub event: Arc<TracerEventDetails>,
   pub state: ListState,
-  pub available_targets: Vec<char>,
+  pub available_targets: Vec<CopyTarget>,
+  key_bindings: Arc<TuiKeyBindings>,
 }
 
-static KEY_MAP: LazyLock<BTreeMap<char, (&'static str, &'static str)>> = LazyLock::new(|| {
-  [
-    ('c', ("(C)ommand line", "Cmdline")),
-    (
-      'o',
-      ("C(o)mmand line with full env", "Cmdline with full env"),
-    ),
-    ('s', ("Command line with (S)tdio", "Cmdline with stdio")),
-    (
-      'f',
-      ("Command line with (F)ile descriptors", "Cmdline with Fds"),
-    ),
-    ('e', ("(E)nvironment variables", "Env")),
-    ('d', ("(D)iff of environment variables", "Diff of Env")),
-    ('a', ("(A)rguments", "Argv")),
-    ('n', ("File(N)ame", "Filename")),
-    ('r', ("Syscall (R)esult", "Result")),
-    ('l', ("Current (L)ine", "Line")),
-  ]
-  .into_iter()
-  .collect()
-});
+#[derive(Clone, Copy)]
+struct CopyTargetConfig {
+  target: CopyTarget,
+  default_key: char,
+  list_label: &'static str,
+  help_label: &'static str,
+}
+
+const COPY_TARGETS: &[CopyTargetConfig] = &[
+  CopyTargetConfig {
+    target: CopyTarget::Commandline(Bash),
+    default_key: 'c',
+    list_label: "(C)ommand line",
+    help_label: "Cmdline",
+  },
+  CopyTargetConfig {
+    target: CopyTarget::CommandlineWithFullEnv(Bash),
+    default_key: 'o',
+    list_label: "C(o)mmand line with full env",
+    help_label: "Cmdline with full env",
+  },
+  CopyTargetConfig {
+    target: CopyTarget::CommandlineWithStdio(Bash),
+    default_key: 's',
+    list_label: "Command line with (S)tdio",
+    help_label: "Cmdline with stdio",
+  },
+  CopyTargetConfig {
+    target: CopyTarget::CommandlineWithFds(Bash),
+    default_key: 'f',
+    list_label: "Command line with (F)ile descriptors",
+    help_label: "Cmdline with Fds",
+  },
+  CopyTargetConfig {
+    target: CopyTarget::Env,
+    default_key: 'e',
+    list_label: "(E)nvironment variables",
+    help_label: "Env",
+  },
+  CopyTargetConfig {
+    target: CopyTarget::EnvDiff,
+    default_key: 'd',
+    list_label: "(D)iff of environment variables",
+    help_label: "Diff of Env",
+  },
+  CopyTargetConfig {
+    target: CopyTarget::Argv,
+    default_key: 'a',
+    list_label: "(A)rguments",
+    help_label: "Argv",
+  },
+  CopyTargetConfig {
+    target: CopyTarget::Filename,
+    default_key: 'n',
+    list_label: "File(N)ame",
+    help_label: "Filename",
+  },
+  CopyTargetConfig {
+    target: CopyTarget::SyscallResult,
+    default_key: 'r',
+    list_label: "Syscall (R)esult",
+    help_label: "Result",
+  },
+  CopyTargetConfig {
+    target: CopyTarget::Line,
+    default_key: 'l',
+    list_label: "Current (L)ine",
+    help_label: "Line",
+  },
+];
 
 impl CopyPopupState {
-  pub fn new(event: Arc<TracerEventDetails>) -> Self {
+  pub fn new(event: Arc<TracerEventDetails>, key_bindings: Arc<TuiKeyBindings>) -> Self {
     let mut state = ListState::default();
     state.select(Some(0));
     let available_targets = if let TracerEventDetails::Exec(_) = &event.as_ref() {
-      KEY_MAP.keys().copied().collect()
+      COPY_TARGETS.iter().map(|target| target.target).collect()
     } else {
-      vec!['l']
+      vec![CopyTarget::Line]
     };
     Self {
       event,
       state,
       available_targets,
+      key_bindings,
     }
   }
 
@@ -108,70 +153,92 @@ impl CopyPopupState {
 
   pub fn selected(&self) -> CopyTarget {
     let id = self.state.selected().unwrap_or(0);
-    let key = self.available_targets[id];
-    match key {
-      'c' => CopyTarget::Commandline(Bash),
-      'o' => CopyTarget::CommandlineWithFullEnv(Bash),
-      's' => CopyTarget::CommandlineWithStdio(Bash),
-      'f' => CopyTarget::CommandlineWithFds(Bash),
-      'e' => CopyTarget::Env,
-      'd' => CopyTarget::EnvDiff,
-      'a' => CopyTarget::Argv,
-      'n' => CopyTarget::Filename,
-      'r' => CopyTarget::SyscallResult,
-      'l' => CopyTarget::Line,
-      _ => unreachable!(),
-    }
+    self.available_targets[id]
   }
 
-  pub fn select_by_key(&mut self, key: char) -> Option<CopyTarget> {
-    if let Some(id) = self.available_targets.iter().position(|&k| k == key) {
-      self.state.select(Some(id));
-      Some(self.selected())
-    } else {
-      None
+  pub fn select_by_key(&mut self, key: KeyEvent) -> Option<CopyTarget> {
+    for (idx, target) in self.available_targets.iter().enumerate() {
+      if copy_target_binding(&self.key_bindings, *target).matches(key) {
+        self.state.select(Some(idx));
+        return Some(*target);
+      }
     }
+    None
   }
 
   pub fn help_items(&self) -> impl Iterator<Item = Span<'_>> {
-    self.available_targets.iter().flat_map(|&key| {
-      help_item!(
-        key.to_ascii_uppercase().to_string(),
-        KEY_MAP.get(&key).unwrap().1
-      )
+    self.available_targets.iter().flat_map(|&target| {
+      let config = copy_target_config(target);
+      let key_label = copy_target_binding(&self.key_bindings, target).display();
+      help_item!(key_label, config.help_label)
     })
   }
 
+  fn list_label(&self, target: CopyTarget) -> String {
+    let config = copy_target_config(target);
+    let binding = copy_target_binding(&self.key_bindings, target);
+    let uses_default_key = binding.0.len() == 1
+      && binding
+        .first()
+        .and_then(|b| b.plain_char())
+        .is_some_and(|ch| ch.eq_ignore_ascii_case(&config.default_key));
+    if uses_default_key {
+      config.list_label.to_string()
+    } else {
+      format!("{} ({})", config.help_label, binding.display())
+    }
+  }
+
   pub fn handle_key_event(&mut self, ke: KeyEvent) -> color_eyre::Result<Option<Action>> {
-    if ke.modifiers == KeyModifiers::NONE {
-      match ke.code {
-        KeyCode::Char('q') => {
-          return Ok(Some(Action::CancelCurrentPopup));
-        }
-        KeyCode::Down | KeyCode::Char('j') => {
-          self.next();
-        }
-        KeyCode::Up | KeyCode::Char('k') => {
-          self.prev();
-        }
-        KeyCode::Enter => {
-          return Ok(Some(Action::CopyToClipboard {
-            event: self.event.clone(),
-            target: self.selected(),
-          }));
-        }
-        KeyCode::Char(c) => {
-          if let Some(target) = self.select_by_key(c) {
-            return Ok(Some(Action::CopyToClipboard {
-              event: self.event.clone(),
-              target,
-            }));
-          }
-        }
-        _ => {}
-      }
+    if self.key_bindings.close_popup.matches(ke) {
+      return Ok(Some(Action::CancelCurrentPopup));
+    }
+    if self.key_bindings.next_item.matches(ke) {
+      self.next();
+      return Ok(None);
+    }
+    if self.key_bindings.prev_item.matches(ke) {
+      self.prev();
+      return Ok(None);
+    }
+    if self.key_bindings.copy_choose.matches(ke) {
+      return Ok(Some(Action::CopyToClipboard {
+        event: self.event.clone(),
+        target: self.selected(),
+      }));
+    }
+    if let Some(target) = self.select_by_key(ke) {
+      return Ok(Some(Action::CopyToClipboard {
+        event: self.event.clone(),
+        target,
+      }));
     }
     Ok(None)
+  }
+}
+
+fn copy_target_config(target: CopyTarget) -> CopyTargetConfig {
+  *COPY_TARGETS
+    .iter()
+    .find(|config| config.target == target)
+    .expect("Missing copy target config")
+}
+
+fn copy_target_binding(
+  keys: &TuiKeyBindings,
+  target: CopyTarget,
+) -> &tracexec_core::cli::keys::KeyList {
+  match target {
+    CopyTarget::Commandline(_) => &keys.copy_target_cmdline,
+    CopyTarget::CommandlineWithFullEnv(_) => &keys.copy_target_cmdline_full_env,
+    CopyTarget::CommandlineWithStdio(_) => &keys.copy_target_cmdline_stdio,
+    CopyTarget::CommandlineWithFds(_) => &keys.copy_target_cmdline_fds,
+    CopyTarget::Env => &keys.copy_target_env,
+    CopyTarget::EnvDiff => &keys.copy_target_env_diff,
+    CopyTarget::Argv => &keys.copy_target_argv,
+    CopyTarget::Filename => &keys.copy_target_filename,
+    CopyTarget::SyscallResult => &keys.copy_target_syscall_result,
+    CopyTarget::Line => &keys.copy_target_line,
   }
 }
 
@@ -181,7 +248,7 @@ impl StatefulWidgetRef for CopyPopup {
       state
         .available_targets
         .iter()
-        .map(|&key| KEY_MAP.get(&key).unwrap().0),
+        .map(|&target| state.list_label(target)),
     )
     .block(
       Block::default()
@@ -247,9 +314,12 @@ mod tests {
   use std::sync::Arc;
 
   use insta::assert_snapshot;
-  use tracexec_core::event::{
-    TracerEventDetails,
-    TracerEventMessage,
+  use tracexec_core::{
+    cli::keys::TuiKeyBindings,
+    event::{
+      TracerEventDetails,
+      TracerEventMessage,
+    },
   };
 
   use super::{
@@ -268,7 +338,7 @@ mod tests {
       timestamp: None,
       msg: "hello".to_string(),
     }));
-    let mut state = CopyPopupState::new(event);
+    let mut state = CopyPopupState::new(event, Arc::new(TuiKeyBindings::default()));
     let area = test_area_full(40, 40);
     let rendered = test_render_stateful_widget_area(CopyPopup, area, &mut state);
     assert_snapshot!(rendered);
