@@ -72,6 +72,9 @@
 # Max number of events to keep in TUI. (0=unlimited)
 # max_events = 1_000_000
 
+# Number of scrollback lines to keep in the pseudo terminal
+# scrollback_lines = 1000
+
 #
 # Config for Log mode
 #
