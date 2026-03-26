@@ -23,6 +23,7 @@ use super::{
     PtraceConfig,
     TuiModeConfig,
   },
+  keys::TuiKeyBindingsConfig,
   options::{
     ActivePane,
     AppLayout,
@@ -496,6 +497,8 @@ pub struct TuiModeArgs {
     requires = "tty"
   )]
   pub scrollback_lines: Option<usize>,
+  #[clap(skip)]
+  pub keys: Option<Box<TuiKeyBindingsConfig>>,
 }
 
 #[derive(Args, Debug, Default, Clone)]
@@ -523,6 +526,9 @@ impl TuiModeArgs {
     self.max_events = self.max_events.or(config.max_events);
     self.scrollback_lines = self.scrollback_lines.or(config.scrollback_lines);
     self.follow |= config.follow.unwrap_or_default();
+    if self.keys.is_none() {
+      self.keys = config.keys.map(Box::new);
+    }
     if (!self.terminate_on_exit) && (!self.kill_on_exit) {
       match config.exit_handling {
         Some(ExitHandling::Kill) => self.kill_on_exit = true,

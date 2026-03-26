@@ -25,10 +25,6 @@ use std::{
 };
 
 use arboard::Clipboard;
-use crossterm::event::{
-  KeyCode,
-  KeyModifiers,
-};
 use nix::{
   errno::Errno,
   sys::signal::Signal,
@@ -53,6 +49,7 @@ use tracexec_core::{
       TuiModeArgs,
     },
     config::ExitHandling,
+    keys::TuiKeyBindings,
     options::{
       ActivePane,
       AppLayout,
@@ -113,6 +110,7 @@ pub struct App {
   pub should_handle_internal_resize: bool,
   pub popup: Vec<ActivePopup>,
   pub active_experiments: Vec<&'static str>,
+  pub key_bindings: Arc<TuiKeyBindings>,
   tracer: Option<RunningTracer>,
   query_builder: Option<QueryBuilder>,
   breakpoint_manager: Option<BreakPointManagerState>,
@@ -135,6 +133,7 @@ impl App {
     baseline: Arc<BaselineInfo>,
     pty_master: Option<UnixMasterPty>,
   ) -> color_eyre::Result<Self> {
+    let key_bindings = Arc::new(TuiKeyBindings::from_config(tui_args.keys));
     let active_pane = if pty_master.is_some() {
       tui_args.active_pane.unwrap_or_default()
     } else {
@@ -185,9 +184,16 @@ impl App {
       query_builder: None,
       breakpoint_manager: None,
       active_experiments: vec![],
+      key_bindings: key_bindings.clone(),
       tracer: tracer.as_ref().map(|t| t.tracer.clone()),
       hit_manager_state: tracer
-        .map(|t| HitManagerState::new(t.tracer, t.debugger_args.default_external_command))
+        .map(|t| {
+          HitManagerState::new(
+            t.tracer,
+            t.debugger_args.default_external_command,
+            key_bindings.clone(),
+          )
+        })
         .transpose()?,
       exit_handling: {
         if tui_args.kill_on_exit {
@@ -237,7 +243,7 @@ impl App {
             action_tx.send(Action::Quit);
           }
           Event::Key(ke) => {
-            if ke.code == KeyCode::Char('s') && ke.modifiers.contains(KeyModifiers::CONTROL) {
+            if self.key_bindings.switch_pane.matches(ke) {
               action_tx.send(Action::SwitchActivePane);
               // Cancel all popups
               self.popup.clear();
@@ -264,13 +270,18 @@ impl App {
                 // TODO: do this in a separate function
                 if let Some(popup) = &mut self.popup.last_mut() {
                   match popup {
-                    ActivePopup::Backtrace(state) => state.handle_key_event(ke, &action_tx).await?,
+                    ActivePopup::Backtrace(state) => {
+                      state
+                        .handle_key_event(ke, &self.key_bindings, &action_tx)
+                        .await?
+                    }
                     ActivePopup::Help => {
                       self.popup.pop();
                     }
                     ActivePopup::ViewDetails(state) => {
                       state.handle_key_event(
                         ke,
+                        &self.key_bindings,
                         self.clipboard.as_mut(),
                         &self.event_list,
                         &action_tx,
@@ -294,7 +305,7 @@ impl App {
                 if let Some(h) = self.hit_manager_state.as_mut()
                   && h.visible
                 {
-                  if let Some(action) = h.handle_key_event(ke) {
+                  if let Some(action) = h.handle_key_event(ke, &self.key_bindings) {
                     action_tx.send(action);
                   }
                   continue;
@@ -302,7 +313,8 @@ impl App {
 
                 // Handle breakpoint manager
                 if let Some(breakpoint_manager) = self.breakpoint_manager.as_mut() {
-                  if let Some(action) = breakpoint_manager.handle_key_event(ke) {
+                  if let Some(action) = breakpoint_manager.handle_key_event(ke, &self.key_bindings)
+                  {
                     action_tx.send(action);
                   }
                   continue;
@@ -311,7 +323,7 @@ impl App {
                 // Handle query builder
                 if let Some(query_builder) = self.query_builder.as_mut() {
                   if query_builder.editing() {
-                    match query_builder.handle_key_events(ke) {
+                    match query_builder.handle_key_events(ke, &self.key_bindings) {
                       Ok(Some(action)) => {
                         action_tx.send(action);
                       }
@@ -328,34 +340,32 @@ impl App {
                     }
                     continue;
                   } else {
-                    match (ke.code, ke.modifiers) {
-                      (KeyCode::Char('n'), KeyModifiers::NONE) => {
-                        trace!("Query: Next match");
-                        action_tx.send(Action::NextMatch);
-                        continue;
-                      }
-                      (KeyCode::Char('p'), KeyModifiers::NONE) => {
-                        trace!("Query: Prev match");
-                        action_tx.send(Action::PrevMatch);
-                        continue;
-                      }
-                      _ => {}
+                    if self.key_bindings.query_next_match.matches(ke) {
+                      trace!("Query: Next match");
+                      action_tx.send(Action::NextMatch);
+                      continue;
+                    }
+                    if self.key_bindings.query_prev_match.matches(ke) {
+                      trace!("Query: Prev match");
+                      action_tx.send(Action::PrevMatch);
+                      continue;
                     }
                   }
                 }
 
-                match ke.code {
-                  KeyCode::Char('q') if ke.modifiers == KeyModifiers::NONE => {
-                    if !self.popup.is_empty() {
-                      self.popup.pop();
-                    } else {
-                      action_tx.send(Action::Quit);
-                    }
+                if self.key_bindings.quit.matches(ke) {
+                  if !self.popup.is_empty() {
+                    self.popup.pop();
+                  } else {
+                    action_tx.send(Action::Quit);
                   }
-                  KeyCode::Char('l') if ke.modifiers == KeyModifiers::ALT => {
-                    action_tx.send(Action::SwitchLayout);
-                  }
-                  _ => self.event_list.handle_key_event(ke, &action_tx).await?,
+                } else if self.key_bindings.switch_layout.matches(ke) {
+                  action_tx.send(Action::SwitchLayout);
+                } else {
+                  self
+                    .event_list
+                    .handle_key_event(ke, &self.key_bindings, &action_tx)
+                    .await?;
                 }
               } else {
                 action_tx.send(Action::HandleTerminalKeyPress(ke));
@@ -557,7 +567,7 @@ impl App {
           }
           Action::HandleTerminalKeyPress(ke) => {
             if let Some(term) = self.term.as_mut() {
-              term.handle_key_event(&ke).await;
+              term.handle_key_event(&ke, &self.key_bindings).await;
             }
           }
           Action::Resize(_size) => {
@@ -638,7 +648,10 @@ impl App {
           Action::ShowCopyDialog(e) => {
             self
               .popup
-              .push(ActivePopup::CopyTargetSelection(CopyPopupState::new(e)));
+              .push(ActivePopup::CopyTargetSelection(CopyPopupState::new(
+                e,
+                self.key_bindings.clone(),
+              )));
           }
           Action::CopyToClipboard { event, target } => {
             let text = event.text_for_copy(
@@ -692,6 +705,7 @@ impl App {
                   .as_ref()
                   .expect("BreakPointManager doesn't work without PTracer!")
                   .clone(),
+                self.key_bindings.clone(),
               ));
             }
           }

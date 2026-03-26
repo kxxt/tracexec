@@ -561,7 +561,17 @@ impl EventList {
 
 #[cfg(test)]
 mod test {
+  use std::sync::LazyLock;
+
+  use tracexec_core::cli::keys::TuiKeyBindings;
+
   use super::EventList;
+
+  static KEY_BINDINGS: LazyLock<TuiKeyBindings> = LazyLock::new(TuiKeyBindings::default);
+
+  fn keys() -> &'static TuiKeyBindings {
+    &KEY_BINDINGS
+  }
 
   #[test]
   fn test_window_with_valid_input() {
@@ -644,7 +654,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::NextItem));
@@ -677,7 +687,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let mut actions = vec![];
     while let Some(action) = rx.receive() {
@@ -714,13 +724,13 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::PageDown));
 
     let ke = KeyEvent::new(KeyCode::Down, KeyModifiers::CONTROL);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::PageDown));
@@ -753,7 +763,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Left, KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::ScrollLeft));
@@ -786,7 +796,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Home, KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let mut actions = vec![];
     while let Some(action) = rx.receive() {
@@ -823,7 +833,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::End, KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::ScrollToBottom));
@@ -859,7 +869,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::SetActivePopup(ActivePopup::Help)));
@@ -892,7 +902,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::ToggleEnvDisplay));
@@ -925,7 +935,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::ToggleCwdDisplay));
@@ -958,7 +968,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::GrowPane));
@@ -991,7 +1001,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::ShrinkPane));
@@ -1024,7 +1034,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Right, KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::ScrollRight));
@@ -1057,7 +1067,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let mut actions = vec![];
     while let Some(action) = rx.receive() {
@@ -1094,7 +1104,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::PageLeft));
@@ -1127,7 +1137,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::PageRight));
@@ -1160,7 +1170,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Home, KeyModifiers::SHIFT);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::ScrollToStart));
@@ -1193,7 +1203,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::End, KeyModifiers::SHIFT);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::ScrollToEnd));
@@ -1226,7 +1236,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Up, KeyModifiers::CONTROL);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let mut actions = vec![];
     while let Some(action) = rx.receive() {
@@ -1263,7 +1273,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::NextItem));
@@ -1296,7 +1306,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let mut actions = vec![];
     while let Some(action) = rx.receive() {
@@ -1333,7 +1343,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::ScrollLeft));
@@ -1366,7 +1376,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::ScrollRight));
@@ -1399,7 +1409,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::ToggleFollow));
@@ -1432,7 +1442,7 @@ mod test {
     let (tx, rx) = local_chan::unbounded();
 
     let ke = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL);
-    event_list.handle_key_event(ke, &tx).await.unwrap();
+    event_list.handle_key_event(ke, keys(), &tx).await.unwrap();
 
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::BeginSearch));

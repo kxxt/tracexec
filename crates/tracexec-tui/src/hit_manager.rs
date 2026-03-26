@@ -4,6 +4,7 @@ use std::{
     HashMap,
   },
   process::Stdio,
+  sync::Arc,
 };
 
 use color_eyre::{
@@ -54,9 +55,12 @@ use ratatui::{
   },
 };
 use tracexec_backend_ptrace::ptrace::RunningTracer;
-use tracexec_core::breakpoint::{
-  BreakPointHit,
-  BreakPointStop,
+use tracexec_core::{
+  breakpoint::{
+    BreakPointHit,
+    BreakPointStop,
+  },
+  cli::keys::TuiKeyBindings,
 };
 use tracing::{
   debug,
@@ -156,12 +160,14 @@ pub struct HitManagerState {
   default_external_command: Option<String>,
   editing: Option<EditingTarget>,
   editor_state: TextState<'static>,
+  key_bindings: Arc<TuiKeyBindings>,
 }
 
 impl HitManagerState {
   pub fn new(
     tracer: RunningTracer,
     default_external_command: Option<String>,
+    key_bindings: Arc<TuiKeyBindings>,
   ) -> color_eyre::Result<Self> {
     Ok(Self {
       tracer,
@@ -173,6 +179,7 @@ impl HitManagerState {
       default_external_command,
       editing: None,
       editor_state: TextState::new(),
+      key_bindings,
     })
   }
 
@@ -185,33 +192,36 @@ impl HitManagerState {
     self.editing = None;
   }
 
-  pub fn help(&self) -> impl Iterator<Item = Span<'_>> {
+  pub fn help(&self, keys: &TuiKeyBindings) -> impl Iterator<Item = Span<'_>> {
     if self.editing.is_none() {
       Either::Left(chain!(
         [
-          help_item!("Q", "Back"),
-          help_item!("R", "Resume\u{00a0}Process"),
-          help_item!("D", "Detach\u{00a0}Process"),
-          help_item!("E", "Edit\u{00a0}Default\u{00a0}Command")
+          help_item!(keys.hit_close.display(), "Back"),
+          help_item!(keys.hit_resume.display(), "Resume\u{00a0}Process"),
+          help_item!(keys.hit_detach.display(), "Detach\u{00a0}Process"),
+          help_item!(
+            keys.hit_edit_default_command.display(),
+            "Edit\u{00a0}Default\u{00a0}Command"
+          )
         ],
         if self.default_external_command.is_some() {
           Some(help_item!(
-            "Enter",
+            keys.hit_run_default_command.display(),
             "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Default\u{00a0}Command"
           ))
         } else {
           None
         },
         [help_item!(
-          "Alt+Enter",
+          keys.hit_run_custom_command.display(),
           "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Command"
         ),]
       ))
     } else {
       Either::Right(chain!([
-        help_item!("Enter", "Save"),
-        help_item!("Ctrl+U", "Clear"),
-        help_item!("Esc/Ctrl+C", "Cancel"),
+        help_item!(keys.hit_editor_save.display(), "Save"),
+        help_item!(keys.hit_editor_clear.display(), "Clear"),
+        help_item!(keys.hit_editor_cancel.display(), "Cancel"),
       ],))
     }
     .into_iter()
@@ -226,92 +236,31 @@ impl HitManagerState {
     }
   }
 
-  pub fn handle_key_event(&mut self, key: KeyEvent) -> Option<Action> {
-    if key.code == KeyCode::F(1) && key.modifiers == KeyModifiers::NONE {
+  pub fn handle_key_event(&mut self, key: KeyEvent, keys: &TuiKeyBindings) -> Option<Action> {
+    if keys.help.matches(key) {
       return Some(Action::SetActivePopup(
-        crate::action::ActivePopup::InfoPopup(HitManager::help()),
+        crate::action::ActivePopup::InfoPopup(HitManager::help(keys)),
       ));
     }
     if let Some(editing) = self.editing {
-      match key.code {
-        KeyCode::Enter => {
-          if key.modifiers == KeyModifiers::NONE {
-            if self.editor_state.value().trim().is_empty() {
-              return Some(Action::show_error_popup(
-                "Error".to_string(),
-                eyre!("Command cannot be empty or whitespace"),
-              ));
-            }
-            self.editing = None;
-            match editing {
-              EditingTarget::DefaultCommand => {
-                self.default_external_command = Some(self.editor_state.value().to_string())
-              }
-              EditingTarget::CustomCommand { selection } => {
-                self.select_near_by(selection);
-                let hid = *self.hits.keys().nth(selection).unwrap();
-                if let Err(e) =
-                  self.detach_pause_and_launch_external(hid, self.editor_state.value().to_string())
-                {
-                  return Some(Action::show_error_popup(
-                    "Error".to_string(),
-                    e.with_note(|| "Failed to detach or launch external command"),
-                  ));
-                }
-                return self.close_when_empty();
-              }
-            }
-            return None;
+      if keys.hit_editor_save.matches(key) {
+        if self.editor_state.value().trim().is_empty() {
+          return Some(Action::show_error_popup(
+            "Error".to_string(),
+            eyre!("Command cannot be empty or whitespace"),
+          ));
+        }
+        self.editing = None;
+        match editing {
+          EditingTarget::DefaultCommand => {
+            self.default_external_command = Some(self.editor_state.value().to_string())
           }
-        }
-        KeyCode::Esc => {
-          self.editing = None;
-          return None;
-        }
-        KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => {
-          self.editing = None;
-          return None;
-        }
-        _ => {
-          self.editor_state.handle_key_event(key);
-          return None;
-        }
-      }
-      return None;
-    }
-    if key.modifiers == KeyModifiers::NONE {
-      match key.code {
-        KeyCode::Char('q') => return Some(Action::HideHitManager),
-        KeyCode::Down | KeyCode::Char('j') => {
-          self.list_state.next();
-        }
-        KeyCode::Up | KeyCode::Char('k') => {
-          self.list_state.previous();
-        }
-        KeyCode::Char('d') => {
-          if let Some(selected) = self.list_state.selected {
-            self.select_near_by(selected);
-            let hid = *self.hits.keys().nth(selected).unwrap();
-            if let Err(e) = self.detach(hid) {
-              return Some(Action::show_error_popup("Detach failed".to_string(), e));
-            };
-            return self.close_when_empty();
-          }
-        }
-        KeyCode::Char('e') => {
-          self.editing = Some(EditingTarget::DefaultCommand);
-          if let Some(command) = self.default_external_command.clone() {
-            self.editor_state = TextState::new().with_value(command);
-            self.editor_state.move_end();
-          }
-        }
-        KeyCode::Enter => {
-          if let Some(selected) = self.list_state.selected {
-            let external_command = self.default_external_command.clone()?;
-            self.select_near_by(selected);
-            let hid = *self.hits.keys().nth(selected).unwrap();
-            // "konsole --hold -e gdb -p {{PID}}".to_owned()
-            if let Err(e) = self.detach_pause_and_launch_external(hid, external_command) {
+          EditingTarget::CustomCommand { selection } => {
+            self.select_near_by(selection);
+            let hid = *self.hits.keys().nth(selection).unwrap();
+            if let Err(e) =
+              self.detach_pause_and_launch_external(hid, self.editor_state.value().to_string())
+            {
               return Some(Action::show_error_popup(
                 "Error".to_string(),
                 e.with_note(|| "Failed to detach or launch external command"),
@@ -320,21 +269,68 @@ impl HitManagerState {
             return self.close_when_empty();
           }
         }
-        KeyCode::Char('r') => {
-          if let Some(selected) = self.list_state.selected {
-            debug!("selected: {}", selected);
-            self.select_near_by(selected);
-            let hid = *self.hits.keys().nth(selected).unwrap();
-            if let Err(e) = self.resume(hid) {
-              return Some(Action::show_error_popup("Resume failed".to_string(), e));
-            }
-            return self.close_when_empty();
-          }
-        }
-        _ => {}
+        return None;
       }
-    } else if key.code == KeyCode::Enter
-      && key.modifiers == KeyModifiers::ALT
+      if keys.hit_editor_cancel.matches(key) {
+        self.editing = None;
+        return None;
+      }
+      if keys.hit_editor_clear.matches(key) {
+        self
+          .editor_state
+          .handle_key_event(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        return None;
+      }
+      self.editor_state.handle_key_event(key);
+      return None;
+    }
+    if keys.hit_close.matches(key) {
+      return Some(Action::HideHitManager);
+    }
+    if keys.next_item.matches(key) {
+      self.list_state.next();
+    } else if keys.prev_item.matches(key) {
+      self.list_state.previous();
+    } else if keys.hit_detach.matches(key) {
+      if let Some(selected) = self.list_state.selected {
+        self.select_near_by(selected);
+        let hid = *self.hits.keys().nth(selected).unwrap();
+        if let Err(e) = self.detach(hid) {
+          return Some(Action::show_error_popup("Detach failed".to_string(), e));
+        };
+        return self.close_when_empty();
+      }
+    } else if keys.hit_edit_default_command.matches(key) {
+      self.editing = Some(EditingTarget::DefaultCommand);
+      if let Some(command) = self.default_external_command.clone() {
+        self.editor_state = TextState::new().with_value(command);
+        self.editor_state.move_end();
+      }
+    } else if keys.hit_run_default_command.matches(key) {
+      if let Some(selected) = self.list_state.selected {
+        let external_command = self.default_external_command.clone()?;
+        self.select_near_by(selected);
+        let hid = *self.hits.keys().nth(selected).unwrap();
+        // "konsole --hold -e gdb -p {{PID}}".to_owned()
+        if let Err(e) = self.detach_pause_and_launch_external(hid, external_command) {
+          return Some(Action::show_error_popup(
+            "Error".to_string(),
+            e.with_note(|| "Failed to detach or launch external command"),
+          ));
+        }
+        return self.close_when_empty();
+      }
+    } else if keys.hit_resume.matches(key) {
+      if let Some(selected) = self.list_state.selected {
+        debug!("selected: {}", selected);
+        self.select_near_by(selected);
+        let hid = *self.hits.keys().nth(selected).unwrap();
+        if let Err(e) = self.resume(hid) {
+          return Some(Action::show_error_popup("Resume failed".to_string(), e));
+        }
+        return self.close_when_empty();
+      }
+    } else if keys.hit_run_custom_command.matches(key)
       && let Some(selected) = self.list_state.selected
     {
       self.editing = Some(EditingTarget::CustomCommand {
@@ -454,6 +450,11 @@ impl HitManagerState {
 
 #[cfg(test)]
 mod tests {
+  use std::sync::{
+    Arc,
+    LazyLock,
+  };
+
   use crossterm::event::{
     KeyCode,
     KeyEvent,
@@ -471,12 +472,15 @@ mod tests {
     RunningTracer,
     clear_breakpoint_id_counter,
   };
-  use tracexec_core::breakpoint::{
-    BreakPoint,
-    BreakPointHit,
-    BreakPointPattern,
-    BreakPointStop,
-    BreakPointType,
+  use tracexec_core::{
+    breakpoint::{
+      BreakPoint,
+      BreakPointHit,
+      BreakPointPattern,
+      BreakPointStop,
+      BreakPointType,
+    },
+    cli::keys::TuiKeyBindings,
   };
 
   use super::{
@@ -492,6 +496,13 @@ mod tests {
     },
     error_popup::InfoPopup,
   };
+
+  static KEY_BINDINGS: LazyLock<Arc<TuiKeyBindings>> =
+    LazyLock::new(|| Arc::new(TuiKeyBindings::default()));
+
+  fn keys() -> &'static Arc<TuiKeyBindings> {
+    &KEY_BINDINGS
+  }
 
   fn make_breakpoint(pattern: &str) -> BreakPoint {
     BreakPoint {
@@ -512,7 +523,10 @@ mod tests {
 
   fn feed_text(state: &mut HitManagerState, text: &str) {
     for ch in text.chars() {
-      state.handle_key_event(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE));
+      state.handle_key_event(
+        KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE),
+        keys().as_ref(),
+      );
     }
   }
 
@@ -590,7 +604,8 @@ mod tests {
     let tracer = RunningTracer::mock();
     let bid1 = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
     let bid2 = tracer.add_breakpoint(make_breakpoint("exact-filename:/bin/sleep"));
-    let mut state = HitManagerState::new(tracer, Some("echo {{PID}}".to_string())).unwrap();
+    let mut state =
+      HitManagerState::new(tracer, Some("echo {{PID}}".to_string()), keys().clone()).unwrap();
     add_hit(&mut state, bid1, 4321);
     add_hit(&mut state, bid2, 9876);
     let rendered = render_hit_manager(&mut state, 70, 12);
@@ -603,7 +618,7 @@ mod tests {
     clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
-    let mut state = HitManagerState::new(tracer, None).unwrap();
+    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
     add_hit(&mut state, bid, 4321);
     let rendered = render_hit_manager(&mut state, 70, 12);
     assert_snapshot!(rendered);
@@ -615,9 +630,12 @@ mod tests {
     clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
-    let mut state = HitManagerState::new(tracer, None).unwrap();
+    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
     add_hit(&mut state, bid, 4321);
-    state.handle_key_event(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+    state.handle_key_event(
+      KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE),
+      keys().as_ref(),
+    );
     let rendered = render_hit_manager(&mut state, 70, 12);
     assert_snapshot!(rendered);
   }
@@ -625,8 +643,11 @@ mod tests {
   #[test]
   fn snapshot_hit_manager_help_popup() {
     let tracer = RunningTracer::mock();
-    let mut state = HitManagerState::new(tracer, None).unwrap();
-    let action = state.handle_key_event(KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE));
+    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
+    let action = state.handle_key_event(
+      KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE),
+      keys().as_ref(),
+    );
     let mut popup = match action {
       Some(Action::SetActivePopup(ActivePopup::InfoPopup(state))) => state,
       other => panic!("unexpected action: {other:?}"),
@@ -647,7 +668,7 @@ mod tests {
     clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
-    let mut state = HitManagerState::new(tracer, None).unwrap();
+    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
     let hid = add_hit(&mut state, bid, 4321);
     assert_eq!(hid, 0);
     assert_eq!(state.count(), 1);
@@ -661,12 +682,19 @@ mod tests {
   #[test]
   fn test_hit_manager_state_edit_default_command_sets_value() {
     let tracer = RunningTracer::mock();
-    let mut state = HitManagerState::new(tracer, Some("echo {{PID}}".to_string())).unwrap();
-    state.handle_key_event(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+    let mut state =
+      HitManagerState::new(tracer, Some("echo {{PID}}".to_string()), keys().clone()).unwrap();
+    state.handle_key_event(
+      KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE),
+      keys().as_ref(),
+    );
     assert!(matches!(state.editing, Some(EditingTarget::DefaultCommand)));
     assert!(state.cursor().is_some());
     feed_text(&mut state, " --flag");
-    state.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    state.handle_key_event(
+      KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+      keys().as_ref(),
+    );
     assert!(state.editing.is_none());
     assert_eq!(
       state.default_external_command.as_deref(),
@@ -677,9 +705,15 @@ mod tests {
   #[test]
   fn test_hit_manager_state_edit_default_command_empty_error() {
     let tracer = RunningTracer::mock();
-    let mut state = HitManagerState::new(tracer, None).unwrap();
-    state.handle_key_event(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
-    let action = state.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
+    state.handle_key_event(
+      KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE),
+      keys().as_ref(),
+    );
+    let action = state.handle_key_event(
+      KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+      keys().as_ref(),
+    );
     assert!(matches!(
       action,
       Some(Action::SetActivePopup(ActivePopup::InfoPopup(_)))
@@ -693,10 +727,13 @@ mod tests {
     clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
-    let mut state = HitManagerState::new(tracer, None).unwrap();
+    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
     let _hid = add_hit(&mut state, bid, 4321);
     state.list_state.select(Some(0));
-    let action = state.handle_key_event(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+    let action = state.handle_key_event(
+      KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE),
+      keys().as_ref(),
+    );
     assert!(matches!(action, Some(Action::HideHitManager)));
     assert!(state.hits.is_empty());
     assert_eq!(state.list_state.selected, None);
@@ -706,10 +743,13 @@ mod tests {
   fn test_hit_manager_state_resume_removes_hit() {
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
-    let mut state = HitManagerState::new(tracer, None).unwrap();
+    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
     let _hid = add_hit(&mut state, bid, 4321);
     state.list_state.select(Some(0));
-    let action = state.handle_key_event(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
+    let action = state.handle_key_event(
+      KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE),
+      keys().as_ref(),
+    );
     assert!(matches!(action, Some(Action::HideHitManager)));
     assert!(state.hits.is_empty());
   }
@@ -718,10 +758,14 @@ mod tests {
   fn test_hit_manager_state_enter_detach_and_launch_default_command() {
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
-    let mut state = HitManagerState::new(tracer, Some("echo {{PID}}".to_string())).unwrap();
+    let mut state =
+      HitManagerState::new(tracer, Some("echo {{PID}}".to_string()), keys().clone()).unwrap();
     let hid = add_hit(&mut state, bid, 4321);
     state.list_state.select(Some(0));
-    let action = state.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let action = state.handle_key_event(
+      KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+      keys().as_ref(),
+    );
     assert!(matches!(action, Some(Action::HideHitManager)));
     assert!(state.hits.is_empty());
     assert!(state.pending_detach_reactions.contains_key(&hid));
@@ -731,16 +775,22 @@ mod tests {
   fn test_hit_manager_state_custom_command_flow() {
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
-    let mut state = HitManagerState::new(tracer, None).unwrap();
+    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
     let hid = add_hit(&mut state, bid, 4321);
     state.list_state.select(Some(0));
-    state.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT));
+    state.handle_key_event(
+      KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT),
+      keys().as_ref(),
+    );
     assert!(matches!(
       state.editing,
       Some(EditingTarget::CustomCommand { selection: 0 })
     ));
     feed_text(&mut state, "echo {{PID}}");
-    let action = state.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let action = state.handle_key_event(
+      KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+      keys().as_ref(),
+    );
     assert!(matches!(action, Some(Action::HideHitManager)));
     assert!(state.hits.is_empty());
     assert!(state.pending_detach_reactions.contains_key(&hid));
@@ -763,7 +813,7 @@ impl StatefulWidget for HitManager {
     };
     Clear.render(help_area, buf);
     Line::default()
-      .spans(help_item!("F1", "Help"))
+      .spans(help_item!(state.key_bindings.help.display(), "Help"))
       .render(help_area, buf);
     let editor_area = Rect {
       x: 0,
@@ -793,7 +843,7 @@ impl StatefulWidget for HitManager {
           "default command not set. Press ",
           THEME.hit_manager_no_default_command,
         ),
-        help_key("E"),
+        help_key(state.key_bindings.hit_edit_default_command.display()),
         Span::styled(" to set", THEME.hit_manager_no_default_command),
       ]);
       line.render(editor_area, buf);
@@ -838,7 +888,7 @@ impl StatefulWidget for HitManager {
 }
 
 impl HitManager {
-  fn help() -> InfoPopupState {
+  fn help(_keys: &TuiKeyBindings) -> InfoPopupState {
     InfoPopupState::info(
       "Help".to_string(),
       vec![

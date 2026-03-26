@@ -4,11 +4,7 @@ use std::ops::{
 };
 
 use arboard::Clipboard;
-use crossterm::event::{
-  KeyCode,
-  KeyEvent,
-  KeyModifiers,
-};
+use crossterm::event::KeyEvent;
 use hashbrown::HashMap;
 use itertools::{
   Itertools,
@@ -48,6 +44,7 @@ use ratatui::{
   },
 };
 use tracexec_core::{
+  cli::keys::TuiKeyBindings,
   event::{
     EventId,
     EventStatus,
@@ -599,102 +596,95 @@ impl DetailsPopupState {
     self.available_tabs[self.tab_index]
   }
 
-  pub fn update_help(&self, items: &mut Vec<Span<'_>>) {
+  pub fn update_help(&self, keys: &TuiKeyBindings, items: &mut Vec<Span<'_>>) {
     if self.active_tab() == "Info" {
-      items.extend(help_item!("W/S", "Move\u{00a0}Focus"));
+      items.extend(help_item!(
+        format!(
+          "{}/{}",
+          keys.details_prev_field.display(),
+          keys.details_next_field.display()
+        ),
+        "Move\u{00a0}Focus"
+      ));
     }
-    items.extend(help_item!("←/Tab/→", "Switch\u{00a0}Tab"));
+    items.extend(help_item!(
+      format!(
+        "{}/{}/{}",
+        keys.details_prev_tab.display(),
+        keys.details_cycle_tab.display(),
+        keys.details_next_tab.display()
+      ),
+      "Switch\u{00a0}Tab"
+    ));
     if self.env.is_some() {
-      items.extend(help_item!("U", "View\u{00a0}Parent\u{00a0}Details"));
+      items.extend(help_item!(
+        keys.details_view_parent.display(),
+        "View\u{00a0}Parent\u{00a0}Details"
+      ));
     }
   }
 
   pub fn handle_key_event(
     &mut self,
     ke: KeyEvent,
+    keys: &TuiKeyBindings,
     clipboard: Option<&mut Clipboard>,
     list: &EventList,
     action_tx: &LocalUnboundedSender<Action>,
   ) -> color_eyre::Result<()> {
-    if ke.modifiers == KeyModifiers::NONE {
-      match ke.code {
-        KeyCode::Down | KeyCode::Char('j') => {
-          if ke.modifiers == KeyModifiers::CONTROL {
-            self.scroll_page_down();
-          } else if ke.modifiers == KeyModifiers::NONE {
-            self.scroll_down()
-          }
-        }
-        KeyCode::Up | KeyCode::Char('k') => {
-          if ke.modifiers == KeyModifiers::CONTROL {
-            self.scroll_page_up();
-          } else if ke.modifiers == KeyModifiers::NONE {
-            self.scroll_up()
-          }
-        }
-        KeyCode::PageDown => {
-          self.scroll_page_down();
-        }
-        KeyCode::PageUp => {
-          self.scroll_page_up();
-        }
-        KeyCode::Home => {
-          self.scroll_to_top();
-        }
-        KeyCode::End => {
-          self.scroll_to_bottom();
-        }
-        KeyCode::Right | KeyCode::Char('l') => {
-          self.next_tab();
-        }
-        KeyCode::Left | KeyCode::Char('h') => {
-          self.prev_tab();
-        }
-        KeyCode::Char('w') => {
-          if self.active_tab() == "Info" {
-            self.prev();
-          }
-        }
-        KeyCode::Char('s') => {
-          if self.active_tab() == "Info" {
-            self.next();
-          }
-        }
-        KeyCode::Char('q') => {
-          action_tx.send(Action::CancelCurrentPopup);
-        }
-        KeyCode::Char('c') => {
-          if self.active_tab() == "Info"
-            && let Some(clipboard) = clipboard
-          {
-            clipboard.set_text(self.selected())?;
-          }
-        }
-        KeyCode::Char('u') if ke.modifiers == KeyModifiers::NONE => {
-          if self.env.is_none() {
-            // Do not handle non-exec events
-          } else if let Some(id) = self.parent_id {
-            if let Some(evt) = list.get(id) {
-              action_tx.send(Action::SetActivePopup(ActivePopup::ViewDetails(Self::new(
-                &evt.borrow(),
-                list,
-              ))));
-            } else {
-              action_tx.send(Action::SetActivePopup(err_popup_goto_parent_miss(
-                "View Parent Details Error",
-              )));
-            }
-          } else {
-            action_tx.send(Action::SetActivePopup(err_popup_goto_parent_not_found(
-              "View Parent Details Result",
-            )));
-          }
-        }
-        KeyCode::Tab => {
-          self.circle_tab();
-        }
-        _ => {}
+    if keys.details_scroll_down.matches(ke) {
+      self.scroll_down();
+    } else if keys.details_scroll_up.matches(ke) {
+      self.scroll_up();
+    } else if keys.page_down.matches(ke) {
+      self.scroll_page_down();
+    } else if keys.page_up.matches(ke) {
+      self.scroll_page_up();
+    } else if keys.scroll_top.matches(ke) {
+      self.scroll_to_top();
+    } else if keys.scroll_bottom.matches(ke) {
+      self.scroll_to_bottom();
+    } else if keys.details_next_tab.matches(ke) {
+      self.next_tab();
+    } else if keys.details_prev_tab.matches(ke) {
+      self.prev_tab();
+    } else if keys.details_prev_field.matches(ke) {
+      if self.active_tab() == "Info" {
+        self.prev();
       }
+    } else if keys.details_next_field.matches(ke) {
+      if self.active_tab() == "Info" {
+        self.next();
+      }
+    } else if keys.close_popup.matches(ke) {
+      action_tx.send(Action::CancelCurrentPopup);
+    } else if keys.details_copy.matches(ke) {
+      if self.active_tab() == "Info"
+        && let Some(clipboard) = clipboard
+      {
+        clipboard.set_text(self.selected())?;
+      }
+    } else if keys.details_view_parent.matches(ke) {
+      if self.env.is_none() {
+        // Do not handle non-exec events
+      } else if let Some(id) = self.parent_id {
+        if let Some(evt) = list.get(id) {
+          action_tx.send(Action::SetActivePopup(ActivePopup::ViewDetails(Self::new(
+            &evt.borrow(),
+            list,
+          ))));
+        } else {
+          action_tx.send(Action::SetActivePopup(err_popup_goto_parent_miss(
+            "View Parent Details Error",
+          )));
+        }
+      } else {
+        action_tx.send(Action::SetActivePopup(err_popup_goto_parent_not_found(
+          "View Parent Details Result",
+        )));
+      }
+    } else if keys.details_cycle_tab.matches(ke) {
+      self.circle_tab();
     }
     Ok(())
   }

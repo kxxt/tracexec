@@ -36,6 +36,7 @@ use crate::{
 
 pub mod args;
 pub mod config;
+pub mod keys;
 pub mod options;
 pub mod theme;
 

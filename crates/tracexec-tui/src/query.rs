@@ -18,6 +18,7 @@ use ratatui::{
   },
 };
 use tracexec_core::{
+  cli::keys::TuiKeyBindings,
   event::EventId,
   primitives::regex::{
     IntoCursor,
@@ -193,62 +194,70 @@ impl QueryBuilder {
     self.state.cursor()
   }
 
-  pub fn handle_key_events(&mut self, key: KeyEvent) -> Result<Option<Action>, Vec<Line<'static>>> {
-    match (key.code, key.modifiers) {
-      (KeyCode::Enter, _) => {
-        let text = self.state.value();
-        if text.is_empty() {
-          return Ok(Some(Action::EndSearch));
-        }
-        let query = Query::new(
-          self.kind,
-          if self.is_regex {
-            QueryValue::Regex(
-              pikevm::Builder::new()
-                .syntax(syntax::Config::new().case_insensitive(!self.case_sensitive))
-                .build(text)
-                .map_err(|e| {
-                  e.source()
-                    .unwrap() // We are directly building it from pattern text, the source syntax error is present
-                    .to_string()
-                    .lines()
-                    .map(|line| Line::raw(line.to_owned()))
-                    .collect_vec()
-                })?,
-            )
-          } else {
-            QueryValue::Text(text.to_owned())
-          },
-          self.case_sensitive,
-        );
-        self.editing = false;
-        return Ok(Some(Action::ExecuteSearch(query)));
-      }
-      (KeyCode::Esc, KeyModifiers::NONE) => {
+  pub fn handle_key_events(
+    &mut self,
+    key: KeyEvent,
+    keys: &TuiKeyBindings,
+  ) -> Result<Option<Action>, Vec<Line<'static>>> {
+    if keys.query_execute.matches(key) {
+      let text = self.state.value();
+      if text.is_empty() {
         return Ok(Some(Action::EndSearch));
       }
-      (KeyCode::Char('i'), KeyModifiers::ALT) => {
-        self.case_sensitive = !self.case_sensitive;
-      }
-      (KeyCode::Char('r'), KeyModifiers::ALT) => {
-        self.is_regex = !self.is_regex;
-      }
-      _ => {
-        self.state.handle_key_event(key);
-      }
+      let query = Query::new(
+        self.kind,
+        if self.is_regex {
+          QueryValue::Regex(
+            pikevm::Builder::new()
+              .syntax(syntax::Config::new().case_insensitive(!self.case_sensitive))
+              .build(text)
+              .map_err(|e| {
+                e.source()
+                  .unwrap() // We are directly building it from pattern text, the source syntax error is present
+                  .to_string()
+                  .lines()
+                  .map(|line| Line::raw(line.to_owned()))
+                  .collect_vec()
+              })?,
+          )
+        } else {
+          QueryValue::Text(text.to_owned())
+        },
+        self.case_sensitive,
+      );
+      self.editing = false;
+      return Ok(Some(Action::ExecuteSearch(query)));
     }
+    if keys.query_cancel.matches(key) {
+      return Ok(Some(Action::EndSearch));
+    }
+    if keys.query_toggle_case.matches(key) {
+      self.case_sensitive = !self.case_sensitive;
+      return Ok(None);
+    }
+    if keys.query_toggle_regex.matches(key) {
+      self.is_regex = !self.is_regex;
+      return Ok(None);
+    }
+    if keys.query_clear.matches(key) {
+      self
+        .state
+        .handle_key_event(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+      return Ok(None);
+    }
+    self.state.handle_key_event(key);
     Ok(None)
   }
 }
 
 impl QueryBuilder {
-  pub fn help(&self) -> Vec<Span<'_>> {
+  pub fn help(&self, keys: &TuiKeyBindings) -> Vec<Span<'_>> {
     if self.editing {
       [
-        help_item!("Esc", "Cancel\u{00a0}Search"),
-        help_item!("Enter", "Execute\u{00a0}Search"),
+        help_item!(keys.query_cancel.display(), "Cancel\u{00a0}Search"),
+        help_item!(keys.query_execute.display(), "Execute\u{00a0}Search"),
         help_item!(
-          "Alt+I",
+          keys.query_toggle_case.display(),
           if self.case_sensitive {
             "Case\u{00a0}Sensitive"
           } else {
@@ -256,22 +265,22 @@ impl QueryBuilder {
           }
         ),
         help_item!(
-          "Alt+R",
+          keys.query_toggle_regex.display(),
           if self.is_regex {
             "Regex\u{00a0}Mode"
           } else {
             "Text\u{00a0}Mode"
           }
         ),
-        help_item!("Ctrl+U", "Clear"),
+        help_item!(keys.query_clear.display(), "Clear"),
       ]
       .into_iter()
       .flatten()
       .collect()
     } else {
       [
-        help_item!("N", "Next\u{00a0}Match"),
-        help_item!("P", "Previous\u{00a0}Match"),
+        help_item!(keys.query_next_match.display(), "Next\u{00a0}Match"),
+        help_item!(keys.query_prev_match.display(), "Previous\u{00a0}Match"),
       ]
       .into_iter()
       .flatten()
@@ -309,7 +318,10 @@ mod tests {
     backend::TestBackend,
     text::Line,
   };
-  use tracexec_core::event::EventId;
+  use tracexec_core::{
+    cli::keys::TuiKeyBindings,
+    event::EventId,
+  };
   use tui_prompts::{
     FocusState,
     TextState,
@@ -412,19 +424,20 @@ mod tests {
     assert!(!qb.is_regex);
 
     // Toggle case sensitivity
-    qb.handle_key_events(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::ALT))
+    let keys = TuiKeyBindings::default();
+    qb.handle_key_events(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::ALT), &keys)
       .unwrap();
     assert!(qb.case_sensitive);
 
     // Toggle regex
-    qb.handle_key_events(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::ALT))
+    qb.handle_key_events(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::ALT), &keys)
       .unwrap();
     assert!(qb.is_regex);
 
     // Enter with empty input returns EndSearch
     let mut empty_qb = QueryBuilder::new(QueryKind::Search);
     let action = empty_qb
-      .handle_key_events(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+      .handle_key_events(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), &keys)
       .unwrap();
     assert!(matches!(action, Some(Action::EndSearch)));
   }
@@ -442,7 +455,8 @@ mod tests {
   #[test]
   fn test_query_builder_help() {
     let qb = QueryBuilder::new(QueryKind::Search);
-    let help = qb.help();
+    let keys = TuiKeyBindings::default();
+    let help = qb.help(&keys);
     assert!(help.iter().any(|span| span.content.contains("Esc")));
     assert!(help.iter().any(|span| span.content.contains("Enter")));
   }
