@@ -93,7 +93,7 @@ impl PseudoTerminalPane {
     let reader_task = {
       let mut reader = pty_master.try_clone_reader()?;
       let parser = parser.clone();
-      tokio::spawn(async move {
+      tokio::task::spawn_blocking(move || {
         let mut processed_buf = Vec::new();
         let mut buf = [0u8; 8192];
 
