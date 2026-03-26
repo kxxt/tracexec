@@ -55,3 +55,4 @@ indexset = "0.15"
 [dev-dependencies]
 insta = "1.41.0"
 serial_test = { workspace = true }
+tracing-test = { workspace = true }
