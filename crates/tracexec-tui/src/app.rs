@@ -167,6 +167,7 @@ impl App {
             pixel_height: 0,
           },
           pty_master,
+          tui_args.scrollback_lines.unwrap_or(1000),
         )?;
         if active_pane == ActivePane::Terminal {
           term.focus(true);

@@ -235,6 +235,22 @@ impl App {
       items.extend(help_item!("Q", "Quit"));
     } else {
       // Terminal
+      if let Some(term) = self.term.as_ref() {
+        if term.is_scrollback_mode() {
+          // In scrollback mode - show navigation keys highlighted
+          items.extend([
+            help_key("Ctrl+U"),
+            fancy_help_desc("Exit\u{00a0}Scroll"),
+            "\u{200b}".into(),
+          ]);
+          items.extend(help_item!("↑↓", "Scroll"));
+          items.extend(help_item!("PgUp/PgDn", "Page"));
+          items.extend(help_item!("Home/End", "Jump"));
+        } else {
+          // Normal mode - show how to enter scrollback
+          items.extend(help_item!("Ctrl+U", "Scroll"));
+        }
+      }
       if let Some(h) = self.hit_manager_state.as_ref()
         && h.count() > 0
       {
