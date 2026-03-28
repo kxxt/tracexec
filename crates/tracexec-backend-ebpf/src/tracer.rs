@@ -277,12 +277,14 @@ impl EbpfTracer {
               storage.fdinfo_map,
               ts_from_boot_ns(event.timestamp),
             );
-            let pid = Pid::from_raw(header.pid);
+            // Pid of the thread that triggers execve syscall
+            // let pid = Pid::from_raw(header.pid);
+            let tgid = Pid::from_raw(event.tgid);
             let comm = cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.comm));
             self
               .printer
               .print_exec_trace(
-                pid,
+                tgid,
                 comm.clone(),
                 event.ret,
                 &exec_data,
@@ -292,11 +294,49 @@ impl EbpfTracer {
               .unwrap();
             if self.filter.intersects(TracerEventDetailsKind::Exec) {
               let id = TracerEvent::allocate_id();
-              let parent_tracker = tracker.parent_tracker_mut(pid).unwrap();
+              debug!(
+                "Looking up parent tracker for {} (follow_forks={follow_forks})",
+                tgid
+              );
+              // When a non-main thread calls exec, the kernel will destroy all
+              // threads and replace it with a new process (using it's old tgid).
+              //
+              // When that happens, sched_process_exit happens before sched_process_exec
+              // and the parent tracker for the process is cleaned-up.
+              //
+              // Thus we need to allocate a new parent tracker for it in this case.
+              // Unfortunately I cannot find a way to tell this from normal exit in bpf.
+              // Using sched_process_free also proved to be unreliable.
+              //
+              // Example:
+              //
+              //             bash-45965   [005] ...11  6665.239304: tracexec_system: 1 bash execve target/debug/exec-in-thread UID: 1000 GID: 1000 PID: 45965
+              //
+              //             bash-45965   [005] ...11  6665.243477: tracexec_system: Reading pwd...
+              //             bash-45965   [005] ...21  6665.243673: tracexec_system: sched_process_exec: pid=45965, tgid=45965
+              //             bash-45965   [005] ...11  6665.243696: tracexec_system: execve result: 0 PID 45965
+              //
+              //             bash-45965   [005] ...11  6665.243749: tracexec_system: Ringbuf stat: avail: 40, cons: 46640, prod: 46680
+              //   exec-in-thread-45966   [002] ...11  6665.244308: tracexec_system: 2 exec-in-thread execve /home/player/repos/tracexec-trees/agent01/target/debug/exec-in-thread UID: 1000 GID: 1000 PID: 45966
+              //
+              //   exec-in-thread-45966   [002] ...11  6665.244743: tracexec_system: Reading pwd...
+              //   exec-in-thread-45965   [005] ...21  6665.244817: tracexec_system: sched_process_exit: pid=45965, tgid=45965
+              //   exec-in-thread-45965   [002] ...21  6665.245014: tracexec_system: sched_process_exec: pid=45965, tgid=45965
+              //   exec-in-thread-45965   [002] ...11  6665.245024: tracexec_system: execve result: 0 PID 45965
+              //
+              //   exec-in-thread-45965   [002] ...11  6665.245084: tracexec_system: Ringbuf stat: avail: 40, cons: 63248, prod: 63288
+              //   exec-in-thread-45965   [002] ...21  6665.245445: tracexec_system: sched_process_exit: pid=45965, tgid=45965
+              //            <...>-45967   [005] ...21  6665.246146: tracexec_system: sched_process_exit: pid=45967, tgid=45967
+              //            <...>-45969   [005] ...21  6665.247391: tracexec_system: sched_process_exit: pid=45969, tgid=45969
+              //
+              if !tracker.contains(tgid) {
+                tracker.add(tgid);
+              }
+              let parent_tracker = tracker.parent_tracker_mut(tgid).unwrap();
               let parent = parent_tracker.update_last_exec(id, event.ret == 0);
               let event = TracerEventDetails::Exec(Box::new(ExecEvent {
                 timestamp: exec_data.timestamp,
-                pid,
+                pid: tgid,
                 cwd: exec_data.cwd.clone(),
                 comm,
                 filename: exec_data.filename.clone(),
@@ -317,9 +357,9 @@ impl EbpfTracer {
               }))
               .into_event_with_id(id);
               if follow_forks {
-                tracker.associate_events(pid, [event.id])
+                tracker.associate_events(tgid, [event.id])
               } else {
-                tracker.force_associate_events(pid, [event.id])
+                tracker.force_associate_events(tgid, [event.id])
               }
               self
                 .tx
@@ -462,9 +502,12 @@ impl EbpfTracer {
           event_type::FORK_EVENT => {
             assert_eq!(data.len(), size_of::<fork_event>());
             let event: &fork_event = unsafe { &*(data.as_ptr() as *const _) };
-            // FORK_EVENT is only sent if follow_forks
             let fork_parent = Pid::from_raw(event.parent_tgid);
             let pid = Pid::from_raw(header.pid);
+            debug!(
+              "Allocating parent tracker for {} (follow_forks={follow_forks})",
+              pid
+            );
             tracker.add(pid);
             if let [Some(curr), Some(par)] = tracker.parent_tracker_disjoint_mut(pid, fork_parent) {
               // Parent can be missing if the fork happens before tracexec start.

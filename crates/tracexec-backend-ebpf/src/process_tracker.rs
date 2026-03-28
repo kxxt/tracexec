@@ -66,6 +66,10 @@ impl ProcessTracker {
     self.processes.get_mut(&pid).map(|x| &mut x.parent_tracker)
   }
 
+  pub fn contains(&self, pid: Pid) -> bool {
+    self.processes.contains_key(&pid)
+  }
+
   pub fn add(&mut self, pid: Pid) {
     let ret = self.processes.insert(pid, Default::default());
     assert!(ret.is_none())
