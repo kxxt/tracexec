@@ -52,6 +52,7 @@ use super::{
     Query,
     QueryResult,
   },
+  theme::Theme,
 };
 
 mod react;
@@ -100,6 +101,7 @@ pub struct EventList {
   max_events: u64,
   pub max_window_len: usize,
   pub baseline: Arc<BaselineInfo>,
+  pub theme: &'static Theme,
   follow: bool,
   pub modifier_args: ModifierArgs,
   pub(super) rt_modifier: RuntimeModifier,
@@ -113,6 +115,7 @@ pub struct EventList {
 }
 
 impl EventList {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     baseline: Arc<BaselineInfo>,
     follow: bool,
@@ -121,6 +124,7 @@ impl EventList {
     is_ptrace: bool,
     has_clipboard: bool,
     is_primary: bool,
+    theme: &'static Theme,
   ) -> Self {
     Self {
       state: ListState::default(),
@@ -134,6 +138,7 @@ impl EventList {
       max_window_len: 0,
       max_events,
       baseline,
+      theme,
       follow,
       should_refresh_list_cache: true,
       list_cache: List::default(),
@@ -406,7 +411,7 @@ impl EventList {
       status,
       id,
     };
-    let line = event.to_event_line(&self.baseline, &self.event_modifier(), None);
+    let line = event.to_event_line(&self.baseline, &self.event_modifier(), None, self.theme);
     if self.events.len() >= self.max_events as usize {
       if let Some(e) = self.events.pop_front() {
         let id = e.borrow().id;
@@ -460,7 +465,12 @@ impl EventList {
     let id = event.borrow().id;
     self.events.push_back(event.clone());
     let evt = event.borrow();
-    let line = evt.to_event_line(&self.baseline, &self.event_modifier(), extra_prefix.clone());
+    let line = evt.to_event_line(
+      &self.baseline,
+      &self.event_modifier(),
+      extra_prefix.clone(),
+      self.theme,
+    );
     drop(evt);
     // # SAFETY
     //
@@ -488,7 +498,12 @@ impl EventList {
           e.elapsed = Some(ts - e.details.timestamp().unwrap())
         }
         // FIXME: currently we do not handle event status updates in secondary event lists.
-        storage.line = e.to_event_line(&self.baseline, &modifier, storage.extra_prefix.clone());
+        storage.line = e.to_event_line(
+          &self.baseline,
+          &modifier,
+          storage.extra_prefix.clone(),
+          self.theme,
+        );
       }
       let i = i.into_inner() as usize;
       if self.window.0 <= i && i < self.window.1 {
@@ -502,7 +517,12 @@ impl EventList {
     let modifier = self.event_modifier();
     for (_, (storage, e)) in self.event_map.iter_mut() {
       let e = e.borrow();
-      storage.line = e.to_event_line(&self.baseline, &modifier, storage.extra_prefix.clone());
+      storage.line = e.to_event_line(
+        &self.baseline,
+        &modifier,
+        storage.extra_prefix.clone(),
+        self.theme,
+      );
     }
     self.should_refresh_list_cache = true;
   }
@@ -566,6 +586,7 @@ mod test {
   use tracexec_core::cli::keys::TuiKeyBindings;
 
   use super::EventList;
+  use crate::theme::current_theme;
 
   static KEY_BINDINGS: LazyLock<TuiKeyBindings> = LazyLock::new(TuiKeyBindings::default);
 
@@ -650,6 +671,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -683,6 +705,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -720,6 +743,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -759,6 +783,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -792,6 +817,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -829,6 +855,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -865,6 +892,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -898,6 +926,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -931,6 +960,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -964,6 +994,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -997,6 +1028,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -1030,6 +1062,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -1063,6 +1096,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -1100,6 +1134,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -1133,6 +1168,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -1166,6 +1202,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -1199,6 +1236,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -1232,6 +1270,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -1269,6 +1308,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -1302,6 +1342,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -1339,6 +1380,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -1372,6 +1414,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -1405,6 +1448,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 
@@ -1438,6 +1482,7 @@ mod test {
       false,
       false,
       true,
+      current_theme(),
     );
     let (tx, rx) = local_chan::unbounded();
 

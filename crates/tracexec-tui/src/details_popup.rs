@@ -72,7 +72,7 @@ use super::{
     help_item,
     help_key,
   },
-  theme::THEME,
+  theme::Theme,
 };
 use crate::{
   action::{
@@ -95,6 +95,7 @@ impl DetailsPopup {
 #[derive(Debug, Clone)]
 pub struct DetailsPopupState {
   details: Vec<(&'static str, Line<'static>)>,
+  theme: &'static Theme,
   active_index: usize,
   scroll: ScrollViewState,
   env: Option<Vec<Line<'static>>>,
@@ -106,6 +107,7 @@ pub struct DetailsPopupState {
 
 impl DetailsPopupState {
   pub fn new(event: &Event, list: &EventList) -> Self {
+    let theme = list.theme;
     let hide_cloexec_fds = list.modifier_args.hide_cloexec_fds;
     let mut modifier_args = Default::default();
     let rt_modifier = Default::default();
@@ -131,9 +133,14 @@ impl DetailsPopupState {
       } else {
         " Details "
       },
-      event
-        .details
-        .to_tui_line(&list.baseline, true, &modifier_args, rt_modifier, None),
+      event.details.to_tui_line(
+        &list.baseline,
+        true,
+        &modifier_args,
+        rt_modifier,
+        None,
+        list.theme,
+      ),
     ));
     let (env, fdinfo, available_tabs, parent_id) = if let TracerEventDetails::Exec(exec) =
       event.details.as_ref()
@@ -146,7 +153,7 @@ impl DetailsPopupState {
             vec![
               exec.exec_pid.to_string().into(),
               " ".into(),
-              "(non-main thread)".set_style(THEME.tracer_warning),
+              "(non-main thread)".set_style(theme.tracer_warning),
             ]
             .into()
           } else {
@@ -155,10 +162,10 @@ impl DetailsPopupState {
         }),
         (" Syscall Result ", {
           if exec.result == 0 {
-            "0 (Success)".set_style(THEME.exec_result_success).into()
+            "0 (Success)".set_style(theme.exec_result_success).into()
           } else {
             format!("{} ({})", exec.result, Errno::from_raw(-exec.result as i32))
-              .set_style(THEME.exec_result_failure)
+              .set_style(theme.exec_result_failure)
               .into()
           }
         }),
@@ -183,10 +190,10 @@ impl DetailsPopupState {
                   map.insert(uid, user.name);
                 }
                 if let Some(name) = map.get(&uid) {
-                  spans.push(name.to_string().set_style(THEME.uid_gid_name));
-                  spans.push(format!("({uid})").set_style(THEME.uid_gid_value));
+                  spans.push(name.to_string().set_style(theme.uid_gid_name));
+                  spans.push(format!("({uid})").set_style(theme.uid_gid_value));
                 } else {
-                  spans.push(format!("{uid}").set_style(THEME.uid_gid_value));
+                  spans.push(format!("{uid}").set_style(theme.uid_gid_value));
                 }
                 if i < 3 {
                   spans.push(" / ".into());
@@ -194,7 +201,7 @@ impl DetailsPopupState {
               }
               spans.into()
             }
-            Err(e) => vec![e.to_string().set_style(THEME.inline_tracer_error)].into(),
+            Err(e) => vec![e.to_string().set_style(theme.inline_tracer_error)].into(),
           },
         ),
         (
@@ -218,10 +225,10 @@ impl DetailsPopupState {
                   map.insert(gid, user.name);
                 }
                 if let Some(name) = map.get(&gid) {
-                  spans.push(name.to_string().set_style(THEME.uid_gid_name));
-                  spans.push(format!("({gid})").set_style(THEME.uid_gid_value));
+                  spans.push(name.to_string().set_style(theme.uid_gid_name));
+                  spans.push(format!("({gid})").set_style(theme.uid_gid_value));
                 } else {
-                  spans.push(format!("{gid}").set_style(THEME.uid_gid_value));
+                  spans.push(format!("{gid}").set_style(theme.uid_gid_value));
                 }
                 if i < 3 {
                   spans.push(" / ".into());
@@ -229,7 +236,7 @@ impl DetailsPopupState {
               }
               spans.into()
             }
-            Err(e) => vec![e.to_string().set_style(THEME.inline_tracer_error)].into(),
+            Err(e) => vec![e.to_string().set_style(theme.inline_tracer_error)].into(),
           },
         ),
         (
@@ -240,56 +247,56 @@ impl DetailsPopupState {
                 let mut spans = Vec::new();
                 for &gid in cred.groups.iter() {
                   if let Some(group) = Group::from_gid(Gid::from_raw(gid)).ok().flatten() {
-                    spans.push(group.name.set_style(THEME.uid_gid_name));
-                    spans.push(format!("({gid})").set_style(THEME.uid_gid_value));
+                    spans.push(group.name.set_style(theme.uid_gid_name));
+                    spans.push(format!("({gid})").set_style(theme.uid_gid_value));
                   } else {
-                    spans.push(format!("{gid}").set_style(THEME.uid_gid_value));
+                    spans.push(format!("{gid}").set_style(theme.uid_gid_value));
                   }
                   spans.push(" ".into())
                 }
                 spans.into()
               } else {
-                vec!["[ empty ]".set_style(THEME.empty_field)].into()
+                vec!["[ empty ]".set_style(theme.empty_field)].into()
               }
             }
-            Err(e) => vec![e.to_string().set_style(THEME.inline_tracer_error)].into(),
+            Err(e) => vec![e.to_string().set_style(theme.inline_tracer_error)].into(),
           },
         ),
         (" Process Status ", {
           let formatted = event.status.unwrap().to_string();
           match event.status.unwrap() {
             EventStatus::ExecENOENT | EventStatus::ExecFailure => {
-              formatted.set_style(THEME.status_exec_error).into()
+              formatted.set_style(theme.status_exec_error).into()
             }
-            EventStatus::ProcessRunning => formatted.set_style(THEME.status_process_running).into(),
+            EventStatus::ProcessRunning => formatted.set_style(theme.status_process_running).into(),
             EventStatus::ProcessTerminated => {
-              formatted.set_style(THEME.status_process_terminated).into()
+              formatted.set_style(theme.status_process_terminated).into()
             }
-            EventStatus::ProcessAborted => formatted.set_style(THEME.status_process_aborted).into(),
-            EventStatus::ProcessKilled => formatted.set_style(THEME.status_process_killed).into(),
+            EventStatus::ProcessAborted => formatted.set_style(theme.status_process_aborted).into(),
+            EventStatus::ProcessKilled => formatted.set_style(theme.status_process_killed).into(),
             EventStatus::ProcessInterrupted => {
-              formatted.set_style(THEME.status_process_interrupted).into()
+              formatted.set_style(theme.status_process_interrupted).into()
             }
             EventStatus::ProcessSegfault => {
-              formatted.set_style(THEME.status_process_segfault).into()
+              formatted.set_style(theme.status_process_segfault).into()
             }
             EventStatus::ProcessIllegalInstruction => {
-              formatted.set_style(THEME.status_process_sigill).into()
+              formatted.set_style(theme.status_process_sigill).into()
             }
             EventStatus::ProcessExitedNormally => formatted
-              .set_style(THEME.status_process_exited_normally)
+              .set_style(theme.status_process_exited_normally)
               .into(),
             EventStatus::ProcessExitedAbnormally(_) => formatted
-              .set_style(THEME.status_process_exited_abnormally)
+              .set_style(theme.status_process_exited_abnormally)
               .into(),
             EventStatus::ProcessSignaled(_) => {
-              formatted.set_style(THEME.status_process_signaled).into()
+              formatted.set_style(theme.status_process_signaled).into()
             }
-            EventStatus::ProcessPaused => formatted.set_style(THEME.status_process_paused).into(),
+            EventStatus::ProcessPaused => formatted.set_style(theme.status_process_paused).into(),
             EventStatus::ProcessDetached => {
-              formatted.set_style(THEME.status_process_detached).into()
+              formatted.set_style(theme.status_process_detached).into()
             }
-            EventStatus::InternalError => formatted.set_style(THEME.status_internal_failure).into(),
+            EventStatus::InternalError => formatted.set_style(theme.status_internal_failure).into(),
           }
         }),
         (" Cwd ", Span::from(exec.cwd.as_ref().to_owned()).into()),
@@ -305,7 +312,7 @@ impl DetailsPopupState {
               .interpreter
               .as_deref()
               .map(|v| TracerEventDetails::interpreters_to_string(v).into())
-              .unwrap_or_else(|| "Unknown".set_style(THEME.value_unknown)),
+              .unwrap_or_else(|| "Unknown".set_style(theme.value_unknown)),
           ),
         ),
         (
@@ -313,7 +320,7 @@ impl DetailsPopupState {
           if let Some(stdin) = exec.fdinfo.stdin() {
             stdin.path.to_string().into()
           } else {
-            "Closed".set_style(THEME.fd_closed).into()
+            "Closed".set_style(theme.fd_closed).into()
           },
         ),
         (
@@ -321,7 +328,7 @@ impl DetailsPopupState {
           if let Some(stdout) = exec.fdinfo.stdout() {
             stdout.path.to_string().into()
           } else {
-            "Closed".set_style(THEME.fd_closed).into()
+            "Closed".set_style(theme.fd_closed).into()
           },
         ),
         (
@@ -329,7 +336,7 @@ impl DetailsPopupState {
           if let Some(stderr) = exec.fdinfo.stderr() {
             stderr.path.to_string().into()
           } else {
-            "Closed".set_style(THEME.fd_closed).into()
+            "Closed".set_style(theme.fd_closed).into()
           },
         ),
       ]);
@@ -342,8 +349,14 @@ impl DetailsPopupState {
         let p = inner.borrow();
         details.push((
           label,
-          p.details
-            .to_tui_line(&list.baseline, true, &modifier_args, rt_modifier, None),
+          p.details.to_tui_line(
+            &list.baseline,
+            true,
+            &modifier_args,
+            rt_modifier,
+            None,
+            list.theme,
+          ),
         ));
         Some(p.id)
       } else {
@@ -352,15 +365,25 @@ impl DetailsPopupState {
       details.extend([
         (" (Experimental) Cmdline with stdio ", {
           modifier_args.stdio_in_cmdline = true;
-          event
-            .details
-            .to_tui_line(&list.baseline, true, &modifier_args, rt_modifier, None)
+          event.details.to_tui_line(
+            &list.baseline,
+            true,
+            &modifier_args,
+            rt_modifier,
+            None,
+            list.theme,
+          )
         }),
         (" (Experimental) Cmdline with fds ", {
           modifier_args.fd_in_cmdline = true;
-          event
-            .details
-            .to_tui_line(&list.baseline, true, &modifier_args, rt_modifier, None)
+          event.details.to_tui_line(
+            &list.baseline,
+            true,
+            &modifier_args,
+            rt_modifier,
+            None,
+            list.theme,
+          )
         }),
         (
           " Argv ",
@@ -374,10 +397,10 @@ impl DetailsPopupState {
             .iter()
             .map(|(key, value)| {
               let spans = vec![
-                "+".set_style(THEME.plus_sign),
-                key.to_string().set_style(THEME.added_env_key),
-                "=".set_style(THEME.equal_sign),
-                value.to_string().set_style(THEME.added_env_val),
+                "+".set_style(theme.plus_sign),
+                key.to_string().set_style(theme.added_env_key),
+                "=".set_style(theme.equal_sign),
+                value.to_string().set_style(theme.added_env_val),
               ];
               Line::default().spans(spans)
             })
@@ -389,10 +412,10 @@ impl DetailsPopupState {
               .map(|key| {
                 let value = list.baseline.env.get(key).unwrap();
                 let spans = vec![
-                  "-".set_style(THEME.minus_sign),
-                  key.to_string().set_style(THEME.removed_env_key),
-                  "=".set_style(THEME.equal_sign),
-                  value.to_string().set_style(THEME.removed_env_val),
+                  "-".set_style(theme.minus_sign),
+                  key.to_string().set_style(theme.removed_env_key),
+                  "=".set_style(theme.equal_sign),
+                  value.to_string().set_style(theme.removed_env_val),
                 ];
                 Line::default().spans(spans)
               })
@@ -405,16 +428,16 @@ impl DetailsPopupState {
               .flat_map(|(key, new)| {
                 let old = list.baseline.env.get(key).unwrap();
                 let spans_old = vec![
-                  "-".set_style(THEME.minus_sign),
-                  key.to_string().set_style(THEME.removed_env_key),
-                  "=".set_style(THEME.equal_sign),
-                  old.to_string().set_style(THEME.removed_env_val),
+                  "-".set_style(theme.minus_sign),
+                  key.to_string().set_style(theme.removed_env_key),
+                  "=".set_style(theme.equal_sign),
+                  old.to_string().set_style(theme.removed_env_val),
                 ];
                 let spans_new = vec![
-                  "+".set_style(THEME.plus_sign),
-                  key.to_string().set_style(THEME.added_env_key),
-                  "=".set_style(THEME.equal_sign),
-                  new.to_string().set_style(THEME.added_env_val),
+                  "+".set_style(theme.plus_sign),
+                  key.to_string().set_style(theme.added_env_key),
+                  "=".set_style(theme.equal_sign),
+                  new.to_string().set_style(theme.added_env_val),
                 ];
                 vec![
                   Line::default().spans(spans_old),
@@ -433,9 +456,9 @@ impl DetailsPopupState {
               .map(|(key, value)| {
                 let spans = vec![
                   " ".into(),
-                  key.to_string().set_style(THEME.unchanged_env_key),
-                  "=".set_style(THEME.equal_sign),
-                  value.to_string().set_style(THEME.unchanged_env_val),
+                  key.to_string().set_style(theme.unchanged_env_key),
+                  "=".set_style(theme.equal_sign),
+                  value.to_string().set_style(theme.unchanged_env_val),
                 ];
                 Line::default().spans(spans)
               }),
@@ -453,15 +476,15 @@ impl DetailsPopupState {
         }
         fdinfo.push(
           vec![
-            " File Descriptor ".set_style(THEME.fd_label),
-            format!(" {fd} ").set_style(THEME.fd_number_label),
+            " File Descriptor ".set_style(theme.fd_label),
+            format!(" {fd} ").set_style(theme.fd_number_label),
           ]
           .into(),
         );
         // Path
         fdinfo.push(
           vec![
-            "Path".set_style(THEME.sublabel),
+            "Path".set_style(theme.sublabel),
             ": ".into(),
             info.path.to_string().into(),
           ]
@@ -470,9 +493,9 @@ impl DetailsPopupState {
         // Flags
         let flags = info.flags.iter().map(|f| {
           let style = match f {
-            OFlag::O_CLOEXEC => THEME.open_flag_cloexec, // Close on exec
+            OFlag::O_CLOEXEC => theme.open_flag_cloexec, // Close on exec
             OFlag::O_RDONLY | OFlag::O_WRONLY | OFlag::O_RDWR => {
-              THEME.open_flag_access_mode // Access Mode
+              theme.open_flag_access_mode // Access Mode
             }
             OFlag::O_CREAT
             | OFlag::O_DIRECTORY
@@ -480,7 +503,7 @@ impl DetailsPopupState {
             | OFlag::O_NOCTTY
             | OFlag::O_NOFOLLOW
             | OFlag::O_TMPFILE
-            | OFlag::O_TRUNC => THEME.open_flag_creation, // File creation flags
+            | OFlag::O_TRUNC => theme.open_flag_creation, // File creation flags
             #[allow(unreachable_patterns)]
             OFlag::O_APPEND
             | OFlag::O_ASYNC
@@ -492,9 +515,9 @@ impl DetailsPopupState {
             | OFlag::O_NDELAY // Same as O_NONBLOCK
             | OFlag::O_PATH
             | OFlag::O_SYNC => {
-              THEME.open_flag_status // File status flags
+              theme.open_flag_status // File status flags
             }
-            _ => THEME.open_flag_other, // Other flags
+            _ => theme.open_flag_other, // Other flags
           };
           let mut flag_display = String::new();
           bitflags::parser::to_writer(&f, &mut flag_display).unwrap();
@@ -502,26 +525,26 @@ impl DetailsPopupState {
           flag_display.set_style(style)
         });
         fdinfo.push(
-          chain!(["Flags".set_style(THEME.sublabel), ": ".into()], flags)
+          chain!(["Flags".set_style(theme.sublabel), ": ".into()], flags)
             .collect_vec()
             .into(),
         );
         // Mount Info
         fdinfo.push(
           vec![
-            "Mount Info".set_style(THEME.sublabel),
+            "Mount Info".set_style(theme.sublabel),
             ": ".into(),
             info.mnt_id.to_string().into(),
-            " (".set_style(THEME.visual_separator),
+            " (".set_style(theme.visual_separator),
             info.mnt.clone().into(),
-            ")".set_style(THEME.visual_separator),
+            ")".set_style(theme.visual_separator),
           ]
           .into(),
         );
         // Pos
         fdinfo.push(
           vec![
-            "Position".set_style(THEME.sublabel),
+            "Position".set_style(theme.sublabel),
             ": ".into(),
             info.pos.to_string().into(),
           ]
@@ -530,7 +553,7 @@ impl DetailsPopupState {
         // ino
         fdinfo.push(
           vec![
-            "Inode Number".set_style(THEME.sublabel),
+            "Inode Number".set_style(theme.sublabel),
             ": ".into(),
             info.ino.to_string().into(),
           ]
@@ -538,12 +561,12 @@ impl DetailsPopupState {
         );
         // extra
         if !info.extra.is_empty() {
-          fdinfo.push("Extra Information:".set_style(THEME.sublabel).into());
+          fdinfo.push("Extra Information:".set_style(theme.sublabel).into());
           fdinfo.extend(
             info
               .extra
               .iter()
-              .map(|l| vec!["•".set_style(THEME.visual_separator), l.clone().into()].into()),
+              .map(|l| vec!["•".set_style(theme.visual_separator), l.clone().into()].into()),
           );
         }
       }
@@ -559,6 +582,7 @@ impl DetailsPopupState {
     };
     Self {
       details,
+      theme,
       fdinfo,
       active_index: 0,
       scroll: Default::default(),
@@ -617,7 +641,8 @@ impl DetailsPopupState {
           keys.details_prev_field.display(),
           keys.details_next_field.display()
         ),
-        "Move\u{00a0}Focus"
+        "Move\u{00a0}Focus",
+        self.theme
       ));
     }
     items.extend(help_item!(
@@ -627,12 +652,14 @@ impl DetailsPopupState {
         keys.details_cycle_tab.display(),
         keys.details_next_tab.display()
       ),
-      "Switch\u{00a0}Tab"
+      "Switch\u{00a0}Tab",
+      self.theme
     ));
     if self.env.is_some() {
       items.extend(help_item!(
         keys.details_view_parent.display(),
-        "View\u{00a0}Parent\u{00a0}Details"
+        "View\u{00a0}Parent\u{00a0}Details",
+        self.theme
       ));
     }
   }
@@ -689,11 +716,13 @@ impl DetailsPopupState {
         } else {
           action_tx.send(Action::SetActivePopup(err_popup_goto_parent_miss(
             "View Parent Details Error",
+            self.theme,
           )));
         }
       } else {
         action_tx.send(Action::SetActivePopup(err_popup_goto_parent_not_found(
           "View Parent Details Result",
+          self.theme,
         )));
       }
     } else if keys.details_cycle_tab.matches(ke) {
@@ -720,6 +749,7 @@ impl DerefMut for DetailsPopupState {
 impl StatefulWidgetRef for DetailsPopup {
   fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut DetailsPopupState) {
     Clear.render(area, buf);
+    let theme = state.theme;
     let block = Block::new()
       .title(" Details ")
       .borders(Borders::TOP | Borders::BOTTOM)
@@ -729,7 +759,7 @@ impl StatefulWidgetRef for DetailsPopup {
 
     // Tabs
     let tabs = Tabs::new(state.available_tabs.clone())
-      .highlight_style(THEME.active_tab)
+      .highlight_style(theme.active_tab)
       .select(state.tab_index);
     // FIXME: Ratatui's tab does not support alignment
     let screen = buf.area;
@@ -771,28 +801,34 @@ impl StatefulWidgetRef for DetailsPopup {
 }
 
 impl DetailsPopup {
-  fn label<'a>(&self, content: &'a str, active: bool) -> Line<'a> {
+  fn label<'a>(&self, content: &'a str, active: bool, theme: &Theme) -> Line<'a> {
     if !active {
-      content.set_style(THEME.label).into()
+      content.set_style(theme.label).into()
     } else {
       let mut spans = vec![
-        content.set_style(THEME.selected_label),
+        content.set_style(theme.selected_label),
         " ".into(),
-        "<- ".set_style(THEME.selection_indicator),
+        "<- ".set_style(theme.selection_indicator),
       ];
       if self.enable_copy {
-        spans.extend([help_key("C"), help_desc("Copy")]);
+        spans.extend([help_key("C", theme), help_desc("Copy", theme)]);
       }
       spans.into()
     }
   }
 
   fn info_paragraph(&self, state: &DetailsPopupState) -> Paragraph<'_> {
+    let theme = state.theme;
     let text = state
       .details
       .iter()
       .enumerate()
-      .flat_map(|(idx, (label, line))| [self.label(label, idx == state.active_index), line.clone()])
+      .flat_map(|(idx, (label, line))| {
+        [
+          self.label(label, idx == state.active_index, theme),
+          line.clone(),
+        ]
+      })
       .collect_vec();
     Paragraph::new(text).wrap(Wrap { trim: false })
   }
@@ -850,6 +886,7 @@ mod tests {
       test_area_full,
       test_render_stateful_widget_area,
     },
+    theme::current_theme,
   };
 
   fn baseline_for_tests() -> Arc<BaselineInfo> {
@@ -891,6 +928,7 @@ mod tests {
       false,
       false,
       true,
+      current_theme(),
     );
     let event = super::Event {
       details: Arc::new(TracerEventDetails::Exec(Box::new(exec_event()))),
@@ -914,6 +952,7 @@ mod tests {
       false,
       false,
       true,
+      current_theme(),
     );
     let mut event = exec_event();
     event.syscall = ExecSyscall::Execveat;

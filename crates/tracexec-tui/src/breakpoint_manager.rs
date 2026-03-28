@@ -60,7 +60,7 @@ use super::{
     help_item,
     help_key,
   },
-  theme::THEME,
+  theme::Theme,
 };
 use crate::action::{
   Action,
@@ -73,7 +73,7 @@ struct BreakPointEntry {
 }
 
 impl BreakPointEntry {
-  fn paragraph(&self, selected: bool) -> Paragraph<'static> {
+  fn paragraph(&self, selected: bool, theme: &Theme) -> Paragraph<'static> {
     let space = Span::raw(" ");
     let pattern_ty = Span::styled(
       match self.breakpoint.pattern {
@@ -81,16 +81,16 @@ impl BreakPointEntry {
         BreakPointPattern::ExactFilename(_) => "\u{00a0}Exact\u{00a0}Filename\u{00a0}\u{200b}",
         BreakPointPattern::ArgvRegex(_) => "\u{00a0}Argv\u{00a0}Regex\u{00a0}\u{200b}",
       },
-      THEME.breakpoint_pattern_type_label,
+      theme.breakpoint_pattern_type_label,
     );
     let pattern = Span::styled(
       self.breakpoint.pattern.pattern().to_owned(),
-      THEME.breakpoint_pattern,
+      theme.breakpoint_pattern,
     );
     let line2 = Line::default().spans(vec![
       Span::styled(
         "\u{00a0}Condition\u{00a0}\u{200b}",
-        THEME.breakpoint_info_value,
+        theme.breakpoint_info_value,
       ),
       pattern_ty,
       space.clone(),
@@ -100,34 +100,34 @@ impl BreakPointEntry {
       Span::styled(
         format!("\u{00a0}Breakpoint\u{00a0}#{}\u{00a0}\u{200b}", self.id),
         if selected {
-          THEME.breakpoint_title_selected
+          theme.breakpoint_title_selected
         } else {
-          THEME.breakpoint_title
+          theme.breakpoint_title
         },
       ),
-      Span::styled("\u{00a0}Type\u{00a0}\u{200b}", THEME.breakpoint_info_label),
+      Span::styled("\u{00a0}Type\u{00a0}\u{200b}", theme.breakpoint_info_label),
       Span::styled(
         match self.breakpoint.ty {
           BreakPointType::Once => "\u{00a0}\u{00a0}One-Time\u{00a0}\u{200b}",
           BreakPointType::Permanent => "\u{00a0}Permanent\u{00a0}\u{200b}",
         },
-        THEME.breakpoint_info_value,
+        theme.breakpoint_info_value,
       ),
-      Span::styled("\u{00a0}On\u{00a0}\u{200b}", THEME.breakpoint_info_label),
+      Span::styled("\u{00a0}On\u{00a0}\u{200b}", theme.breakpoint_info_label),
       Span::styled(
         match self.breakpoint.stop {
           BreakPointStop::SyscallEnter => "\u{00a0}Syscall\u{00a0}Enter\u{00a0}\u{200b}",
           BreakPointStop::SyscallExit => "\u{00a0}Syscall\u{00a0}\u{00a0}Exit\u{00a0}\u{200b}",
         },
-        THEME.breakpoint_info_value,
+        theme.breakpoint_info_value,
       ),
       if self.breakpoint.activated {
         Span::styled(
           "\u{00a0}\u{00a0}Active\u{00a0}\u{00a0}",
-          THEME.breakpoint_info_label_active,
+          theme.breakpoint_info_label_active,
         )
       } else {
-        Span::styled("\u{00a0}Inactive\u{00a0}", THEME.breakpoint_info_label)
+        Span::styled("\u{00a0}Inactive\u{00a0}", theme.breakpoint_info_label)
       },
     ]);
     Paragraph::new(vec![line1, line2]).wrap(Wrap { trim: false })
@@ -149,10 +149,11 @@ pub struct BreakPointManagerState {
   // Whether to activate the breakpoint being edited
   active: bool,
   editing: Option<u32>,
+  theme: &'static Theme,
 }
 
 impl BreakPointManager {
-  fn help(keys: &TuiKeyBindings) -> InfoPopupState {
+  fn help(keys: &TuiKeyBindings, theme: &Theme) -> InfoPopupState {
     InfoPopupState::info(
       "How to use Breakpoints".to_string(),
       vec![
@@ -184,9 +185,9 @@ impl BreakPointManager {
         ]),
         Line::default().spans(vec![
           "Press ".into(),
-          help_key(keys.breakpoint_new.display()),
+          help_key(keys.breakpoint_new.display(), theme),
           " to create a new breakpoint. Press ".into(),
-          help_key(keys.breakpoint_edit.display()),
+          help_key(keys.breakpoint_edit.display(), theme),
           " when a breakpoint is selected to edit it. \
           While editing a breakpoint, the editor is shown on top of the screen. \
           The editor accepts breakpoint pattern in the following format: "
@@ -202,9 +203,9 @@ impl BreakPointManager {
           "pattern-string".cyan().bold().italic(),
           ". To change the breakpoint stop or disable the breakpoint, please follow on screen instructions. \
           Press ".into(),
-          help_key(keys.breakpoint_editor_save.display()),
+          help_key(keys.breakpoint_editor_save.display(), theme),
           " to save the breakpoint. Press ".into(),
-          help_key(keys.breakpoint_editor_cancel.display()),
+          help_key(keys.breakpoint_editor_cancel.display(), theme),
           " to cancel the editing.".into(),
         ]),
         Line::default().spans(vec![
@@ -212,6 +213,7 @@ impl BreakPointManager {
           It is highlighted in the bottom of the screen and you can follow the instructions to manage stopped processes.",
         ]),
       ],
+      theme,
     )
   }
 }
@@ -248,6 +250,7 @@ mod tests {
     BreakPointEntry,
     BreakPointManagerState,
   };
+  use crate::theme::current_theme;
 
   static KEY_BINDINGS: LazyLock<Arc<TuiKeyBindings>> =
     LazyLock::new(|| Arc::new(TuiKeyBindings::default()));
@@ -285,7 +288,7 @@ mod tests {
         stop: BreakPointStop::SyscallEnter,
       },
     };
-    let paragraph = entry.paragraph(true);
+    let paragraph = entry.paragraph(true, current_theme());
     let mut terminal = Terminal::new(TestBackend::new(70, 4)).unwrap();
     terminal
       .draw(|frame| {
@@ -307,7 +310,7 @@ mod tests {
         stop: BreakPointStop::SyscallEnter,
       },
     };
-    let paragraph = entry.paragraph(false);
+    let paragraph = entry.paragraph(false, current_theme());
     let mut terminal = Terminal::new(TestBackend::new(70, 4)).unwrap();
     terminal
       .draw(|frame| {
@@ -329,7 +332,7 @@ mod tests {
         stop: BreakPointStop::SyscallEnter,
       },
     };
-    let paragraph = entry.paragraph(true);
+    let paragraph = entry.paragraph(true, current_theme());
     let mut terminal = Terminal::new(TestBackend::new(70, 4)).unwrap();
     terminal
       .draw(|frame| {
@@ -351,7 +354,7 @@ mod tests {
         stop: BreakPointStop::SyscallEnter,
       },
     };
-    let paragraph = entry.paragraph(true);
+    let paragraph = entry.paragraph(true, current_theme());
     let mut terminal = Terminal::new(TestBackend::new(70, 4)).unwrap();
     terminal
       .draw(|frame| {
@@ -373,7 +376,7 @@ mod tests {
         stop: BreakPointStop::SyscallExit,
       },
     };
-    let paragraph = entry.paragraph(true);
+    let paragraph = entry.paragraph(true, current_theme());
     let mut terminal = Terminal::new(TestBackend::new(70, 4)).unwrap();
     terminal
       .draw(|frame| {
@@ -395,7 +398,7 @@ mod tests {
         stop: BreakPointStop::SyscallEnter,
       },
     };
-    let paragraph = entry.paragraph(true);
+    let paragraph = entry.paragraph(true, current_theme());
     let mut terminal = Terminal::new(TestBackend::new(70, 4)).unwrap();
     terminal
       .draw(|frame| {
@@ -417,7 +420,7 @@ mod tests {
         stop: BreakPointStop::SyscallEnter,
       },
     };
-    let paragraph = entry.paragraph(true);
+    let paragraph = entry.paragraph(true, current_theme());
     let mut terminal = Terminal::new(TestBackend::new(70, 4)).unwrap();
     terminal
       .draw(|frame| {
@@ -430,7 +433,7 @@ mod tests {
 
   #[test]
   fn test_breakpoint_manager_help() {
-    let help = super::BreakPointManager::help(keys().as_ref());
+    let help = super::BreakPointManager::help(keys().as_ref(), current_theme());
     assert_eq!(help.title, "How to use Breakpoints");
     assert!(!help.message.is_empty());
     // Check that the help contains expected content
@@ -455,7 +458,7 @@ mod tests {
       BreakPointStop::SyscallEnter,
       true,
     ));
-    let state = BreakPointManagerState::new(tracer.clone(), keys().clone());
+    let state = BreakPointManagerState::new(tracer.clone(), keys().clone(), current_theme());
     assert_eq!(state.breakpoints.len(), 1);
     let breakpoint = state.breakpoints.get(&id).unwrap().clone();
     assert_eq!(breakpoint.pattern.to_editable(), "in-filename:/bin/echo");
@@ -467,7 +470,7 @@ mod tests {
   #[test]
   fn test_breakpoint_manager_state_new_breakpoint_flow() {
     let tracer = RunningTracer::mock();
-    let mut state = BreakPointManagerState::new(tracer.clone(), keys().clone());
+    let mut state = BreakPointManagerState::new(tracer.clone(), keys().clone(), current_theme());
     state.handle_key_event(
       KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE),
       keys().as_ref(),
@@ -497,7 +500,7 @@ mod tests {
       BreakPointStop::SyscallExit,
       true,
     ));
-    let mut state = BreakPointManagerState::new(tracer.clone(), keys().clone());
+    let mut state = BreakPointManagerState::new(tracer.clone(), keys().clone(), current_theme());
     state.list_state.select(Some(0));
     state.handle_key_event(
       KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE),
@@ -537,7 +540,7 @@ mod tests {
       BreakPointStop::SyscallEnter,
       true,
     ));
-    let mut state = BreakPointManagerState::new(tracer.clone(), keys().clone());
+    let mut state = BreakPointManagerState::new(tracer.clone(), keys().clone(), current_theme());
     state.list_state.select(Some(1));
     state.handle_key_event(
       KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE),
@@ -554,7 +557,11 @@ mod tests {
 }
 
 impl BreakPointManagerState {
-  pub fn new(tracer: RunningTracer, key_bindings: Arc<TuiKeyBindings>) -> Self {
+  pub fn new(
+    tracer: RunningTracer,
+    key_bindings: Arc<TuiKeyBindings>,
+    theme: &'static Theme,
+  ) -> Self {
     let breakpoints = tracer.get_breakpoints();
     Self {
       breakpoints,
@@ -565,6 +572,7 @@ impl BreakPointManagerState {
       stop: BreakPointStop::SyscallExit,
       active: true,
       editing: None,
+      theme,
     }
   }
 }
@@ -593,6 +601,7 @@ impl BreakPointManagerState {
               InfoPopupState::error(
                 "Breakpoint Editor Error".to_string(),
                 vec![Line::from(message)],
+                self.theme,
               ),
             )));
           }
@@ -627,7 +636,7 @@ impl BreakPointManagerState {
     }
     if keys.help.matches(key) {
       return Some(Action::SetActivePopup(ActivePopup::InfoPopup(
-        BreakPointManager::help(keys),
+        BreakPointManager::help(keys, self.theme),
       )));
     }
     if keys.go_back.matches(key) {
@@ -676,19 +685,28 @@ impl BreakPointManagerState {
     None
   }
 
-  pub fn help(&self, keys: &TuiKeyBindings) -> impl Iterator<Item = Span<'_>> {
+  pub fn help(&self, keys: &TuiKeyBindings, theme: &Theme) -> impl Iterator<Item = Span<'_>> {
     chain!(
       [
-        help_item!(keys.go_back.display(), "Close Mgr"),
-        help_item!(keys.breakpoint_delete.display(), "Delete"),
-        help_item!(keys.breakpoint_edit.display(), "Edit"),
-        help_item!(keys.breakpoint_toggle_active.display(), "Enable/Disable"),
-        help_item!(keys.breakpoint_new.display(), "New\u{00a0}Breakpoint"),
+        help_item!(keys.go_back.display(), "Close Mgr", theme),
+        help_item!(keys.breakpoint_delete.display(), "Delete", theme),
+        help_item!(keys.breakpoint_edit.display(), "Edit", theme),
+        help_item!(
+          keys.breakpoint_toggle_active.display(),
+          "Enable/Disable",
+          theme
+        ),
+        help_item!(
+          keys.breakpoint_new.display(),
+          "New\u{00a0}Breakpoint",
+          theme
+        ),
       ],
       if self.editor.is_some() {
         Some(help_item!(
           keys.breakpoint_editor_cancel.display(),
-          "Cancel"
+          "Cancel",
+          theme
         ))
       } else {
         None
@@ -726,7 +744,8 @@ impl StatefulWidgetRef for BreakPointManager {
           match state.stop {
             BreakPointStop::SyscallEnter => "Syscall Enter", // 13 + 2 = 15
             BreakPointStop::SyscallExit => "Syscall  Exit",
-          }
+          },
+          state.theme
         ))
         .render(stop_toggle_area, buf);
       Line::default()
@@ -735,7 +754,8 @@ impl StatefulWidgetRef for BreakPointManager {
           match state.active {
             true => " Active ", // 8 + 2 = 10
             false => "Inactive",
-          }
+          },
+          state.theme
         ))
         .render(active_toggle_area, buf);
     } else {
@@ -747,7 +767,11 @@ impl StatefulWidgetRef for BreakPointManager {
       };
       Clear.render(help_area, buf);
       Line::default()
-        .spans(help_item!(state.key_bindings.help.display(), "Help"))
+        .spans(help_item!(
+          state.key_bindings.help.display(),
+          "Help",
+          state.theme
+        ))
         .render(help_area, buf);
     }
     Clear.render(area, buf);
@@ -765,9 +789,10 @@ impl StatefulWidgetRef for BreakPointManager {
         breakpoint: breakpoint.clone(),
       })
       .collect_vec();
+    let theme = state.theme;
     let builder = ListBuilder::new(move |ctx| {
       let item = &items[ctx.index];
-      let paragraph = item.paragraph(ctx.is_selected);
+      let paragraph = item.paragraph(ctx.is_selected, theme);
       let line_count = paragraph
         .line_count(ctx.cross_axis_size)
         .try_into()

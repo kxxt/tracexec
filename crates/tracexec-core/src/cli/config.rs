@@ -100,6 +100,10 @@ pub struct TuiModeConfig {
   pub frame_rate: Option<f64>,
   pub max_events: Option<u64>,
   pub scrollback_lines: Option<usize>,
+  #[serde(rename = "theme-file")]
+  pub theme_file: Option<PathBuf>,
+  #[serde(default)]
+  pub theme: Option<crate::cli::tui_theme::ThemeSpec>,
   #[serde(default)]
   pub keys: Option<TuiKeyBindingsConfig>,
 }
@@ -297,11 +301,21 @@ foreground = false
 follow = true
 frame_rate = 12.5
 max_events = 100
+theme-file = "nord.toml"
+theme = { app-title = { fg = "cyan", modifiers = ["bold"] } }
 "#;
     let cfg: TuiModeConfig = toml::from_str(toml_str).unwrap();
     assert_eq!(cfg.follow.unwrap(), true);
     assert_eq!(cfg.frame_rate.unwrap(), 12.5);
     assert_eq!(cfg.max_events.unwrap(), 100);
+    assert_eq!(cfg.theme_file, Some(PathBuf::from("nord.toml")));
+    let theme = cfg.theme.unwrap();
+    assert!(theme.app_title.is_some());
+    let app_title = theme.app_title.unwrap();
+    assert!(
+      matches!(app_title.fg, Some(crate::cli::tui_theme::ThemeColor::Named(ref s)) if s == "cyan")
+    );
+    assert_eq!(app_title.modifiers.len(), 1);
   }
 
   #[test]

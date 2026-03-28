@@ -34,10 +34,13 @@ use tracexec_core::{
 };
 
 use super::help::help_item;
-use crate::action::{
-  Action,
-  CopyTarget,
-  SupportedShell::Bash,
+use crate::{
+  action::{
+    Action,
+    CopyTarget,
+    SupportedShell::Bash,
+  },
+  theme::Theme,
 };
 
 #[derive(Debug, Clone)]
@@ -49,6 +52,7 @@ pub struct CopyPopupState {
   pub state: ListState,
   pub available_targets: Vec<CopyTarget>,
   key_bindings: Arc<TuiKeyBindings>,
+  theme: &'static Theme,
 }
 
 #[derive(Clone, Copy)]
@@ -123,7 +127,11 @@ const COPY_TARGETS: &[CopyTargetConfig] = &[
 ];
 
 impl CopyPopupState {
-  pub fn new(event: Arc<TracerEventDetails>, key_bindings: Arc<TuiKeyBindings>) -> Self {
+  pub fn new(
+    event: Arc<TracerEventDetails>,
+    key_bindings: Arc<TuiKeyBindings>,
+    theme: &'static Theme,
+  ) -> Self {
     let mut state = ListState::default();
     state.select(Some(0));
     let available_targets = if let TracerEventDetails::Exec(_) = &event.as_ref() {
@@ -136,6 +144,7 @@ impl CopyPopupState {
       state,
       available_targets,
       key_bindings,
+      theme,
     }
   }
 
@@ -170,7 +179,7 @@ impl CopyPopupState {
     self.available_targets.iter().flat_map(|&target| {
       let config = copy_target_config(target);
       let key_label = copy_target_binding(&self.key_bindings, target).display();
-      help_item!(key_label, config.help_label)
+      help_item!(key_label, config.help_label, self.theme)
     })
   }
 
@@ -326,9 +335,12 @@ mod tests {
     CopyPopup,
     CopyPopupState,
   };
-  use crate::test_utils::{
-    test_area_full,
-    test_render_stateful_widget_area,
+  use crate::{
+    test_utils::{
+      test_area_full,
+      test_render_stateful_widget_area,
+    },
+    theme::current_theme,
   };
 
   #[test]
@@ -338,7 +350,8 @@ mod tests {
       timestamp: None,
       msg: "hello".to_string(),
     }));
-    let mut state = CopyPopupState::new(event, Arc::new(TuiKeyBindings::default()));
+    let mut state =
+      CopyPopupState::new(event, Arc::new(TuiKeyBindings::default()), current_theme());
     let area = test_area_full(40, 40);
     let rendered = test_render_stateful_widget_area(CopyPopup, area, &mut state);
     assert_snapshot!(rendered);

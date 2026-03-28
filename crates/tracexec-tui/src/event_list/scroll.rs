@@ -274,7 +274,10 @@ mod tests {
   };
 
   use super::EventList;
-  use crate::event_list::Event;
+  use crate::{
+    event_list::Event,
+    theme::current_theme,
+  };
 
   fn baseline_for_tests() -> Arc<BaselineInfo> {
     Arc::new(BaselineInfo {
@@ -293,6 +296,7 @@ mod tests {
       false,
       false,
       true,
+      current_theme(),
     );
     list.max_window_len = window_len.max(1);
     list.window = (0, window_len.min(len));

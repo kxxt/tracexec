@@ -2,7 +2,6 @@ use std::{
   cell::RefCell,
   collections::VecDeque,
   rc::Rc,
-  sync::LazyLock,
 };
 
 use crossterm::event::KeyEvent;
@@ -32,12 +31,9 @@ use tracexec_core::{
 };
 use tracing::debug;
 
-use super::{
-  event_list::{
-    Event,
-    EventList,
-  },
-  theme::THEME,
+use super::event_list::{
+  Event,
+  EventList,
 };
 use crate::action::Action;
 
@@ -56,6 +52,7 @@ type ParentAndEventQueue = VecDeque<(Option<ParentEventId>, Rc<RefCell<Event>>)>
 impl BacktracePopupState {
   pub fn new(event: Rc<RefCell<Event>>, old_list: &EventList) -> Self {
     let (trace, event_loss) = Self::collect_backtrace(event, old_list);
+    let theme = old_list.theme;
     let mut list = EventList::new(
       old_list.baseline.clone(),
       false,
@@ -64,15 +61,16 @@ impl BacktracePopupState {
       false,
       old_list.has_clipboard,
       false,
+      theme,
     );
     list.rt_modifier = old_list.rt_modifier;
     for (p, e) in trace {
       list.dumb_push(
         e,
         match p {
-          Some(ParentEventId::Become(_)) => Some(THEME.backtrace_parent_becomes.clone()),
-          Some(ParentEventId::Spawn(_)) => Some(THEME.backtrace_parent_spawns.clone()),
-          None => Some(THEME.backtrace_parent_unknown.clone()),
+          Some(ParentEventId::Become(_)) => Some(theme.backtrace_parent_becomes.clone()),
+          Some(ParentEventId::Spawn(_)) => Some(theme.backtrace_parent_spawns.clone()),
+          None => Some(theme.backtrace_parent_unknown.clone()),
         },
       );
     }
@@ -111,15 +109,15 @@ impl BacktracePopupState {
   }
 }
 
-static HELP: LazyLock<Line<'static>> = LazyLock::new(|| {
+fn help(theme: &super::theme::Theme) -> Line<'static> {
   Line::from(vec![
     "Legend: ".into(),
-    THEME.backtrace_parent_becomes.clone(),
-    " Becomes ".set_style(THEME.cli_flag),
-    THEME.backtrace_parent_spawns.clone(),
-    " Spawns ".set_style(THEME.cli_flag),
+    theme.backtrace_parent_becomes.clone(),
+    " Becomes ".set_style(theme.cli_flag),
+    theme.backtrace_parent_spawns.clone(),
+    " Spawns ".set_style(theme.cli_flag),
   ])
-});
+}
 
 impl StatefulWidgetRef for BacktracePopup {
   type State = BacktracePopupState;
@@ -127,9 +125,10 @@ impl StatefulWidgetRef for BacktracePopup {
   fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
     Clear.render(area, buf);
     let screen = buf.area;
-    let help_width = HELP.width() as u16;
+    let help = help(state.list.theme);
+    let help_width = help.width() as u16;
     let start = screen.right().saturating_sub(help_width);
-    (&*HELP).render(Rect::new(start, 0, help_width, 1), buf);
+    help.render(Rect::new(start, 0, help_width, 1), buf);
     let block = Block::new()
       .title(if !state.event_loss {
         " Backtrace "
@@ -209,6 +208,7 @@ mod tests {
       test_area_full,
       test_render_stateful_widget_area,
     },
+    theme::current_theme,
   };
 
   fn baseline_for_tests() -> Arc<BaselineInfo> {
@@ -250,6 +250,7 @@ mod tests {
       false,
       false,
       true,
+      current_theme(),
     );
     let root_id = EventId::new(1);
     let child_id = EventId::new(2);

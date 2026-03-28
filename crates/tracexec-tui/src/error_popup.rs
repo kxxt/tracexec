@@ -16,13 +16,13 @@ use ratatui::{
 };
 use tui_popup::Popup;
 
-use super::{
-  sized_paragraph::SizedParagraph,
-  theme::THEME,
-};
-use crate::action::{
-  Action,
-  ActivePopup,
+use super::sized_paragraph::SizedParagraph;
+use crate::{
+  action::{
+    Action,
+    ActivePopup,
+  },
+  theme::Theme,
 };
 
 #[derive(Debug, Clone)]
@@ -37,19 +37,19 @@ impl InfoPopupState {
     Some(Action::CancelCurrentPopup)
   }
 
-  pub fn error(title: String, message: Vec<Line<'static>>) -> Self {
+  pub fn error(title: String, message: Vec<Line<'static>>, theme: &Theme) -> Self {
     Self {
       title,
       message,
-      style: THEME.error_popup,
+      style: theme.error_popup,
     }
   }
 
-  pub fn info(title: String, message: Vec<Line<'static>>) -> Self {
+  pub fn info(title: String, message: Vec<Line<'static>>, theme: &Theme) -> Self {
     Self {
       title,
       message,
-      style: THEME.info_popup,
+      style: theme.info_popup,
     }
   }
 }
@@ -76,28 +76,31 @@ impl StatefulWidget for InfoPopup {
   }
 }
 
-pub fn err_popup_goto_parent_miss(title: &'static str) -> ActivePopup {
+pub fn err_popup_goto_parent_miss(title: &'static str, theme: &Theme) -> ActivePopup {
   ActivePopup::InfoPopup(InfoPopupState::info(
     title.into(),
     vec![Line::raw(
       "The parent exec event is found, but has been cleared from memory.",
     )],
+    theme,
   ))
 }
 
-pub fn err_popup_goto_parent_not_found(title: &'static str) -> ActivePopup {
+pub fn err_popup_goto_parent_not_found(title: &'static str, theme: &Theme) -> ActivePopup {
   ActivePopup::InfoPopup(InfoPopupState::info(
     title.into(),
     vec![Line::raw("No parent exec event is found for this event.")],
+    theme,
   ))
 }
 
-pub fn err_popup_goto_parent_not_exec(title: &'static str) -> ActivePopup {
+pub fn err_popup_goto_parent_not_exec(title: &'static str, theme: &Theme) -> ActivePopup {
   ActivePopup::InfoPopup(InfoPopupState::error(
     title.into(),
     vec![Line::raw(
       "This feature is currently limited to exec events.",
     )],
+    theme,
   ))
 }
 
@@ -114,6 +117,7 @@ mod tests {
     InfoPopup,
     InfoPopupState,
   };
+  use crate::theme::current_theme;
 
   #[test]
   fn snapshot_info_popup() {
@@ -123,6 +127,7 @@ mod tests {
         Line::raw("Something went wrong."),
         Line::raw("Please retry."),
       ],
+      current_theme(),
     );
     let mut terminal = Terminal::new(TestBackend::new(60, 12)).unwrap();
     terminal

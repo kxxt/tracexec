@@ -83,6 +83,7 @@ use super::{
   hit_manager::HitManagerState,
   pseudo_term::PseudoTerminalPane,
   query::QueryBuilder,
+  theme::Theme,
 };
 use crate::{
   action::{
@@ -100,6 +101,7 @@ pub const DEFAULT_MAX_EVENTS: u64 = 1_000_000;
 
 pub struct App {
   pub event_list: EventList,
+  pub theme: &'static Theme,
   pub printer_args: PrinterArgs,
   pub term: Option<PseudoTerminalPane>,
   pub root_pid: Option<Pid>,
@@ -132,6 +134,7 @@ impl App {
     tui_args: TuiModeArgs,
     baseline: Arc<BaselineInfo>,
     pty_master: Option<UnixMasterPty>,
+    theme: &'static Theme,
   ) -> color_eyre::Result<Self> {
     let key_bindings = Arc::new(TuiKeyBindings::from_config(tui_args.keys));
     let active_pane = if pty_master.is_some() {
@@ -154,7 +157,9 @@ impl App {
         tracer.is_some(),
         clipboard.is_some(),
         true,
+        theme,
       ),
+      theme,
       printer_args: PrinterArgs::from_cli(tracing_args, modifier_args),
       split_percentage: if pty_master.is_some() { 50 } else { 100 },
       term: if let Some(pty_master) = pty_master {
@@ -192,6 +197,7 @@ impl App {
             t.tracer,
             t.debugger_args.default_external_command,
             key_bindings.clone(),
+            theme,
           )
         })
         .transpose()?,
@@ -335,6 +341,7 @@ impl App {
                           .push(ActivePopup::InfoPopup(InfoPopupState::error(
                             "Regex Error".to_owned(),
                             e,
+                            self.theme,
                           )));
                       }
                     }
@@ -418,6 +425,7 @@ impl App {
                             ]),
                             e.to_string().into(),
                           ],
+                          self.theme,
                         ),
                       )));
                     }
@@ -442,6 +450,7 @@ impl App {
                           ]),
                           error.to_string().into(),
                         ],
+                        self.theme,
                       ),
                     )));
                     handled = true;
@@ -466,6 +475,7 @@ impl App {
                           ]),
                           error.to_string().into(),
                         ],
+                        self.theme,
                       ),
                     )));
                     handled = true;
@@ -484,6 +494,7 @@ impl App {
                       Line::raw("The tracer thread has died abnormally! error: "),
                       e.into(),
                     ],
+                    self.theme,
                   ),
                 )));
               }
@@ -651,6 +662,7 @@ impl App {
               .push(ActivePopup::CopyTargetSelection(CopyPopupState::new(
                 e,
                 self.key_bindings.clone(),
+                self.theme,
               )));
           }
           Action::CopyToClipboard { event, target } => {
@@ -706,6 +718,7 @@ impl App {
                   .expect("BreakPointManager doesn't work without PTracer!")
                   .clone(),
                 self.key_bindings.clone(),
+                self.theme,
               ));
             }
           }
@@ -805,6 +818,11 @@ mod tests {
   };
 
   use super::*;
+  use crate::theme::{
+    current_theme,
+    load_theme_from_spec,
+    theme_spec_from_toml_str,
+  };
 
   #[test]
   fn app_no_pty_shrink_grow_noop_and_inspect_event_list() -> color_eyre::Result<()> {
@@ -816,6 +834,7 @@ mod tests {
       TuiModeArgs::default(),
       baseline.clone(),
       None,
+      current_theme(),
     )?;
 
     assert_eq!(app.split_percentage, 100);
@@ -858,6 +877,7 @@ mod tests {
       TuiModeArgs::default(),
       baseline,
       None,
+      current_theme(),
     )
     .unwrap();
     // Disable clipboard as it relies on autodetect.
@@ -868,6 +888,48 @@ mod tests {
       pid: Some(Pid::from_raw(123)),
       timestamp: None,
       msg: "Test event".to_string(),
+    }));
+    app.event_list.push(EventId::new(0), event);
+
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal
+      .draw(|f| {
+        app.render(f.area(), f.buffer_mut());
+      })
+      .unwrap();
+    let rendered = format!("{:?}", terminal.backend().buffer());
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn snapshot_app_render_with_custom_theme() {
+    let theme_spec = theme_spec_from_toml_str(
+      include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../themes/amber.toml"
+      )),
+      "amber.toml",
+    )
+    .unwrap();
+    let custom_theme = Box::leak(Box::new(load_theme_from_spec(&theme_spec).unwrap()));
+
+    let baseline = std::sync::Arc::new(BaselineInfo::new().unwrap());
+    let mut app = App::new(
+      None,
+      &LogModeArgs::default(),
+      &ModifierArgs::default(),
+      TuiModeArgs::default(),
+      baseline,
+      None,
+      custom_theme,
+    )
+    .unwrap();
+    app.disable_clipboard();
+
+    let event = std::sync::Arc::new(TracerEventDetails::Info(TracerEventMessage {
+      pid: Some(Pid::from_raw(123)),
+      timestamp: None,
+      msg: "Themed event".to_string(),
     }));
     app.event_list.push(EventId::new(0), event);
 

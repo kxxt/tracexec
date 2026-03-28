@@ -35,7 +35,7 @@ use tui_prompts::{
 use super::{
   event_line::EventLine,
   help::help_item,
-  theme::THEME,
+  theme::Theme,
 };
 use crate::action::Action;
 
@@ -140,21 +140,21 @@ impl QueryResult {
     self.selection
   }
 
-  pub fn statistics(&self) -> Line<'_> {
+  pub fn statistics(&self, theme: &Theme) -> Line<'_> {
     if self.indices.is_empty() {
-      "No match".set_style(THEME.query_no_match).into()
+      "No match".set_style(theme.query_no_match).into()
     } else {
       let total = self
         .indices
         .len()
         .to_string()
-        .set_style(THEME.query_match_total_cnt);
+        .set_style(theme.query_match_total_cnt);
       let selected = self
         .selection
         .map(|index| self.indices.rank(&index) + 1)
         .unwrap_or(0)
         .to_string()
-        .set_style(THEME.query_match_current_no);
+        .set_style(theme.query_match_current_no);
       Line::default().spans(vec![selected, "/".into(), total])
     }
   }
@@ -251,18 +251,19 @@ impl QueryBuilder {
 }
 
 impl QueryBuilder {
-  pub fn help(&self, keys: &TuiKeyBindings) -> Vec<Span<'_>> {
+  pub fn help(&self, keys: &TuiKeyBindings, theme: &Theme) -> Vec<Span<'_>> {
     if self.editing {
       [
-        help_item!(keys.query_cancel.display(), "Cancel\u{00a0}Search"),
-        help_item!(keys.query_execute.display(), "Execute\u{00a0}Search"),
+        help_item!(keys.query_cancel.display(), "Cancel\u{00a0}Search", theme),
+        help_item!(keys.query_execute.display(), "Execute\u{00a0}Search", theme),
         help_item!(
           keys.query_toggle_case.display(),
           if self.case_sensitive {
             "Case\u{00a0}Sensitive"
           } else {
             "Case\u{00a0}Insensitive"
-          }
+          },
+          theme
         ),
         help_item!(
           keys.query_toggle_regex.display(),
@@ -270,17 +271,22 @@ impl QueryBuilder {
             "Regex\u{00a0}Mode"
           } else {
             "Text\u{00a0}Mode"
-          }
+          },
+          theme
         ),
-        help_item!(keys.query_clear.display(), "Clear"),
+        help_item!(keys.query_clear.display(), "Clear", theme),
       ]
       .into_iter()
       .flatten()
       .collect()
     } else {
       [
-        help_item!(keys.query_next_match.display(), "Next\u{00a0}Match"),
-        help_item!(keys.query_prev_match.display(), "Previous\u{00a0}Match"),
+        help_item!(keys.query_next_match.display(), "Next\u{00a0}Match", theme),
+        help_item!(
+          keys.query_prev_match.display(),
+          "Previous\u{00a0}Match",
+          theme
+        ),
       ]
       .into_iter()
       .flatten()
@@ -327,7 +333,20 @@ mod tests {
     TextState,
   };
 
-  use super::*;
+  use super::{
+    Query,
+    QueryBuilder,
+    QueryKind,
+    QueryResult,
+    QueryValue,
+    pikevm,
+    syntax,
+  };
+  use crate::{
+    action::Action,
+    event_line::EventLine,
+    theme::current_theme,
+  };
 
   fn make_event_line(text: &str) -> EventLine {
     EventLine {
@@ -410,7 +429,7 @@ mod tests {
       selection: Some(EventId::new(20)),
     };
 
-    let line = qr.statistics();
+    let line = qr.statistics(current_theme());
     let s = line.to_string();
     assert!(s.contains("2")); // selected index
     assert!(s.contains("3")); // total matches
@@ -456,7 +475,7 @@ mod tests {
   fn test_query_builder_help() {
     let qb = QueryBuilder::new(QueryKind::Search);
     let keys = TuiKeyBindings::default();
-    let help = qb.help(&keys);
+    let help = qb.help(&keys, current_theme());
     assert!(help.iter().any(|span| span.content.contains("Esc")));
     assert!(help.iter().any(|span| span.content.contains("Enter")));
   }

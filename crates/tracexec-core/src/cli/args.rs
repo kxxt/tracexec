@@ -1,6 +1,11 @@
 use std::{
   borrow::Cow,
+  fmt,
   num::ParseFloatError,
+  path::{
+    Path,
+    PathBuf,
+  },
 };
 
 use clap::{
@@ -497,8 +502,43 @@ pub struct TuiModeArgs {
     requires = "tty"
   )]
   pub scrollback_lines: Option<usize>,
+  #[clap(
+    long = "theme",
+    help = "Path to a theme file to use for the TUI.",
+    value_parser = theme_file_cli_parser,
+  )]
+  /// Tri-state source of theme file path: unset, CLI, or config.
+  pub theme_file: Option<ThemeFileValue>,
+  #[clap(skip)]
+  pub theme: Option<Box<crate::cli::tui_theme::ThemeSpec>>,
   #[clap(skip)]
   pub keys: Option<Box<TuiKeyBindingsConfig>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ThemeFileValue {
+  Cli(PathBuf),
+  Config(PathBuf),
+}
+
+impl ThemeFileValue {
+  pub fn as_deref(&self) -> &Path {
+    match self {
+      Self::Cli(path) | Self::Config(path) => path.as_path(),
+    }
+  }
+
+  pub fn is_from_cli(&self) -> bool {
+    matches!(self, Self::Cli(_))
+  }
+}
+
+impl fmt::Display for ThemeFileValue {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      Self::Cli(path) | Self::Config(path) => write!(f, "{}", path.display()),
+    }
+  }
 }
 
 #[derive(Args, Debug, Default, Clone)]
@@ -525,6 +565,14 @@ impl TuiModeArgs {
     self.frame_rate = self.frame_rate.or(config.frame_rate);
     self.max_events = self.max_events.or(config.max_events);
     self.scrollback_lines = self.scrollback_lines.or(config.scrollback_lines);
+    if self.theme_file.is_none()
+      && let Some(path) = config.theme_file
+    {
+      self.theme_file = Some(ThemeFileValue::Config(path));
+    }
+    if self.theme.is_none() {
+      self.theme = config.theme.map(Box::new);
+    }
     self.follow |= config.follow.unwrap_or_default();
     if self.keys.is_none() {
       self.keys = config.keys.map(Box::new);
@@ -536,6 +584,14 @@ impl TuiModeArgs {
         _ => (),
       }
     }
+  }
+}
+
+fn theme_file_cli_parser(s: &str) -> Result<ThemeFileValue, String> {
+  if s.is_empty() {
+    Err("theme file path cannot be empty".to_string())
+  } else {
+    Ok(ThemeFileValue::Cli(PathBuf::from(s)))
   }
 }
 
@@ -874,6 +930,7 @@ mod tests {
     let cfg = TuiModeConfig {
       exit_handling: Some(ExitHandling::Kill),
       follow: Some(true),
+      theme_file: Some(PathBuf::from("high-contrast.toml")),
       ..Default::default()
     };
 
@@ -881,6 +938,76 @@ mod tests {
 
     assert!(args.kill_on_exit);
     assert!(args.follow);
+    assert_eq!(
+      args.theme_file,
+      Some(ThemeFileValue::Config(PathBuf::from("high-contrast.toml")))
+    );
+  }
+
+  #[test]
+  fn test_tui_merge_config_theme_file_from_cli() {
+    let mut args = TuiModeArgs {
+      theme_file: Some(ThemeFileValue::Cli(PathBuf::from("cli.toml"))),
+      ..Default::default()
+    };
+    let cfg = TuiModeConfig {
+      theme_file: Some(PathBuf::from("config.toml")),
+      ..Default::default()
+    };
+
+    args.merge_config(cfg);
+
+    // CLI value wins and keeps CLI provenance.
+    assert_eq!(
+      args.theme_file,
+      Some(ThemeFileValue::Cli(PathBuf::from("cli.toml")))
+    );
+  }
+
+  #[test]
+  fn test_tui_parse_theme_file_from_cli() {
+    let args = TestCli::<TuiModeArgs>::parse_from(["test", "--theme", "cli.toml"]).args;
+    assert_eq!(
+      args.theme_file,
+      Some(ThemeFileValue::Cli(PathBuf::from("cli.toml")))
+    );
+  }
+
+  #[test]
+  fn test_tui_parse_theme_file_unset_by_default() {
+    let args = TestCli::<TuiModeArgs>::parse_from(["test"]).args;
+    assert_eq!(args.theme_file, None);
+  }
+
+  #[test]
+  fn test_tui_merge_config_inline_theme() {
+    use crate::cli::tui_theme::{
+      StyleSpec,
+      ThemeColor,
+      ThemeSpec,
+    };
+    let mut args = TuiModeArgs::default();
+    let cfg = TuiModeConfig {
+      theme: Some(ThemeSpec {
+        app_title: Some(StyleSpec {
+          fg: Some(ThemeColor::Named("cyan".into())),
+          ..Default::default()
+        }),
+        ..Default::default()
+      }),
+      ..Default::default()
+    };
+
+    args.merge_config(cfg);
+
+    assert!(matches!(
+      args
+        .theme
+        .as_ref()
+        .and_then(|s| s.app_title.as_ref())
+        .and_then(|a| a.fg.as_ref()),
+      Some(ThemeColor::Named(s)) if s == "cyan"
+    ));
   }
 
   #[test]

@@ -39,6 +39,7 @@ pub mod config;
 pub mod keys;
 pub mod options;
 pub mod theme;
+pub mod tui_theme;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about)]
@@ -379,6 +380,32 @@ mod tests {
       assert_eq!(cmd, vec!["bash"]);
       assert!(tui_args.tty);
       assert!(tui_args.follow);
+    } else {
+      panic!("Expected Tui command");
+    }
+  }
+
+  #[test]
+  fn test_cli_parse_tui_theme_file_cli_source() {
+    let args = vec![
+      "tracexec",
+      "--no-profile",
+      "tui",
+      "--theme",
+      "cli.toml",
+      "--",
+      "bash",
+    ];
+    let cli = Cli::parse_from(args);
+
+    assert!(cli.no_profile);
+    if let CliCommand::Tui { tui_args, .. } = cli.cmd {
+      assert_eq!(
+        tui_args.theme_file,
+        Some(crate::cli::args::ThemeFileValue::Cli(PathBuf::from(
+          "cli.toml"
+        )))
+      );
     } else {
       panic!("Expected Tui command");
     }

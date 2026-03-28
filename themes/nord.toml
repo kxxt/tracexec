@@ -1,0 +1,33 @@
+# Cool blue theme inspired by the Nord palette.
+
+[tui]
+inactive-border = { fg = "#4c566a" }
+active-border = { fg = "#88c0d0", modifiers = ["bold"] }
+app-title = { fg = "#eceff4" }
+help-popup = { fg = "#2e3440", bg = "#88c0d0" }
+cli-flag = { fg = "#2e3440", bg = "#81a1c1" }
+help-key = { fg = "#2e3440", bg = "#88c0d0" }
+help-desc = { fg = "#d8dee9", bg = "#3b4252", remove-modifiers = ["italic"] }
+pid-success = { fg = "#a3be8c" }
+pid-failure = { fg = "#bf616a" }
+pid-enoent = { fg = "#ebcb8b" }
+comm = { fg = "#88c0d0" }
+tracer-info = { fg = "#81a1c1" }
+tracer-warning = { fg = "#ebcb8b" }
+tracer-error = { fg = "#bf616a" }
+new-child-pid = { fg = "#8fbcbb" }
+tracer-event = { fg = "#b48ead" }
+filename = { fg = "#88c0d0" }
+cwd = { fg = "#8fbcbb" }
+modified-env-var = { fg = "#ebcb8b" }
+added-env-var = { fg = "#a3be8c" }
+query-match-current-no = { fg = "#88c0d0", modifiers = ["bold"] }
+query-match-total-cnt = { fg = "#d8dee9" }
+breakpoint-title-selected = { fg = "#2e3440", bg = "#81a1c1" }
+breakpoint-pattern = { fg = "#88c0d0" }
+breakpoint-info-value = { fg = "#2e3440", bg = "#8fbcbb" }
+hit-entry-breakpoint-pattern = { fg = "#88c0d0" }
+hit-manager-default-command = { fg = "#8fbcbb" }
+active-tab = { fg = "#2e3440", bg = "#81a1c1" }
+backtrace-parent-spawns = { content = " S ", fg = "#2e3440", bg = "#88c0d0", modifiers = ["bold"] }
+backtrace-parent-becomes = { content = " B ", fg = "#eceff4", bg = "#5e81ac", modifiers = ["bold"] }
