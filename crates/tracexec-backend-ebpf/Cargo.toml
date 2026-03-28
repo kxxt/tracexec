@@ -44,6 +44,7 @@ libbpf-cargo = { version = "0.26.1", default-features = false }
 [dev-dependencies]
 rusty-fork = { workspace = true }
 rstest = { workspace = true }
+serial_test = { workspace = true }
 
 [[bin]]
 name = "compat-exec"

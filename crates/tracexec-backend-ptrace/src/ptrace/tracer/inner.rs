@@ -532,7 +532,6 @@ impl TracerInner {
           let p = if former_tid == pid {
             let p = store.get_current_mut(pid).unwrap();
             assert!(!p.presyscall);
-            p.from_non_main_thread = false;
             p
           } else {
             trace!("exec from non-main thread: {former_tid}, pid: {pid}");
@@ -555,7 +554,6 @@ impl TracerInner {
             }
             assert!(!p.presyscall);
             // parent_tracker state is not transferred
-            p.from_non_main_thread = true;
             p
           };
 
@@ -875,6 +873,7 @@ impl TracerInner {
       };
       let has_dash_env = envp.as_ref().map(|v| v.0).unwrap_or_default();
       p.exec_data = Some(ExecData::new(
+        pid,
         filename,
         argv,
         envp.map(|v| v.1),
@@ -906,6 +905,7 @@ impl TracerInner {
       };
       let has_dash_env = envp.as_ref().map(|v| v.0).unwrap_or_default();
       p.exec_data = Some(ExecData::new(
+        pid,
         filename,
         argv,
         envp.map(|v| v.1),
@@ -1089,7 +1089,7 @@ impl TracerInner {
     };
     Box::new(ExecEvent {
       syscall,
-      from_non_main_thread: state.from_non_main_thread,
+      exec_pid: exec_data.exec_pid,
       timestamp,
       pid: state.pid,
       cwd: exec_data.cwd.clone(),

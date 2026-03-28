@@ -147,7 +147,7 @@ pub struct TracerEventMessage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecEvent {
   pub syscall: ExecSyscall,
-  pub from_non_main_thread: bool,
+  pub exec_pid: Pid,
   pub pid: Pid,
   pub cwd: OutputMsg,
   pub comm: ArcStr,
@@ -430,7 +430,7 @@ mod tests {
 
     let exec_event = ExecEvent {
       syscall: ExecSyscall::Execve,
-      from_non_main_thread: false,
+      exec_pid: Pid::from_raw(2),
       pid: Pid::from_raw(2),
       cwd: OutputMsg::Ok(ArcStr::from("/")),
       comm: ArcStr::from("comm"),

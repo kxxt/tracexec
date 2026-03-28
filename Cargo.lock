@@ -3142,6 +3142,7 @@ dependencies = [
  "procfs",
  "rstest",
  "rusty-fork",
+ "serial_test",
  "tokio",
  "tracexec-core",
  "tracing",

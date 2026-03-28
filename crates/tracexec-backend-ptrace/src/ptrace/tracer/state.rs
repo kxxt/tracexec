@@ -41,7 +41,6 @@ pub struct ProcessState {
   pub comm: ArcStr,
   pub presyscall: bool,
   pub is_exec_successful: bool,
-  pub from_non_main_thread: bool,
   pub syscall: Syscall,
   pub exec_data: Option<ExecData>,
   // Two kinds of parent: replace and fork.
@@ -99,7 +98,6 @@ impl ProcessState {
       comm: read_comm(pid)?,
       presyscall: true,
       is_exec_successful: false,
-      from_non_main_thread: false,
       syscall: Syscall::Other,
       exec_data: None,
       associated_events: Vec::new(),

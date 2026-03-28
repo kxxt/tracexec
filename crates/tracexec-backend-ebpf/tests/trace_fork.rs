@@ -16,6 +16,7 @@ use rstest::{
   fixture,
   rstest,
 };
+use serial_test::file_serial;
 use tracexec_backend_ebpf::bpf::skel::types::{
   event_type,
   fork_event,
@@ -87,6 +88,7 @@ fn run_fork_and_capture(
 }
 
 #[rstest]
+#[file_serial(bpf)]
 #[ignore = "root"]
 fn test_trace_fork_emits_fork_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
   with_skel(prepare_trace_fork_only, |skel| {
