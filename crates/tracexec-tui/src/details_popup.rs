@@ -198,7 +198,7 @@ impl DetailsPopupState {
           },
         ),
         (
-          " Real GID / Effective GID / Saved UID / FS UID ",
+          " Real GID / Effective GID / Saved GID / FS GID ",
           match &exec.cred {
             Ok(cred) => {
               let mut map = HashMap::new();

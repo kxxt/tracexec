@@ -20,7 +20,7 @@ Buffer {
         "0 (Success)                                                                    ║",
         " Real UID / Effective UID / Saved UID / FS UID                                 ║",
         "root(0) / root(0) / root(0) / root(0)                                          ║",
-        " Real GID / Effective GID / Saved UID / FS UID                                 ║",
+        " Real GID / Effective GID / Saved GID / FS GID                                 ║",
         "root(0) / root(0) / root(0) / root(0)                                          ▼",
         "────────────────────────────────────────────────────────────────────────────────",
     ],
