@@ -140,6 +140,15 @@ impl DetailsPopupState {
     {
       details.extend([
         (" Pid ", Line::from(exec.pid.to_string())),
+        (" Exec Syscall ", Line::from(exec.syscall.to_string())),
+        (
+          " Exec From Non-main Thread ",
+          Line::from(if exec.from_non_main_thread {
+            "yes"
+          } else {
+            "no"
+          }),
+        ),
         (" Syscall Result ", {
           if exec.result == 0 {
             "0 (Success)".set_style(THEME.exec_result_success).into()
@@ -816,6 +825,7 @@ mod tests {
     cli::args::ModifierArgs,
     event::{
       ExecEvent,
+      ExecSyscall,
       OutputMsg,
       TracerEventDetails,
     },
@@ -848,6 +858,8 @@ mod tests {
 
   fn exec_event() -> ExecEvent {
     ExecEvent {
+      syscall: ExecSyscall::Execve,
+      from_non_main_thread: false,
       pid: Pid::from_raw(4242),
       cwd: OutputMsg::Ok("cwd".into()),
       comm: ArcStr::from("comm"),
@@ -884,6 +896,32 @@ mod tests {
     };
     let mut state = DetailsPopupState::new(&event, &list);
     let area = test_area_full(80, 18);
+    let rendered = test_render_stateful_widget_area(DetailsPopup::new(false), area, &mut state);
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn snapshot_details_popup_execveat_non_main_thread() {
+    let list = EventList::new(
+      baseline_for_tests(),
+      false,
+      ModifierArgs::default(),
+      1024,
+      false,
+      false,
+      true,
+    );
+    let mut event = exec_event();
+    event.syscall = ExecSyscall::Execveat;
+    event.from_non_main_thread = true;
+    let event = super::Event {
+      details: Arc::new(TracerEventDetails::Exec(Box::new(event))),
+      status: Some(tracexec_core::event::EventStatus::ProcessRunning),
+      elapsed: None,
+      id: tracexec_core::event::EventId::new(1),
+    };
+    let mut state = DetailsPopupState::new(&event, &list);
+    let area = test_area_full(90, 80);
     let rendered = test_render_stateful_widget_area(DetailsPopup::new(false), area, &mut state);
     assert_snapshot!(rendered);
   }

@@ -6,10 +6,7 @@ use std::{
   sync::Arc,
 };
 
-use nix::{
-  libc,
-  sys::signal::Signal as NixSignal,
-};
+use nix::sys::signal::Signal as NixSignal;
 use rstest::{
   fixture,
   rstest,
@@ -25,6 +22,7 @@ use tracexec_core::{
     options::SeccompBpf,
   },
   event::{
+    ExecSyscall,
     OutputMsg,
     TracerEvent,
     TracerEventDetails,
@@ -364,56 +362,125 @@ async fn tracer_handles_execveat_syscall(
           OutputMsg::Ok("true".into())
         ]
       );
+      assert_eq!(exec.syscall, ExecSyscall::Execveat);
       return;
     }
   }
   panic!("Corresponding exec event (execveat) not found");
 }
 
+#[traced_test]
+#[rstest]
+#[file_serial]
+#[tokio::test]
+async fn tracer_marks_exec_from_non_main_thread(
+  #[with(Default::default())] tracer: TracerFixture,
+  sh_executable: PathBuf,
+) {
+  let (tracer, rx, req_rx) = tracer;
+  let sh_executable = sh_executable.to_string_lossy().to_string();
+  let events = run_exe_and_collect_msgs(
+    tracer,
+    rx,
+    req_rx,
+    vec![
+      "/proc/self/exe".to_string(),
+      "--ignored".to_string(),
+      "ptrace_execveat_non_main_thread_helper".to_string(),
+    ],
+  )
+  .await;
+
+  for event in events {
+    if let TracerMessage::Event(TracerEvent {
+      details: TracerEventDetails::Exec(exec),
+      ..
+    }) = event
+    {
+      let OutputMsg::Ok(filename) = exec.filename else {
+        continue;
+      };
+      if filename != sh_executable {
+        continue;
+      }
+      assert_eq!(exec.syscall, ExecSyscall::Execveat);
+      assert!(exec.from_non_main_thread);
+      return;
+    }
+  }
+  panic!("Corresponding exec event (execveat in non-main thread) not found");
+}
+
 #[test]
 #[ignore]
+#[allow(unreachable_code)]
 fn ptrace_execveat_helper() {
   let sh_path = find_executable("sh");
-  let sh_dir = sh_path.parent().expect("sh has no parent directory");
+  let sh_dir = sh_path
+    .parent()
+    .expect("sh has no parent directory")
+    .to_path_buf();
   let sh_name = sh_path
     .file_name()
     .expect("sh has no file name")
     .to_os_string();
 
-  let dir_c = CString::new(sh_dir.as_os_str().as_bytes()).unwrap();
   let name_c = CString::new(sh_name.as_os_str().as_bytes()).unwrap();
 
-  let dirfd = unsafe { libc::open(dir_c.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY) };
-  assert!(
-    dirfd >= 0,
-    "open dir failed: {}",
-    std::io::Error::last_os_error()
-  );
+  let dirfd = nix::fcntl::open(
+    &sh_dir,
+    nix::fcntl::OFlag::O_RDONLY | nix::fcntl::OFlag::O_DIRECTORY,
+    nix::sys::stat::Mode::empty(),
+  )
+  .unwrap();
 
-  let arg0 = CString::new("sh").unwrap();
-  let arg1 = CString::new("-c").unwrap();
-  let arg2 = CString::new("true").unwrap();
-  let argv = [
-    arg0.as_ptr(),
-    arg1.as_ptr(),
-    arg2.as_ptr(),
-    std::ptr::null(),
-  ];
-  let envp: [*const libc::c_char; 1] = [std::ptr::null()];
+  nix::unistd::execveat(
+    dirfd,
+    &name_c,
+    &[c"sh", c"-c", c"true"],
+    &[c"A=B"],
+    nix::fcntl::AtFlags::empty(),
+  )
+  .unwrap();
 
-  let ret = unsafe {
-    libc::syscall(
-      libc::SYS_execveat,
-      dirfd,
-      name_c.as_ptr(),
-      argv.as_ptr(),
-      envp.as_ptr(),
-      0,
+  panic!("execveat in thread failed");
+}
+
+#[test]
+#[ignore]
+fn ptrace_execveat_non_main_thread_helper() {
+  let sh_path = find_executable("sh");
+  let sh_dir = sh_path
+    .parent()
+    .expect("sh has no parent directory")
+    .to_path_buf();
+  let sh_name = sh_path
+    .file_name()
+    .expect("sh has no file name")
+    .to_os_string();
+
+  let join = std::thread::spawn(move || {
+    let name_c = CString::new(sh_name.as_os_str().as_bytes()).unwrap();
+
+    let dirfd = nix::fcntl::open(
+      &sh_dir,
+      nix::fcntl::OFlag::O_RDONLY | nix::fcntl::OFlag::O_DIRECTORY,
+      nix::sys::stat::Mode::empty(),
     )
-  };
-  let errno = std::io::Error::last_os_error();
-  unsafe {
-    libc::close(dirfd);
-  }
-  panic!("execveat failed (ret={ret}): {errno}");
+    .unwrap();
+
+    nix::unistd::execveat(
+      dirfd,
+      &name_c,
+      &[c"sh", c"-c", c"true"],
+      &[c"A=B"],
+      nix::fcntl::AtFlags::empty(),
+    )
+    .unwrap();
+
+    panic!("execveat in thread failed");
+  });
+
+  let _ = join.join();
+  panic!("execveat from non-main thread did not replace process image");
 }

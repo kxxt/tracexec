@@ -70,6 +70,7 @@ use tracexec_core::{
   cmdbuilder::CommandBuilder,
   event::{
     ExecEvent,
+    ExecSyscall,
     FilterableTracerEventDetails,
     OutputMsg,
     ProcessStateUpdate,
@@ -293,6 +294,12 @@ impl EbpfTracer {
               )
               .unwrap();
             if self.filter.intersects(TracerEventDetailsKind::Exec) {
+              let is_execveat = unsafe { event.is_execveat.assume_init() };
+              let syscall = if is_execveat {
+                ExecSyscall::Execveat
+              } else {
+                ExecSyscall::Execve
+              };
               let id = TracerEvent::allocate_id();
               debug!(
                 "Looking up parent tracker for {} (follow_forks={follow_forks})",
@@ -335,6 +342,9 @@ impl EbpfTracer {
               let parent_tracker = tracker.parent_tracker_mut(tgid).unwrap();
               let parent = parent_tracker.update_last_exec(id, event.ret == 0);
               let event = TracerEventDetails::Exec(Box::new(ExecEvent {
+                syscall,
+                // Note: TODO: is this captured from syscall entry
+                from_non_main_thread: header.pid != event.tgid,
                 timestamp: exec_data.timestamp,
                 pid: tgid,
                 cwd: exec_data.cwd.clone(),
@@ -911,7 +921,11 @@ mod tests {
     for event in events {
       if let TracerMessage::Event(TracerEvent { details, .. }) = event {
         match details {
-          TracerEventDetails::Exec(_) => saw_exec = true,
+          TracerEventDetails::Exec(exec) => {
+            saw_exec = true;
+            assert_eq!(exec.syscall, ExecSyscall::Execve);
+            assert!(!exec.from_non_main_thread);
+          }
           TracerEventDetails::TraceeExit { .. } => saw_exit = true,
           _ => {}
         }
