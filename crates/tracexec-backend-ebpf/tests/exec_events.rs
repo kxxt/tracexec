@@ -320,8 +320,11 @@ fn run_exec_and_collect_aux(
 fn test_execve_kprobe_kretprobe_emits_exec_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
   with_skel(prepare_execve_kprobe_kretprobe, |skel| {
     let capture = run_exec_and_capture(skel, &sh_executable, Duration::from_secs(2))?;
+    let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
     assert_eq!(capture.event.header.pid, capture.pid);
+    assert!(!is_execveat);
+    assert_eq!(capture.event.header.pid, capture.event.tgid);
     assert_eq!(capture.event.ret, 0);
     Ok(())
   })
@@ -332,8 +335,11 @@ fn test_execve_kprobe_kretprobe_emits_exec_event(sh_executable: PathBuf) -> colo
 fn test_execve_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
   with_skel(prepare_execve_fentry_fexit, |skel| {
     let capture = run_exec_and_capture(skel, &sh_executable, Duration::from_secs(2))?;
+    let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
     assert_eq!(capture.event.header.pid, capture.pid);
+    assert!(!is_execveat);
+    assert_eq!(capture.event.header.pid, capture.event.tgid);
     assert_eq!(capture.event.ret, 0);
     Ok(())
   })
@@ -346,8 +352,11 @@ fn test_execveat_kprobe_kretprobe_emits_exec_event(
 ) -> color_eyre::Result<()> {
   with_skel(prepare_execveat_kprobe_kretprobe, |skel| {
     let capture = run_execveat_and_capture(skel, &sh_executable, Duration::from_secs(2))?;
+    let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
     assert_eq!(capture.event.header.pid, capture.pid);
+    assert!(is_execveat);
+    assert_eq!(capture.event.header.pid, capture.event.tgid);
     assert_eq!(capture.event.ret, 0);
     Ok(())
   })
@@ -358,8 +367,11 @@ fn test_execveat_kprobe_kretprobe_emits_exec_event(
 fn test_execveat_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
   with_skel(prepare_execveat_fentry_fexit, |skel| {
     let capture = run_execveat_and_capture(skel, &sh_executable, Duration::from_secs(2))?;
+    let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
     assert_eq!(capture.event.header.pid, capture.pid);
+    assert!(is_execveat);
+    assert_eq!(capture.event.header.pid, capture.event.tgid);
     assert_eq!(capture.event.ret, 0);
     Ok(())
   })

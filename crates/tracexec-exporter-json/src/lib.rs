@@ -164,6 +164,8 @@ impl<T: Serialize + Clone> JsonResult<T> {
 pub struct JsonExecEvent {
   pub id: EventId,
   pub pid: pid_t,
+  pub syscall: String,
+  pub from_non_main_thread: bool,
   pub cwd: OutputMsg,
   pub comm_before_exec: ArcStr,
   pub result: i64,
@@ -186,6 +188,8 @@ impl JsonExecEvent {
     Self {
       id,
       pid: event.pid.as_raw(),
+      syscall: event.syscall.to_string(),
+      from_non_main_thread: event.from_non_main_thread,
       cwd: event.cwd,
       comm_before_exec: event.comm,
       result: event.result,
@@ -263,6 +267,7 @@ mod tests {
     event::{
       EventId,
       ExecEvent,
+      ExecSyscall,
       OutputMsg,
       TracerEvent,
       TracerEventDetails,
@@ -304,6 +309,8 @@ mod tests {
 
   fn make_exec_event(pid: i32, filename: &str, result: i64) -> ExecEvent {
     ExecEvent {
+      syscall: ExecSyscall::Execve,
+      from_non_main_thread: false,
       pid: Pid::from_raw(pid),
       cwd: OutputMsg::from(cached_str("/tmp")),
       comm: cached_str("cmd"),

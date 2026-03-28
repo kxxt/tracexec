@@ -85,6 +85,7 @@ use tracexec_core::{
   cmdbuilder::CommandBuilder,
   event::{
     ExecEvent,
+    ExecSyscall,
     OutputMsg,
     ParentEventId,
     ProcessStateUpdate,
@@ -531,6 +532,7 @@ impl TracerInner {
           let p = if former_tid == pid {
             let p = store.get_current_mut(pid).unwrap();
             assert!(!p.presyscall);
+            p.from_non_main_thread = false;
             p
           } else {
             trace!("exec from non-main thread: {former_tid}, pid: {pid}");
@@ -553,6 +555,7 @@ impl TracerInner {
             }
             assert!(!p.presyscall);
             // parent_tracker state is not transferred
+            p.from_non_main_thread = true;
             p
           };
 
@@ -1079,7 +1082,14 @@ impl TracerInner {
     parent: Option<ParentEventId>,
   ) -> Box<ExecEvent> {
     let exec_data = state.exec_data.as_ref().unwrap();
+    let syscall = match state.syscall {
+      Syscall::Execve => ExecSyscall::Execve,
+      Syscall::Execveat => ExecSyscall::Execveat,
+      Syscall::Other => unreachable!("collect_exec_event called for non-exec syscall"),
+    };
     Box::new(ExecEvent {
+      syscall,
+      from_non_main_thread: state.from_non_main_thread,
       timestamp,
       pid: state.pid,
       cwd: exec_data.cwd.clone(),

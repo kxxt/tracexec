@@ -146,6 +146,8 @@ pub struct TracerEventMessage {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecEvent {
+  pub syscall: ExecSyscall,
+  pub from_non_main_thread: bool,
   pub pid: Pid,
   pub cwd: OutputMsg,
   pub comm: ArcStr,
@@ -161,6 +163,13 @@ pub struct ExecEvent {
   pub result: i64,
   pub timestamp: Timestamp,
   pub parent: Option<ParentEventId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
+#[strum(serialize_all = "lowercase")]
+pub enum ExecSyscall {
+  Execve,
+  Execveat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -420,6 +429,8 @@ mod tests {
     assert_eq!(info_detail.timestamp(), msg.timestamp);
 
     let exec_event = ExecEvent {
+      syscall: ExecSyscall::Execve,
+      from_non_main_thread: false,
       pid: Pid::from_raw(2),
       cwd: OutputMsg::Ok(ArcStr::from("/")),
       comm: ArcStr::from("comm"),
@@ -488,6 +499,12 @@ mod tests {
     assert_eq!(exit.termination_timestamp(), Some(ts));
     assert_eq!(detached.termination_timestamp(), Some(ts));
     assert_eq!(resumed.termination_timestamp(), None);
+  }
+
+  #[test]
+  fn test_exec_syscall_display() {
+    assert_eq!(ExecSyscall::Execve.to_string(), "execve");
+    assert_eq!(ExecSyscall::Execveat.to_string(), "execveat");
   }
 
   #[test]

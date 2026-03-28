@@ -187,6 +187,7 @@ mod tests {
     event::{
       EventId,
       ExecEvent,
+      ExecSyscall,
       OutputMsg,
       ParentEventId,
       TracerEventDetails,
@@ -220,6 +221,8 @@ mod tests {
 
   fn exec_event(pid: i32, parent: Option<ParentEventId>) -> ExecEvent {
     ExecEvent {
+      syscall: ExecSyscall::Execve,
+      from_non_main_thread: false,
       pid: Pid::from_raw(pid),
       cwd: OutputMsg::Ok("cwd".into()),
       comm: ArcStr::from("comm"),
