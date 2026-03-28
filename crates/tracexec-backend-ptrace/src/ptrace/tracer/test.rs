@@ -363,6 +363,7 @@ async fn tracer_handles_execveat_syscall(
         ]
       );
       assert_eq!(exec.syscall, ExecSyscall::Execveat);
+      assert_ne!(exec.exec_pid.as_raw(), 0);
       return;
     }
   }
@@ -404,7 +405,7 @@ async fn tracer_marks_exec_from_non_main_thread(
         continue;
       }
       assert_eq!(exec.syscall, ExecSyscall::Execveat);
-      assert!(exec.from_non_main_thread);
+      assert_ne!(exec.exec_pid, exec.pid);
       return;
     }
   }

@@ -141,14 +141,18 @@ impl DetailsPopupState {
       details.extend([
         (" Pid ", Line::from(exec.pid.to_string())),
         (" Exec Syscall ", Line::from(exec.syscall.to_string())),
-        (
-          " Exec From Non-main Thread ",
-          Line::from(if exec.from_non_main_thread {
-            "yes"
+        (" Exec Pid ", {
+          if exec.exec_pid != exec.pid {
+            vec![
+              exec.exec_pid.to_string().into(),
+              " ".into(),
+              "(non-main thread)".set_style(THEME.tracer_warning),
+            ]
+            .into()
           } else {
-            "no"
-          }),
-        ),
+            exec.exec_pid.to_string().into()
+          }
+        }),
         (" Syscall Result ", {
           if exec.result == 0 {
             "0 (Success)".set_style(THEME.exec_result_success).into()
@@ -859,7 +863,7 @@ mod tests {
   fn exec_event() -> ExecEvent {
     ExecEvent {
       syscall: ExecSyscall::Execve,
-      from_non_main_thread: false,
+      exec_pid: Pid::from_raw(4242),
       pid: Pid::from_raw(4242),
       cwd: OutputMsg::Ok("cwd".into()),
       comm: ArcStr::from("comm"),
@@ -913,7 +917,7 @@ mod tests {
     );
     let mut event = exec_event();
     event.syscall = ExecSyscall::Execveat;
-    event.from_non_main_thread = true;
+    event.exec_pid = Pid::from_raw(5001);
     let event = super::Event {
       details: Arc::new(TracerEventDetails::Exec(Box::new(event))),
       status: Some(tracexec_core::event::EventStatus::ProcessRunning),

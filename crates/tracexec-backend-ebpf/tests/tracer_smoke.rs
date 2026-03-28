@@ -8,6 +8,7 @@ use std::{
 };
 
 use enumflags2::BitFlags;
+use serial_test::file_serial;
 use tokio::sync::mpsc::UnboundedSender;
 use tracexec_backend_ebpf::tracer::BuildEbpfTracer;
 use tracexec_core::{
@@ -72,6 +73,7 @@ fn build_tracer(
 }
 
 #[test]
+#[file_serial(bpf)]
 #[ignore = "root"]
 fn test_tracer_spawn_runs_to_exit() -> color_eyre::Result<()> {
   let tracer = build_tracer(BitFlags::all(), None)?;
@@ -85,6 +87,7 @@ fn test_tracer_spawn_runs_to_exit() -> color_eyre::Result<()> {
 }
 
 #[test]
+#[file_serial(bpf)]
 #[ignore = "root"]
 fn test_tracer_spawn_emits_tracee_exit() -> color_eyre::Result<()> {
   let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();

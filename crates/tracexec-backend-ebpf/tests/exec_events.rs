@@ -15,17 +15,21 @@ use std::{
 
 use libbpf_rs::RingBufferBuilder;
 use nix::{
-  libc,
   sys::wait::{
     WaitStatus,
     waitpid,
   },
-  unistd::Pid,
+  unistd::{
+    ForkResult,
+    Pid,
+    fork,
+  },
 };
 use rstest::{
   fixture,
   rstest,
 };
+use serial_test::file_serial;
 use tracexec_backend_ebpf::{
   bpf::{
     interface::BpfEventFlags,
@@ -153,36 +157,39 @@ fn run_execveat_and_capture(
 
   let mut rb_builder = RingBufferBuilder::new();
   let slot = Arc::clone(&event_slot);
-  let exe_c = CString::new(exe.as_os_str().as_bytes()).unwrap();
-  let arg0 = CString::new("sh").unwrap();
-  let arg1 = CString::new("-c").unwrap();
-  let arg2 = CString::new("true").unwrap();
-
-  let child_pid = unsafe { libc::fork() };
-  if child_pid == 0 {
-    let argv = [
-      arg0.as_ptr(),
-      arg1.as_ptr(),
-      arg2.as_ptr(),
-      std::ptr::null(),
-    ];
-    let envp: [*const libc::c_char; 1] = [std::ptr::null()];
-    let ret = unsafe {
-      libc::syscall(
-        libc::SYS_execveat,
-        libc::AT_FDCWD,
-        exe_c.as_ptr(),
-        argv.as_ptr(),
-        envp.as_ptr(),
-        0,
+  let sh_path = exe.clone();
+  let sh_dir = sh_path
+    .parent()
+    .expect("sh has no parent directory")
+    .to_path_buf();
+  let sh_name = sh_path
+    .file_name()
+    .expect("sh has no file name")
+    .to_os_string();
+  // SAFETY: this test forks and immediately execs/waits without sharing mutable state.
+  let child_pid = match unsafe { fork()? } {
+    ForkResult::Child => {
+      let name_c = CString::new(sh_name.as_os_str().as_bytes()).unwrap();
+      let dirfd = nix::fcntl::open(
+        &sh_dir,
+        nix::fcntl::OFlag::O_RDONLY | nix::fcntl::OFlag::O_DIRECTORY,
+        nix::sys::stat::Mode::empty(),
       )
-    };
-    unsafe { libc::_exit(ret as i32) };
-  }
-  if child_pid < 0 {
-    return Err(color_eyre::eyre::eyre!("fork failed"));
-  }
-  let child_pid = child_pid as i32;
+      .unwrap();
+
+      match nix::unistd::execveat(
+        dirfd,
+        &name_c,
+        &[c"sh", c"-c", c"true"],
+        &[c"A=B"],
+        nix::fcntl::AtFlags::empty(),
+      ) {
+        Ok(never) => match never {},
+        Err(e) => panic!("execveat failed in child: {e}"),
+      }
+    }
+    ForkResult::Parent { child } => child.as_raw(),
+  };
 
   rb_builder.add(&skel.maps.events, move |data| {
     if data.len() == std::mem::size_of::<exec_event>() {
@@ -197,9 +204,8 @@ fn run_execveat_and_capture(
   })?;
   let rb = rb_builder.build()?;
 
-  let child_pid = Pid::from_raw(child_pid);
-  let status = waitpid(Some(child_pid), None).unwrap();
-  assert_eq!(status, WaitStatus::Exited(child_pid, 0));
+  let status = waitpid(Pid::from_raw(child_pid), None)?;
+  assert_eq!(status, WaitStatus::Exited(Pid::from_raw(child_pid), 0));
 
   let start = Instant::now();
   while start.elapsed() < timeout {
@@ -214,7 +220,94 @@ fn run_execveat_and_capture(
     .unwrap()
     .expect("missing exec event for child");
   Ok(ExecCapture {
-    pid: child_pid.as_raw(),
+    pid: child_pid,
+    event,
+  })
+}
+
+fn run_execveat_in_thread_and_capture(
+  skel: &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
+  exe: &PathBuf,
+  timeout: Duration,
+) -> color_eyre::Result<ExecCapture> {
+  let event_slot: Arc<Mutex<Option<exec_event>>> = Arc::new(Mutex::new(None));
+
+  let mut rb_builder = RingBufferBuilder::new();
+  let slot = Arc::clone(&event_slot);
+  let sh_path = exe.clone();
+  let sh_dir = sh_path
+    .parent()
+    .expect("sh has no parent directory")
+    .to_path_buf();
+  let sh_name = sh_path
+    .file_name()
+    .expect("sh has no file name")
+    .to_os_string();
+
+  // SAFETY: this test forks and immediately coordinates an exec path in child.
+  let child_pid = match unsafe { fork()? } {
+    ForkResult::Child => {
+      let join = std::thread::spawn(move || {
+        let name_c = CString::new(sh_name.as_os_str().as_bytes()).unwrap();
+
+        let dirfd = nix::fcntl::open(
+          &sh_dir,
+          nix::fcntl::OFlag::O_RDONLY | nix::fcntl::OFlag::O_DIRECTORY,
+          nix::sys::stat::Mode::empty(),
+        )
+        .unwrap();
+
+        nix::unistd::execveat(
+          dirfd,
+          &name_c,
+          &[c"sh", c"-c", c"true"],
+          &[c"A=B"],
+          nix::fcntl::AtFlags::empty(),
+        )
+        .unwrap();
+
+        unreachable!("execveat helper thread should not return");
+      });
+
+      let _ = join.join();
+      panic!("execveat from non-main thread did not replace process image");
+    }
+    ForkResult::Parent { child } => child.as_raw(),
+  };
+
+  rb_builder.add(&skel.maps.events, move |data| {
+    if data.len() == std::mem::size_of::<exec_event>() {
+      // SAFETY: exec_event is a plain old data struct produced by the eBPF program.
+      //         bpf ringbuf sample is 8 byte aligned.
+      let evt = unsafe { std::ptr::read(data.as_ptr() as *const exec_event) };
+      if evt.tgid == child_pid
+        && evt.header.r#type == event_type::SYSEXIT_EVENT
+        && evt.header.pid != evt.tgid
+      {
+        *slot.lock().unwrap() = Some(evt);
+      }
+    }
+    0
+  })?;
+  let rb = rb_builder.build()?;
+
+  let status = waitpid(Pid::from_raw(child_pid), None)?;
+  assert_eq!(status, WaitStatus::Exited(Pid::from_raw(child_pid), 0));
+
+  let start = Instant::now();
+  while start.elapsed() < timeout {
+    rb.poll(Duration::from_millis(50))?;
+    if event_slot.lock().unwrap().is_some() {
+      break;
+    }
+  }
+
+  let event = event_slot
+    .lock()
+    .unwrap()
+    .expect("missing non-main-thread exec event for child");
+  Ok(ExecCapture {
+    pid: child_pid,
     event,
   })
 }
@@ -316,6 +409,7 @@ fn run_exec_and_collect_aux(
 }
 
 #[rstest]
+#[file_serial(bpf)]
 #[ignore = "root"]
 fn test_execve_kprobe_kretprobe_emits_exec_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
   with_skel(prepare_execve_kprobe_kretprobe, |skel| {
@@ -331,10 +425,11 @@ fn test_execve_kprobe_kretprobe_emits_exec_event(sh_executable: PathBuf) -> colo
 }
 
 #[rstest]
+#[file_serial(bpf)]
 #[ignore = "root"]
 fn test_execve_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
   with_skel(prepare_execve_fentry_fexit, |skel| {
-    let capture = run_exec_and_capture(skel, &sh_executable, Duration::from_secs(2))?;
+    let capture = run_exec_and_capture(skel, &sh_executable, Duration::from_secs(4))?;
     let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
     assert_eq!(capture.event.header.pid, capture.pid);
@@ -346,12 +441,13 @@ fn test_execve_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_ey
 }
 
 #[rstest]
+#[file_serial(bpf)]
 #[ignore = "root"]
 fn test_execveat_kprobe_kretprobe_emits_exec_event(
   sh_executable: PathBuf,
 ) -> color_eyre::Result<()> {
   with_skel(prepare_execveat_kprobe_kretprobe, |skel| {
-    let capture = run_execveat_and_capture(skel, &sh_executable, Duration::from_secs(2))?;
+    let capture = run_execveat_and_capture(skel, &sh_executable, Duration::from_secs(4))?;
     let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
     assert_eq!(capture.event.header.pid, capture.pid);
@@ -363,15 +459,34 @@ fn test_execveat_kprobe_kretprobe_emits_exec_event(
 }
 
 #[rstest]
+#[file_serial(bpf)]
 #[ignore = "root"]
 fn test_execveat_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
   with_skel(prepare_execveat_fentry_fexit, |skel| {
-    let capture = run_execveat_and_capture(skel, &sh_executable, Duration::from_secs(2))?;
+    let capture = run_execveat_and_capture(skel, &sh_executable, Duration::from_secs(4))?;
     let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
     assert_eq!(capture.event.header.pid, capture.pid);
     assert!(is_execveat);
     assert_eq!(capture.event.header.pid, capture.event.tgid);
+    assert_eq!(capture.event.ret, 0);
+    Ok(())
+  })
+}
+
+#[rstest]
+#[file_serial(bpf)]
+#[ignore = "root"]
+fn test_execveat_from_non_main_thread_emits_non_main_exec_pid(
+  sh_executable: PathBuf,
+) -> color_eyre::Result<()> {
+  with_skel(prepare_execveat_kprobe_kretprobe, |skel| {
+    let capture = run_execveat_in_thread_and_capture(skel, &sh_executable, Duration::from_secs(4))?;
+    let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
+    assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
+    assert!(is_execveat);
+    assert_eq!(capture.event.tgid, capture.pid);
+    assert_ne!(capture.event.header.pid, capture.event.tgid);
     assert_eq!(capture.event.ret, 0);
     Ok(())
   })
@@ -379,12 +494,13 @@ fn test_execveat_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_
 
 #[cfg(target_arch = "x86_64")]
 #[rstest]
+#[file_serial(bpf)]
 #[ignore = "root"]
 fn test_compat_execve_emits_exec_event() -> color_eyre::Result<()> {
   use bpf_test_utils::prepare_compat_execve;
   let bin = PathBuf::from(env!("CARGO_BIN_EXE_compat-exec"));
   with_skel(prepare_compat_execve, |skel| {
-    let capture = run_binary_and_capture(skel, &bin, &[], Duration::from_secs(2))?;
+    let capture = run_binary_and_capture(skel, &bin, &[], Duration::from_secs(4))?;
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
     assert_eq!(capture.event.header.pid, capture.pid);
     assert_eq!(capture.event.ret, 0);
@@ -394,12 +510,13 @@ fn test_compat_execve_emits_exec_event() -> color_eyre::Result<()> {
 
 #[cfg(target_arch = "x86_64")]
 #[rstest]
+#[file_serial(bpf)]
 #[ignore = "root"]
 fn test_compat_execveat_emits_exec_event() -> color_eyre::Result<()> {
   use bpf_test_utils::prepare_compat_execveat;
   let bin = PathBuf::from(env!("CARGO_BIN_EXE_compat-exec"));
   with_skel(prepare_compat_execveat, |skel| {
-    let capture = run_binary_and_capture(skel, &bin, &["execveat"], Duration::from_secs(2))?;
+    let capture = run_binary_and_capture(skel, &bin, &["execveat"], Duration::from_secs(4))?;
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
     assert_eq!(capture.event.header.pid, capture.pid);
     assert_eq!(capture.event.ret, 0);
@@ -408,10 +525,11 @@ fn test_compat_execveat_emits_exec_event() -> color_eyre::Result<()> {
 }
 
 #[rstest]
+#[file_serial(bpf)]
 #[ignore = "root"]
 fn test_exec_emits_auxiliary_events(sh_executable: PathBuf) -> color_eyre::Result<()> {
   with_skel(prepare_execve_kprobe_kretprobe, |skel| {
-    let capture = run_exec_and_collect_aux(skel, &sh_executable, Duration::from_secs(2))?;
+    let capture = run_exec_and_collect_aux(skel, &sh_executable, Duration::from_secs(4))?;
     assert_eq!(capture.exec.header.r#type, event_type::SYSEXIT_EVENT);
     assert_eq!(capture.exec.header.pid, capture.pid);
     assert_eq!(capture.exec.ret, 0);

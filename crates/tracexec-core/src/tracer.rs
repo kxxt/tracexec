@@ -15,7 +15,10 @@ use nix::{
     SIGRTMIN,
     c_int,
   },
-  unistd::User,
+  unistd::{
+    Pid,
+    User,
+  },
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -212,6 +215,7 @@ impl TracerBuilder {
 
 #[derive(Debug)]
 pub struct ExecData {
+  pub exec_pid: Pid,
   pub filename: OutputMsg,
   pub argv: Arc<Result<Vec<OutputMsg>, InspectError>>,
   pub envp: Arc<Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>>,
@@ -226,6 +230,7 @@ pub struct ExecData {
 impl ExecData {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
+    exec_pid: Pid,
     filename: OutputMsg,
     argv: Result<Vec<OutputMsg>, InspectError>,
     envp: Result<BTreeMap<OutputMsg, OutputMsg>, InspectError>,
@@ -237,6 +242,7 @@ impl ExecData {
     timestamp: DateTime<Local>,
   ) -> Self {
     Self {
+      exec_pid,
       filename,
       argv: Arc::new(argv),
       envp: Arc::new(envp),
@@ -370,6 +376,7 @@ mod tests {
     let timestamp = Local::now();
 
     let exec = ExecData::new(
+      Pid::from_raw(1234),
       filename.clone(),
       argv,
       envp,
@@ -381,6 +388,7 @@ mod tests {
       timestamp,
     );
 
+    assert_eq!(exec.exec_pid, Pid::from_raw(1234));
     assert_eq!(exec.filename, filename);
     assert_eq!(exec.cwd, cwd);
     assert!(exec.argv.is_ok());

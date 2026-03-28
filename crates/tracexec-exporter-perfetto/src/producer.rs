@@ -553,7 +553,7 @@ mod tests {
   ) -> ExecEvent {
     ExecEvent {
       syscall: ExecSyscall::Execve,
-      from_non_main_thread: false,
+      exec_pid: Pid::from_raw(pid),
       pid: Pid::from_raw(pid),
       cwd: OutputMsg::from(cached_str("/tmp")),
       comm: cached_str("cmd"),

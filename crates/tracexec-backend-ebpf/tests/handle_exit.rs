@@ -24,6 +24,7 @@ use rstest::{
   fixture,
   rstest,
 };
+use serial_test::file_serial;
 use tracexec_backend_ebpf::bpf::skel::{
   TracexecSystemSkel,
   types::{
@@ -159,6 +160,7 @@ fn run_killed_and_capture(
 }
 
 #[rstest]
+#[file_serial(bpf)]
 #[ignore = "root"]
 fn test_handle_exit_emits_exit_event_for_exit_codes(
   sh_executable: PathBuf,
@@ -177,6 +179,7 @@ fn test_handle_exit_emits_exit_event_for_exit_codes(
 }
 
 #[rstest]
+#[file_serial(bpf)]
 #[ignore = "root"]
 fn test_handle_exit_emits_multiple_events_in_sequence(
   sh_executable: PathBuf,
@@ -191,6 +194,7 @@ fn test_handle_exit_emits_multiple_events_in_sequence(
 }
 
 #[rstest]
+#[file_serial(bpf)]
 #[ignore = "root"]
 fn test_handle_exit_emits_signal_for_killed_tracee(
   sh_executable: PathBuf,

@@ -268,6 +268,7 @@ impl EbpfTracer {
             let filename = process_filename(base_filename, event, &cwd, &storage.fdinfo_map);
             let cred = process_cred(eflags, event, storage.groups);
             let exec_data = ExecData::new(
+              Pid::from_raw(header.pid),
               filename,
               argv,
               envp,
@@ -343,8 +344,8 @@ impl EbpfTracer {
               let parent = parent_tracker.update_last_exec(id, event.ret == 0);
               let event = TracerEventDetails::Exec(Box::new(ExecEvent {
                 syscall,
-                // Note: TODO: is this captured from syscall entry
-                from_non_main_thread: header.pid != event.tgid,
+                // header.pid is the thread id that entered execve/execveat.
+                exec_pid: Pid::from_raw(header.pid),
                 timestamp: exec_data.timestamp,
                 pid: tgid,
                 cwd: exec_data.cwd.clone(),
@@ -777,6 +778,7 @@ mod tests {
   };
 
   use enumflags2::BitFlags;
+  use serial_test::file_serial;
   use tokio::sync::mpsc::unbounded_channel;
   use tracexec_core::printer::{
     ColorLevel,
@@ -910,6 +912,7 @@ mod tests {
   }
 
   #[test]
+  #[file_serial(bpf)]
   #[ignore = "root"]
   fn ebpf_tracer_emits_exec_and_exit_events() {
     let true_path = find_in_path("true");
@@ -924,7 +927,7 @@ mod tests {
           TracerEventDetails::Exec(exec) => {
             saw_exec = true;
             assert_eq!(exec.syscall, ExecSyscall::Execve);
-            assert!(!exec.from_non_main_thread);
+            assert_eq!(exec.exec_pid, exec.pid);
           }
           TracerEventDetails::TraceeExit { .. } => saw_exit = true,
           _ => {}
@@ -936,6 +939,7 @@ mod tests {
   }
 
   #[test]
+  #[file_serial(bpf)]
   #[ignore = "root"]
   fn ebpf_tracer_reports_signal_exit() {
     let sh_path = find_in_path("sh");
