@@ -385,6 +385,7 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
   u64 tmp = bpf_get_current_pid_tgid();
   pid = (pid_t)tmp;
   tgid = tmp >> 32;
+  debug("sched_process_exit: pid=%d, tgid=%d", pid, tgid);
   // thread exit
   if (pid != tgid)
     return 0;
