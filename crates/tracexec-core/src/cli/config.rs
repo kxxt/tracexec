@@ -175,7 +175,7 @@ pub enum ExitHandling {
 }
 
 pub fn project_directory() -> Option<ProjectDirs> {
-  ProjectDirs::from("dev", "kxxt", env!("CARGO_PKG_NAME"))
+  ProjectDirs::from("dev", "kxxt", "tracexec")
 }
 
 #[cfg(test)]
