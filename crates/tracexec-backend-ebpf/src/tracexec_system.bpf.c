@@ -50,7 +50,7 @@ struct {
   __type(key, pid_t);
   // The value is useless. We just use this map as a hash set.
   __type(value, char);
-} tgid_closure SEC(".maps");
+} tracee_closure SEC(".maps");
 
 // To avoid data race, for every task, only a single BPF program should access
 // this map. Currently that program is the fentry of execve family syscalls.
@@ -121,7 +121,7 @@ static int read_strings(u32 index, struct reader_context *ctx);
 static int read_fds(struct exec_event *event);
 static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event, bool cloexec);
-static int add_tgid_to_closure(pid_t tgid);
+static int add_pid_to_closure(pid_t pid);
 static int read_send_path(const struct path *path,
                           struct tracexec_event_header *base_header,
                           s32 path_id, struct fd_event *fd_event);
@@ -143,7 +143,7 @@ bool should_trace(pid_t old_tgid) {
   if (!tracexec_config.follow_fork)
     return true;
   // Check if it is in the closure
-  void *ptr = bpf_map_lookup_elem(&tgid_closure, &old_tgid);
+  void *ptr = bpf_map_lookup_elem(&tracee_closure, &old_tgid);
   if (ptr != NULL)
     return true;
   // config.tracee_pid might not be in init pid ns,
@@ -193,7 +193,7 @@ bool should_trace(pid_t old_tgid) {
       ns_inum == tracexec_config.tracee_pidns_inum) {
     debug("TASK %d (%d in pidns %u) is tracee", old_tgid, pid_in_ns, ns_inum);
     // Add it to the closure to avoid hitting this slow path in the future
-    add_tgid_to_closure(old_tgid);
+    add_pid_to_closure(old_tgid);
     tracee_tgid = old_tgid;
     return true;
   }
@@ -342,15 +342,17 @@ int trace_fork(u64 *ctx) {
     debug("Failed to read child tgid of fork: %d", ret);
     return -EFAULT;
   }
-  if (pid != tgid)
-    return 0;
+
   ret = bpf_core_read(&parent_tgid, sizeof(parent_tgid), &parent->tgid);
   if (ret < 0) {
     debug("Failed to read parent tgid of fork: %d", ret);
     return -EFAULT;
   }
   if (should_trace(parent_tgid)) {
-    add_tgid_to_closure(pid);
+    add_pid_to_closure(pid);
+    // Don't send fork event for thread creation
+    if (pid != tgid)
+      return 0;
     u64 key = ((u64)FORK_EVENT << 32) + (u32)pid;
     ret = bpf_map_update_elem(&cache, &key, &cache_item_initializer, BPF_ANY);
     if (ret < 0) {
@@ -378,6 +380,34 @@ int trace_fork(u64 *ctx) {
   return 0;
 }
 
+SEC("tp_btf/sched_process_free")
+int handle_process_free(u64 *ctx) {
+  if (!tracexec_config.follow_fork)
+    return 0;
+  // DO NOT use bpf_get_current_pid_tgid() here as the task might be already dead and
+  // we might be in a different task context (usually idle process pid=0).
+  struct task_struct *dying = (struct task_struct *)ctx[0];
+  pid_t pid, tgid;
+
+  int ret = bpf_core_read(&pid, sizeof(pid), &dying->pid);
+  if (ret < 0) {
+    debug("Failed to read dying pid: %d", ret);
+    return -EFAULT;
+  }
+  ret = bpf_core_read(&tgid, sizeof(tgid), &dying->tgid);
+  if (ret < 0) {
+    debug("Failed to read dying tgid: %d", ret);
+    return -EFAULT;
+  }
+  debug("sched_process_free: pid=%d, tgid=%d", pid, tgid);
+  void *ptr = bpf_map_lookup_elem(&tracee_closure, &pid);
+  if (ptr == NULL)
+    return 0;
+  // remove pid from closure
+  bpf_map_delete_elem(&tracee_closure, &pid);
+  return 0;
+}
+
 SEC("tp/sched/sched_process_exit")
 int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
   u64 timestamp = bpf_ktime_get_boot_ns();
@@ -390,13 +420,11 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
   if (pid != tgid)
     return 0;
   // Not traced
-  void *ptr = bpf_map_lookup_elem(&tgid_closure, &tgid);
+  void *ptr = bpf_map_lookup_elem(&tracee_closure, &tgid);
   if (ptr == NULL && tracexec_config.follow_fork)
     return 0;
   struct task_struct *current = (void *)bpf_get_current_task();
   int ret = -1;
-  // remove tgid from closure
-  bpf_map_delete_elem(&tgid_closure, &tgid);
 
   u64 key = ((u64)EXIT_EVENT << 32) + (u32)pid;
   ret = bpf_map_update_elem(&cache, &key, &cache_item_initializer, BPF_ANY);
@@ -1095,15 +1123,15 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   return 0;
 }
 
-static int add_tgid_to_closure(pid_t tgid) {
+static int add_pid_to_closure(pid_t pid) {
   char dummy = 0;
-  int ret = bpf_map_update_elem(&tgid_closure, &tgid, &dummy, 0);
+  int ret = bpf_map_update_elem(&tracee_closure, &pid, &dummy, 0);
   if (ret < 0) {
-    // Failed to insert to tgid closure. This shouldn't happen on a standard
+    // Failed to insert to pid closure. This shouldn't happen on a standard
     // kernel.
-    debug("Failed to insert %d into tgid_closure, this shouldn't happen on a "
+    debug("Failed to insert %d into tracee_closure, this shouldn't happen on a "
           "standard kernel: %d",
-          tgid, ret);
+          pid, ret);
     // TODO: set a flag to notify user space
     return ret;
   }
