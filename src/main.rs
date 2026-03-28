@@ -68,9 +68,12 @@ use tracexec_exporter_json::{
   JsonStreamExporter,
 };
 use tracexec_exporter_perfetto::PerfettoExporter;
-use tracexec_tui::app::{
-  App,
-  PTracer,
+use tracexec_tui::{
+  app::{
+    App,
+    PTracer,
+  },
+  theme::current_theme,
 };
 
 use crate::log::initialize_panic_handler;
@@ -185,6 +188,16 @@ async fn main() -> color_eyre::Result<()> {
       tui_args,
       debugger_args,
     } => {
+      let executable_path = std::env::current_exe()?;
+      tracexec_tui::theme::initialize(
+        tui_args.theme_file.as_ref().map(|p| p.as_deref()),
+        tui_args.theme.as_deref(),
+        &executable_path,
+        tui_args
+          .theme_file
+          .as_ref()
+          .is_some_and(|f| f.is_from_cli()),
+      )?;
       let modifier_args = modifier_args.processed();
       // Disable owo-colors when running TUI
       owo_colors::control::set_should_colorize(false);
@@ -249,6 +262,7 @@ async fn main() -> color_eyre::Result<()> {
         tui_args,
         baseline,
         pty_master,
+        current_theme(),
       )?;
       let mut tui = tracexec_tui::Tui::new()?.frame_rate(frame_rate);
       tui.enter(tracer_rx)?;

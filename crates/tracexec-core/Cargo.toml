@@ -24,7 +24,7 @@ regex-cursor = { version = "0.1.4", default-features = false }
 filedescriptor = "0.8.2"
 clap_complete = "4.5.2"
 directories = "6"
-toml = "1"
+toml = { workspace = true }
 paste = "1.0.15"
 atoi = "2.0.0"
 shell-quote = { workspace = true }

@@ -16,6 +16,7 @@ use crate::{
   details_popup::DetailsPopupState,
   error_popup::InfoPopupState,
   query::Query,
+  theme::Theme,
 };
 
 #[derive(Debug)]
@@ -76,10 +77,11 @@ pub enum Action {
 }
 
 impl Action {
-  pub fn show_error_popup<E: ToString>(title: String, error: E) -> Self {
+  pub fn show_error_popup<E: ToString>(title: String, error: E, theme: &Theme) -> Self {
     Self::SetActivePopup(ActivePopup::InfoPopup(InfoPopupState::error(
       title,
       vec![Line::raw(error.to_string())],
+      theme,
     )))
   }
 }
@@ -117,15 +119,19 @@ pub enum ActivePopup {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::theme::THEME;
+  use crate::theme::current_theme;
 
   #[test]
   fn test_show_error_popup_creates_popup() {
-    let action = Action::show_error_popup("Test Error".to_string(), "Something went wrong");
+    let action = Action::show_error_popup(
+      "Test Error".to_string(),
+      "Something went wrong",
+      current_theme(),
+    );
     match action {
       Action::SetActivePopup(ActivePopup::InfoPopup(popup_state)) => {
         assert_eq!(popup_state.title, "Test Error");
-        assert_eq!(popup_state.style, THEME.error_popup);
+        assert_eq!(popup_state.style, current_theme().error_popup);
         assert_eq!(popup_state.message.len(), 1);
         assert_eq!(
           popup_state.message[0].spans[0].content.as_ref(),
@@ -139,11 +145,11 @@ mod tests {
   #[test]
   fn test_show_error_popup_with_display_trait() {
     let error_code = 42;
-    let action = Action::show_error_popup("Error Code".to_string(), error_code);
+    let action = Action::show_error_popup("Error Code".to_string(), error_code, current_theme());
     match action {
       Action::SetActivePopup(ActivePopup::InfoPopup(popup_state)) => {
         assert_eq!(popup_state.title, "Error Code");
-        assert_eq!(popup_state.style, THEME.error_popup);
+        assert_eq!(popup_state.style, current_theme().error_popup);
         assert_eq!(popup_state.message.len(), 1);
         assert_eq!(popup_state.message[0].spans[0].content.as_ref(), "42");
       }

@@ -61,6 +61,7 @@ use tracexec_exporter_perfetto::PerfettoExporter;
 use tracexec_tui::{
   self,
   app::App,
+  theme::current_theme,
 };
 
 pub async fn main(
@@ -103,6 +104,16 @@ pub async fn main(
       tracer_event_args,
       tui_args,
     } => {
+      let executable_path = std::env::current_exe()?;
+      tracexec_tui::theme::initialize(
+        tui_args.theme_file.as_ref().map(|p| p.as_deref()),
+        tui_args.theme.as_deref(),
+        &executable_path,
+        tui_args
+          .theme_file
+          .as_ref()
+          .is_some_and(|f| f.is_from_cli()),
+      )?;
       let follow_forks = !cmd.is_empty();
       if tui_args.tty && !follow_forks {
         return Err(
@@ -148,6 +159,7 @@ pub async fn main(
         tui_args,
         baseline.clone(),
         pty_master,
+        current_theme(),
       )?;
       app.activate_experiment("eBPF");
       let printer = Printer::new(

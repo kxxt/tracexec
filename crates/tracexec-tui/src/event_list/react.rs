@@ -105,16 +105,19 @@ impl EventList {
             } else {
               action_tx.send(Action::SetActivePopup(err_popup_goto_parent_miss(
                 "Go To Parent Error",
+                self.theme,
               )));
             }
           } else {
             action_tx.send(Action::SetActivePopup(err_popup_goto_parent_not_found(
               "Go To Parent Result",
+              self.theme,
             )));
           }
         } else {
           action_tx.send(Action::SetActivePopup(err_popup_goto_parent_not_exec(
             "Go to Parent Error",
+            self.theme,
           )));
         }
       }
@@ -139,6 +142,7 @@ impl EventList {
             vec![Line::raw(
               "Backtrace feature is currently limited to exec events.",
             )],
+            self.theme,
           ),
         )));
       }

@@ -8,11 +8,11 @@ use ratatui::{
   },
 };
 
-use super::theme::THEME;
+use super::theme::Theme;
 
-pub fn render_title<'a>(area: Rect, buf: &mut Buffer, title: impl Into<Text<'a>>) {
+pub fn render_title<'a>(area: Rect, buf: &mut Buffer, title: impl Into<Text<'a>>, theme: &Theme) {
   Paragraph::new(title)
-    .style(THEME.app_title)
+    .style(theme.app_title)
     .render(area, buf);
 }
 
@@ -25,13 +25,19 @@ mod tests {
   };
 
   use super::render_title;
+  use crate::theme::current_theme;
 
   #[test]
   fn snapshot_render_title() {
     let mut terminal = Terminal::new(TestBackend::new(40, 1)).unwrap();
     terminal
       .draw(|frame| {
-        render_title(frame.area(), frame.buffer_mut(), "tracexec");
+        render_title(
+          frame.area(),
+          frame.buffer_mut(),
+          "tracexec",
+          current_theme(),
+        );
       })
       .unwrap();
     let rendered = format!("{:?}", terminal.backend().buffer());

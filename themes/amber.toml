@@ -1,0 +1,29 @@
+# Warm amber-on-dark theme with higher contrast borders and labels.
+
+[tui]
+inactive-border = { fg = "gray" }
+active-border = { fg = "#ffb000", modifiers = ["bold"] }
+app-title = { fg = "#ffb000" }
+help-popup = { fg = "black", bg = "#ffb000" }
+cli-flag = { fg = "black", bg = "#ffb000" }
+help-key = { fg = "black", bg = "yellow" }
+help-desc = { fg = "#ffd36b", bg = "dark-gray" }
+fancy-help-desc = { fg = "black", bg = "yellow", remove-modifiers = ["slow-blink"] }
+tracer-info = { fg = "#ffcf5a" }
+tracer-warning = { fg = "yellow" }
+tracer-error = { fg = "light-red" }
+filename = { fg = "#ffd36b" }
+cwd = { fg = "#ffcf5a" }
+query-match-current-no = { fg = "#ffb000", modifiers = ["bold"] }
+query-match-total-cnt = { fg = "#ffd36b" }
+error-popup = { fg = "black", bg = "light-red" }
+info-popup = { fg = "black", bg = "#ffcf5a" }
+active-tab = { fg = "black", bg = "#ffb000" }
+breakpoint-title-selected = { fg = "black", bg = "#ffb000" }
+breakpoint-pattern = { fg = "#ffd36b" }
+breakpoint-info-value = { fg = "black", bg = "#ffcf5a" }
+hit-entry-breakpoint-stop = { fg = "#ffb000" }
+hit-manager-default-command = { fg = "#ffd36b" }
+selection-indicator = { fg = "#ffb000" }
+backtrace-parent-spawns = { content = " S ", fg = "black", bg = "#ffcf5a", modifiers = ["bold"] }
+backtrace-parent-becomes = { content = " B ", fg = "black", bg = "#ffb000", modifiers = ["bold"] }

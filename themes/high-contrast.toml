@@ -1,0 +1,23 @@
+# High-contrast theme optimized for terminals with poor color rendering.
+
+[tui]
+inactive-border = { fg = "white" }
+active-border = { fg = "yellow", modifiers = ["bold"] }
+app-title = { fg = "white", bg = "black", modifiers = ["bold"] }
+help-popup = { fg = "black", bg = "white" }
+help-key = { fg = "black", bg = "white" }
+help-desc = { fg = "white", bg = "black", remove-modifiers = ["italic"] }
+search-match = { bg = "white", fg = "black", remove-modifiers = ["reversed"] }
+query-no-match = { fg = "light-red", modifiers = ["bold"] }
+query-match-current-no = { fg = "yellow", modifiers = ["bold"] }
+query-match-total-cnt = { fg = "white", modifiers = ["bold"] }
+label = { fg = "black", bg = "white" }
+selected-label = { fg = "black", bg = "yellow" }
+error-popup = { fg = "black", bg = "light-red" }
+info-popup = { fg = "black", bg = "white" }
+active-tab = { fg = "black", bg = "yellow" }
+status-process-running = { fg = "light-green", modifiers = ["bold"] }
+status-process-killed = { fg = "light-red", modifiers = ["bold"], remove-modifiers = ["italic"] }
+status-process-signaled = { fg = "light-red", modifiers = ["bold"], remove-modifiers = ["italic"] }
+backtrace-parent-spawns = { content = " S ", fg = "black", bg = "white", modifiers = ["bold"] }
+backtrace-parent-becomes = { content = " B ", fg = "black", bg = "yellow", modifiers = ["bold"] }

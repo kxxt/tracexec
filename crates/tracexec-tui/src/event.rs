@@ -36,7 +36,10 @@ use crate::{
     Mask,
   },
   output::OutputMsgTuiExt,
-  theme::THEME,
+  theme::{
+    Theme,
+    current_theme,
+  },
 };
 
 mod private {
@@ -55,11 +58,9 @@ pub trait TracerEventDetailsTuiExt: Sealed {
     modifier: &ModifierArgs,
     rt_modifier: RuntimeModifier,
     event_status: Option<EventStatus>,
+    theme: &Theme,
   ) -> Line<'static>;
 
-  /// Convert the event to a EventLine
-  ///
-  /// This method is resource intensive and the caller should cache the result
   #[allow(clippy::too_many_arguments)]
   fn to_event_line(
     &self,
@@ -71,6 +72,7 @@ pub trait TracerEventDetailsTuiExt: Sealed {
     enable_mask: bool,
     extra_prefix: Option<Span<'static>>,
     full_env: bool,
+    theme: &Theme,
   ) -> EventLine;
 
   fn text_for_copy<'a>(
@@ -90,6 +92,7 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
     modifier: &ModifierArgs,
     rt_modifier: RuntimeModifier,
     event_status: Option<EventStatus>,
+    theme: &Theme,
   ) -> Line<'static> {
     self
       .to_event_line(
@@ -101,6 +104,7 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
         false,
         None,
         false,
+        theme,
       )
       .line
   }
@@ -119,12 +123,14 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
     enable_mask: bool,
     extra_prefix: Option<Span<'static>>,
     full_env: bool,
+    theme: &Theme,
   ) -> EventLine {
     fn handle_stdio_fd(
       fd: i32,
       baseline: &BaselineInfo,
       curr: &FileDescriptorInfoCollection,
       spans: &mut Vec<Span>,
+      theme: &Theme,
     ) {
       let (fdstr, redir) = match fd {
         0 => (" 0", "<"),
@@ -138,21 +144,21 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
       if let Some(fdinfo) = curr.get(fd) {
         if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
           // stdio fd will be closed
-          spans.push(fdstr.set_style(THEME.cloexec_fd_in_cmdline));
-          spans.push(">&-".set_style(THEME.cloexec_fd_in_cmdline));
+          spans.push(fdstr.set_style(theme.cloexec_fd_in_cmdline));
+          spans.push(">&-".set_style(theme.cloexec_fd_in_cmdline));
         } else if fdinfo.not_same_file_as(fdinfo_orig) {
           spans.push(space.clone());
-          spans.push(redir.set_style(THEME.modified_fd_in_cmdline));
+          spans.push(redir.set_style(theme.modified_fd_in_cmdline));
           spans.push(
             fdinfo
               .path
-              .bash_escaped_with_style(THEME.modified_fd_in_cmdline),
+              .bash_escaped_with_style(theme.modified_fd_in_cmdline, theme),
           );
         }
       } else {
         // stdio fd is closed
-        spans.push(fdstr.set_style(THEME.cloexec_fd_in_cmdline));
-        spans.push(">&-".set_style(THEME.removed_fd_in_cmdline));
+        spans.push(fdstr.set_style(theme.cloexec_fd_in_cmdline));
+        spans.push(">&-".set_style(theme.removed_fd_in_cmdline));
       }
     }
 
@@ -171,7 +177,7 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
         let fmt = modifier.inline_timestamp_format.as_deref().unwrap();
         Some(Span::styled(
           format!("{} ", ts.format(fmt)),
-          THEME.inline_timestamp,
+          theme.inline_timestamp,
         ))
       } else {
         None
@@ -187,10 +193,10 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
         extra_prefix,
         timestamp.and_then(ts_formatter),
         pid
-          .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
+          .map(|p| [p.to_string().set_style(theme.pid_in_msg)])
           .unwrap_or_default(),
-        ["[info]".set_style(THEME.tracer_info)],
-        [": ".into(), msg.clone().set_style(THEME.tracer_info)]
+        ["[info]".set_style(theme.tracer_info)],
+        [": ".into(), msg.clone().set_style(theme.tracer_info)]
       )
       .collect(),
       Self::Warning(TracerEventMessage {
@@ -201,10 +207,10 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
         extra_prefix,
         timestamp.and_then(ts_formatter),
         pid
-          .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
+          .map(|p| [p.to_string().set_style(theme.pid_in_msg)])
           .unwrap_or_default(),
-        ["[warn]".set_style(THEME.tracer_warning)],
-        [": ".into(), msg.clone().set_style(THEME.tracer_warning)]
+        ["[warn]".set_style(theme.tracer_warning)],
+        [": ".into(), msg.clone().set_style(theme.tracer_warning)]
       )
       .collect(),
       Self::Error(TracerEventMessage {
@@ -215,10 +221,10 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
         extra_prefix,
         timestamp.and_then(ts_formatter),
         pid
-          .map(|p| [p.to_string().set_style(THEME.pid_in_msg)])
+          .map(|p| [p.to_string().set_style(theme.pid_in_msg)])
           .unwrap_or_default(),
-        ["error".set_style(THEME.tracer_error)],
-        [": ".into(), msg.clone().set_style(THEME.tracer_error)]
+        ["error".set_style(theme.tracer_error)],
+        [": ".into(), msg.clone().set_style(theme.tracer_error)]
       )
       .collect(),
       Self::NewChild {
@@ -229,12 +235,12 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
       } => [
         extra_prefix,
         ts_formatter(*timestamp),
-        Some(ppid.to_string().set_style(THEME.pid_success)),
+        Some(ppid.to_string().set_style(theme.pid_success)),
         event_status.map(|s| <&'static str>::from(s).into()),
-        Some(format!("<{pcomm}>").set_style(THEME.comm)),
+        Some(format!("<{pcomm}>").set_style(theme.comm)),
         Some(": ".into()),
-        Some("new child ".set_style(THEME.tracer_event)),
-        Some(pid.to_string().set_style(THEME.new_child_pid)),
+        Some("new child ".set_style(theme.tracer_event)),
+        Some(pid.to_string().set_style(theme.new_child_pid)),
       ]
       .into_iter()
       .flatten()
@@ -261,22 +267,22 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
           spans.extend(
             [
               Some(pid.to_string().set_style(if *result == 0 {
-                THEME.pid_success
+                theme.pid_success
               } else if *result == (-nix::libc::ENOENT) as i64 {
-                THEME.pid_enoent
+                theme.pid_enoent
               } else {
-                THEME.pid_failure
+                theme.pid_failure
               })),
               event_status.map(|s| <&'static str>::from(s).into()),
-              Some(format!("<{comm}>").set_style(THEME.comm)),
+              Some(format!("<{comm}>").set_style(theme.comm)),
               Some(": ".into()),
-              Some("env".set_style(THEME.tracer_event)),
+              Some("env".set_style(theme.tracer_event)),
             ]
             .into_iter()
             .flatten(),
           )
         } else {
-          spans.push("env".set_style(THEME.tracer_event));
+          spans.push("env".set_style(theme.tracer_event));
         };
         let space: Span = " ".into();
 
@@ -285,8 +291,8 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
           v.first().inspect(|&arg0| {
             if filename != arg0 {
               spans.push(space.clone());
-              spans.push("-a ".set_style(THEME.arg0));
-              spans.push(arg0.bash_escaped_with_style(THEME.arg0));
+              spans.push("-a ".set_style(theme.arg0));
+              spans.push(arg0.bash_escaped_with_style(theme.arg0, theme));
             }
           });
         });
@@ -294,8 +300,8 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
         if cwd != &baseline.cwd && rt_modifier_effective.show_cwd {
           let range_start = spans.len();
           spans.push(space.clone());
-          spans.push("-C ".set_style(THEME.cwd));
-          spans.push(cwd.bash_escaped_with_style(THEME.cwd));
+          spans.push("-C ".set_style(theme.cwd));
+          spans.push(cwd.bash_escaped_with_style(theme.cwd, theme));
           cwd_range = Some(range_start..(spans.len()))
         }
         if rt_modifier_effective.show_env {
@@ -305,8 +311,8 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
               // Handle env diff
               for k in env_diff.removed.iter() {
                 spans.push(space.clone());
-                spans.push("-u ".set_style(THEME.deleted_env_var));
-                spans.push(k.bash_escaped_with_style(THEME.deleted_env_var));
+                spans.push("-u ".set_style(theme.deleted_env_var));
+                spans.push(k.bash_escaped_with_style(theme.deleted_env_var, theme));
               }
               if env_diff.need_env_argument_separator() {
                 spans.push(space.clone());
@@ -315,16 +321,16 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
               for (k, v) in env_diff.added.iter() {
                 // Added env vars
                 spans.push(space.clone());
-                spans.push(k.bash_escaped_with_style(THEME.added_env_var));
-                spans.push("=".set_style(THEME.added_env_var));
-                spans.push(v.bash_escaped_with_style(THEME.added_env_var));
+                spans.push(k.bash_escaped_with_style(theme.added_env_var, theme));
+                spans.push("=".set_style(theme.added_env_var));
+                spans.push(v.bash_escaped_with_style(theme.added_env_var, theme));
               }
               for (k, v) in env_diff.modified.iter() {
                 // Modified env vars
                 spans.push(space.clone());
-                spans.push(k.bash_escaped_with_style(THEME.modified_env_var));
-                spans.push("=".set_style(THEME.modified_env_var));
-                spans.push(v.bash_escaped_with_style(THEME.modified_env_var));
+                spans.push(k.bash_escaped_with_style(theme.modified_env_var, theme));
+                spans.push("=".set_style(theme.modified_env_var));
+                spans.push(v.bash_escaped_with_style(theme.modified_env_var, theme));
               }
             }
           } else if let Ok(envp) = &**envp {
@@ -332,9 +338,9 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
             spans.push("-i --".into()); // TODO: style
             for (k, v) in envp.iter() {
               spans.push(space.clone());
-              spans.push(k.bash_escaped_with_style(THEME.unchanged_env_key));
-              spans.push("=".set_style(THEME.unchanged_env_key));
-              spans.push(v.bash_escaped_with_style(THEME.unchanged_env_val));
+              spans.push(k.bash_escaped_with_style(theme.unchanged_env_key, theme));
+              spans.push("=".set_style(theme.unchanged_env_key));
+              spans.push(v.bash_escaped_with_style(theme.unchanged_env_val, theme));
             }
           }
 
@@ -344,25 +350,25 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
         }
         spans.push(space.clone());
         // Filename
-        spans.push(filename.bash_escaped_with_style(THEME.filename));
+        spans.push(filename.bash_escaped_with_style(theme.filename, theme));
         // Argv[1..]
         match argv.as_ref() {
           Ok(argv) => {
             for arg in argv.iter().skip(1) {
               spans.push(space.clone());
-              spans.push(arg.bash_escaped_with_style(THEME.argv));
+              spans.push(arg.bash_escaped_with_style(theme.argv, theme));
             }
           }
           Err(_) => {
             spans.push(space.clone());
-            spans.push("[failed to read argv]".set_style(THEME.inline_tracer_error));
+            spans.push("[failed to read argv]".set_style(theme.inline_tracer_error));
           }
         }
 
         // Handle file descriptors
         if modifier.stdio_in_cmdline {
           for fd in 0..=2 {
-            handle_stdio_fd(fd, baseline, fdinfo, &mut spans);
+            handle_stdio_fd(fd, baseline, fdinfo, &mut spans, theme);
           }
         }
 
@@ -376,12 +382,12 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
               continue;
             }
             spans.push(space.clone());
-            spans.push(fd.to_string().set_style(THEME.added_fd_in_cmdline));
-            spans.push("<>".set_style(THEME.added_fd_in_cmdline));
+            spans.push(fd.to_string().set_style(theme.added_fd_in_cmdline));
+            spans.push("<>".set_style(theme.added_fd_in_cmdline));
             spans.push(
               fdinfo
                 .path
-                .bash_escaped_with_style(THEME.added_fd_in_cmdline),
+                .bash_escaped_with_style(theme.added_fd_in_cmdline, theme),
             )
           }
         }
@@ -446,6 +452,7 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
           false,
           None,
           false,
+          current_theme(),
         )
         .to_string()
         .into();
@@ -466,6 +473,7 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
           false,
           None,
           false,
+          current_theme(),
         )
         .to_string()
         .into(),
@@ -479,6 +487,7 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
           false,
           None,
           true,
+          current_theme(),
         )
         .to_string()
         .into(),
@@ -494,6 +503,7 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
             false,
             None,
             false,
+            current_theme(),
           )
           .to_string()
           .into()
@@ -511,6 +521,7 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
             false,
             None,
             false,
+            current_theme(),
           )
           .to_string()
           .into()

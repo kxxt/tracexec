@@ -49,7 +49,7 @@ use crate::{
   event_line::EventLine,
   help::help_item,
   partial_line::PartialLine,
-  theme::THEME,
+  theme::Theme,
 };
 
 impl Event {
@@ -58,6 +58,7 @@ impl Event {
     baseline: &BaselineInfo,
     modifier: &EventModifier,
     extra_prefix: Option<Span<'static>>,
+    theme: &Theme,
   ) -> EventLine {
     self.details.to_event_line(
       baseline,
@@ -68,6 +69,7 @@ impl Event {
       true,
       extra_prefix,
       false,
+      theme,
     )
   }
 }
@@ -108,7 +110,7 @@ impl Widget for &mut EventList {
             .clone()
             .substring(self.horizontal_offset, area.width);
           if highlighted {
-            base = base.style(THEME.search_match);
+            base = base.style(self.theme.search_match);
           }
           ListItem::from(base)
         });
@@ -167,7 +169,7 @@ impl Widget for &mut EventList {
     }
 
     if let Some(query_result) = self.query_result.as_ref() {
-      let statistics = query_result.statistics();
+      let statistics = query_result.statistics(self.theme);
       let statistics_len = statistics.width();
       if statistics_len > buf.area().width as usize {
         return;
@@ -203,9 +205,10 @@ impl EventList {
             "Unfollow"
           } else {
             "Follow"
-          }
+          },
+          self.theme
         ),
-        help_item!(keys.event_search.display(), "Search"),
+        help_item!(keys.event_search.display(), "Search", self.theme),
       ))
     }
     items.extend(chain!(
@@ -215,7 +218,8 @@ impl EventList {
           "Hide\u{00a0}Env"
         } else {
           "Show\u{00a0}Env"
-        }
+        },
+        self.theme
       ),
       help_item!(
         keys.event_toggle_cwd.display(),
@@ -223,16 +227,25 @@ impl EventList {
           "Hide\u{00a0}CWD"
         } else {
           "Show\u{00a0}CWD"
-        }
+        },
+        self.theme
       ),
-      help_item!(keys.event_view_details.display(), "View"),
+      help_item!(keys.event_view_details.display(), "View", self.theme),
     ));
     if self.is_primary && self.selection_index().is_some() {
-      items.extend(help_item!(keys.event_go_to_parent.display(), "GoTo Parent"));
-      items.extend(help_item!(keys.event_backtrace.display(), "Backtrace"));
+      items.extend(help_item!(
+        keys.event_go_to_parent.display(),
+        "GoTo Parent",
+        self.theme
+      ));
+      items.extend(help_item!(
+        keys.event_backtrace.display(),
+        "Backtrace",
+        self.theme
+      ));
     }
     if self.has_clipboard {
-      items.extend(help_item!(keys.event_copy.display(), "Copy"));
+      items.extend(help_item!(keys.event_copy.display(), "Copy", self.theme));
     }
   }
 }
@@ -313,6 +326,7 @@ mod tests {
   };
 
   use super::EventList;
+  use crate::theme::current_theme;
 
   fn baseline_for_tests() -> Arc<BaselineInfo> {
     Arc::new(BaselineInfo {
@@ -331,6 +345,7 @@ mod tests {
       false,
       false,
       true,
+      current_theme(),
     );
     for (idx, msg) in msgs.iter().enumerate() {
       list.push(

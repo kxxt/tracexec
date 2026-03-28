@@ -75,6 +75,20 @@
 # Number of scrollback lines to keep in the pseudo terminal
 # scrollback_lines = 1000
 
+# Load a TUI theme from a file.
+# Absolute paths are used as-is.
+# Relative paths are resolved relative to the theme directories, in the following order:
+#   1. $XDG_CONFIG_HOME/tracexec/themes/ (or $HOME/.config/tracexec/themes/)
+#   2. $XDG_DATA_HOME/tracexec/themes/ (or $HOME/.local/share/tracexec/themes/)
+#   3. /etc/tracexec/themes/
+#   4. <path_to_tracexec_binary>/../share/tracexec/themes/ (usually /usr/share/tracexec/themes/)
+# theme-file = "nord.toml"
+
+# Inline TUI theme overrides. This uses the same structure as a theme file.
+# Each style patches the built-in default theme, so unspecified properties keep
+# their default values.
+# theme = { app-title = { fg = "cyan" }, active-border = { fg = "light-cyan" } }
+
 # Key bindings for the TUI
 #
 # Use a list to bind multiple shortcuts to the same action

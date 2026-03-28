@@ -174,6 +174,29 @@ A template profile file can be found at https://github.com/kxxt/tracexec/blob/ma
 
 As a warning, the profile format is not stable yet and may change in the future. You may need to update your profile file when upgrading tracexec.
 
+TUI themes can be configured in the `tui` section of the profile in one of two ways:
+
+```toml
+[tui]
+theme-file = "nord.toml"
+```
+
+`theme-file` accepts either an absolute path or a path relative to the theme directories. Relative paths are resolved relative to the following absolute paths in order:
+
+1. `$XDG_CONFIG_HOME/tracexec/themes/` (or `$HOME/.config/tracexec/themes/`)
+2. `$XDG_DATA_HOME/tracexec/themes/` (or `$HOME/.local/share/tracexec/themes/`)
+3. `/etc/tracexec/themes`
+4. `<path_to_tracexec_binary>/../share/tracexec/themes/`
+
+You can also inline the theme definition directly in the profile. Theme entries patch the built-in default theme, so you only need to specify the parts you want to change.
+
+```toml
+[tui]
+theme = { app-title = { fg = "cyan" }, active-border = { fg = "light-cyan" } }
+```
+
+Example themes are available in the repository's `themes/` directory.
+
 ## Known issues
 
 - Non UTF-8 strings are converted to UTF-8 in a lossy way, which means that the output may be inaccurate.

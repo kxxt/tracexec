@@ -83,7 +83,7 @@ use super::{
     help_item,
     help_key,
   },
-  theme::THEME,
+  theme::Theme,
 };
 use crate::action::Action;
 
@@ -96,30 +96,30 @@ struct BreakPointHitEntry {
 }
 
 impl BreakPointHitEntry {
-  fn paragraph(&self, selected: bool) -> Paragraph<'static> {
+  fn paragraph(&self, selected: bool, theme: &Theme) -> Paragraph<'static> {
     let space = Span::from(" ");
     let line = Line::default()
       .spans(vec![
-        Span::styled(self.pid.to_string(), THEME.hit_entry_pid),
+        Span::styled(self.pid.to_string(), theme.hit_entry_pid),
         space.clone(),
-        Span::styled("hit", THEME.hit_entry_plain_text),
+        Span::styled("hit", theme.hit_entry_plain_text),
         space.clone(),
         Span::styled(
           format!("breakpoint #{}", self.bid),
-          THEME.hit_entry_plain_text,
+          theme.hit_entry_plain_text,
         ),
         Span::raw("("),
         self.breakpoint_pattern.as_ref().map_or_else(
-          || Span::styled("deleted", THEME.hit_entry_no_breakpoint_pattern),
-          |pattern| Span::styled(pattern.clone(), THEME.hit_entry_breakpoint_pattern),
+          || Span::styled("deleted", theme.hit_entry_no_breakpoint_pattern),
+          |pattern| Span::styled(pattern.clone(), theme.hit_entry_breakpoint_pattern),
         ),
         Span::raw(")"),
         space.clone(),
-        Span::styled("at", THEME.hit_entry_plain_text),
+        Span::styled("at", theme.hit_entry_plain_text),
         space.clone(),
         Span::styled(
           <&'static str>::from(self.stop),
-          THEME.hit_entry_breakpoint_stop,
+          theme.hit_entry_breakpoint_stop,
         ),
       ])
       .style(if selected {
@@ -161,6 +161,7 @@ pub struct HitManagerState {
   editing: Option<EditingTarget>,
   editor_state: TextState<'static>,
   key_bindings: Arc<TuiKeyBindings>,
+  theme: &'static Theme,
 }
 
 impl HitManagerState {
@@ -168,6 +169,7 @@ impl HitManagerState {
     tracer: RunningTracer,
     default_external_command: Option<String>,
     key_bindings: Arc<TuiKeyBindings>,
+    theme: &'static Theme,
   ) -> color_eyre::Result<Self> {
     Ok(Self {
       tracer,
@@ -180,6 +182,7 @@ impl HitManagerState {
       editing: None,
       editor_state: TextState::new(),
       key_bindings,
+      theme,
     })
   }
 
@@ -196,32 +199,43 @@ impl HitManagerState {
     if self.editing.is_none() {
       Either::Left(chain!(
         [
-          help_item!(keys.hit_close.display(), "Back"),
-          help_item!(keys.hit_resume.display(), "Resume\u{00a0}Process"),
-          help_item!(keys.hit_detach.display(), "Detach\u{00a0}Process"),
+          help_item!(keys.hit_close.display(), "Back", self.theme),
+          help_item!(
+            keys.hit_resume.display(),
+            "Resume\u{00a0}Process",
+            self.theme
+          ),
+          help_item!(
+            keys.hit_detach.display(),
+            "Detach\u{00a0}Process",
+            self.theme
+          ),
           help_item!(
             keys.hit_edit_default_command.display(),
-            "Edit\u{00a0}Default\u{00a0}Command"
+            "Edit\u{00a0}Default\u{00a0}Command",
+            self.theme
           )
         ],
         if self.default_external_command.is_some() {
           Some(help_item!(
             keys.hit_run_default_command.display(),
-            "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Default\u{00a0}Command"
+            "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Default\u{00a0}Command",
+            self.theme
           ))
         } else {
           None
         },
         [help_item!(
           keys.hit_run_custom_command.display(),
-          "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Command"
+          "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Command",
+          self.theme
         ),]
       ))
     } else {
       Either::Right(chain!([
-        help_item!(keys.hit_editor_save.display(), "Save"),
-        help_item!(keys.hit_editor_clear.display(), "Clear"),
-        help_item!(keys.hit_editor_cancel.display(), "Cancel"),
+        help_item!(keys.hit_editor_save.display(), "Save", self.theme),
+        help_item!(keys.hit_editor_clear.display(), "Clear", self.theme),
+        help_item!(keys.hit_editor_cancel.display(), "Cancel", self.theme),
       ],))
     }
     .into_iter()
@@ -239,7 +253,7 @@ impl HitManagerState {
   pub fn handle_key_event(&mut self, key: KeyEvent, keys: &TuiKeyBindings) -> Option<Action> {
     if keys.help.matches(key) {
       return Some(Action::SetActivePopup(
-        crate::action::ActivePopup::InfoPopup(HitManager::help(keys)),
+        crate::action::ActivePopup::InfoPopup(HitManager::help(keys, self.theme)),
       ));
     }
     if let Some(editing) = self.editing {
@@ -248,6 +262,7 @@ impl HitManagerState {
           return Some(Action::show_error_popup(
             "Error".to_string(),
             eyre!("Command cannot be empty or whitespace"),
+            self.theme,
           ));
         }
         self.editing = None;
@@ -264,6 +279,7 @@ impl HitManagerState {
               return Some(Action::show_error_popup(
                 "Error".to_string(),
                 e.with_note(|| "Failed to detach or launch external command"),
+                self.theme,
               ));
             }
             return self.close_when_empty();
@@ -296,7 +312,11 @@ impl HitManagerState {
         self.select_near_by(selected);
         let hid = *self.hits.keys().nth(selected).unwrap();
         if let Err(e) = self.detach(hid) {
-          return Some(Action::show_error_popup("Detach failed".to_string(), e));
+          return Some(Action::show_error_popup(
+            "Detach failed".to_string(),
+            e,
+            self.theme,
+          ));
         };
         return self.close_when_empty();
       }
@@ -316,6 +336,7 @@ impl HitManagerState {
           return Some(Action::show_error_popup(
             "Error".to_string(),
             e.with_note(|| "Failed to detach or launch external command"),
+            self.theme,
           ));
         }
         return self.close_when_empty();
@@ -326,7 +347,11 @@ impl HitManagerState {
         self.select_near_by(selected);
         let hid = *self.hits.keys().nth(selected).unwrap();
         if let Err(e) = self.resume(hid) {
-          return Some(Action::show_error_popup("Resume failed".to_string(), e));
+          return Some(Action::show_error_popup(
+            "Resume failed".to_string(),
+            e,
+            self.theme,
+          ));
         }
         return self.close_when_empty();
       }
@@ -433,7 +458,7 @@ impl HitManagerState {
         .light_red(),
       "If the tracee to be detached need to exec other programs, ".into(),
       "please run tracexec with ".cyan().bold(),
-      cli_flag("--seccomp-bpf=off"),
+      cli_flag("--seccomp-bpf=off", self.theme),
       ".".into(),
     ]);
     Paragraph::new(vec![line1]).wrap(Wrap { trim: false })
@@ -495,6 +520,7 @@ mod tests {
       ActivePopup,
     },
     error_popup::InfoPopup,
+    theme::current_theme,
   };
 
   static KEY_BINDINGS: LazyLock<Arc<TuiKeyBindings>> =
@@ -548,7 +574,7 @@ mod tests {
       stop: BreakPointStop::SyscallExit,
       breakpoint_pattern: Some("argv-regex:curl".to_string()),
     };
-    let paragraph = entry.paragraph(true);
+    let paragraph = entry.paragraph(true, current_theme());
     let mut terminal = Terminal::new(TestBackend::new(70, 3)).unwrap();
     terminal
       .draw(|frame| {
@@ -567,7 +593,7 @@ mod tests {
       stop: BreakPointStop::SyscallExit,
       breakpoint_pattern: None,
     };
-    let paragraph = entry.paragraph(true);
+    let paragraph = entry.paragraph(true, current_theme());
     let mut terminal = Terminal::new(TestBackend::new(70, 3)).unwrap();
     terminal
       .draw(|frame| {
@@ -586,7 +612,7 @@ mod tests {
       stop: BreakPointStop::SyscallEnter,
       breakpoint_pattern: Some("argv-regex:curl".to_string()),
     };
-    let paragraph = entry.paragraph(true);
+    let paragraph = entry.paragraph(true, current_theme());
     let mut terminal = Terminal::new(TestBackend::new(70, 3)).unwrap();
     terminal
       .draw(|frame| {
@@ -604,8 +630,13 @@ mod tests {
     let tracer = RunningTracer::mock();
     let bid1 = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
     let bid2 = tracer.add_breakpoint(make_breakpoint("exact-filename:/bin/sleep"));
-    let mut state =
-      HitManagerState::new(tracer, Some("echo {{PID}}".to_string()), keys().clone()).unwrap();
+    let mut state = HitManagerState::new(
+      tracer,
+      Some("echo {{PID}}".to_string()),
+      keys().clone(),
+      current_theme(),
+    )
+    .unwrap();
     add_hit(&mut state, bid1, 4321);
     add_hit(&mut state, bid2, 9876);
     let rendered = render_hit_manager(&mut state, 70, 12);
@@ -618,7 +649,7 @@ mod tests {
     clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
-    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
+    let mut state = HitManagerState::new(tracer, None, keys().clone(), current_theme()).unwrap();
     add_hit(&mut state, bid, 4321);
     let rendered = render_hit_manager(&mut state, 70, 12);
     assert_snapshot!(rendered);
@@ -630,7 +661,7 @@ mod tests {
     clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
-    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
+    let mut state = HitManagerState::new(tracer, None, keys().clone(), current_theme()).unwrap();
     add_hit(&mut state, bid, 4321);
     state.handle_key_event(
       KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE),
@@ -643,7 +674,7 @@ mod tests {
   #[test]
   fn snapshot_hit_manager_help_popup() {
     let tracer = RunningTracer::mock();
-    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
+    let mut state = HitManagerState::new(tracer, None, keys().clone(), current_theme()).unwrap();
     let action = state.handle_key_event(
       KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE),
       keys().as_ref(),
@@ -668,7 +699,7 @@ mod tests {
     clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
-    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
+    let mut state = HitManagerState::new(tracer, None, keys().clone(), current_theme()).unwrap();
     let hid = add_hit(&mut state, bid, 4321);
     assert_eq!(hid, 0);
     assert_eq!(state.count(), 1);
@@ -682,8 +713,13 @@ mod tests {
   #[test]
   fn test_hit_manager_state_edit_default_command_sets_value() {
     let tracer = RunningTracer::mock();
-    let mut state =
-      HitManagerState::new(tracer, Some("echo {{PID}}".to_string()), keys().clone()).unwrap();
+    let mut state = HitManagerState::new(
+      tracer,
+      Some("echo {{PID}}".to_string()),
+      keys().clone(),
+      current_theme(),
+    )
+    .unwrap();
     state.handle_key_event(
       KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE),
       keys().as_ref(),
@@ -705,7 +741,7 @@ mod tests {
   #[test]
   fn test_hit_manager_state_edit_default_command_empty_error() {
     let tracer = RunningTracer::mock();
-    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
+    let mut state = HitManagerState::new(tracer, None, keys().clone(), current_theme()).unwrap();
     state.handle_key_event(
       KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE),
       keys().as_ref(),
@@ -727,7 +763,7 @@ mod tests {
     clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
-    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
+    let mut state = HitManagerState::new(tracer, None, keys().clone(), current_theme()).unwrap();
     let _hid = add_hit(&mut state, bid, 4321);
     state.list_state.select(Some(0));
     let action = state.handle_key_event(
@@ -743,7 +779,7 @@ mod tests {
   fn test_hit_manager_state_resume_removes_hit() {
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
-    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
+    let mut state = HitManagerState::new(tracer, None, keys().clone(), current_theme()).unwrap();
     let _hid = add_hit(&mut state, bid, 4321);
     state.list_state.select(Some(0));
     let action = state.handle_key_event(
@@ -758,8 +794,13 @@ mod tests {
   fn test_hit_manager_state_enter_detach_and_launch_default_command() {
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
-    let mut state =
-      HitManagerState::new(tracer, Some("echo {{PID}}".to_string()), keys().clone()).unwrap();
+    let mut state = HitManagerState::new(
+      tracer,
+      Some("echo {{PID}}".to_string()),
+      keys().clone(),
+      current_theme(),
+    )
+    .unwrap();
     let hid = add_hit(&mut state, bid, 4321);
     state.list_state.select(Some(0));
     let action = state.handle_key_event(
@@ -775,7 +816,7 @@ mod tests {
   fn test_hit_manager_state_custom_command_flow() {
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
-    let mut state = HitManagerState::new(tracer, None, keys().clone()).unwrap();
+    let mut state = HitManagerState::new(tracer, None, keys().clone(), current_theme()).unwrap();
     let hid = add_hit(&mut state, bid, 4321);
     state.list_state.select(Some(0));
     state.handle_key_event(
@@ -805,6 +846,7 @@ impl StatefulWidget for HitManager {
   type State = HitManagerState;
 
   fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+    let theme = state.theme;
     let help_area = Rect {
       x: buf.area.width.saturating_sub(10),
       y: 0,
@@ -813,7 +855,7 @@ impl StatefulWidget for HitManager {
     };
     Clear.render(help_area, buf);
     Line::default()
-      .spans(help_item!(state.key_bindings.help.display(), "Help"))
+      .spans(help_item!(state.key_bindings.help.display(), "Help", theme))
       .render(help_area, buf);
     let editor_area = Rect {
       x: 0,
@@ -834,17 +876,17 @@ impl StatefulWidget for HitManager {
     } else if let Some(command) = state.default_external_command.as_deref() {
       let line = Line::default().spans(vec![
         Span::raw("🚀 default command: "),
-        Span::styled(command, THEME.hit_manager_default_command),
+        Span::styled(command, theme.hit_manager_default_command),
       ]);
       line.render(editor_area, buf);
     } else {
       let line = Line::default().spans(vec![
         Span::styled(
           "default command not set. Press ",
-          THEME.hit_manager_no_default_command,
+          theme.hit_manager_no_default_command,
         ),
-        help_key(state.key_bindings.hit_edit_default_command.display()),
-        Span::styled(" to set", THEME.hit_manager_no_default_command),
+        help_key(state.key_bindings.hit_edit_default_command.display(), theme),
+        Span::styled(" to set", theme.hit_manager_no_default_command),
       ]);
       line.render(editor_area, buf);
     }
@@ -857,7 +899,7 @@ impl StatefulWidget for HitManager {
     let items = state.hits.values().cloned().collect_vec();
     let builder = ListBuilder::new(move |ctx| {
       let item = &items[ctx.index];
-      let paragraph = item.paragraph(ctx.is_selected);
+      let paragraph = item.paragraph(ctx.is_selected, theme);
       let line_count = paragraph
         .line_count(ctx.cross_axis_size)
         .try_into()
@@ -888,7 +930,7 @@ impl StatefulWidget for HitManager {
 }
 
 impl HitManager {
-  fn help(_keys: &TuiKeyBindings) -> InfoPopupState {
+  fn help(_keys: &TuiKeyBindings, theme: &Theme) -> InfoPopupState {
     InfoPopupState::info(
       "Help".to_string(),
       vec![
@@ -907,7 +949,7 @@ impl HitManager {
           execve{,at} syscall. Usually it is shown as the following error: ".red(),
           "Function not implemented".light_red().bold(),
           ". To workaround this problem, run tracexec with ".into(),
-          cli_flag("--seccomp-bpf=off"),
+          cli_flag("--seccomp-bpf=off", theme),
           " flag. ".into(),
         ]),
         Line::default().spans(vec![
@@ -924,6 +966,7 @@ impl HitManager {
           attaches to the process, the process should be already past the syscall-exit stop.".into(),
         ]),
       ],
+      theme
     )
   }
 }
