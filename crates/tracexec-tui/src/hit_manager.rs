@@ -776,7 +776,9 @@ mod tests {
   }
 
   #[test]
+  #[file_serial(breakpoint_id)]
   fn test_hit_manager_state_resume_removes_hit() {
+    clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
     let mut state = HitManagerState::new(tracer, None, keys().clone(), current_theme()).unwrap();
@@ -791,7 +793,9 @@ mod tests {
   }
 
   #[test]
+  #[file_serial(breakpoint_id)]
   fn test_hit_manager_state_enter_detach_and_launch_default_command() {
+    clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
     let mut state = HitManagerState::new(
@@ -813,7 +817,9 @@ mod tests {
   }
 
   #[test]
+  #[file_serial(breakpoint_id)]
   fn test_hit_manager_state_custom_command_flow() {
+    clear_breakpoint_id_counter();
     let tracer = RunningTracer::mock();
     let bid = tracer.add_breakpoint(make_breakpoint("in-filename:/bin/echo"));
     let mut state = HitManagerState::new(tracer, None, keys().clone(), current_theme()).unwrap();
