@@ -90,7 +90,6 @@ use tracexec_core::{
     CgroupInfo,
     FileDescriptorInfo,
     diff_env,
-    resolve_cgroup_id,
   },
   pty,
   timestamp::ts_from_boot_ns,
@@ -130,6 +129,7 @@ use crate::{
     },
     utf8_lossy_cow_from_bytes_with_nul,
   },
+  cgroup_cache::CgroupCache,
   event::EventStorage,
   parser::{
     parse_groups_event,
@@ -208,6 +208,11 @@ impl EbpfTracer {
     let mut eid = 0;
     let printer_clone = self.printer.clone();
     let should_exit = Arc::new(AtomicBool::new(false));
+    let cgroup_cache = if self.modifier.collect_cgroup {
+      Some(CgroupCache::new())
+    } else {
+      None
+    };
     builder.add(&skel.maps.events, {
       let should_exit = should_exit.clone();
       move |data| {
@@ -269,10 +274,9 @@ impl EbpfTracer {
             let base_filename = process_base_filename(eflags, event);
             let filename = process_filename(base_filename, event, &cwd, &storage.fdinfo_map);
             let cred = process_cred(eflags, event, storage.groups);
-            let cgroup = if self.modifier.collect_cgroup {
-              resolve_cgroup_id(event.cgroup_id)
-            } else {
-              CgroupInfo::NotCollected
+            let cgroup = match &cgroup_cache {
+              Some(cache) => cache.resolve(event.cgroup_id),
+              None => CgroupInfo::NotCollected,
             };
             let exec_data = ExecData::new(
               Pid::from_raw(header.pid),

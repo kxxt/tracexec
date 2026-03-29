@@ -41,6 +41,8 @@ nix = { version = "0.31", features = [
     "fs",
     "signal",
     "user",
+    "inotify",
+    "poll",
 ] }
 nutype = { version = "0.6.1", features = ["serde"] }
 owo-colors = { version = "4.0.0", package = "kxxt-owo-colors", features = [
@@ -67,6 +69,7 @@ toml = "1"
 tracing-test = "0.2.4"
 serial_test = { version = "3.1.1", features = ["file_locks"] }
 rusty-fork = "0.3.1"
+tempfile = "3.24.0"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
