@@ -104,6 +104,8 @@ let
     mount -t proc none /proc
     mount -t sysfs none /sys
     mount -t debugfs debugfs /sys/kernel/debug
+    mkdir -p /sys/fs/cgroup
+    mount -t cgroup2 cgroup2 /sys/fs/cgroup
 
     ln -s /proc/self/fd /dev/fd
 
