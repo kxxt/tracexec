@@ -3143,6 +3143,7 @@ dependencies = [
  "rstest",
  "rusty-fork",
  "serial_test",
+ "tempfile",
  "tokio",
  "tracexec-core",
  "tracing",
