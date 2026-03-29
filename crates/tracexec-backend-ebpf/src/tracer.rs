@@ -87,8 +87,10 @@ use tracexec_core::{
   },
   proc::{
     BaselineInfo,
+    CgroupInfo,
     FileDescriptorInfo,
     diff_env,
+    resolve_cgroup_id,
   },
   pty,
   timestamp::ts_from_boot_ns,
@@ -267,6 +269,11 @@ impl EbpfTracer {
             let base_filename = process_base_filename(eflags, event);
             let filename = process_filename(base_filename, event, &cwd, &storage.fdinfo_map);
             let cred = process_cred(eflags, event, storage.groups);
+            let cgroup = if self.modifier.collect_cgroup {
+              resolve_cgroup_id(event.cgroup_id)
+            } else {
+              CgroupInfo::NotCollected
+            };
             let exec_data = ExecData::new(
               Pid::from_raw(header.pid),
               filename,
@@ -278,6 +285,7 @@ impl EbpfTracer {
               None,
               storage.fdinfo_map,
               ts_from_boot_ns(event.timestamp),
+              cgroup,
             );
             // Pid of the thread that triggers execve syscall
             // let pid = Pid::from_raw(header.pid);
@@ -365,6 +373,7 @@ impl EbpfTracer {
                 result: event.ret,
                 fdinfo: exec_data.fdinfo.clone(),
                 parent,
+                cgroup: exec_data.cgroup.clone(),
               }))
               .into_event_with_id(id);
               if follow_forks {

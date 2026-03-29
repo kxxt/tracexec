@@ -105,6 +105,15 @@ pub struct ModifierArgs {
     help = "Set the format of inline timestamp. See https://docs.rs/chrono/latest/chrono/format/strftime/index.html for available options."
   )]
   pub inline_timestamp_format: Option<TimestampFormat>,
+  #[clap(long, help = "Collect cgroup information", default_value_t = false)]
+  pub collect_cgroup: bool,
+  #[clap(
+    long,
+    help = "Do not collect cgroup information",
+    default_value_t = false,
+    conflicts_with = "collect_cgroup"
+  )]
+  pub no_collect_cgroup: bool,
 }
 
 impl PtraceArgs {
@@ -136,6 +145,11 @@ impl ModifierArgs {
       (false, true) => false,
       _ => false, // default
     };
+    self.collect_cgroup = match (self.collect_cgroup, self.no_collect_cgroup) {
+      (true, false) => true,
+      (false, true) => false,
+      _ => false, // default
+    };
     self.inline_timestamp_format = self
       .inline_timestamp_format
       .or_else(|| Some(TimestampFormat::try_new("%H:%M:%S").unwrap()));
@@ -161,6 +175,9 @@ impl ModifierArgs {
       if self.inline_timestamp_format.is_none() {
         self.inline_timestamp_format = c.inline_format;
       }
+    }
+    if (!self.no_collect_cgroup) && (!self.collect_cgroup) {
+      self.collect_cgroup = config.collect_cgroup.unwrap_or_default();
     }
   }
 }
@@ -709,6 +726,7 @@ mod tests {
       hide_cloexec_fds: Some(false),
       timestamp: None,
       seccomp_bpf: None,
+      collect_cgroup: None,
     };
 
     args.merge_config(cfg);

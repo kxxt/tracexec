@@ -568,6 +568,9 @@ mod tests {
       result,
       timestamp: ts_from_boot_ns(0),
       parent,
+      cgroup: tracexec_core::proc::CgroupInfo::V2 {
+        path: "/".to_string(),
+      },
     }
   }
 

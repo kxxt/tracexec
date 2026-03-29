@@ -52,6 +52,7 @@ use tracexec_core::{
     TracerEventDetails,
   },
   primitives::local_chan::LocalUnboundedSender,
+  proc::CgroupInfo,
 };
 use tui_scrollview::{
   ScrollView,
@@ -260,6 +261,19 @@ impl DetailsPopupState {
               }
             }
             Err(e) => vec![e.to_string().set_style(theme.inline_tracer_error)].into(),
+          },
+        ),
+        (
+          " Cgroup ",
+          match &exec.cgroup {
+            CgroupInfo::V2 { path } => Line::from(path.clone()),
+            CgroupInfo::V1Only => {
+              vec!["cgroupv1 only (cgroupv2 not available)".set_style(theme.tracer_warning)].into()
+            }
+            CgroupInfo::NotCollected => {
+              vec!["Not collected".set_style(theme.tracer_warning)].into()
+            }
+            CgroupInfo::Error(e) => vec![e.to_string().set_style(theme.inline_tracer_error)].into(),
           },
         ),
         (" Process Status ", {
@@ -871,6 +885,8 @@ mod tests {
     },
     proc::{
       BaselineInfo,
+      CgroupError,
+      CgroupInfo,
       Cred,
       FileDescriptorInfoCollection,
     },
@@ -915,6 +931,9 @@ mod tests {
       result: 0,
       timestamp: Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap().into(),
       parent: None,
+      cgroup: CgroupInfo::V2 {
+        path: "/user.slice/user-1000.slice/session-1.scope".to_string(),
+      },
     }
   }
 
@@ -957,6 +976,60 @@ mod tests {
     let mut event = exec_event();
     event.syscall = ExecSyscall::Execveat;
     event.exec_pid = Pid::from_raw(5001);
+    let event = super::Event {
+      details: Arc::new(TracerEventDetails::Exec(Box::new(event))),
+      status: Some(tracexec_core::event::EventStatus::ProcessRunning),
+      elapsed: None,
+      id: tracexec_core::event::EventId::new(1),
+    };
+    let mut state = DetailsPopupState::new(&event, &list);
+    let area = test_area_full(90, 80);
+    let rendered = test_render_stateful_widget_area(DetailsPopup::new(false), area, &mut state);
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn snapshot_details_popup_cgroupv1_warning() {
+    let list = EventList::new(
+      baseline_for_tests(),
+      false,
+      ModifierArgs::default(),
+      1024,
+      false,
+      false,
+      true,
+      current_theme(),
+    );
+    let mut event = exec_event();
+    event.cgroup = CgroupInfo::V1Only;
+    let event = super::Event {
+      details: Arc::new(TracerEventDetails::Exec(Box::new(event))),
+      status: Some(tracexec_core::event::EventStatus::ProcessRunning),
+      elapsed: None,
+      id: tracexec_core::event::EventId::new(1),
+    };
+    let mut state = DetailsPopupState::new(&event, &list);
+    let area = test_area_full(90, 80);
+    let rendered = test_render_stateful_widget_area(DetailsPopup::new(false), area, &mut state);
+    assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn snapshot_details_popup_cgroup_error() {
+    let list = EventList::new(
+      baseline_for_tests(),
+      false,
+      ModifierArgs::default(),
+      1024,
+      false,
+      false,
+      true,
+      current_theme(),
+    );
+    let mut event = exec_event();
+    event.cgroup = CgroupInfo::Error(CgroupError::ReadProcCgroup {
+      kind: std::io::ErrorKind::NotFound,
+    });
     let event = super::Event {
       details: Arc::new(TracerEventDetails::Exec(Box::new(event))),
       status: Some(tracexec_core::event::EventStatus::ProcessRunning),

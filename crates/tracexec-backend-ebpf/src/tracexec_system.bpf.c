@@ -311,6 +311,8 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   }
   // Read file descriptors
   read_fds(event);
+  // Read cgroup id
+  event->cgroup_id = bpf_get_current_cgroup_id();
   // Read CWD
   event->cwd_path_id = -1;
   struct task_struct *current = (void *)bpf_get_current_task();

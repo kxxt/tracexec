@@ -29,6 +29,7 @@ use crate::{
   cache::ArcStr,
   printer::ListPrinter,
   proc::{
+    CgroupInfo,
     Cred,
     CredInspectError,
     EnvDiff,
@@ -163,6 +164,7 @@ pub struct ExecEvent {
   pub result: i64,
   pub timestamp: Timestamp,
   pub parent: Option<ParentEventId>,
+  pub cgroup: CgroupInfo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
@@ -445,6 +447,9 @@ mod tests {
       result: 0,
       timestamp: ts,
       parent: None,
+      cgroup: CgroupInfo::V2 {
+        path: "/".to_string(),
+      },
     };
     let exec_detail = TracerEventDetails::Exec(Box::new(exec_event.clone()));
     assert_eq!(exec_detail.timestamp(), Some(ts));

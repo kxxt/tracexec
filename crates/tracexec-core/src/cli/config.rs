@@ -77,6 +77,7 @@ pub struct ModifierConfig {
   pub resolve_proc_self_exe: Option<bool>,
   pub hide_cloexec_fds: Option<bool>,
   pub timestamp: Option<TimestampConfig>,
+  pub collect_cgroup: Option<bool>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
