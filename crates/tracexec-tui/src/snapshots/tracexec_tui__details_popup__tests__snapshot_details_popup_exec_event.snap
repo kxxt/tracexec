@@ -12,7 +12,7 @@ Buffer {
         "env -a echo /bin/echo                                                          █",
         " Pid                                                                           █",
         "4242                                                                           █",
-        " Exec Syscall                                                                  █",
+        " Exec Syscall                                                                  ║",
         "execve                                                                         ║",
         " Exec Pid                                                                      ║",
         "4242                                                                           ║",

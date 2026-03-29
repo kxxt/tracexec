@@ -103,9 +103,11 @@ use tracexec_core::{
   },
   proc::{
     BaselineInfo,
+    CgroupInfo,
     CredInspectError,
     cached_string,
     diff_env,
+    read_cgroup,
     read_comm,
     read_cwd,
     read_exe,
@@ -872,6 +874,11 @@ impl TracerInner {
         Err(e) => OutputMsg::Err(tracexec_core::event::FriendlyError::InspectError(e)),
       };
       let has_dash_env = envp.as_ref().map(|v| v.0).unwrap_or_default();
+      let cgroup = if self.modifier_args.collect_cgroup {
+        read_cgroup(pid)
+      } else {
+        CgroupInfo::NotCollected
+      };
       p.exec_data = Some(ExecData::new(
         pid,
         filename,
@@ -883,6 +890,7 @@ impl TracerInner {
         Some(interpreters),
         read_fds(pid)?,
         timestamp,
+        cgroup,
       ));
     } else if info.is_execve().unwrap() {
       p.syscall = Syscall::Execve;
@@ -904,6 +912,11 @@ impl TracerInner {
         Err(e) => OutputMsg::Err(tracexec_core::event::FriendlyError::InspectError(e)),
       };
       let has_dash_env = envp.as_ref().map(|v| v.0).unwrap_or_default();
+      let cgroup = if self.modifier_args.collect_cgroup {
+        read_cgroup(pid)
+      } else {
+        CgroupInfo::NotCollected
+      };
       p.exec_data = Some(ExecData::new(
         pid,
         filename,
@@ -915,6 +928,7 @@ impl TracerInner {
         Some(interpreters),
         read_fds(pid)?,
         timestamp,
+        cgroup,
       ));
     } else {
       p.syscall = Syscall::Other;
@@ -1109,6 +1123,7 @@ impl TracerInner {
       result,
       fdinfo: exec_data.fdinfo.clone(),
       parent,
+      cgroup: exec_data.cgroup.clone(),
     })
   }
 }

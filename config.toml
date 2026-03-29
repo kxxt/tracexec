@@ -49,6 +49,9 @@
 # See https://docs.rs/chrono/latest/chrono/format/strftime/index.html for available options
 # timestamp.inline_format = "hh:mm:ss"
 
+# Collect cgroup information for each exec event.
+# collect_cgroup = false
+
 #
 # Config for TUI mode
 #

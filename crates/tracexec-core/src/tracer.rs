@@ -41,6 +41,7 @@ use crate::{
   },
   proc::{
     BaselineInfo,
+    CgroupInfo,
     Cred,
     CredInspectError,
     FileDescriptorInfoCollection,
@@ -225,6 +226,7 @@ pub struct ExecData {
   pub interpreters: Option<Vec<Interpreter>>,
   pub fdinfo: Arc<FileDescriptorInfoCollection>,
   pub timestamp: DateTime<Local>,
+  pub cgroup: CgroupInfo,
 }
 
 impl ExecData {
@@ -240,6 +242,7 @@ impl ExecData {
     interpreters: Option<Vec<Interpreter>>,
     fdinfo: FileDescriptorInfoCollection,
     timestamp: DateTime<Local>,
+    cgroup: CgroupInfo,
   ) -> Self {
     Self {
       exec_pid,
@@ -252,6 +255,7 @@ impl ExecData {
       interpreters,
       fdinfo: Arc::new(fdinfo),
       timestamp,
+      cgroup,
     }
   }
 }
@@ -386,6 +390,9 @@ mod tests {
       None,
       fdinfo,
       timestamp,
+      CgroupInfo::V2 {
+        path: "/".to_string(),
+      },
     );
 
     assert_eq!(exec.exec_pid, Pid::from_raw(1234));

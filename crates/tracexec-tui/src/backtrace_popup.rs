@@ -237,6 +237,9 @@ mod tests {
       result: 0,
       timestamp: Local::now(),
       parent,
+      cgroup: tracexec_core::proc::CgroupInfo::V2 {
+        path: "/".to_string(),
+      },
     }
   }
 

@@ -141,6 +141,7 @@ struct exec_event {
   s32 fd;
   s32 cwd_path_id;
   u64 flags;
+  u64 cgroup_id;
   u8 base_filename[PATH_MAX];
   u8 comm[TASK_COMM_LEN];
 };

@@ -207,6 +207,136 @@ fn parse_status_contents(contents: &str) -> std::io::Result<ProcStatus> {
   })
 }
 
+/// Error variants for cgroup resolution.
+#[derive(Debug, Clone, PartialEq, Eq, Snafu)]
+pub enum CgroupError {
+  #[snafu(display("Failed to read /proc/<pid>/cgroup: {kind}"))]
+  ReadProcCgroup { kind: std::io::ErrorKind },
+  #[snafu(display("cgroupv2 filesystem not mounted"))]
+  CgroupFsNotMounted,
+  #[snafu(display("Failed to read cgroup directory"))]
+  ReadCgroupDir,
+  #[snafu(display("cgroup ID not found"))]
+  CgroupIdNotFound,
+}
+
+/// Information about the cgroup of a process at the time of exec.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CgroupInfo {
+  /// cgroupv2 path (e.g. "/user.slice/user-1000.slice/session-1.scope")
+  V2 { path: String },
+  /// Only cgroupv1 hierarchies were found, cgroupv2 is not available
+  V1Only,
+  /// Cgroup collection was not requested
+  NotCollected,
+  /// Failed to read or resolve cgroup information
+  Error(CgroupError),
+}
+
+/// Read the cgroup path from `/proc/{pid}/cgroup`.
+/// Returns `CgroupInfo::V2` if a cgroupv2 entry is found,
+/// `CgroupInfo::V1Only` if only v1 entries exist.
+pub fn read_cgroup(pid: Pid) -> CgroupInfo {
+  let filename = format!("/proc/{pid}/cgroup");
+  let contents = match fs::read_to_string(&filename) {
+    Ok(c) => c,
+    Err(e) => return CgroupInfo::Error(CgroupError::ReadProcCgroup { kind: e.kind() }),
+  };
+  parse_proc_cgroup(&contents)
+}
+
+/// Parse the contents of `/proc/pid/cgroup`.
+/// For cgroupv2: the line is `0::<path>`.
+/// For cgroupv1: hierarchy-ID is non-zero and controller-list is non-empty.
+pub fn parse_proc_cgroup(contents: &str) -> CgroupInfo {
+  for line in contents.lines() {
+    let line = line.trim();
+    if line.is_empty() {
+      continue;
+    }
+    // Format: hierarchy-ID:controller-list:cgroup-path
+    let mut parts = line.splitn(3, ':');
+    let hierarchy_id = match parts.next() {
+      Some(id) => id,
+      None => continue,
+    };
+    let controller_list = match parts.next() {
+      Some(cl) => cl,
+      None => continue,
+    };
+    let cgroup_path = match parts.next() {
+      Some(p) => p,
+      None => continue,
+    };
+    // cgroupv2: hierarchy-ID is "0" and controller-list is empty
+    if hierarchy_id == "0" && controller_list.is_empty() {
+      return CgroupInfo::V2 {
+        path: cgroup_path.to_string(),
+      };
+    }
+  }
+  CgroupInfo::V1Only
+}
+
+/// Resolve a cgroupv2 ID (inode number) to its path by walking `/sys/fs/cgroup`.
+/// Returns `CgroupInfo::V2` if the cgroup is found, `CgroupInfo::Error` otherwise.
+pub fn resolve_cgroup_id(cgroup_id: u64) -> CgroupInfo {
+  use std::os::unix::fs::MetadataExt;
+
+  let cgroup_root = Path::new("/sys/fs/cgroup");
+  if !cgroup_root.exists() {
+    return CgroupInfo::Error(CgroupError::CgroupFsNotMounted);
+  }
+
+  // Check if the root itself matches
+  if let Ok(meta) = fs::metadata(cgroup_root)
+    && meta.ino() == cgroup_id
+  {
+    return CgroupInfo::V2 {
+      path: "/".to_string(),
+    };
+  }
+
+  resolve_cgroup_id_in_dir(cgroup_id, cgroup_root, cgroup_root)
+}
+
+fn resolve_cgroup_id_in_dir(cgroup_id: u64, dir: &Path, root: &Path) -> CgroupInfo {
+  use std::os::unix::fs::MetadataExt;
+
+  let entries = match fs::read_dir(dir) {
+    Ok(e) => e,
+    Err(_) => return CgroupInfo::Error(CgroupError::ReadCgroupDir),
+  };
+
+  for entry in entries {
+    let entry = match entry {
+      Ok(e) => e,
+      Err(_) => continue,
+    };
+    let path = entry.path();
+    let meta = match fs::metadata(&path) {
+      Ok(m) => m,
+      Err(_) => continue,
+    };
+    if meta.is_dir() {
+      if meta.ino() == cgroup_id {
+        let relative = path
+          .strip_prefix(root)
+          .map(|p| format!("/{}", p.display()))
+          .unwrap_or_else(|_| path.display().to_string());
+        return CgroupInfo::V2 { path: relative };
+      }
+      // Recurse into subdirectories
+      let result = resolve_cgroup_id_in_dir(cgroup_id, &path, root);
+      if matches!(result, CgroupInfo::V2 { .. }) {
+        return result;
+      }
+    }
+  }
+
+  CgroupInfo::Error(CgroupError::CgroupIdNotFound)
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct FileDescriptorInfoCollection {
   #[serde(flatten)]
@@ -1007,5 +1137,127 @@ mod interpreter_test {
     let result = read_interpreter_recursive(&exe);
     assert!(result.is_empty());
     dir.close().unwrap();
+  }
+}
+
+#[cfg(test)]
+mod cgroup_tests {
+  use super::{
+    CgroupInfo,
+    parse_proc_cgroup,
+    resolve_cgroup_id_in_dir,
+  };
+
+  #[test]
+  fn parse_cgroupv2_only() {
+    let contents = "0::/user.slice/user-1000.slice/session-1.scope\n";
+    let result = parse_proc_cgroup(contents);
+    assert_eq!(
+      result,
+      CgroupInfo::V2 {
+        path: "/user.slice/user-1000.slice/session-1.scope".to_string()
+      }
+    );
+  }
+
+  #[test]
+  fn parse_cgroupv2_root() {
+    let contents = "0::/\n";
+    let result = parse_proc_cgroup(contents);
+    assert_eq!(
+      result,
+      CgroupInfo::V2 {
+        path: "/".to_string()
+      }
+    );
+  }
+
+  #[test]
+  fn parse_cgroupv1_only() {
+    let contents = "5:cpuacct,cpu,cpuset:/daemons\n3:memory:/system.slice\n";
+    let result = parse_proc_cgroup(contents);
+    assert_eq!(result, CgroupInfo::V1Only);
+  }
+
+  #[test]
+  fn parse_mixed_v1_and_v2() {
+    // cgroupv2 line should be found even with v1 lines present
+    let contents = "12:pids:/user.slice\n5:cpuacct,cpu:/daemons\n0::/user.slice/user-1000.slice\n";
+    let result = parse_proc_cgroup(contents);
+    assert_eq!(
+      result,
+      CgroupInfo::V2 {
+        path: "/user.slice/user-1000.slice".to_string()
+      }
+    );
+  }
+
+  #[test]
+  fn parse_empty_contents() {
+    let result = parse_proc_cgroup("");
+    assert_eq!(result, CgroupInfo::V1Only);
+  }
+
+  #[test]
+  fn parse_malformed_line() {
+    // Missing fields should just be skipped
+    let contents = "badline\n0::/good\n";
+    let result = parse_proc_cgroup(contents);
+    assert_eq!(
+      result,
+      CgroupInfo::V2 {
+        path: "/good".to_string()
+      }
+    );
+  }
+
+  #[test]
+  fn parse_only_blank_lines() {
+    let contents = "\n\n\n";
+    let result = parse_proc_cgroup(contents);
+    assert_eq!(result, CgroupInfo::V1Only);
+  }
+
+  #[test]
+  fn resolve_cgroup_id_finds_directory() {
+    use std::os::unix::fs::MetadataExt;
+    let dir = tempfile::tempdir().unwrap();
+    let sub = dir.path().join("child");
+    std::fs::create_dir(&sub).unwrap();
+    let ino = std::fs::metadata(&sub).unwrap().ino();
+
+    let result = resolve_cgroup_id_in_dir(ino, dir.path(), dir.path());
+    assert_eq!(
+      result,
+      CgroupInfo::V2 {
+        path: "/child".to_string()
+      }
+    );
+  }
+
+  #[test]
+  fn resolve_cgroup_id_nested() {
+    use std::os::unix::fs::MetadataExt;
+    let dir = tempfile::tempdir().unwrap();
+    let parent = dir.path().join("a");
+    std::fs::create_dir(&parent).unwrap();
+    let child = parent.join("b");
+    std::fs::create_dir(&child).unwrap();
+    let ino = std::fs::metadata(&child).unwrap().ino();
+
+    let result = resolve_cgroup_id_in_dir(ino, dir.path(), dir.path());
+    assert_eq!(
+      result,
+      CgroupInfo::V2 {
+        path: "/a/b".to_string()
+      }
+    );
+  }
+
+  #[test]
+  fn resolve_cgroup_id_not_found() {
+    let dir = tempfile::tempdir().unwrap();
+    let result = resolve_cgroup_id_in_dir(999999999, dir.path(), dir.path());
+    assert!(matches!(result, CgroupInfo::Error(_)));
   }
 }
