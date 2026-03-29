@@ -220,6 +220,8 @@ in
 
           PID_NS = yes;
 
+          CGROUPS = yes;
+
           SECCOMP = yes;
 
           ## BPF
