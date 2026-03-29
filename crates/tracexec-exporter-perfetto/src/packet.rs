@@ -15,7 +15,10 @@ use tracexec_core::{
     RuntimeModifier,
     TracerEventDetails,
   },
-  proc::BaselineInfo,
+  proc::{
+    BaselineInfo,
+    CgroupInfo,
+  },
   tracer::ProcessExit,
 };
 use tracexec_tui::{
@@ -60,6 +63,15 @@ use crate::{
 
 const TRUSTED_PKT_SEQ_ID: OptionalTrustedPacketSequenceId =
   OptionalTrustedPacketSequenceId::TrustedPacketSequenceId(114514);
+
+fn format_cgroup_annotation(cgroup: &CgroupInfo) -> String {
+  match cgroup {
+    CgroupInfo::V2 { path } => path.clone(),
+    CgroupInfo::V1Only => "cgroupv1 only (cgroupv2 not available)".to_string(),
+    CgroupInfo::NotCollected => "Not collected".to_string(),
+    CgroupInfo::Error(error) => format!("Error: {}", error),
+  }
+}
 
 pub struct TracePacketCreator {
   baseline: Arc<BaselineInfo>,
@@ -191,6 +203,10 @@ impl TracePacketCreator {
           .da_string_interner
           .intern_with(event.cwd.as_ref(), &mut da_interned_strings),
       ),
+      DebugAnnotationInternId::Cgroup.with_interned_string(self.da_string_interner.intern_with(
+        &format_cgroup_annotation(&event.cgroup),
+        &mut da_interned_strings,
+      )),
       DebugAnnotationInternId::SyscallRet.with_int(event.result),
       DebugAnnotationInternId::Pid.with_uint(event.pid.as_raw() as _),
       DebugAnnotationInternId::Cmdline.with_string(
@@ -421,5 +437,138 @@ impl SliceEndInfo {
       Self::Exited(ProcessExit::Code(_)) => "exited",
       Self::Exited(ProcessExit::Signal(_)) => "signaled",
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::{
+    collections::BTreeMap,
+    sync::Arc,
+  };
+
+  use nix::{
+    errno::Errno,
+    unistd::Pid,
+  };
+  use tracexec_core::{
+    event::{
+      ExecEvent,
+      ExecSyscall,
+      OutputMsg,
+      TracerEventDetails,
+    },
+    proc::{
+      BaselineInfo,
+      CgroupError,
+      CgroupInfo,
+      Cred,
+      FileDescriptorInfoCollection,
+      cached_str,
+    },
+    timestamp::ts_from_boot_ns,
+  };
+
+  use super::{
+    TracePacketCreator,
+    format_cgroup_annotation,
+  };
+  use crate::{
+    intern::DebugAnnotationInternId,
+    producer::TrackUuid,
+    proto::{
+      debug_annotation::{
+        NameField as DebugNameField,
+        Value,
+      },
+      trace_packet::Data,
+    },
+  };
+
+  fn make_exec_event(cgroup: CgroupInfo) -> TracerEventDetails {
+    TracerEventDetails::Exec(Box::new(ExecEvent {
+      syscall: ExecSyscall::Execve,
+      exec_pid: Pid::from_raw(1234),
+      pid: Pid::from_raw(1234),
+      cwd: OutputMsg::from(cached_str("/tmp")),
+      comm: cached_str("cmd"),
+      filename: OutputMsg::from(cached_str("/bin/echo")),
+      argv: Arc::new(Ok(vec![OutputMsg::from(cached_str("/bin/echo"))])),
+      envp: Arc::new(Ok(BTreeMap::new())),
+      has_dash_env: false,
+      cred: Ok(Cred::default()),
+      interpreter: None,
+      env_diff: Err(Errno::EPERM),
+      fdinfo: Arc::new(FileDescriptorInfoCollection::default()),
+      result: 0,
+      timestamp: ts_from_boot_ns(0),
+      parent: None,
+      cgroup,
+    }))
+  }
+
+  #[test]
+  fn test_format_cgroup_annotation_uses_path_or_state() {
+    assert_eq!(
+      format_cgroup_annotation(&CgroupInfo::V2 {
+        path: "/user.slice/session.scope".to_string(),
+      }),
+      "/user.slice/session.scope"
+    );
+    assert_eq!(
+      format_cgroup_annotation(&CgroupInfo::NotCollected),
+      "Not collected"
+    );
+    assert_eq!(
+      format_cgroup_annotation(&CgroupInfo::Error(CgroupError::CgroupIdNotFound)),
+      format!("Error: {}", CgroupError::CgroupIdNotFound.to_string())
+    );
+  }
+
+  #[test]
+  fn test_process_exec_event_includes_cgroup_debug_annotation() {
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let (mut creator, _initial) = TracePacketCreator::new(baseline);
+    let packet = creator
+      .process_exec_event(
+        &make_exec_event(CgroupInfo::V2 {
+          path: "/user.slice/test.scope".to_string(),
+        }),
+        TrackUuid::new(1),
+      )
+      .unwrap();
+
+    let Some(Data::TrackEvent(track_event)) = packet.data else {
+      panic!("expected track event packet");
+    };
+
+    let cgroup = track_event
+      .debug_annotations
+      .iter()
+      .find(|annotation| {
+        annotation.name_field
+          == Some(DebugNameField::NameIid(
+            DebugAnnotationInternId::Cgroup as u64,
+          ))
+      })
+      .expect("missing cgroup debug annotation");
+
+    let Some(Value::StringValueIid(iid)) = cgroup.value.as_ref() else {
+      panic!("expected interned string value for cgroup annotation");
+    };
+
+    assert_eq!(
+      packet.interned_data.as_ref().and_then(|data| {
+        data
+          .debug_annotation_string_values
+          .iter()
+          .find(|s| s.iid == Some(*iid))
+          .and_then(|s| s.str.as_deref())
+          .and_then(|s| String::from_utf8(s.to_vec()).ok())
+      }),
+      Some(format_cgroup_annotation(&CgroupInfo::V2 {
+        path: "/user.slice/test.scope".to_string(),
+      }))
+    );
   }
 }

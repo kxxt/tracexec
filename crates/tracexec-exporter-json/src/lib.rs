@@ -24,6 +24,8 @@ use tracexec_core::{
   },
   proc::{
     BaselineInfo,
+    CgroupError,
+    CgroupInfo,
     Cred,
     EnvDiff,
     FileDescriptorInfoCollection,
@@ -160,6 +162,50 @@ impl<T: Serialize + Clone> JsonResult<T> {
   }
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum JsonCgroupInfo {
+  V2 { path: String },
+  V1Only,
+  NotCollected,
+  Error { error: JsonCgroupError },
+}
+
+impl JsonCgroupInfo {
+  pub fn from_cgroup_info(value: CgroupInfo) -> Self {
+    match value {
+      CgroupInfo::V2 { path } => Self::V2 { path },
+      CgroupInfo::V1Only => Self::V1Only,
+      CgroupInfo::NotCollected => Self::NotCollected,
+      CgroupInfo::Error(error) => Self::Error {
+        error: JsonCgroupError::from_cgroup_error(&error),
+      },
+    }
+  }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum JsonCgroupError {
+  ReadProcCgroup { io_error_kind: String },
+  CgroupFsNotMounted,
+  ReadCgroupDir,
+  CgroupIdNotFound,
+}
+
+impl JsonCgroupError {
+  pub fn from_cgroup_error(value: &CgroupError) -> Self {
+    match value {
+      CgroupError::ReadProcCgroup { kind } => Self::ReadProcCgroup {
+        io_error_kind: kind.to_string(),
+      },
+      CgroupError::CgroupFsNotMounted => Self::CgroupFsNotMounted,
+      CgroupError::ReadCgroupDir => Self::ReadCgroupDir,
+      CgroupError::CgroupIdNotFound => Self::CgroupIdNotFound,
+    }
+  }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct JsonExecEvent {
   pub id: EventId,
@@ -175,6 +221,7 @@ pub struct JsonExecEvent {
   pub fdinfo: FileDescriptorInfoCollection,
   pub timestamp: u64,
   pub cred: JsonResult<Cred>,
+  pub cgroup: JsonCgroupInfo,
 }
 
 impl JsonExecEvent {
@@ -197,6 +244,7 @@ impl JsonExecEvent {
       argv: JsonResult::from_result(Arc::unwrap_or_clone(event.argv)),
       env: JsonResult::from_result(event.env_diff),
       cred: JsonResult::from_result(event.cred),
+      cgroup: JsonCgroupInfo::from_cgroup_info(event.cgroup),
       fdinfo: Arc::unwrap_or_clone(event.fdinfo),
       timestamp: event
         .timestamp
@@ -279,6 +327,8 @@ mod tests {
     },
     proc::{
       BaselineInfo,
+      CgroupError,
+      CgroupInfo,
       CredInspectError,
       FileDescriptorInfoCollection,
       cached_str,
@@ -287,6 +337,7 @@ mod tests {
   };
 
   use super::{
+    JsonCgroupInfo,
     JsonResult,
     JsonStreamExporter,
   };
@@ -340,6 +391,28 @@ mod tests {
     assert!(matches!(err, JsonResult::Error(msg) if msg.contains("boom")));
   }
 
+  #[test]
+  fn test_json_cgroup_info_maps_v2_and_error_variants() {
+    assert_eq!(
+      JsonCgroupInfo::from_cgroup_info(CgroupInfo::V2 {
+        path: "/user.slice/demo.scope".to_string(),
+      }),
+      JsonCgroupInfo::V2 {
+        path: "/user.slice/demo.scope".to_string(),
+      }
+    );
+    assert_eq!(
+      JsonCgroupInfo::from_cgroup_info(CgroupInfo::Error(CgroupError::ReadProcCgroup {
+        kind: io::ErrorKind::PermissionDenied,
+      })),
+      JsonCgroupInfo::Error {
+        error: super::JsonCgroupError::ReadProcCgroup {
+          io_error_kind: io::ErrorKind::PermissionDenied.to_string(),
+        },
+      }
+    );
+  }
+
   #[tokio::test]
   async fn test_json_exporter_emits_json_on_exit() {
     let baseline = Arc::new(BaselineInfo::new().unwrap());
@@ -374,6 +447,8 @@ mod tests {
       value["generator"].as_str().unwrap(),
       env!("CARGO_CRATE_NAME")
     );
+    assert_eq!(value["events"][0]["cgroup"]["kind"], "v2");
+    assert_eq!(value["events"][0]["cgroup"]["path"], "/");
   }
 
   #[tokio::test]
@@ -411,5 +486,7 @@ mod tests {
     assert!(values.len() >= 2);
     assert!(values[0].get("generator").is_some());
     assert!(values[1].get("id").is_some());
+    assert_eq!(values[1]["cgroup"]["kind"], "v2");
+    assert_eq!(values[1]["cgroup"]["path"], "/");
   }
 }

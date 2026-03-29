@@ -24,6 +24,7 @@ pub enum DebugAnnotationInternId {
   Argv = 1,
   Filename,
   Cwd,
+  Cgroup,
   SyscallRet,
   EndReason,
   ExitCode,
