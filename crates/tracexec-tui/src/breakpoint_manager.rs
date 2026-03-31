@@ -651,7 +651,7 @@ impl BreakPointManagerState {
         if selected > 0 {
           self.list_state.select(Some(selected - 1));
         } else if selected + 1 < self.breakpoints.len() {
-          self.list_state.select(Some(selected + 1));
+          self.list_state.select(Some(selected));
         } else {
           self.list_state.select(None);
         }
