@@ -554,6 +554,53 @@ mod tests {
     assert!(tracer_breakpoints.contains_key(&id1));
     assert!(!tracer_breakpoints.contains_key(&id2));
   }
+
+  #[test]
+  fn test_delete_first_breakpoint_selects_new_first() {
+    let tracer = RunningTracer::mock();
+    let id1 = tracer.add_breakpoint(make_breakpoint(
+      "in-filename:/bin/echo",
+      BreakPointStop::SyscallExit,
+      true,
+    ));
+    let id2 = tracer.add_breakpoint(make_breakpoint(
+      "exact-filename:/bin/sleep",
+      BreakPointStop::SyscallEnter,
+      true,
+    ));
+    let mut state = BreakPointManagerState::new(tracer.clone(), keys().clone(), current_theme());
+    // Select the first item (index 0) and delete it
+    state.list_state.select(Some(0));
+    state.handle_key_event(
+      KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE),
+      keys().as_ref(),
+    );
+    assert_eq!(state.breakpoints.len(), 1);
+    assert!(!state.breakpoints.contains_key(&id1));
+    assert!(state.breakpoints.contains_key(&id2));
+    // Selection should remain at 0 (the next item slid into position 0)
+    assert_eq!(state.list_state.selected, Some(0));
+  }
+
+  #[test]
+  fn test_delete_only_breakpoint_clears_selection() {
+    let tracer = RunningTracer::mock();
+    let id = tracer.add_breakpoint(make_breakpoint(
+      "in-filename:/bin/echo",
+      BreakPointStop::SyscallExit,
+      true,
+    ));
+    let mut state = BreakPointManagerState::new(tracer.clone(), keys().clone(), current_theme());
+    state.list_state.select(Some(0));
+    state.handle_key_event(
+      KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE),
+      keys().as_ref(),
+    );
+    assert_eq!(state.breakpoints.len(), 0);
+    assert!(!state.breakpoints.contains_key(&id));
+    // No items left, selection should be None
+    assert_eq!(state.list_state.selected, None);
+  }
 }
 
 impl BreakPointManagerState {
