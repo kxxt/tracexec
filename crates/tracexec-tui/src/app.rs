@@ -25,6 +25,10 @@ use std::{
 };
 
 use arboard::Clipboard;
+use crossterm::event::{
+  MouseButton,
+  MouseEventKind,
+};
 use nix::{
   errno::Errno,
   sys::signal::Signal,
@@ -92,6 +96,12 @@ use crate::{
   },
   error_popup::InfoPopupState,
   event::TracerEventDetailsTuiExt,
+  mouse::{
+    ClickTracker,
+    HelpBarEntry,
+    HoverState,
+    LayoutAreas,
+  },
   query::QueryKind,
 };
 
@@ -118,6 +128,20 @@ pub struct App {
   breakpoint_manager: Option<BreakPointManagerState>,
   hit_manager_state: Option<HitManagerState>,
   exit_handling: ExitHandling,
+  /// Layout areas computed during rendering, used for mouse hit testing.
+  pub layout_areas: LayoutAreas,
+  /// Clickable help bar entries computed during rendering.
+  pub help_bar_entries: Vec<HelpBarEntry>,
+  /// Tracks click state for double-click detection.
+  pub click_tracker: ClickTracker,
+  /// Tracks the current mouse position for hover effects.
+  pub hover_state: HoverState,
+  /// Whether hovering over a pane should focus it.
+  pub focus_on_hover: bool,
+  /// Whether the user is currently dragging the pane divider.
+  pub dragging_divider: bool,
+  /// Whether mouse support is enabled.
+  pub mouse_enabled: bool,
 }
 
 pub struct PTracer {
@@ -210,6 +234,13 @@ impl App {
           ExitHandling::Wait
         }
       },
+      layout_areas: LayoutAreas::default(),
+      help_bar_entries: Vec::new(),
+      click_tracker: ClickTracker::default(),
+      hover_state: HoverState::default(),
+      focus_on_hover: tui_args.focus_on_hover.unwrap_or(false),
+      dragging_divider: false,
+      mouse_enabled: tui_args.mouse.unwrap_or(true),
     })
   }
 
@@ -504,6 +535,9 @@ impl App {
           Event::Render => {
             action_tx.send(Action::Render);
           }
+          Event::Mouse(me) => {
+            self.handle_mouse_event(me, &action_tx).await;
+          }
           Event::Resize { width, height } => {
             action_tx.send(Action::Resize(Size { width, height }));
             // action_tx.send(Action::Render)?;
@@ -580,6 +614,10 @@ impl App {
             if let Some(term) = self.term.as_mut() {
               term.handle_key_event(&ke, &self.key_bindings).await;
             }
+          }
+          Action::HandleHelpBarClick(ke) => {
+            // Re-inject as a regular key event through the event channel
+            tui.event_tx.send(Event::Key(ke)).unwrap();
           }
           Action::Resize(_size) => {
             self.should_handle_internal_resize = true;
@@ -733,6 +771,209 @@ impl App {
               .hit_manager_state
               .access_some_mut(|h| h.visible = false);
           }
+        }
+      }
+    }
+  }
+
+  async fn handle_mouse_event(
+    &mut self,
+    me: crossterm::event::MouseEvent,
+    action_tx: &local_chan::LocalUnboundedSender<Action>,
+  ) {
+    if !self.mouse_enabled {
+      return;
+    }
+    use crate::mouse::position_in_rect;
+
+    let col = me.column;
+    let row = me.row;
+
+    // Update hover state for hover effects
+    if matches!(me.kind, MouseEventKind::Moved) {
+      self.hover_state.col = col;
+      self.hover_state.row = row;
+    }
+
+    // Handle divider dragging between event list and terminal pane
+    if self.term.is_some() {
+      if self.dragging_divider {
+        match me.kind {
+          MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Moved => {
+            let rest = &self.layout_areas.rest_area;
+            let new_pct = if self.layout == AppLayout::Horizontal {
+              if rest.width > 0 {
+                ((col.saturating_sub(rest.x)) as u32 * 100 / rest.width as u32) as u16
+              } else {
+                self.split_percentage
+              }
+            } else if rest.height > 0 {
+              ((row.saturating_sub(rest.y)) as u32 * 100 / rest.height as u32) as u16
+            } else {
+              self.split_percentage
+            };
+            self.split_percentage = new_pct.clamp(10, 90);
+            self.should_handle_internal_resize = true;
+            return;
+          }
+          MouseEventKind::Up(MouseButton::Left) => {
+            self.dragging_divider = false;
+            return;
+          }
+          _ => {
+            self.dragging_divider = false;
+          }
+        }
+      }
+
+      // Detect drag start on the divider border
+      if matches!(me.kind, MouseEventKind::Down(MouseButton::Left)) {
+        let on_divider = if self.layout == AppLayout::Horizontal {
+          if let Some(term_outer) = self.layout_areas.terminal_outer {
+            // The divider is the left border of terminal pane (= right border of event list)
+            col == term_outer.x
+              || col == self.layout_areas.event_list_outer.right().saturating_sub(1)
+          } else {
+            false
+          }
+        } else if let Some(term_outer) = self.layout_areas.terminal_outer {
+          // The divider is the top border of terminal pane (= bottom border of event list)
+          row == term_outer.y
+            || row
+              == self
+                .layout_areas
+                .event_list_outer
+                .bottom()
+                .saturating_sub(1)
+        } else {
+          false
+        };
+        if on_divider {
+          self.dragging_divider = true;
+          return;
+        }
+      }
+    }
+
+    // Check help bar (footer) clicks
+    if position_in_rect(col, row, &self.layout_areas.footer) {
+      if matches!(me.kind, MouseEventKind::Down(MouseButton::Left)) {
+        for entry in &self.help_bar_entries {
+          if position_in_rect(col, row, &entry.area) {
+            action_tx.send(Action::HandleHelpBarClick(entry.key_event));
+            return;
+          }
+        }
+      }
+      return;
+    }
+
+    // Check title bar help entry clicks (e.g. breakpoint/hit manager top-right items)
+    if matches!(me.kind, MouseEventKind::Down(MouseButton::Left)) {
+      for entry in &self.layout_areas.title_bar_entries {
+        if position_in_rect(col, row, &entry.area) {
+          action_tx.send(Action::HandleHelpBarClick(entry.key_event));
+          return;
+        }
+      }
+    }
+
+    // When overlays are active (popups, breakpoint manager, hit manager),
+    // block mouse events from reaching the event list and terminal pane.
+    // But still route relevant events to the active popup.
+    let has_overlay = !self.popup.is_empty()
+      || self.breakpoint_manager.is_some()
+      || self.hit_manager_state.as_ref().is_some_and(|h| h.visible);
+    if has_overlay {
+      // Route mouse events to the topmost popup if applicable
+      if let Some(popup) = self.popup.last_mut()
+        && let ActivePopup::ViewDetails(state) = popup
+      {
+        state.handle_mouse_event(&me);
+      }
+      return;
+    }
+
+    // Check terminal pane clicks
+    if let Some(term_inner) = self.layout_areas.terminal_inner
+      && let Some(term_outer) = self.layout_areas.terminal_outer
+      && position_in_rect(col, row, &term_outer)
+    {
+      // Switch to terminal pane if not already active
+      if self.active_pane != ActivePane::Terminal {
+        let should_switch = matches!(me.kind, MouseEventKind::Down(_))
+          || (self.focus_on_hover && matches!(me.kind, MouseEventKind::Moved));
+        if should_switch {
+          action_tx.send(Action::SwitchActivePane);
+        }
+      }
+      // Pass mouse event through to the PTY
+      if position_in_rect(col, row, &term_inner)
+        && let Some(term) = self.term.as_ref()
+      {
+        // In scrollback mode, intercept scroll events for scrollback navigation
+        if term.is_scrollback_mode() {
+          match me.kind {
+            MouseEventKind::ScrollUp => {
+              term.scroll_up();
+              return;
+            }
+            MouseEventKind::ScrollDown => {
+              term.scroll_down();
+              return;
+            }
+            _ => {}
+          }
+        }
+        let rel_col = col - term_inner.x;
+        let rel_row = row - term_inner.y;
+        term.handle_mouse_event(&me, rel_col, rel_row).await;
+      }
+      return;
+    }
+
+    // Check event list clicks
+    if position_in_rect(col, row, &self.layout_areas.event_list_outer) {
+      // Switch to event pane if not already active
+      if self.active_pane != ActivePane::Events && self.term.is_some() {
+        let should_switch = matches!(me.kind, MouseEventKind::Down(_))
+          || (self.focus_on_hover && matches!(me.kind, MouseEventKind::Moved));
+        if should_switch {
+          action_tx.send(Action::SwitchActivePane);
+        }
+      }
+
+      if position_in_rect(col, row, &self.layout_areas.event_list_inner) {
+        let rel_row = (row - self.layout_areas.event_list_inner.y) as usize;
+
+        match me.kind {
+          MouseEventKind::Down(MouseButton::Left) => {
+            let is_double_click = self.click_tracker.record_click(col, row);
+            let list = self.active_event_list();
+            list.stop_follow();
+            if list.select_row(rel_row) && is_double_click {
+              // Double-click: open details popup
+              if let Some(event) = list.selection() {
+                action_tx.send(Action::SetActivePopup(ActivePopup::ViewDetails(
+                  crate::details_popup::DetailsPopupState::new(&event.borrow(), list),
+                )));
+              }
+            }
+          }
+          MouseEventKind::ScrollUp => {
+            action_tx.send(Action::StopFollow);
+            action_tx.send(Action::PrevItem);
+          }
+          MouseEventKind::ScrollDown => {
+            action_tx.send(Action::NextItem);
+          }
+          MouseEventKind::ScrollLeft => {
+            action_tx.send(Action::ScrollLeft);
+          }
+          MouseEventKind::ScrollRight => {
+            action_tx.send(Action::ScrollRight);
+          }
+          _ => {}
         }
       }
     }

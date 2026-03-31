@@ -15,7 +15,6 @@ use ratatui::{
     Modifier,
     Style,
   },
-  text::Span,
   widgets::{
     Block,
     Borders,
@@ -33,7 +32,10 @@ use tracexec_core::{
   event::TracerEventDetails,
 };
 
-use super::help::help_item;
+use super::help::{
+  HelpItem,
+  help_item,
+};
 use crate::{
   action::{
     Action,
@@ -175,8 +177,8 @@ impl CopyPopupState {
     None
   }
 
-  pub fn help_items(&self) -> impl Iterator<Item = Span<'_>> {
-    self.available_targets.iter().flat_map(|&target| {
+  pub fn help_items(&self) -> impl Iterator<Item = HelpItem<'_>> {
+    self.available_targets.iter().map(|&target| {
       let config = copy_target_config(target);
       let key_label = copy_target_binding(&self.key_bindings, target).display();
       help_item!(key_label, config.help_label, self.theme)

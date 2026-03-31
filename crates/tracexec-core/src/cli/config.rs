@@ -159,6 +159,8 @@ pub struct TuiModeConfig {
   pub frame_rate: Option<f64>,
   pub max_events: Option<u64>,
   pub scrollback_lines: Option<usize>,
+  pub focus_on_hover: Option<bool>,
+  pub mouse: Option<bool>,
   #[serde(rename = "theme-file")]
   pub theme_file: Option<PathBuf>,
   #[serde(default)]

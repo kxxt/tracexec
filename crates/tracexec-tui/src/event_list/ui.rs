@@ -1,4 +1,3 @@
-use itertools::chain;
 use nix::sys::signal;
 use ratatui::{
   buffer::Buffer,
@@ -47,7 +46,10 @@ use super::{
 use crate::{
   event::TracerEventDetailsTuiExt,
   event_line::EventLine,
-  help::help_item,
+  help::{
+    HelpItem,
+    help_item,
+  },
   partial_line::PartialLine,
   theme::Theme,
 };
@@ -196,56 +198,72 @@ impl EventList {
     .alignment(Alignment::Right)
   }
 
-  pub fn update_help(&self, keys: &TuiKeyBindings, items: &mut Vec<Span<'_>>) {
+  pub fn update_help<'a>(&self, keys: &TuiKeyBindings, items: &mut Vec<HelpItem<'a>>) {
     if self.is_primary {
-      items.extend(chain!(
-        help_item!(
-          keys.event_toggle_follow.display(),
-          if self.is_following() {
-            "Unfollow"
-          } else {
-            "Follow"
-          },
-          self.theme
-        ),
-        help_item!(keys.event_search.display(), "Search", self.theme),
-      ))
+      items.push(help_item!(
+        keys.event_toggle_follow.display(),
+        if self.is_following() {
+          "Unfollow"
+        } else {
+          "Follow"
+        },
+        self.theme,
+        &keys.event_toggle_follow
+      ));
+      items.push(help_item!(
+        keys.event_search.display(),
+        "Search",
+        self.theme,
+        &keys.event_search
+      ));
     }
-    items.extend(chain!(
-      help_item!(
-        keys.event_toggle_env.display(),
-        if self.is_env_in_cmdline() {
-          "Hide\u{00a0}Env"
-        } else {
-          "Show\u{00a0}Env"
-        },
-        self.theme
-      ),
-      help_item!(
-        keys.event_toggle_cwd.display(),
-        if self.is_cwd_in_cmdline() {
-          "Hide\u{00a0}CWD"
-        } else {
-          "Show\u{00a0}CWD"
-        },
-        self.theme
-      ),
-      help_item!(keys.event_view_details.display(), "View", self.theme),
+    items.push(help_item!(
+      keys.event_toggle_env.display(),
+      if self.is_env_in_cmdline() {
+        "Hide\u{00a0}Env"
+      } else {
+        "Show\u{00a0}Env"
+      },
+      self.theme,
+      &keys.event_toggle_env
+    ));
+    items.push(help_item!(
+      keys.event_toggle_cwd.display(),
+      if self.is_cwd_in_cmdline() {
+        "Hide\u{00a0}CWD"
+      } else {
+        "Show\u{00a0}CWD"
+      },
+      self.theme,
+      &keys.event_toggle_cwd
+    ));
+    items.push(help_item!(
+      keys.event_view_details.display(),
+      "View",
+      self.theme,
+      &keys.event_view_details
     ));
     if self.is_primary && self.selection_index().is_some() {
-      items.extend(help_item!(
+      items.push(help_item!(
         keys.event_go_to_parent.display(),
         "GoTo Parent",
-        self.theme
+        self.theme,
+        &keys.event_go_to_parent
       ));
-      items.extend(help_item!(
+      items.push(help_item!(
         keys.event_backtrace.display(),
         "Backtrace",
-        self.theme
+        self.theme,
+        &keys.event_backtrace
       ));
     }
     if self.has_clipboard {
-      items.extend(help_item!(keys.event_copy.display(), "Copy", self.theme));
+      items.push(help_item!(
+        keys.event_copy.display(),
+        "Copy",
+        self.theme,
+        &keys.event_copy
+      ));
     }
   }
 }

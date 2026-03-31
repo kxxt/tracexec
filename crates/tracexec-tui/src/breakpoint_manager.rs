@@ -4,10 +4,7 @@ use std::{
 };
 
 use crossterm::event::KeyEvent;
-use itertools::{
-  Itertools,
-  chain,
-};
+use itertools::Itertools;
 use ratatui::{
   layout::{
     Alignment,
@@ -57,6 +54,7 @@ use tui_widget_list::{
 use super::{
   error_popup::InfoPopupState,
   help::{
+    HelpItem,
     help_item,
     help_key,
   },
@@ -150,6 +148,9 @@ pub struct BreakPointManagerState {
   active: bool,
   editing: Option<u32>,
   theme: &'static Theme,
+  /// Title-bar help items populated during rendering (area + HelpItem).
+  /// Rendered by App with hover support.
+  pub title_bar_items: Vec<(Rect, HelpItem<'static>)>,
 }
 
 impl BreakPointManager {
@@ -620,6 +621,7 @@ impl BreakPointManagerState {
       active: true,
       editing: None,
       theme,
+      title_bar_items: Vec::new(),
     }
   }
 }
@@ -732,34 +734,43 @@ impl BreakPointManagerState {
     None
   }
 
-  pub fn help(&self, keys: &TuiKeyBindings, theme: &Theme) -> impl Iterator<Item = Span<'_>> {
-    chain!(
-      [
-        help_item!(keys.go_back.display(), "Close Mgr", theme),
-        help_item!(keys.breakpoint_delete.display(), "Delete", theme),
-        help_item!(keys.breakpoint_edit.display(), "Edit", theme),
-        help_item!(
-          keys.breakpoint_toggle_active.display(),
-          "Enable/Disable",
-          theme
-        ),
-        help_item!(
-          keys.breakpoint_new.display(),
-          "New\u{00a0}Breakpoint",
-          theme
-        ),
-      ],
-      if self.editor.is_some() {
-        Some(help_item!(
-          keys.breakpoint_editor_cancel.display(),
-          "Cancel",
-          theme
-        ))
-      } else {
-        None
-      }
-    )
-    .flatten()
+  pub fn help(&self, keys: &TuiKeyBindings, theme: &Theme) -> Vec<HelpItem<'_>> {
+    let mut items = vec![
+      help_item!(keys.go_back.display(), "Close Mgr", theme, &keys.go_back),
+      help_item!(
+        keys.breakpoint_delete.display(),
+        "Delete",
+        theme,
+        &keys.breakpoint_delete
+      ),
+      help_item!(
+        keys.breakpoint_edit.display(),
+        "Edit",
+        theme,
+        &keys.breakpoint_edit
+      ),
+      help_item!(
+        keys.breakpoint_toggle_active.display(),
+        "Enable/Disable",
+        theme,
+        &keys.breakpoint_toggle_active
+      ),
+      help_item!(
+        keys.breakpoint_new.display(),
+        "New\u{00a0}Breakpoint",
+        theme,
+        &keys.breakpoint_new
+      ),
+    ];
+    if self.editor.is_some() {
+      items.push(help_item!(
+        keys.breakpoint_editor_cancel.display(),
+        "Cancel",
+        theme,
+        &keys.breakpoint_editor_cancel
+      ));
+    }
+    items
   }
 }
 
@@ -767,6 +778,7 @@ impl StatefulWidgetRef for BreakPointManager {
   type State = BreakPointManagerState;
 
   fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+    state.title_bar_items.clear();
     let editor_area = Rect {
       x: 0,
       y: 1,
@@ -785,26 +797,30 @@ impl StatefulWidgetRef for BreakPointManager {
       let [stop_toggle_area, active_toggle_area] =
         Layout::horizontal([Constraint::Length(22), Constraint::Length(17)]).areas(toggles_area);
       TextPrompt::new("🐛".into()).render(editor_area, buf, editing);
-      Line::default()
-        .spans(help_item!(
+      state.title_bar_items.push((
+        stop_toggle_area,
+        help_item!(
           state.key_bindings.breakpoint_editor_toggle_stop.display(),
           match state.stop {
-            BreakPointStop::SyscallEnter => "Syscall Enter", // 13 + 2 = 15
+            BreakPointStop::SyscallEnter => "Syscall Enter",
             BreakPointStop::SyscallExit => "Syscall  Exit",
           },
-          state.theme
-        ))
-        .render(stop_toggle_area, buf);
-      Line::default()
-        .spans(help_item!(
+          state.theme,
+          &state.key_bindings.breakpoint_editor_toggle_stop
+        ),
+      ));
+      state.title_bar_items.push((
+        active_toggle_area,
+        help_item!(
           state.key_bindings.breakpoint_editor_toggle_active.display(),
           match state.active {
-            true => " Active ", // 8 + 2 = 10
+            true => " Active ",
             false => "Inactive",
           },
-          state.theme
-        ))
-        .render(active_toggle_area, buf);
+          state.theme,
+          &state.key_bindings.breakpoint_editor_toggle_active
+        ),
+      ));
     } else {
       let help_area = Rect {
         x: buf.area.width.saturating_sub(10),
@@ -813,13 +829,15 @@ impl StatefulWidgetRef for BreakPointManager {
         height: 1,
       };
       Clear.render(help_area, buf);
-      Line::default()
-        .spans(help_item!(
+      state.title_bar_items.push((
+        help_area,
+        help_item!(
           state.key_bindings.help.display(),
           "Help",
-          state.theme
-        ))
-        .render(help_area, buf);
+          state.theme,
+          &state.key_bindings.help
+        ),
+      ));
     }
     Clear.render(area, buf);
     let block = Block::new()

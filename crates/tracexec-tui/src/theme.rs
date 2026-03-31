@@ -45,7 +45,9 @@ pub struct Theme {
   pub inline_timestamp: Style,
   pub cli_flag: Style,
   pub help_key: Style,
+  pub help_key_hover: Style,
   pub help_desc: Style,
+  pub help_desc_hover: Style,
   pub fancy_help_desc: Style,
   pub pid_success: Style,
   pub pid_failure: Style,
@@ -149,11 +151,9 @@ impl Default for Theme {
       inline_timestamp: Style::default().light_cyan(),
       cli_flag: Style::default().yellow().on_dark_gray().bold(),
       help_key: Style::default().black().on_cyan().bold(),
-      help_desc: Style::default()
-        .light_green()
-        .on_dark_gray()
-        .italic()
-        .bold(),
+      help_key_hover: Style::default().black().on_light_cyan().bold(),
+      help_desc: Style::default().light_green().on_dark_gray().bold(),
+      help_desc_hover: Style::default().white().on_dark_gray().bold(),
       fancy_help_desc: Style::default().red().on_light_yellow().bold().slow_blink(),
       pid_success: Style::default().light_green(),
       pid_failure: Style::default().light_red(),
@@ -286,7 +286,9 @@ fn apply_theme_spec(spec: ThemeSpec, mut theme: Theme) -> color_eyre::Result<The
     inline_timestamp,
     cli_flag,
     help_key,
+    help_key_hover,
     help_desc,
+    help_desc_hover,
     fancy_help_desc,
     pid_success,
     pid_failure,

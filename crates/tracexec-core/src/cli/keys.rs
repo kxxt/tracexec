@@ -120,6 +120,11 @@ impl KeyList {
   pub fn first(&self) -> Option<&KeyBinding> {
     self.0.first()
   }
+
+  /// Returns the first key binding as a KeyEvent, for use in mouse click simulation.
+  pub fn first_key_event(&self) -> Option<KeyEvent> {
+    self.first().map(|b| KeyEvent::new(b.code, b.modifiers))
+  }
 }
 
 impl From<Vec<KeyBinding>> for KeyList {
