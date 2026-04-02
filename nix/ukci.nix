@@ -184,86 +184,114 @@ localFlake:
               targetSystem: map (source: source // { inherit targetSystem; }) (sourcesFor targetSystem)
             ) targetSystems;
           inherit (localFlake) nixpkgs;
-          tracexecFor =
-            targetPkgs:
+          llvmVersions = [ 20 21 22 ];
+          tracexecForClang =
+            targetPkgs: llvmVer:
+            let
+              bpfClang = targetPkgs.buildPackages.${"llvmPackages_${toString llvmVer}"}.clang.cc;
+            in
             (import ./tracexec-package.nix {
               inherit (targetPkgs) lib;
               inherit (localFlake) crane;
               pkgs = targetPkgs;
             })
-              { };
+              { inherit bpfClang; };
+          # Build a single shared initramfs per target system (no kernel dependency)
+          initramfsForTarget =
+            targetSystem:
+            let
+              targetPkgs = pkgsForTarget targetSystem;
+              buildInitramfs = targetPkgs.callPackage ./initramfs.nix { };
+            in
+            buildInitramfs {
+              extraBin = {
+                # We exclude tracexec from it to avoid constant rebuilding of initrds in CI.
+                # tracexec = "${self'.packages.tracexec}/bin/tracexec";
+                # tracexec_no_rcu_kfuncs = "${self'.packages.tracexec_no_rcu_kfuncs}/bin/tracexec";
+                strace = "${targetPkgs.strace}/bin/strace";
+                nix-store = "${targetPkgs.nix}/bin/nix";
+                # bpftrace is very useful for debugging nasty kernel bpf bugs.
+                # Warning: cross-compiling it would take some time so disable it by default.
+                # bpftrace = "${targetPkgs.bpftrace.override {
+                #     bcc = (targetPkgs.bcc.override {
+                #       luajit = null;
+                #     }).overrideAttrs (old: {
+                #       buildInputs = builtins.filter
+                #         (pkg: (pkg.pname or "") != "luajit")
+                #         old.buildInputs;
+
+                #       nativeBuildInputs = builtins.filter
+                #         (pkg: (pkg.pname or "") != "luajit")
+                #         (old.nativeBuildInputs or []);
+                #     });
+                # }}/bin/bpftrace";
+              };
+              storePaths = [ ];
+            };
           mkKernels =
             targetSystems:
             let
               sources = sourcesForTargets targetSystems;
               useArchSuffix = builtins.length targetSystems > 1;
-            in
-            map (
-              source:
-              let
-                inherit (source) targetSystem;
-                targetPkgs = pkgsForTarget targetSystem;
-                targetArch = getArch targetSystem;
-                kernelNixConfig = s: targetPkgs.callPackage ./kernel-source.nix s;
-                configureKernel = targetPkgs.callPackage ./kernel-configure.nix { };
-                buildKernel = targetPkgs.callPackage ./kernel-build.nix { stdenv = targetPkgs.gcc14Stdenv; };
-                config = kernelNixConfig source;
-                inherit (config) kernelArgs kernelConfig;
-                configfile = configureKernel {
-                  inherit (kernelConfig)
-                    generateConfigFlags
-                    structuredExtraConfig
-                    ;
-                  inherit kernel nixpkgs;
-                };
-                linuxDev = targetPkgs.linuxPackagesFor kernelDrv;
-                inherit (linuxDev) kernel;
-                kernelDrv = buildKernel {
-                  inherit (kernelArgs)
-                    src
-                    modDirVersion
-                    version
-                    ;
-                  inherit (source) kernelPatches extraMakeFlags;
-                  inherit configfile nixpkgs;
-                };
-                buildInitramfs = targetPkgs.callPackage ./initramfs.nix { };
-                kernelName = if useArchSuffix then "${source.name}-${targetArch}" else source.name;
-                testPackage = tracexecFor targetPkgs;
-              in
-              {
-                inherit kernel;
-                inherit targetSystem targetArch testPackage;
-                name = kernelName;
-                inherit (source) test_exe;
-                initramfs = buildInitramfs {
-                  inherit kernel;
-                  extraBin = {
-                    # We exclude tracexec from it to avoid constant rebuilding of initrds in CI.
-                    # tracexec = "${self'.packages.tracexec}/bin/tracexec";
-                    # tracexec_no_rcu_kfuncs = "${self'.packages.tracexec_no_rcu_kfuncs}/bin/tracexec";
-                    strace = "${targetPkgs.strace}/bin/strace";
-                    # bpftrace is very useful for debugging nasty kernel bpf bugs.
-                    # Warning: cross-compiling it would take some time so disable it by default.
-                    # bpftrace = "${targetPkgs.bpftrace.override {
-                    #     bcc = (targetPkgs.bcc.override {
-                    #       luajit = null;
-                    #     }).overrideAttrs (old: {
-                    #       buildInputs = builtins.filter
-                    #         (pkg: (pkg.pname or "") != "luajit")
-                    #         old.buildInputs;
-
-                    #       nativeBuildInputs = builtins.filter
-                    #         (pkg: (pkg.pname or "") != "luajit")
-                    #         (old.nativeBuildInputs or []);
-                    #     });
-                    # }}/bin/bpftrace";
-                    nix-store = "${targetPkgs.nix}/bin/nix";
+              # One shared initramfs per target system
+              initramfsMap = builtins.listToAttrs (
+                map (ts: {
+                  name = ts;
+                  value = initramfsForTarget ts;
+                }) (lib.unique (map (s: s.targetSystem) sources))
+              );
+              # Build kernel for each source
+              buildKernelForSource =
+                source:
+                let
+                  inherit (source) targetSystem;
+                  targetPkgs = pkgsForTarget targetSystem;
+                  targetArch = getArch targetSystem;
+                  kernelNixConfig = s: targetPkgs.callPackage ./kernel-source.nix s;
+                  configureKernel = targetPkgs.callPackage ./kernel-configure.nix { };
+                  buildKernel = targetPkgs.callPackage ./kernel-build.nix { stdenv = targetPkgs.gcc14Stdenv; };
+                  config = kernelNixConfig source;
+                  inherit (config) kernelArgs kernelConfig;
+                  configfile = configureKernel {
+                    inherit (kernelConfig)
+                      generateConfigFlags
+                      structuredExtraConfig
+                      ;
+                    inherit kernel nixpkgs;
                   };
-                  storePaths = [ ];
+                  linuxDev = targetPkgs.linuxPackagesFor kernelDrv;
+                  inherit (linuxDev) kernel;
+                  kernelDrv = buildKernel {
+                    inherit (kernelArgs)
+                      src
+                      modDirVersion
+                      version
+                      ;
+                    inherit (source) kernelPatches extraMakeFlags;
+                    inherit configfile nixpkgs;
+                  };
+                  baseName = if useArchSuffix then "${source.name}-${targetArch}" else source.name;
+                in
+                {
+                  inherit kernel targetSystem targetArch baseName;
+                  inherit (source) test_exe;
                 };
-              }
-            ) sources;
+              builtKernels = map buildKernelForSource sources;
+              # Create test entries for each (kernel, llvmVersion) combination
+              mkEntry =
+                builtKernel: llvmVer:
+                let
+                  targetPkgs = pkgsForTarget builtKernel.targetSystem;
+                  testPackage = tracexecForClang targetPkgs llvmVer;
+                in
+                {
+                  inherit (builtKernel) kernel targetSystem targetArch test_exe;
+                  inherit testPackage;
+                  name = "${builtKernel.baseName}-clang${toString llvmVer}";
+                  initramfs = initramfsMap.${builtKernel.targetSystem};
+                };
+            in
+            lib.concatMap (bk: map (mkEntry bk) llvmVersions) builtKernels;
           kernelsNative = mkKernels nativeTargetSystems;
           kernelsCross = mkKernels crossTargetSystems;
           targetSystemsAll = nativeTargetSystems ++ crossTargetSystems;
