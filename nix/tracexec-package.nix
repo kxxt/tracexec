@@ -5,6 +5,7 @@
 }:
 {
   cargoExtraArgs ? "--locked --no-default-features -F recommended",
+  bpfClang ? pkgs.buildPackages.clang.cc,
 }:
 let
   craneLib = crane.mkLib pkgs;
@@ -75,7 +76,7 @@ craneLib.buildPackage {
   nativeBuildInputs = [
     pkgs.buildPackages.pkg-config
     # For building eBPF, use unwrapped binary since bpf != target arch
-    pkgs.buildPackages.clang.cc
+    bpfClang
     # For generating binding to perfetto protos
     # pkgs.buildPackages.protobuf
   ];
@@ -83,6 +84,7 @@ craneLib.buildPackage {
     "zerocallusedregs"
   ];
   BPF_CFLAGS = "-isystem ${pkgs.linuxHeaders}/include -I ${pkgs.libbpf}/include";
+  CLANG = "${bpfClang}/bin/clang";
   # Don't store logs
   TRACEXEC_DATA = "/tmp";
 }
