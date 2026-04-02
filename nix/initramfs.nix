@@ -34,7 +34,7 @@
   dropbear,
 }:
 {
-  kernel,
+  kernel ? null,
   modules ? [ ],
   extraBin ? { },
   extraContent ? { },
@@ -66,8 +66,10 @@ let
     "/bin" = "${initrdBinEnv}/bin";
     "/sbin" = "${initrdBinEnv}/sbin";
     "/init" = init;
-    "/modules" = "${moduleEnv}/lib/modules/${kernel.modDirVersion}/misc";
   }
+  // (lib.optionalAttrs (kernel != null) {
+    "/modules" = "${moduleEnv}/lib/modules/${kernel.modDirVersion}/misc";
+  })
   // extraContent;
 
   initrdBin = [
@@ -124,8 +126,14 @@ let
     # on 6.1lts kernel, thus we cannot enable CONFIG_BPF_JIT_DEFAULT_ON for it.
     echo 1 > /proc/sys/net/core/bpf_jit_enable
 
+    ${if kernel != null then ''
     mkdir -p /run/booted-system/kernel-modules/lib/modules/${kernel.modDirVersion}/build
     tar -xf /sys/kernel/kheaders.tar.xz -C /run/booted-system/kernel-modules/lib/modules/${kernel.modDirVersion}/build
+    '' else ''
+    moddir="$(uname -r)"
+    mkdir -p "/run/booted-system/kernel-modules/lib/modules/$moddir/build"
+    tar -xf /sys/kernel/kheaders.tar.xz -C "/run/booted-system/kernel-modules/lib/modules/$moddir/build"
+    ''}
 
     dropbear -F -R -E -B &
 
