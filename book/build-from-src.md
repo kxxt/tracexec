@@ -11,11 +11,16 @@ To build tracexec from source, the following dependencies are needed:
 - If any library vendoring feature is enabled:
   - `build-essential` `autopoint` `gettext` for Debian based distros
   - `base-devel` for Arch Linux
+- `protoc` for compiling ProtoBuf `proto` files if `protobuf-binding-from-source` feature is enabled.
+  - By default, `protoc` from `PATH` is used. `PROTOC` environment variable
+    could be used to specify the **full** path to the desired protoc compiler.
 - `clang` for compiling eBPF program.
+  - By default, `clang` from `PATH` is used. `CLANG` environment variable
+    could be used to specify the **full** path to the desired clang compiler.
 
 ## Library Linkage
 
-By default, we dynamically link to libseccomp because most distros ship it out of box.
+By default, we dynamically link to libseccomp because most distros ship it out of the box.
 In order to statically link to libseccomp,
 please set `LIBSECCOMP_LINK_TYPE` to `static` and set `LIBSECCOMP_LIB_PATH` to the path of
 the directory containing `libseccomp.a`.
