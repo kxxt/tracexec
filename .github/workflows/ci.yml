@@ -117,10 +117,21 @@ jobs:
       - name: Install native dependencies
         if: runner.os == 'Linux'
         run: |
-          sudo apt update -y
-          sudo apt install -y {binutils,gcc}-{aarch64,riscv64}-linux-gnu \
-          build-essential autopoint gettext libelf-dev zlib1g-dev libseccomp-dev \
-          protobuf-compiler llvm-dev lcov libbpf-dev
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential autopoint gettext \
+            libelf-dev zlib1g-dev libseccomp-dev \
+            protobuf-compiler lcov libbpf-dev
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-21 100
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-21 100
+          sudo update-alternatives --install /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-21 100
+          sudo update-alternatives --install /usr/bin/llvm-profdata llvm-profdata /usr/bin/llvm-profdata-21 100
+          sudo update-alternatives --install /usr/bin/llvm-cov llvm-cov /usr/bin/llvm-cov-21 100
+          sudo update-alternatives --install /usr/bin/opt opt /usr/bin/opt-21 100
+          sudo update-alternatives --install /usr/bin/llc llc /usr/bin/llc-21 100
+
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
         with:
