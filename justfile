@@ -1,6 +1,9 @@
 bump level:
   cargo release version --no-confirm -x {{level}}
 
+book:
+  mdbook serve
+
 update-readme:
   #!/usr/bin/env ruby
 
