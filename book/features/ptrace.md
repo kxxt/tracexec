@@ -26,7 +26,7 @@ In case you want to learn more about this optimization, read the
 
 ## Strengths
 
-- Works out of box.
+- Works out of the box.
 - Low overhead when combined with [`seccomp(2)`]. (default in tracexec)
 - The minimum required Linux kernel version is 5.3.
 - [Makes it possible to conveniently attach a debugger to a newly spawned process](./tui/debugger.md).
@@ -34,7 +34,7 @@ In case you want to learn more about this optimization, read the
 ## Weaknesses
 
 - Cannot perform system-wide tracing.
-- Does not work with setuid/setgid binaries out of box.
+- Does not work with setuid/setgid binaries out of the box.
 - Significant overhead when [`seccomp(2)`] optimization is not used.
 - ~~[`ptrace(2)`] is a very complex interface abusing `waitpid(2)` and signals.~~
 
