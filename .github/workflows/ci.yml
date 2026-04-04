@@ -63,9 +63,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
       - name: Check typos
-        uses: crate-ci/typos@master
+        uses: crate-ci/typos@02ea592e44b3a53c302f697cddca7641cd051c3d # v1.45.0
       - name: Lint dependencies
-        uses: EmbarkStudios/cargo-deny-action@v2.0.14
+        uses: EmbarkStudios/cargo-deny-action@3fd3802e88374d3fe9159b834c7714ec57d6c979 # v2.0.15
         with:
           rust-version: 1.88
 
@@ -75,7 +75,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@aad518f59d88bae90133242f9ddac7f8bbc5dddf # v1.94.1
         with:
           components: clippy,rustfmt
       - name: Install native dependencies
@@ -83,7 +83,7 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y libelf-dev zlib1g-dev build-essential protobuf-compiler
       - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           add-job-id-key: false
           save-if: false
@@ -108,10 +108,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@aad518f59d88bae90133242f9ddac7f8bbc5dddf # v1.94.1
         with:
           components: rustfmt
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@1ed3272338f573e042a2e6bca3893aa19f43b47a # v2.71.3
         with:
           tool: cargo-llvm-cov
       - name: Install native dependencies
@@ -133,7 +133,7 @@ jobs:
           sudo update-alternatives --install /usr/bin/llc llc /usr/bin/llc-21 100
 
       - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           add-job-id-key: false
           key: coverage
@@ -157,7 +157,7 @@ jobs:
           find /tmp/bpfcov -name '*.lcov' -print0 | xargs -0 -I{} echo -a {} | xargs lcov -o ebpf.lcov
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # required for private repos or protected branches
           files: lcov.info,root-lcov.info,ebpf.lcov
@@ -238,7 +238,7 @@ jobs:
           targets: ${{ matrix.target }}
           components: rustfmt
       - name: Install cross-compilation tools
-        uses: taiki-e/setup-cross-toolchain-action@v1
+        uses: taiki-e/setup-cross-toolchain-action@d62f33b587e73b0004731caebc7d2d46b18a7567 # v1.39.2
         with:
           target: ${{ matrix.target }}
       - name: Add apt sources for ${{ matrix.os-arch }}
@@ -263,7 +263,7 @@ jobs:
             sudo apt-get install -y libseccomp2:${{ matrix.os-arch }}
           fi
       - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           add-job-id-key: false
           key: ${{ matrix.target }}

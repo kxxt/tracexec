@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - &install-nix
-        uses: nixbuild/nix-quick-install-action@v30
+        uses: nixbuild/nix-quick-install-action@2c9db80fb984ceb1bcaa77cdda3fdf8cfba92035 # v34
         with:
           nix_conf: |
             keep-env-derivations = true
@@ -52,7 +52,7 @@ jobs:
           
       - &attic-writable
         name: Setup Attic cache (Writable)
-        uses: ryanccn/attic-action@v0.4.1
+        uses: ryanccn/attic-action@1887fd507f03327c96c64cca30118c96eb17fdad # v0.4.1
         if: github.event.pull_request.head.repo.fork != true
         with:
           endpoint: https://nix.kxxt.dev
@@ -61,7 +61,7 @@ jobs:
       
       - &attic-rdonly
         name: Setup Attic cache (ReadOnly)
-        uses: ryanccn/attic-action@v0.4.1
+        uses: ryanccn/attic-action@1887fd507f03327c96c64cca30118c96eb17fdad # v0.4.1
         if: github.event.pull_request.head.repo.fork == true
         with:
           endpoint: https://nix.kxxt.dev

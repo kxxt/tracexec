@@ -15,10 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@aad518f59d88bae90133242f9ddac7f8bbc5dddf # v1.94.1
         with:
           components: rustfmt
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@1ed3272338f573e042a2e6bca3893aa19f43b47a # v2.71.3
         with:
           tool: cargo-release
       - name: Install native dependencies
