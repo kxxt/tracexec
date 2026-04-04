@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Check typos
         uses: crate-ci/typos@master
       - name: Lint dependencies
@@ -73,7 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -95,7 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install Rust nightly
         uses: dtolnay/rust-toolchain@nightly
         with:
@@ -230,7 +230,7 @@ jobs:
     #   LIBBPF_SYS_EXTRA_CFLAGS: -I ${{ github.workspace }}/3rdparty/${{ matrix.arch }}/usr/include
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
