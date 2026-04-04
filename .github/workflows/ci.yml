@@ -103,7 +103,7 @@ jobs:
       - name: Check style
         run: cargo +nightly fmt --all -- --check
 
-  test-coverage:
+  coverage:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
