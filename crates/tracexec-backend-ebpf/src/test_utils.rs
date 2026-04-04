@@ -11,7 +11,8 @@ use libbpf_rs::skel::{
   Skel,
   SkelBuilder,
 };
-use tracexec_backend_ebpf::bpf::skel::{
+
+use crate::bpf::skel::{
   OpenTracexecSystemSkel,
   TracexecSystemSkel,
   TracexecSystemSkelBuilder,
@@ -116,6 +117,7 @@ pub fn prepare_compat_execveat(open_skel: &mut OpenTracexecSystemSkel<'_>) {
 }
 
 pub fn with_skel<T>(
+  #[allow(unused)] test_name: &str,
   prepare: impl for<'obj> FnOnce(&mut OpenTracexecSystemSkel<'obj>),
   f: impl for<'obj> FnOnce(&mut TracexecSystemSkel<'obj>) -> color_eyre::Result<T>,
 ) -> color_eyre::Result<T> {
@@ -125,5 +127,30 @@ pub fn with_skel<T>(
   prepare(&mut open_skel);
   let mut skel = open_skel.load()?;
   skel.attach()?;
-  f(&mut skel)
+  let result = f(&mut skel);
+
+  #[cfg(feature = "bpfcov")]
+  if let Some(outdir) = env::var_os("TRACEXEC_BPFCOV_OUTDIR") {
+    let test_dir = PathBuf::from(outdir).join(test_name);
+    std::fs::create_dir_all(&test_dir).expect("failed to create test output directory");
+    let profraw = test_dir.join("tracexec.profraw");
+    crate::coverage::write_coverage(skel.object(), &profraw)
+      .expect("failed to write coverage data");
+    crate::coverage::export_lcov(&profraw, &test_dir).expect("failed to export lcov data");
+  }
+
+  result
+}
+
+/// Get the name of the enclosing function.
+#[macro_export]
+macro_rules! function_name {
+  () => {{
+    fn f() {}
+    fn type_name_of<T>(_: T) -> &'static str {
+      std::any::type_name::<T>()
+    }
+    let name = type_name_of(f);
+    name.rsplit("::").nth(1).unwrap_or(name)
+  }};
 }

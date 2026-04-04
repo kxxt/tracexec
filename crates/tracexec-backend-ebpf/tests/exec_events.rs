@@ -42,22 +42,20 @@ use tracexec_backend_ebpf::{
     },
     utf8_lossy_cow_from_bytes_with_nul,
   },
+  function_name,
   parser::{
     parse_groups_event,
     parse_path_segment,
     parse_string_event,
   },
-};
-
-mod bpf_test_utils;
-
-use bpf_test_utils::{
-  find_sh,
-  prepare_execve_fentry_fexit,
-  prepare_execve_kprobe_kretprobe,
-  prepare_execveat_fentry_fexit,
-  prepare_execveat_kprobe_kretprobe,
-  with_skel,
+  test_utils::{
+    find_sh,
+    prepare_execve_fentry_fexit,
+    prepare_execve_kprobe_kretprobe,
+    prepare_execveat_fentry_fexit,
+    prepare_execveat_kprobe_kretprobe,
+    with_skel,
+  },
 };
 
 #[fixture]
@@ -412,7 +410,7 @@ fn run_exec_and_collect_aux(
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_execve_kprobe_kretprobe_emits_exec_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
-  with_skel(prepare_execve_kprobe_kretprobe, |skel| {
+  with_skel(function_name!(), prepare_execve_kprobe_kretprobe, |skel| {
     let capture = run_exec_and_capture(skel, &sh_executable, Duration::from_secs(2))?;
     let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
@@ -428,7 +426,7 @@ fn test_execve_kprobe_kretprobe_emits_exec_event(sh_executable: PathBuf) -> colo
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_execve_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
-  with_skel(prepare_execve_fentry_fexit, |skel| {
+  with_skel(function_name!(), prepare_execve_fentry_fexit, |skel| {
     let capture = run_exec_and_capture(skel, &sh_executable, Duration::from_secs(4))?;
     let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
@@ -446,23 +444,27 @@ fn test_execve_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_ey
 fn test_execveat_kprobe_kretprobe_emits_exec_event(
   sh_executable: PathBuf,
 ) -> color_eyre::Result<()> {
-  with_skel(prepare_execveat_kprobe_kretprobe, |skel| {
-    let capture = run_execveat_and_capture(skel, &sh_executable, Duration::from_secs(4))?;
-    let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
-    assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
-    assert_eq!(capture.event.header.pid, capture.pid);
-    assert!(is_execveat);
-    assert_eq!(capture.event.header.pid, capture.event.tgid);
-    assert_eq!(capture.event.ret, 0);
-    Ok(())
-  })
+  with_skel(
+    function_name!(),
+    prepare_execveat_kprobe_kretprobe,
+    |skel| {
+      let capture = run_execveat_and_capture(skel, &sh_executable, Duration::from_secs(4))?;
+      let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
+      assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
+      assert_eq!(capture.event.header.pid, capture.pid);
+      assert!(is_execveat);
+      assert_eq!(capture.event.header.pid, capture.event.tgid);
+      assert_eq!(capture.event.ret, 0);
+      Ok(())
+    },
+  )
 }
 
 #[rstest]
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_execveat_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
-  with_skel(prepare_execveat_fentry_fexit, |skel| {
+  with_skel(function_name!(), prepare_execveat_fentry_fexit, |skel| {
     let capture = run_execveat_and_capture(skel, &sh_executable, Duration::from_secs(4))?;
     let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
@@ -480,16 +482,21 @@ fn test_execveat_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_
 fn test_execveat_from_non_main_thread_emits_non_main_exec_pid(
   sh_executable: PathBuf,
 ) -> color_eyre::Result<()> {
-  with_skel(prepare_execveat_kprobe_kretprobe, |skel| {
-    let capture = run_execveat_in_thread_and_capture(skel, &sh_executable, Duration::from_secs(4))?;
-    let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
-    assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
-    assert!(is_execveat);
-    assert_eq!(capture.event.tgid, capture.pid);
-    assert_ne!(capture.event.header.pid, capture.event.tgid);
-    assert_eq!(capture.event.ret, 0);
-    Ok(())
-  })
+  with_skel(
+    function_name!(),
+    prepare_execveat_kprobe_kretprobe,
+    |skel| {
+      let capture =
+        run_execveat_in_thread_and_capture(skel, &sh_executable, Duration::from_secs(4))?;
+      let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
+      assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
+      assert!(is_execveat);
+      assert_eq!(capture.event.tgid, capture.pid);
+      assert_ne!(capture.event.header.pid, capture.event.tgid);
+      assert_eq!(capture.event.ret, 0);
+      Ok(())
+    },
+  )
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -497,9 +504,9 @@ fn test_execveat_from_non_main_thread_emits_non_main_exec_pid(
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_compat_execve_emits_exec_event() -> color_eyre::Result<()> {
-  use bpf_test_utils::prepare_compat_execve;
+  use tracexec_backend_ebpf::test_utils::prepare_compat_execve;
   let bin = PathBuf::from(env!("CARGO_BIN_EXE_compat-exec"));
-  with_skel(prepare_compat_execve, |skel| {
+  with_skel(function_name!(), prepare_compat_execve, |skel| {
     let capture = run_binary_and_capture(skel, &bin, &[], Duration::from_secs(4))?;
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
     assert_eq!(capture.event.header.pid, capture.pid);
@@ -513,9 +520,9 @@ fn test_compat_execve_emits_exec_event() -> color_eyre::Result<()> {
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_compat_execveat_emits_exec_event() -> color_eyre::Result<()> {
-  use bpf_test_utils::prepare_compat_execveat;
+  use tracexec_backend_ebpf::test_utils::prepare_compat_execveat;
   let bin = PathBuf::from(env!("CARGO_BIN_EXE_compat-exec"));
-  with_skel(prepare_compat_execveat, |skel| {
+  with_skel(function_name!(), prepare_compat_execveat, |skel| {
     let capture = run_binary_and_capture(skel, &bin, &["execveat"], Duration::from_secs(4))?;
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
     assert_eq!(capture.event.header.pid, capture.pid);
@@ -528,7 +535,7 @@ fn test_compat_execveat_emits_exec_event() -> color_eyre::Result<()> {
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_exec_emits_auxiliary_events(sh_executable: PathBuf) -> color_eyre::Result<()> {
-  with_skel(prepare_execve_kprobe_kretprobe, |skel| {
+  with_skel(function_name!(), prepare_execve_kprobe_kretprobe, |skel| {
     let capture = run_exec_and_collect_aux(skel, &sh_executable, Duration::from_secs(4))?;
     assert_eq!(capture.exec.header.r#type, event_type::SYSEXIT_EVENT);
     assert_eq!(capture.exec.header.pid, capture.pid);

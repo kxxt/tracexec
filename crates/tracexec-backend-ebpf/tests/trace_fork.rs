@@ -17,17 +17,17 @@ use rstest::{
   rstest,
 };
 use serial_test::file_serial;
-use tracexec_backend_ebpf::bpf::skel::types::{
-  event_type,
-  fork_event,
-};
-
-mod bpf_test_utils;
-
-use bpf_test_utils::{
-  find_sh,
-  prepare_trace_fork_only,
-  with_skel,
+use tracexec_backend_ebpf::{
+  bpf::skel::types::{
+    event_type,
+    fork_event,
+  },
+  function_name,
+  test_utils::{
+    find_sh,
+    prepare_trace_fork_only,
+    with_skel,
+  },
 };
 
 #[fixture]
@@ -91,7 +91,7 @@ fn run_fork_and_capture(
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_trace_fork_emits_fork_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
-  with_skel(prepare_trace_fork_only, |skel| {
+  with_skel(function_name!(), prepare_trace_fork_only, |skel| {
     let capture = run_fork_and_capture(skel, &sh_executable, Duration::from_secs(2))?;
     assert_eq!(capture.event.header.r#type, event_type::FORK_EVENT);
     assert_ne!(capture.child_pid, capture.event.parent_tgid);
