@@ -8,9 +8,13 @@ use std::{
 };
 
 use enumflags2::BitFlags;
+use rstest::rstest;
 use serial_test::file_serial;
 use tokio::sync::mpsc::UnboundedSender;
-use tracexec_backend_ebpf::tracer::BuildEbpfTracer;
+use tracexec_backend_ebpf::{
+  test_utils::find_sh,
+  tracer::BuildEbpfTracer,
+};
 use tracexec_core::{
   event::{
     TracerEventDetails,
@@ -30,10 +34,6 @@ use tracexec_core::{
     TracerMode,
   },
 };
-
-mod bpf_test_utils;
-
-use bpf_test_utils::find_sh;
 
 fn test_printer_args() -> PrinterArgs {
   PrinterArgs {
@@ -72,7 +72,7 @@ fn build_tracer(
   Ok(builder.build_ebpf())
 }
 
-#[test]
+#[rstest]
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_tracer_spawn_runs_to_exit() -> color_eyre::Result<()> {
@@ -83,10 +83,14 @@ fn test_tracer_spawn_runs_to_exit() -> color_eyre::Result<()> {
   let running = tracer.spawn(&cmd, &mut obj, None)?;
   running.run_until_exit();
   assert!(running.should_exit.load(Ordering::Relaxed));
+  #[cfg(feature = "bpfcov")]
+  running
+    .save_coverage_if_enabled(tracexec_backend_ebpf::function_name!())
+    .expect("failed to save coverage");
   Ok(())
 }
 
-#[test]
+#[rstest]
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_tracer_spawn_emits_tracee_exit() -> color_eyre::Result<()> {
@@ -111,5 +115,9 @@ fn test_tracer_spawn_emits_tracee_exit() -> color_eyre::Result<()> {
     }
   }
   assert!(saw_exit, "missing TraceeExit event");
+  #[cfg(feature = "bpfcov")]
+  running
+    .save_coverage_if_enabled(tracexec_backend_ebpf::function_name!())
+    .expect("failed to save coverage");
   Ok(())
 }

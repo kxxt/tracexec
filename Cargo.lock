@@ -241,6 +241,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bpfcov"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20b445b00df044c6e88dd63f8a436f9d5d92f9bf53a32e4092c2918f415e74f4"
+dependencies = [
+ "libbpf-rs",
+]
+
+[[package]]
 name = "bstr"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2415,6 +2424,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex-lite"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cab834c73d247e67f4fae452806d17d3c7501756d98c8808d7c9c7aa7d18f973"
+
+[[package]]
 name = "regex-syntax"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3129,6 +3144,7 @@ dependencies = [
 name = "tracexec-backend-ebpf"
 version = "0.17.0"
 dependencies = [
+ "bpfcov",
  "bytemuck",
  "cfg-if",
  "chrono",
@@ -3140,6 +3156,7 @@ dependencies = [
  "libbpf-sys",
  "nix 0.31.1",
  "procfs",
+ "regex-lite",
  "rstest",
  "rusty-fork",
  "serial_test",

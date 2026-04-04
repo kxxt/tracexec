@@ -724,6 +724,63 @@ impl RunningEbpfTracer<'_> {
       self.rb.poll(Duration::from_millis(100))
     })
   }
+
+  /// Write profraw coverage data for the loaded BPF program.
+  ///
+  /// Only available when the `bpfcov` feature is enabled.
+  #[cfg(feature = "bpfcov")]
+  pub fn write_coverage(&self, output: &std::path::Path) -> std::io::Result<()> {
+    use libbpf_rs::skel::Skel;
+    crate::coverage::write_coverage(self.skel.object(), output)
+  }
+
+  /// Write profraw, merge into profdata, and generate an HTML coverage report.
+  ///
+  /// Returns the path to `index.html` inside `output_dir`.
+  /// Only available when the `bpfcov` feature is enabled.
+  #[cfg(feature = "bpfcov")]
+  pub fn generate_coverage_report(
+    &self,
+    output_dir: &std::path::Path,
+  ) -> std::io::Result<std::path::PathBuf> {
+    use libbpf_rs::skel::Skel;
+    let profraw = output_dir.join("tracexec.profraw");
+    crate::coverage::write_coverage(self.skel.object(), &profraw)?;
+    crate::coverage::generate_report(&profraw, output_dir)
+  }
+
+  /// Write profraw and export coverage as an LCOV tracefile.
+  ///
+  /// Returns the path to the generated `.lcov` file inside `output_dir`.
+  /// Only available when the `bpfcov` feature is enabled.
+  #[cfg(feature = "bpfcov")]
+  pub fn export_lcov(&self, output_dir: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    use libbpf_rs::skel::Skel;
+    let profraw = output_dir.join("tracexec.profraw");
+    crate::coverage::write_coverage(self.skel.object(), &profraw)?;
+    crate::coverage::export_lcov(&profraw, output_dir)
+  }
+
+  /// If `TRACEXEC_BPFCOV_OUTDIR` is set, save LCOV coverage data into a
+  /// per-test subdirectory under that path.
+  ///
+  /// `test_name` is used as the subdirectory name.
+  /// Returns `Ok(Some(path))` with the `.lcov` path on success,
+  /// `Ok(None)` if the env var is unset.
+  #[cfg(feature = "bpfcov")]
+  pub fn save_coverage_if_enabled(
+    &self,
+    test_name: &str,
+  ) -> std::io::Result<Option<std::path::PathBuf>> {
+    let outdir = match std::env::var_os("TRACEXEC_BPFCOV_OUTDIR") {
+      Some(d) => std::path::PathBuf::from(d),
+      None => return Ok(None),
+    };
+    let test_dir = outdir.join(test_name);
+    std::fs::create_dir_all(&test_dir)?;
+    let lcov = self.export_lcov(&test_dir)?;
+    Ok(Some(lcov))
+  }
 }
 
 fn run_until_exit_impl<F>(should_exit: &AtomicBool, mut poll: F)
@@ -791,6 +848,7 @@ mod tests {
   };
 
   use enumflags2::BitFlags;
+  use rstest::rstest;
   use serial_test::file_serial;
   use tokio::sync::mpsc::unbounded_channel;
   use tracexec_core::printer::{
@@ -801,6 +859,7 @@ mod tests {
   };
 
   use super::*;
+  use crate::function_name;
 
   fn test_printer_args() -> PrinterArgs {
     PrinterArgs {
@@ -844,6 +903,7 @@ mod tests {
   }
 
   fn run_ebpf_and_collect(
+    #[allow(unused)] test_name: &str,
     cmd: Vec<String>,
     filter: BitFlags<TracerEventDetailsKind>,
   ) -> Vec<TracerMessage> {
@@ -866,6 +926,11 @@ mod tests {
     while let Ok(msg) = rx.try_recv() {
       msgs.push(msg);
     }
+    #[cfg(feature = "bpfcov")]
+    running
+      .save_coverage_if_enabled(test_name)
+      .expect("failed to save coverage");
+    drop(running);
     msgs
   }
 
@@ -924,14 +989,18 @@ mod tests {
     assert_eq!(polls, 2);
   }
 
-  #[test]
+  #[rstest]
   #[file_serial(bpf)]
   #[ignore = "root"]
   fn ebpf_tracer_emits_exec_and_exit_events() {
     let true_path = find_in_path("true");
     let filter = BitFlags::from_flag(TracerEventDetailsKind::Exec)
       | BitFlags::from_flag(TracerEventDetailsKind::TraceeExit);
-    let events = run_ebpf_and_collect(vec![true_path.to_string_lossy().to_string()], filter);
+    let events = run_ebpf_and_collect(
+      function_name!(),
+      vec![true_path.to_string_lossy().to_string()],
+      filter,
+    );
     let mut saw_exec = false;
     let mut saw_exit = false;
     for event in events {
@@ -951,13 +1020,14 @@ mod tests {
     assert!(saw_exit, "expected a tracee exit event");
   }
 
-  #[test]
+  #[rstest]
   #[file_serial(bpf)]
   #[ignore = "root"]
   fn ebpf_tracer_reports_signal_exit() {
     let sh_path = find_in_path("sh");
     let filter = BitFlags::from_flag(TracerEventDetailsKind::TraceeExit);
     let events = run_ebpf_and_collect(
+      function_name!(),
       vec![
         sh_path.to_string_lossy().to_string(),
         "-c".to_string(),
@@ -976,5 +1046,159 @@ mod tests {
       }
     }
     assert!(saw_signal_exit, "expected a signal-based exit event");
+  }
+
+  #[cfg(feature = "bpfcov")]
+  #[rstest]
+  #[file_serial(bpf)]
+  #[ignore = "root"]
+  fn bpfcov_writes_profraw_after_tracing() {
+    let true_path = find_in_path("true");
+    let filter = BitFlags::from_flag(TracerEventDetailsKind::Exec)
+      | BitFlags::from_flag(TracerEventDetailsKind::TraceeExit);
+
+    let baseline = test_baseline();
+    let printer = Printer::new(test_printer_args(), baseline.clone());
+    let (tx, _rx) = unbounded_channel();
+    let tracer = TracerBuilder::new()
+      .printer(printer)
+      .baseline(baseline)
+      .mode(TracerMode::Log { foreground: false })
+      .filter(filter)
+      .tracer_tx(tx)
+      .build_ebpf();
+    let mut obj = MaybeUninit::uninit();
+    let running = tracer
+      .spawn(&[true_path.to_string_lossy().to_string()], &mut obj, None)
+      .expect("failed to spawn eBPF tracer");
+    running.run_until_exit();
+
+    let tmp = tempfile::tempdir().expect("failed to create temp dir");
+    let profraw_path = tmp.path().join("tracexec.profraw");
+    running
+      .write_coverage(&profraw_path)
+      .expect("failed to write profraw");
+
+    let meta = std::fs::metadata(&profraw_path).expect("profraw file missing");
+    // Minimum: 128-byte header
+    assert!(meta.len() >= 128, "profraw too small: {} bytes", meta.len());
+
+    // Verify magic and version
+    let data = std::fs::read(&profraw_path).unwrap();
+    let magic = u64::from_le_bytes(data[0..8].try_into().unwrap());
+    assert_eq!(
+      magic,
+      u64::from_le_bytes([0x81, 0x72, 0x66, 0x6F, 0x72, 0x70, 0x6C, 0xFF]),
+      "bad profraw magic"
+    );
+    let version = u64::from_le_bytes(data[8..16].try_into().unwrap());
+    assert_eq!(version, 10, "unexpected profraw version");
+
+    // Validate with llvm-profdata if available
+    if let Ok(status) = std::process::Command::new("llvm-profdata")
+      .args(["show", "--all-functions"])
+      .arg(&profraw_path)
+      .stdout(std::process::Stdio::piped())
+      .stderr(std::process::Stdio::piped())
+      .status()
+    {
+      assert!(status.success(), "llvm-profdata rejected the profraw file");
+    }
+
+    running
+      .save_coverage_if_enabled(function_name!())
+      .expect("failed to save coverage");
+  }
+
+  #[cfg(feature = "bpfcov")]
+  #[rstest]
+  #[file_serial(bpf)]
+  #[ignore = "root"]
+  fn bpfcov_generates_html_report() {
+    let true_path = find_in_path("true");
+    let filter = BitFlags::from_flag(TracerEventDetailsKind::Exec)
+      | BitFlags::from_flag(TracerEventDetailsKind::TraceeExit);
+
+    let baseline = test_baseline();
+    let printer = Printer::new(test_printer_args(), baseline.clone());
+    let (tx, _rx) = unbounded_channel();
+    let tracer = TracerBuilder::new()
+      .printer(printer)
+      .baseline(baseline)
+      .mode(TracerMode::Log { foreground: false })
+      .filter(filter)
+      .tracer_tx(tx)
+      .build_ebpf();
+    let mut obj = MaybeUninit::uninit();
+    let running = tracer
+      .spawn(&[true_path.to_string_lossy().to_string()], &mut obj, None)
+      .expect("failed to spawn eBPF tracer");
+    running.run_until_exit();
+
+    let tmp = tempfile::tempdir().expect("failed to create temp dir");
+    let index = running
+      .generate_coverage_report(tmp.path())
+      .expect("failed to generate coverage report");
+
+    assert!(
+      index.exists(),
+      "index.html not found at {}",
+      index.display()
+    );
+    let html = std::fs::read_to_string(&index).unwrap();
+    assert!(
+      html.contains("<!doctype html>") || html.contains("<!DOCTYPE html>"),
+      "index.html doesn't look like HTML"
+    );
+
+    running
+      .save_coverage_if_enabled(function_name!())
+      .expect("failed to save coverage");
+  }
+
+  #[cfg(feature = "bpfcov")]
+  #[rstest]
+  #[file_serial(bpf)]
+  #[ignore = "root"]
+  fn bpfcov_exports_lcov() {
+    let true_path = find_in_path("true");
+    let filter = BitFlags::from_flag(TracerEventDetailsKind::Exec)
+      | BitFlags::from_flag(TracerEventDetailsKind::TraceeExit);
+
+    let baseline = test_baseline();
+    let printer = Printer::new(test_printer_args(), baseline.clone());
+    let (tx, _rx) = unbounded_channel();
+    let tracer = TracerBuilder::new()
+      .printer(printer)
+      .baseline(baseline)
+      .mode(TracerMode::Log { foreground: false })
+      .filter(filter)
+      .tracer_tx(tx)
+      .build_ebpf();
+    let mut obj = MaybeUninit::uninit();
+    let running = tracer
+      .spawn(&[true_path.to_string_lossy().to_string()], &mut obj, None)
+      .expect("failed to spawn eBPF tracer");
+    running.run_until_exit();
+
+    let tmp = tempfile::tempdir().expect("failed to create temp dir");
+    let lcov_path = running
+      .export_lcov(tmp.path())
+      .expect("failed to export LCOV");
+
+    assert!(
+      lcov_path.exists(),
+      "LCOV file not found at {}",
+      lcov_path.display()
+    );
+    let lcov = std::fs::read_to_string(&lcov_path).unwrap();
+    assert!(
+      lcov.contains("SF:") && lcov.contains("end_of_record"),
+      "LCOV output doesn't look like a valid tracefile"
+    );
+
+    running
+      .save_coverage_if_enabled(function_name!())
+      .expect("failed to save coverage");
   }
 }

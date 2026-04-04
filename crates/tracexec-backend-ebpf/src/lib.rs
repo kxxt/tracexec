@@ -1,7 +1,10 @@
 pub mod bpf;
 pub mod cgroup_cache;
+#[cfg(feature = "bpfcov")]
+pub mod coverage;
 pub mod event;
 pub mod parser;
 pub mod probe;
 pub mod process_tracker;
+pub mod test_utils;
 pub mod tracer;
