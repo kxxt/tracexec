@@ -120,7 +120,7 @@ jobs:
           sudo apt update -y
           sudo apt install -y {binutils,gcc}-{aarch64,riscv64}-linux-gnu \
           build-essential autopoint gettext libelf-dev zlib1g-dev libseccomp-dev \
-          protobuf-compiler
+          protobuf-compiler llvm-dev lcov libbpf-dev
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
         with:
@@ -130,13 +130,26 @@ jobs:
         run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
       - name: Run root-only tests
         env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: sudo -E env TRACEXEC_BPFCOV_OUTDIR=/tmp/bpfcov
         run: cargo llvm-cov --all-features --workspace --lcov --output-path root-lcov.info -- --ignored
+      - name: Combine eBPF coverage
+        run: |
+          # List the generated eBPF coverage files for debugging purposes
+          echo "eBPF coverage files:"
+          find /tmp/bpfcov
+          # First, check if the eBPF coverage file contains invalid test names, e.g.  '{{closure}}'
+          if ls /tmp/bpfcov | grep -q '{{closure}}'; then
+            echo "Error: eBPF coverage file contains invalid test names ({{closure}})"
+            exit 1
+          fi
+          # Then, combine the eBPF coverage files
+          find /tmp/bpfcov -name '*.lcov' -print0 | xargs -0 -I{} echo -a {} | xargs lcov -o ebpf.lcov
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # required for private repos or protected branches
-          files: lcov.info,root-lcov.info
+          files: lcov.info,root-lcov.info,ebpf.lcov
           fail_ci_if_error: true
 
   check_and_test:
