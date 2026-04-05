@@ -33,3 +33,4 @@
   - [Internal Architecture]()
   - [Backend Differences]()
   - [Event System]()
+  - [Maintaining this Book](./dev/book.md)
