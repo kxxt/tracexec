@@ -488,7 +488,7 @@ int BPF_KSYSCALL(sys_execve_kprobe, u8 *base_filename, u8 const *const *argv,
   return 0;
 }
 
-SEC("fentry.s/__" SYSCALL_PREFIX "_sys_execve")
+SEC("fentry/__" SYSCALL_PREFIX "_sys_execve")
 int BPF_PROG(sys_execve_fentry, struct pt_regs *regs) {
   int key = 0;
   struct sys_enter_exec_args common_ctx = {
@@ -502,7 +502,7 @@ int BPF_PROG(sys_execve_fentry, struct pt_regs *regs) {
   return 0;
 }
 
-SEC("fentry.s/__" SYSCALL_PREFIX "_sys_execveat")
+SEC("fentry/__" SYSCALL_PREFIX "_sys_execveat")
 int BPF_PROG(sys_execveat_fentry, struct pt_regs *regs, int ret) {
   int key = 0;
   struct sys_enter_exec_args common_ctx = {
@@ -695,7 +695,7 @@ int BPF_PROG(compat_sys_exit_execveat, struct pt_regs *regs, int ret) {
   return tp_sys_exit_exec(ret);
 }
 
-SEC("fentry.s/__" SYSCALL_COMPAT_PREFIX "_sys_execveat")
+SEC("fentry/__" SYSCALL_COMPAT_PREFIX "_sys_execveat")
 int BPF_PROG(compat_sys_execveat, struct pt_regs *regs, int ret) {
   int key = 0;
   struct sys_enter_exec_args common_ctx = {
@@ -722,7 +722,7 @@ int BPF_PROG(compat_sys_exit_execve, struct pt_regs *regs, int ret) {
   return tp_sys_exit_exec(ret);
 }
 
-SEC("fentry.s/__" SYSCALL_COMPAT_PREFIX "_sys_execve")
+SEC("fentry/__" SYSCALL_COMPAT_PREFIX "_sys_execve")
 int BPF_PROG(compat_sys_execve, struct pt_regs *regs) {
   //  int tp_sys_enter_execve(struct sys_enter_execve_args *ctx)
   int key = 0;

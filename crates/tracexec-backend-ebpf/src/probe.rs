@@ -64,6 +64,19 @@ pub fn kernel_have_ftrace_with_direct_calls(
   }
 }
 
+pub fn can_i_use_sleepable_fentry(kconfig: Option<&HashMap<String, ConfigSetting>>) -> bool {
+  if env::var("TRACEXEC_NO_SLEEP")
+    .map(|v| !v.is_empty())
+    .unwrap_or_default()
+  {
+    return false;
+  }
+  kconfig
+    .map(|configs| configs.contains_key("CONFIG_FUNCTION_ERROR_INJECTION"))
+    // Defaults to true
+    .unwrap_or(true)
+}
+
 #[cfg(test)]
 mod tests {
   use std::{
