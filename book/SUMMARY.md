@@ -8,6 +8,8 @@
 - [Features](./features.md)
   - [Ptrace Backend](./features/ptrace.md)
   - [eBPF Backend](./features/ebpf.md)
+    - [Required Kernel Configs](./features/bpf/kconfig.md)
+    - [Advanced Knobs](./features/bpf/advanced.md)
   - [Log Frontend](./features/log.md)
   - [TUI Frontend](./features/tui.md)
     - [Builtin Terminal](./features/tui/term.md)
