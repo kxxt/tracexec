@@ -8,6 +8,7 @@ extend-ignore-re = ["\\(L\\)ine", "\\(E\\)nvironment"]
 "PARM" = "PARM"
 "ommand" = "ommand" # (C)ommand
 "nd" = "nd"
+"fo" = "fo"
 
 [files]
 extend-exclude = [
