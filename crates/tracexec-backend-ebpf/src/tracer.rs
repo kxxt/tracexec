@@ -39,6 +39,7 @@ use libbpf_rs::{
     SkelBuilder,
   },
 };
+use libbpf_sys::BPF_F_SLEEPABLE;
 use nix::{
   errno::Errno,
   fcntl::OFlag,
@@ -143,6 +144,7 @@ use crate::{
     process_path,
   },
   probe::{
+    can_i_use_sleepable_fentry,
     kernel_have_ftrace_with_direct_calls,
     kernel_have_syscall_wrappers,
   },
@@ -601,6 +603,23 @@ impl EbpfTracer {
         .progs
         .sys_exit_execveat_kretprobe
         .set_autoload(false);
+      // Check if we can use sleepable fentry
+      if can_i_use_sleepable_fentry(kconfig.as_ref()) {
+        // Can use sleepable fentry :(
+        open_skel.progs.sys_execve_fentry.set_flags(BPF_F_SLEEPABLE);
+        open_skel
+          .progs
+          .sys_execveat_fentry
+          .set_flags(BPF_F_SLEEPABLE);
+        #[cfg(target_arch = "x86_64")]
+        {
+          open_skel.progs.compat_sys_execve.set_flags(BPF_F_SLEEPABLE);
+          open_skel
+            .progs
+            .compat_sys_execveat
+            .set_flags(BPF_F_SLEEPABLE);
+        }
+      }
     }
 
     let kernel_have_syscall_wrappers = kernel_have_syscall_wrappers(kconfig.as_ref());
