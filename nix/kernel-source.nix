@@ -240,6 +240,8 @@ in
           KPROBE_EVENTS = yes;
           UPROBE_EVENTS = yes;
           KALLSYMS_ALL = yes;
+          # Necessary for attaching sleepable fentry program
+          FUNCTION_ERROR_INJECTION = yes;
         }
         // x86_64SpecificConfig
         // aarch64SpecificConfig
