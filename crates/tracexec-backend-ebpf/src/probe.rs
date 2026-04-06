@@ -88,11 +88,68 @@ mod tests {
   use rusty_fork::rusty_fork_test;
 
   use super::{
+    can_i_use_sleepable_fentry,
     kernel_have_ftrace_with_direct_calls,
     kernel_have_syscall_wrappers,
   };
 
   rusty_fork_test! {
+    #[test]
+    fn test_can_i_use_sleepable_fentry_env_no_sleep_disables() {
+      // SAFETY: we do this in a separate subprocess.
+      unsafe {
+        env::set_var("TRACEXEC_NO_SLEEP", "1");
+      }
+      let mut configs = HashMap::new();
+      configs.insert(
+        "CONFIG_FUNCTION_ERROR_INJECTION".to_string(),
+        ConfigSetting::Yes,
+      );
+      assert!(!can_i_use_sleepable_fentry(Some(&configs)));
+    }
+
+    #[test]
+    fn test_can_i_use_sleepable_fentry_kconfig_has_error_injection() {
+      // SAFETY: we do this in a separate subprocess.
+      unsafe {
+        env::remove_var("TRACEXEC_NO_SLEEP");
+      }
+      let mut configs = HashMap::new();
+      configs.insert(
+        "CONFIG_FUNCTION_ERROR_INJECTION".to_string(),
+        ConfigSetting::Yes,
+      );
+      assert!(can_i_use_sleepable_fentry(Some(&configs)));
+    }
+
+    #[test]
+    fn test_can_i_use_sleepable_fentry_kconfig_missing_error_injection() {
+      // SAFETY: we do this in a separate subprocess.
+      unsafe {
+        env::remove_var("TRACEXEC_NO_SLEEP");
+      }
+      let configs = HashMap::new();
+      assert!(!can_i_use_sleepable_fentry(Some(&configs)));
+    }
+
+    #[test]
+    fn test_can_i_use_sleepable_fentry_no_kconfig_defaults_true() {
+      // SAFETY: we do this in a separate subprocess.
+      unsafe {
+        env::remove_var("TRACEXEC_NO_SLEEP");
+      }
+      assert!(can_i_use_sleepable_fentry(None));
+    }
+
+    #[test]
+    fn test_can_i_use_sleepable_fentry_empty_env_does_not_disable() {
+      // SAFETY: we do this in a separate subprocess.
+      unsafe {
+        env::set_var("TRACEXEC_NO_SLEEP", "");
+      }
+      assert!(can_i_use_sleepable_fentry(None));
+    }
+
     #[test]
     fn test_kernel_have_ftrace_direct_calls_env_force_kprobe() {
       // SAFETY: we do this in a separate subprocess.

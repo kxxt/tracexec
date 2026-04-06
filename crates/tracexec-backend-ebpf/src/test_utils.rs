@@ -11,6 +11,7 @@ use libbpf_rs::skel::{
   Skel,
   SkelBuilder,
 };
+use libbpf_sys::BPF_F_SLEEPABLE;
 
 use crate::bpf::skel::{
   OpenTracexecSystemSkel,
@@ -70,6 +71,7 @@ pub fn prepare_execve_fentry_fexit(open_skel: &mut OpenTracexecSystemSkel<'_>) {
   disable_all_programs(open_skel);
   open_skel.progs.sys_execve_fentry.set_autoload(true);
   open_skel.progs.sys_exit_execve_fexit.set_autoload(true);
+  open_skel.progs.sys_execve_fentry.set_flags(BPF_F_SLEEPABLE);
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
   }
@@ -91,6 +93,10 @@ pub fn prepare_execveat_fentry_fexit(open_skel: &mut OpenTracexecSystemSkel<'_>)
   disable_all_programs(open_skel);
   open_skel.progs.sys_execveat_fentry.set_autoload(true);
   open_skel.progs.sys_exit_execveat_fexit.set_autoload(true);
+  open_skel
+    .progs
+    .sys_execveat_fentry
+    .set_flags(BPF_F_SLEEPABLE);
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
   }
@@ -101,6 +107,7 @@ pub fn prepare_compat_execve(open_skel: &mut OpenTracexecSystemSkel<'_>) {
   disable_all_programs(open_skel);
   open_skel.progs.compat_sys_execve.set_autoload(true);
   open_skel.progs.compat_sys_exit_execve.set_autoload(true);
+  open_skel.progs.compat_sys_execve.set_flags(BPF_F_SLEEPABLE);
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
   }
@@ -111,6 +118,10 @@ pub fn prepare_compat_execveat(open_skel: &mut OpenTracexecSystemSkel<'_>) {
   disable_all_programs(open_skel);
   open_skel.progs.compat_sys_execveat.set_autoload(true);
   open_skel.progs.compat_sys_exit_execveat.set_autoload(true);
+  open_skel
+    .progs
+    .compat_sys_execveat
+    .set_flags(BPF_F_SLEEPABLE);
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
   }

@@ -1,4 +1,5 @@
 use std::{
+  env,
   ffi::OsString,
   mem::MaybeUninit,
   sync::{
@@ -115,6 +116,34 @@ fn test_tracer_spawn_emits_tracee_exit() -> color_eyre::Result<()> {
     }
   }
   assert!(saw_exit, "missing TraceeExit event");
+  #[cfg(feature = "bpfcov")]
+  running
+    .save_coverage_if_enabled(tracexec_backend_ebpf::function_name!())
+    .expect("failed to save coverage");
+  Ok(())
+}
+
+#[rstest]
+#[file_serial(bpf)]
+#[ignore = "root"]
+fn test_tracer_spawn_nosleep_loads() -> color_eyre::Result<()> {
+  // SAFETY: this test runs sequentially via file_serial(bpf).
+  unsafe { env::set_var("TRACEXEC_NO_SLEEP", "1") };
+  struct DropGuard;
+  impl Drop for DropGuard {
+    fn drop(&mut self) {
+      // SAFETY: clean up for subsequent tests.
+      unsafe { env::remove_var("TRACEXEC_NO_SLEEP") };
+    }
+  }
+  let _guard = DropGuard;
+  let tracer = build_tracer(BitFlags::all(), None)?;
+  let sh = find_sh();
+  let cmd: Vec<OsString> = vec![sh.into(), "-c".into(), "true".into()];
+  let mut obj = MaybeUninit::uninit();
+  let running = tracer.spawn(&cmd, &mut obj, None)?;
+  running.run_until_exit();
+  assert!(running.should_exit.load(Ordering::Relaxed));
   #[cfg(feature = "bpfcov")]
   running
     .save_coverage_if_enabled(tracexec_backend_ebpf::function_name!())
