@@ -1,6 +1,10 @@
 use std::{
   io,
-  path::PathBuf,
+  path::{
+    Path,
+    PathBuf,
+  },
+  sync::OnceLock,
 };
 
 use directories::ProjectDirs;
@@ -24,6 +28,60 @@ use crate::{
   cli::keys::TuiKeyBindingsConfig,
   timestamp::TimestampFormat,
 };
+
+/// Wrapper around `ProjectDirs` that supports overriding directories
+/// (e.g. when running elevated via sudo, to use the original user's dirs).
+#[derive(Debug, Clone)]
+pub struct TracexecProjectDirs {
+  config_dir: PathBuf,
+  data_dir: PathBuf,
+  data_local_dir: PathBuf,
+}
+
+impl TracexecProjectDirs {
+  pub fn config_dir(&self) -> &Path {
+    &self.config_dir
+  }
+
+  pub fn data_dir(&self) -> &Path {
+    &self.data_dir
+  }
+
+  pub fn data_local_dir(&self) -> &Path {
+    &self.data_local_dir
+  }
+}
+
+impl From<ProjectDirs> for TracexecProjectDirs {
+  fn from(dirs: ProjectDirs) -> Self {
+    Self {
+      config_dir: dirs.config_dir().to_path_buf(),
+      data_dir: dirs.data_dir().to_path_buf(),
+      data_local_dir: dirs.data_local_dir().to_path_buf(),
+    }
+  }
+}
+
+struct ProjectDirOverrides {
+  config_dir: PathBuf,
+  data_dir: PathBuf,
+  data_local_dir: PathBuf,
+}
+
+static PROJECT_DIR_OVERRIDES: OnceLock<ProjectDirOverrides> = OnceLock::new();
+
+/// Set overrides for the project directories. Must be called before any call to
+/// `project_directory()`. Used by the elevated process to point at the original
+/// user's config/data directories.
+pub fn set_project_dir_overrides(config_dir: PathBuf, data_dir: PathBuf, data_local_dir: PathBuf) {
+  PROJECT_DIR_OVERRIDES
+    .set(ProjectDirOverrides {
+      config_dir,
+      data_dir,
+      data_local_dir,
+    })
+    .ok();
+}
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct Config {
@@ -179,8 +237,16 @@ pub enum ExitHandling {
   Terminate,
 }
 
-pub fn project_directory() -> Option<ProjectDirs> {
-  ProjectDirs::from("dev", "kxxt", "tracexec")
+pub fn project_directory() -> Option<TracexecProjectDirs> {
+  if let Some(overrides) = PROJECT_DIR_OVERRIDES.get() {
+    return Some(TracexecProjectDirs {
+      config_dir: overrides.config_dir.clone(),
+      // On Linux data_dir and data_local_dir are the same for ProjectDirs.
+      data_dir: overrides.data_dir.clone(),
+      data_local_dir: overrides.data_local_dir.clone(),
+    });
+  }
+  ProjectDirs::from("dev", "kxxt", "tracexec").map(TracexecProjectDirs::from)
 }
 
 #[cfg(test)]

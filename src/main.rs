@@ -78,9 +78,35 @@ use tracexec_tui::{
 
 use crate::log::initialize_panic_handler;
 
-#[tokio::main(worker_threads = 2)]
-async fn main() -> color_eyre::Result<()> {
+// Avoid using tokio::main macro because we may need to restore env vars,
+// which is not completely safe inside a multithreaded process.
+fn main() -> color_eyre::Result<()> {
   let mut cli = Cli::parse();
+
+  // Handle --elevate early, before any environment-sensitive setup.
+  // This re-execs the process with elevated privileges and does not return.
+  if cli.elevate {
+    tracexec_core::elevate::elevate_and_reexec()?;
+    unreachable!();
+  }
+
+  // Restore saved environment from a previous --elevate invocation.
+  // This must happen before logging, config loading, or any code that reads env vars.
+  if let Some(env_file) = &cli.restore_env_file {
+    tracexec_core::elevate::restore_env_from_file(env_file)?;
+  }
+
+  // Apply project directory overrides from --elevate before anything
+  // touches project_directory() (logging, config, themes).
+  // The clap validation ensures that the three elevated_*_dir options are either all present or all absent.
+  if let (Some(config_dir), Some(data_dir), Some(data_local_dir)) = (
+    cli.elevated_config_dir.take(),
+    cli.elevated_data_dir.take(),
+    cli.elevated_data_local_dir.take(),
+  ) {
+    tracexec_core::cli::config::set_project_dir_overrides(config_dir, data_dir, data_local_dir);
+  }
+
   if cli.color == Color::Auto && std::env::var_os("NO_COLOR").is_some() {
     // Respect NO_COLOR if --color=auto
     cli.color = Color::Never;
@@ -96,6 +122,15 @@ async fn main() -> color_eyre::Result<()> {
   initialize_panic_handler();
   log::initialize_logging()?;
   log::debug!("Commandline args: {:?}", cli);
+
+  let runtime = tokio::runtime::Builder::new_multi_thread()
+    .worker_threads(2)
+    .enable_all()
+    .build()?;
+  runtime.block_on(async_main(cli))
+}
+
+async fn async_main(mut cli: Cli) -> color_eyre::Result<()> {
   if let Some(cwd) = &cli.cwd {
     std::env::set_current_dir(cwd)?;
   }

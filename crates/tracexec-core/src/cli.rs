@@ -64,9 +64,48 @@ pub struct Cli {
   #[arg(
     short,
     long,
-    help = "Run as user. This option is only available when running tracexec as root"
+    help = "Run as user. This option is only available when running tracexec as root",
+    conflicts_with = "elevate"
   )]
   pub user: Option<String>,
+  #[arg(
+    long,
+    help = "Re-execute tracexec with privilege elevation (e.g. via sudo). \
+            The original user credentials are saved and the tracee will run as the original user.",
+    conflicts_with = "user"
+  )]
+  pub elevate: bool,
+  #[arg(
+    long,
+    hide = true,
+    conflicts_with = "elevate",
+    help = "Internal: path to a saved environment file from --elevate"
+  )]
+  pub restore_env_file: Option<PathBuf>,
+  #[arg(
+    long,
+    hide = true,
+    conflicts_with = "elevate",
+    requires_all = ["elevated_data_dir", "elevated_data_local_dir"],
+    help = "Internal: original user's config directory from --elevate"
+  )]
+  pub elevated_config_dir: Option<PathBuf>,
+  #[arg(
+    long,
+    hide = true,
+    conflicts_with = "elevate",
+    requires_all = ["elevated_config_dir", "elevated_data_local_dir"],
+    help = "Internal: original user's data directory from --elevate"
+  )]
+  pub elevated_data_dir: Option<PathBuf>,
+  #[arg(
+    long,
+    hide = true,
+    conflicts_with = "elevate",
+    requires_all = ["elevated_config_dir", "elevated_data_dir"],
+    help = "Internal: original user's local data directory from --elevate"
+  )]
+  pub elevated_data_local_dir: Option<PathBuf>,
   #[clap(subcommand)]
   pub cmd: CliCommand,
 }
@@ -386,6 +425,38 @@ mod tests {
   }
 
   #[test]
+  fn test_cli_parse_elevate_tui() {
+    let args = vec!["tracexec", "--elevate", "tui", "-t", "--", "sudo", "ls"];
+    let cli = Cli::parse_from(args);
+    assert!(cli.elevate);
+    assert!(cli.user.is_none());
+    if let CliCommand::Tui { cmd, .. } = cli.cmd {
+      assert_eq!(cmd, vec!["sudo", "ls"]);
+    } else {
+      panic!("Expected Tui command");
+    }
+  }
+
+  #[test]
+  fn test_cli_parse_elevate_log() {
+    let args = vec!["tracexec", "--elevate", "log", "--", "ls"];
+    let cli = Cli::parse_from(args);
+    assert!(cli.elevate);
+    if let CliCommand::Log { cmd, .. } = cli.cmd {
+      assert_eq!(cmd, vec!["ls"]);
+    } else {
+      panic!("Expected Log command");
+    }
+  }
+
+  #[test]
+  fn test_cli_parse_elevate_conflicts_with_user() {
+    let args = vec!["tracexec", "--elevate", "--user", "root", "log", "--", "ls"];
+    let result = Cli::try_parse_from(args);
+    assert!(result.is_err());
+  }
+
+  #[test]
   fn test_cli_parse_tui_theme_file_cli_source() {
     let args = vec![
       "tracexec",
@@ -440,6 +511,11 @@ mod tests {
       profile: None,
       no_profile: false,
       user: None,
+      elevate: false,
+      restore_env_file: None,
+      elevated_config_dir: None,
+      elevated_data_dir: None,
+      elevated_data_local_dir: None,
       cmd: CliCommand::Log {
         cmd: vec!["ls".into()],
         tracing_args: LogModeArgs {
@@ -494,6 +570,11 @@ mod tests {
       profile: None,
       no_profile: false,
       user: None,
+      elevate: false,
+      restore_env_file: None,
+      elevated_config_dir: None,
+      elevated_data_dir: None,
+      elevated_data_local_dir: None,
       cmd: CliCommand::Tui {
         cmd: vec!["bash".into()],
         modifier_args: ModifierArgs::default(),
@@ -553,6 +634,11 @@ mod tests {
       profile: None,
       no_profile: false,
       user: None,
+      elevate: false,
+      restore_env_file: None,
+      elevated_config_dir: None,
+      elevated_data_dir: None,
+      elevated_data_local_dir: None,
       cmd: CliCommand::Collect {
         cmd: vec!["ls".into()],
         modifier_args: ModifierArgs::default(),
