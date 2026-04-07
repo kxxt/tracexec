@@ -7,6 +7,7 @@ pub mod breakpoint;
 pub mod cache;
 pub mod cli;
 pub mod cmdbuilder;
+pub mod elevate;
 pub mod event;
 pub mod export;
 pub mod output;

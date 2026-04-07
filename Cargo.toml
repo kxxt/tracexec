@@ -128,6 +128,8 @@ tracexec-backend-ebpf = { workspace = true, optional = true }
 assert_cmd = "2.0.14"
 serial_test = { workspace = true }
 predicates = { workspace = true }
+nix = { workspace = true }
+tempfile = { workspace = true }
 
 [features]
 default = ["recommended", "vendored-libbpf"]

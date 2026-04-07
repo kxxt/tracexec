@@ -3128,6 +3128,7 @@ dependencies = [
  "signal-hook 0.4.3",
  "signal-hook-tokio",
  "strum",
+ "tempfile",
  "tokio",
  "tracexec-backend-ebpf",
  "tracexec-backend-ptrace",
