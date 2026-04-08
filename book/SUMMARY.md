@@ -21,6 +21,7 @@
   - [Export Frontend](./features/collect.md)
     - [Perfetto Trace Export](./features/collect/perfetto.md)
     - [JSON Export](./features/collect/json.md)
+  - [Convenient Privilege Elevation](./features/elevation.md)
   - [Experimental Features](./features/experimental.md)
 - [Tutorials](./tutorials.md)
   - [Debugging a basic build problem](./tutorials/basic-build-problem.md)
