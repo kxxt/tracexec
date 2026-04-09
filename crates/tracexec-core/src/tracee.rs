@@ -1,12 +1,9 @@
 //! Common operations to run in tracee process
 
-use std::{
-  ffi::CString,
-  os::fd::{
-    AsFd,
-    FromRawFd,
-    OwnedFd,
-  },
+use std::os::fd::{
+  AsFd,
+  FromRawFd,
+  OwnedFd,
 };
 
 use nix::{
@@ -18,7 +15,6 @@ use nix::{
     User,
     dup2,
     getpid,
-    initgroups,
     setpgid,
     setresgid,
     setresuid,
@@ -45,10 +41,60 @@ pub fn nullify_stdio() -> Result<(), std::io::Error> {
 
 pub fn runas(user: &User, effective: Option<(Uid, Gid)>) -> Result<(), Errno> {
   let (euid, egid) = effective.unwrap_or((user.uid, user.gid));
-  initgroups(&CString::new(user.name.as_str()).unwrap()[..], user.gid)?;
+  do_initgroups(&user.name, user.gid)?;
   setresgid(user.gid, egid, Gid::from_raw(u32::MAX))?;
   setresuid(user.uid, euid, Uid::from_raw(u32::MAX))?;
   Ok(())
+}
+
+/// Parse `/etc/group` content to find supplementary group IDs for a user.
+///
+/// Returns a deduplicated list of GIDs including the primary GID.
+#[cfg(any(test, all(target_env = "gnu", target_feature = "crt-static")))]
+fn parse_supplementary_gids(etc_group_content: &str, username: &str, primary_gid: Gid) -> Vec<Gid> {
+  let mut gids = vec![primary_gid];
+  for line in etc_group_content.lines() {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+      continue;
+    }
+    // Format: group_name:password:GID:user_list
+    let mut fields = line.splitn(4, ':');
+    let Some(_name) = fields.next() else { continue };
+    let Some(_passwd) = fields.next() else {
+      continue;
+    };
+    let Some(gid_str) = fields.next() else {
+      continue;
+    };
+    let members = fields.next().unwrap_or("");
+    let Ok(gid_raw) = gid_str.parse::<u32>() else {
+      continue;
+    };
+    let gid = Gid::from_raw(gid_raw);
+    if members.split(',').any(|m| m.trim() == username) && !gids.contains(&gid) {
+      gids.push(gid);
+    }
+  }
+  gids
+}
+
+/// Set supplementary groups by reading `/etc/group` directly,
+/// avoiding dynamic NSS which crashes in static glibc builds.
+#[cfg(all(target_env = "gnu", target_feature = "crt-static"))]
+fn do_initgroups(username: &str, primary_gid: Gid) -> Result<(), Errno> {
+  let content = std::fs::read_to_string("/etc/group").map_err(|_| Errno::EIO)?;
+  let gids = parse_supplementary_gids(&content, username, primary_gid);
+  nix::unistd::setgroups(&gids)
+}
+
+/// Use the standard `initgroups` from libc for non-static-glibc builds.
+#[cfg(not(all(target_env = "gnu", target_feature = "crt-static")))]
+fn do_initgroups(username: &str, primary_gid: Gid) -> Result<(), Errno> {
+  nix::unistd::initgroups(
+    &std::ffi::CString::new(username).map_err(|_| Errno::EINVAL)?,
+    primary_gid,
+  )
 }
 
 pub fn lead_process_group() -> Result<(), Errno> {
@@ -111,5 +157,68 @@ mod tests {
       // Ensure we actually changed if not already leader
       let _ = pgrp_before;
     }
+  }
+
+  #[test]
+  fn test_parse_supplementary_gids_basic() {
+    let content =
+      "root:x:0:\ndaemon:x:1:\nusers:x:100:alice,bob\ndocker:x:999:alice\nwheel:x:10:bob\n";
+    let gids = parse_supplementary_gids(content, "alice", Gid::from_raw(1000));
+    assert_eq!(
+      gids,
+      vec![Gid::from_raw(1000), Gid::from_raw(100), Gid::from_raw(999)]
+    );
+  }
+
+  #[test]
+  fn test_parse_supplementary_gids_primary_gid_deduped() {
+    let content = "users:x:1000:alice\n";
+    let gids = parse_supplementary_gids(content, "alice", Gid::from_raw(1000));
+    // primary_gid 1000 already matched, should not be duplicated
+    assert_eq!(gids, vec![Gid::from_raw(1000)]);
+  }
+
+  #[test]
+  fn test_parse_supplementary_gids_no_members() {
+    let content = "root:x:0:\nusers:x:100:\n";
+    let gids = parse_supplementary_gids(content, "alice", Gid::from_raw(1000));
+    assert_eq!(gids, vec![Gid::from_raw(1000)]);
+  }
+
+  #[test]
+  fn test_parse_supplementary_gids_skips_malformed_lines() {
+    let content = "root:x:0:\nmalformed_line\n:x:abc:alice\nusers:x:100:alice\n";
+    let gids = parse_supplementary_gids(content, "alice", Gid::from_raw(1000));
+    assert_eq!(gids, vec![Gid::from_raw(1000), Gid::from_raw(100)]);
+  }
+
+  #[test]
+  fn test_parse_supplementary_gids_skips_comments_and_empty() {
+    let content = "# this is a comment\n\nusers:x:100:alice\n";
+    let gids = parse_supplementary_gids(content, "alice", Gid::from_raw(1000));
+    assert_eq!(gids, vec![Gid::from_raw(1000), Gid::from_raw(100)]);
+  }
+
+  #[test]
+  fn test_parse_supplementary_gids_no_partial_match() {
+    // "alice" should not match "alice2" or "malice"
+    let content = "group1:x:100:alice2,malice\ngroup2:x:200:alice\n";
+    let gids = parse_supplementary_gids(content, "alice", Gid::from_raw(1000));
+    assert_eq!(gids, vec![Gid::from_raw(1000), Gid::from_raw(200)]);
+  }
+
+  #[test]
+  fn test_parse_supplementary_gids_whitespace_in_members() {
+    let content = "group1:x:100: alice , bob \n";
+    let gids = parse_supplementary_gids(content, "alice", Gid::from_raw(1000));
+    assert_eq!(gids, vec![Gid::from_raw(1000), Gid::from_raw(100)]);
+  }
+
+  #[test]
+  fn test_parse_supplementary_gids_no_user_list_field() {
+    // Lines with only 3 fields (no user list)
+    let content = "nogroup:x:65534\n";
+    let gids = parse_supplementary_gids(content, "alice", Gid::from_raw(1000));
+    assert_eq!(gids, vec![Gid::from_raw(1000)]);
   }
 }
