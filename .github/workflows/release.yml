@@ -114,7 +114,7 @@ jobs:
           fi
       - name: Generate third-party licenses
         run: cargo about generate -o THIRD_PARTY_LICENSES.HTML about.hbs
-      - uses: taiki-e/upload-rust-binary-action@0e34102c043ded9f2ca39f7af5cd99a540c61aff # v1.29.1
+      - uses: taiki-e/upload-rust-binary-action@10c1cf6a3da113ad4e60018e386570529aa5f1d3 # v1.30.0
         env:
           RUSTFLAGS: ${{ matrix.rust_flags }}
           LIBSECCOMP_LINK_TYPE: ${{ matrix.static_libseccomp && 'static' || 'dylib' }}
