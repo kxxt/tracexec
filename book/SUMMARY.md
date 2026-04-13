@@ -36,5 +36,6 @@
   - [Internal Architecture]()
   - [Backend Differences]()
   - [Event System]()
+  - [Tests](./dev/tests.md)
   - [Checklist for Cutting a Release](./dev/release.md)
   - [Maintaining this Book](./dev/book.md)
