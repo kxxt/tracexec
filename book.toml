@@ -6,3 +6,5 @@ title = "Tracexec Book"
 
 [build]
 build-dir = "book-output"
+
+[preprocessor.asciinema]
