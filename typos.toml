@@ -14,5 +14,6 @@ extend-ignore-re = ["\\(L\\)ine", "\\(E\\)nvironment"]
 extend-exclude = [
     "include",
     "crates/perfetto-trace-proto/perfetto",
-    "crates/tracexec-exporter-perfetto/src/proto.rs"
+    "crates/tracexec-exporter-perfetto/src/proto.rs",
+    "book/casts"
 ]
