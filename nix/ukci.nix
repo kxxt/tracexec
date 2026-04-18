@@ -330,6 +330,15 @@ localFlake:
                 "${name}:${targetSystem}:${test_exe}:${testPackage}"
               ) kernels;
               defaultPackage = if kernels == [ ] then "" else (builtins.head kernels).testPackage;
+              ukciSummaryHeader =
+                "| Kernel \ Clang | "
+                + lib.concatStringsSep " | " (map (v: "clang ${toString v}") llvmVersions)
+                + " |";
+              ukciSummarySep =
+                "| --- | "
+                + lib.concatStringsSep " | " (map (_: "---") llvmVersions)
+                + " |";
+              llvmVersionsSpaceSep = lib.concatStringsSep " " (map toString llvmVersions);
               runQemuDrv = pkgs.writeScriptBin runQemuName ''
                 #!/usr/bin/env bash
 
@@ -435,6 +444,7 @@ localFlake:
                 set -e
 
                 logs_dir="$(mktemp -d)"
+                results_dir="$(mktemp -d)"
                 lock_dir="$logs_dir/.lock"
                 status=0
                 running=0
@@ -493,6 +503,7 @@ localFlake:
                     else
                       echo "''${GREEN}''${BOLD}PASS:''${RESET} ''${name}"
                     fi
+                    printf '%s\n' "$test_status" > "$results_dir/$name"
                     rmdir "$lock_dir"
                     rm -f "$qemu_log" "$test_log"
                     exit "$test_status"
@@ -518,7 +529,55 @@ localFlake:
                   echo "''${YELLOW}''${BOLD}One or more tests failed.''${RESET}"
                 fi
 
-                rm -rf "$logs_dir"
+                summary_title="''${UKCI_SUMMARY_TITLE:-UKCI}"
+                render_summary_table() {
+                  echo "## $summary_title"
+                  echo ""
+                  echo "${ukciSummaryHeader}"
+                  echo "${ukciSummarySep}"
+                  declare -A seen_row=
+                  row_order=()
+                  for platform in ${platforms}; do
+                    IFS=: read -r pname _ts _te _pkg <<< "$platform"
+                    row_key="''${pname%-clang*}"
+                    if [ -z "''${seen_row[$row_key]+x}" ]; then
+                      seen_row[$row_key]=1
+                      row_order+=("$row_key")
+                    fi
+                  done
+                  for row_key in "''${row_order[@]}"; do
+                    line="| $row_key |"
+                    for llvm_ver in ${llvmVersionsSpaceSep}; do
+                      cell_name="$row_key-clang$llvm_ver"
+                      f="$results_dir/$cell_name"
+                      if [ -f "$f" ]; then
+                        ts="$(cat "$f")"
+                        if [ "$ts" -eq 0 ]; then
+                          cell="PASS"
+                        elif [ "$ts" -eq 124 ] || [ "$ts" -eq 137 ]; then
+                          cell="TIMEOUT"
+                        elif [ "$ts" -eq 143 ]; then
+                          cell="TERM"
+                        else
+                          cell="FAIL ($ts)"
+                        fi
+                      else
+                        cell="—"
+                      fi
+                      line="$line $cell |"
+                    done
+                    echo "$line"
+                  done
+                  echo ""
+                }
+                set +e
+                render_summary_table
+                if [ -n "''${GITHUB_STEP_SUMMARY:-}" ]; then
+                  render_summary_table >> "$GITHUB_STEP_SUMMARY"
+                fi
+                set -e
+
+                rm -rf "$logs_dir" "$results_dir"
                 exit "$status"
               '';
             in
