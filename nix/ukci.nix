@@ -433,7 +433,19 @@ localFlake:
                   echo "Missing package path!"
                   exit 1
                 fi
-                ${pkgs.nix}/bin/nix copy --to ssh://root@127.0.0.1 "$package"
+                attempt=0
+                while [ "$attempt" -lt 5 ]; do
+                  attempt=$((attempt + 1))
+                  if ${pkgs.nix}/bin/nix copy --to ssh://root@127.0.0.1 "$package"; then
+                    break
+                  fi
+                  if [ "$attempt" -eq 5 ]; then
+                    echo "nix copy failed after 5 attempts" >&2
+                    exit 1
+                  fi
+                  echo "nix copy failed (attempt $attempt/5), retrying..." >&2
+                  sleep 2
+                done
                 $ssh "$package"/bin/tracexec ebpf log -- ls
                 status=$?
                 exit "$status"
