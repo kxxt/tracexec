@@ -176,7 +176,18 @@ localFlake:
               #   kernelPatches = [ riscv64BpfLocalStorageFix ];
               #   extraMakeFlags = [ ];
               # }
-            ];
+            ] ++ (lib.optionals (!isTargetRiscv64) [
+              {
+                name = "bpf-next";
+                tag = "bpf-next-7.1";
+                version = "7.0.0-rc6";
+                source = "bpf-next";
+                test_exe = "tracexec";
+                sha256 = "sha256-z9S4y2YCgsPoInlUTErvgJOj7OSy1c6xP443HXFPc/c=";
+                kernelPatches = [ ];
+                extraMakeFlags = [ ];
+              }
+            ]);
           sourcesForTargets =
             targetSystems:
             lib.concatMap (

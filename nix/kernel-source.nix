@@ -38,6 +38,7 @@ let
     mirror = "mirror://kernel/linux/kernel/v6.x/linux-${tag}.tar.xz";
     mirror-v5 = "mirror://kernel/linux/kernel/v5.x/linux-${tag}.tar.xz";
     linus = "https://github.com/torvalds/linux/archive/refs/tags/${tag}.tar.gz";
+    bpf-next = "https://git.kxxt.dev/kxxt/bpf-next/archive/${tag}.tar.gz";
   };
 in
 {
