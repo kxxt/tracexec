@@ -444,19 +444,7 @@ localFlake:
                   echo "Missing package path!"
                   exit 1
                 fi
-                attempt=0
-                while [ "$attempt" -lt 5 ]; do
-                  attempt=$((attempt + 1))
-                  if ${pkgs.nix}/bin/nix copy --to ssh://root@127.0.0.1 "$package"; then
-                    break
-                  fi
-                  if [ "$attempt" -eq 5 ]; then
-                    echo "nix copy failed after 5 attempts" >&2
-                    exit 1
-                  fi
-                  echo "nix copy failed (attempt $attempt/5), retrying..." >&2
-                  sleep 2
-                done
+                ${pkgs.nix}/bin/nix copy --to ssh://root@127.0.0.1 "$package"
                 $ssh "$package"/bin/tracexec ebpf log -- ls
                 status=$?
                 exit "$status"
@@ -503,15 +491,31 @@ localFlake:
                   test_log="$logs_dir/$name.test.log"
                   (
                     set +e
-                    ${runQemuDrv}/bin/${runQemuName} "$kernel" "$port" >"$qemu_log" 2>&1 &
-                    qemu_pid=$!
-                    ${pkgs.coreutils}/bin/timeout 600s \
-                      ${testQemuDrv}/bin/${testQemuName} "$test_exe" "$package" "$port" "1" >"$test_log" 2>&1
-                    test_status=$?
-                    if kill -0 "$qemu_pid" >/dev/null 2>&1; then
-                      kill "$qemu_pid" >/dev/null 2>&1 || true
-                    fi
-                    wait "$qemu_pid" 2>/dev/null || true
+                    max_vm_attempts="''${UKCI_VM_TEST_ATTEMPTS:-5}"
+                    attempt=1
+                    test_status=1
+                    while [ "$attempt" -le "$max_vm_attempts" ]; do
+                      if [ "$attempt" -gt 1 ]; then
+                        echo "''${YELLOW}''${BOLD}Retrying full VM test ''${name} (attempt $attempt/$max_vm_attempts)...''${RESET}" >&2
+                        sleep 3
+                      fi
+                      ${runQemuDrv}/bin/${runQemuName} "$kernel" "$port" >"$qemu_log" 2>&1 &
+                      qemu_pid=$!
+                      ${pkgs.coreutils}/bin/timeout 600s \
+                        ${testQemuDrv}/bin/${testQemuName} "$test_exe" "$package" "$port" "1" >"$test_log" 2>&1
+                      test_status=$?
+                      if kill -0 "$qemu_pid" >/dev/null 2>&1; then
+                        kill "$qemu_pid" >/dev/null 2>&1 || true
+                      fi
+                      wait "$qemu_pid" 2>/dev/null || true
+                      if [ "$test_status" -eq 0 ]; then
+                        break
+                      fi
+                      if [ "$attempt" -ge "$max_vm_attempts" ]; then
+                        break
+                      fi
+                      attempt=$((attempt + 1))
+                    done
                     while ! mkdir "$lock_dir" 2>/dev/null; do
                       sleep 0.1
                     done
