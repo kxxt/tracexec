@@ -33,7 +33,7 @@
   - [strace](./comparison/strace.md)
 - [FAQ](./faq.md)
 - [Developer Guide](./dev.md)
-  - [Internal Architecture]()
+  - [Internal Architecture](./dev/architecture.md)
   - [Backend Differences]()
   - [Event System]()
   - [Tests](./dev/tests.md)
