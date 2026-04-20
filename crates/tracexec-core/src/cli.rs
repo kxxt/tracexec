@@ -1,4 +1,5 @@
 use std::{
+  ffi::OsString,
   io::{
     BufWriter,
     stderr,
@@ -76,12 +77,12 @@ pub struct Cli {
   )]
   pub elevate: bool,
   #[arg(
-    long,
+    long = "restore-env",
     hide = true,
     conflicts_with = "elevate",
-    help = "Internal: path to a saved environment file from --elevate"
+    help = "Internal: restore an environment variable from --elevate (KEY=VALUE)"
   )]
-  pub restore_env_file: Option<PathBuf>,
+  pub restore_env: Vec<OsString>,
   #[arg(
     long,
     hide = true,
@@ -512,7 +513,7 @@ mod tests {
       no_profile: false,
       user: None,
       elevate: false,
-      restore_env_file: None,
+      restore_env: Vec::new(),
       elevated_config_dir: None,
       elevated_data_dir: None,
       elevated_data_local_dir: None,
@@ -571,7 +572,7 @@ mod tests {
       no_profile: false,
       user: None,
       elevate: false,
-      restore_env_file: None,
+      restore_env: Vec::new(),
       elevated_config_dir: None,
       elevated_data_dir: None,
       elevated_data_local_dir: None,
@@ -635,7 +636,7 @@ mod tests {
       no_profile: false,
       user: None,
       elevate: false,
-      restore_env_file: None,
+      restore_env: Vec::new(),
       elevated_config_dir: None,
       elevated_data_dir: None,
       elevated_data_local_dir: None,

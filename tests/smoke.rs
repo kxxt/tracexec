@@ -58,47 +58,24 @@ fn elevate_log_mode_runs_tracee_as_original_user() -> Result<(), Box<dyn std::er
 #[test]
 #[file_serial(ignored)]
 #[ignore = "root"]
-fn elevate_env_file_preserves_custom_env_var() -> Result<(), Box<dyn std::error::Error>> {
-  // Test that --restore-env-file restores environment variables correctly.
-  // We create an env file with a known custom var AND SUDO_USER removed,
-  // then verify the tracee sees the custom var but not SUDO_USER.
-  use std::io::Write;
-
+fn elevate_restore_env_preserves_custom_env_var() -> Result<(), Box<dyn std::error::Error>> {
+  // Test that --restore-env restores environment variables correctly.
+  // Pass env entries via CLI args and verify the tracee sees them but not SUDO_USER.
   let username = std::env::var("SUDO_USER").unwrap_or_else(|_| "nobody".to_string());
-  let uid: u32 = std::env::var("SUDO_UID")
-    .ok()
-    .and_then(|s| s.parse().ok())
-    .unwrap_or(65534);
-
-  // Build env file content: include a test marker var and exclude SUDO_* vars
-  let mut env_data = Vec::new();
-  env_data.extend_from_slice(b"TRACEXEC_TEST_MARKER=preserved_value\0");
-  env_data.extend_from_slice(b"HOME=/tmp\0");
-  env_data
-    .extend_from_slice(format!("PATH={}\0", std::env::var("PATH").unwrap_or_default()).as_bytes());
-
-  // Write env file with correct permissions (0600) and ownership
-  let dir = std::env::temp_dir();
-  let mut tmpfile = tempfile::Builder::new()
-    .prefix("tracexec-env-test-")
-    .tempfile_in(&dir)?;
-  tmpfile.write_all(&env_data)?;
-  tmpfile.flush()?;
-  let env_path = tmpfile.into_temp_path();
-
-  // chown the file to the target user
-  nix::unistd::chown(
-    env_path.as_ref() as &std::path::Path,
-    Some(nix::unistd::Uid::from_raw(uid)),
-    None,
-  )?;
 
   let mut cmd = Command::new(cargo::cargo_bin!());
   cmd
     .arg("--user")
     .arg(&username)
-    .arg("--restore-env-file")
-    .arg(env_path.as_os_str())
+    .arg("--restore-env")
+    .arg("TRACEXEC_TEST_MARKER=preserved_value")
+    .arg("--restore-env")
+    .arg("HOME=/tmp")
+    .arg("--restore-env")
+    .arg(format!(
+      "PATH={}",
+      std::env::var("PATH").unwrap_or_default()
+    ))
     .arg("log")
     .arg("--")
     .arg("sh")
