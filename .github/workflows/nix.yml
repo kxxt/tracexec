@@ -52,7 +52,7 @@ jobs:
           
       - &attic-writable
         name: Setup Attic cache (Writable)
-        uses: ryanccn/attic-action@1887fd507f03327c96c64cca30118c96eb17fdad # v0.4.1
+        uses: ryanccn/attic-action@5635a15ef0c5462194ffbd05d1daeddc74625c3a # v0.5.0
         if: github.event.pull_request.head.repo.fork != true
         with:
           endpoint: https://nix.kxxt.dev
@@ -61,7 +61,7 @@ jobs:
       
       - &attic-rdonly
         name: Setup Attic cache (ReadOnly)
-        uses: ryanccn/attic-action@1887fd507f03327c96c64cca30118c96eb17fdad # v0.4.1
+        uses: ryanccn/attic-action@5635a15ef0c5462194ffbd05d1daeddc74625c3a # v0.5.0
         if: github.event.pull_request.head.repo.fork == true
         with:
           endpoint: https://nix.kxxt.dev
