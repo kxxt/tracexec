@@ -92,8 +92,8 @@ fn main() -> color_eyre::Result<()> {
 
   // Restore saved environment from a previous --elevate invocation.
   // This must happen before logging, config loading, or any code that reads env vars.
-  if let Some(env_file) = &cli.restore_env_file {
-    tracexec_core::elevate::restore_env_from_file(env_file)?;
+  if !cli.restore_env.is_empty() {
+    tracexec_core::elevate::restore_env_from_entries(&cli.restore_env)?;
   }
 
   // Apply project directory overrides from --elevate before anything
