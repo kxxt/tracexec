@@ -165,25 +165,24 @@ localFlake:
                 kernelPatches = [ riscv64BpfLocalStorageFix ];
                 extraMakeFlags = [ ];
               }
+            ] ++ (lib.optionals (!isTargetRiscv64) [
               # {
-              #   name = "7.0";
-              #   tag = "v7.0-rc2";
-              #   version = "7.0.0-rc2";
-              #   source = "linus";
+              #   name = "bpf-next";
+              #   tag = "bpf-next-7.1";
+              #   version = "7.0.0-rc6";
+              #   source = "bpf-next";
               #   test_exe = "tracexec";
-              #   sha256 = "sha256-BlKlJdEYvwDN6iWJfuOvd1gcm6lN6McJ/vmMwOmzHdc=";
-              #   # Same as 6.19
-              #   kernelPatches = [ riscv64BpfLocalStorageFix ];
+              #   sha256 = "sha256-z9S4y2YCgsPoInlUTErvgJOj7OSy1c6xP443HXFPc/c=";
+              #   kernelPatches = [ ];
               #   extraMakeFlags = [ ];
               # }
-            ] ++ (lib.optionals (!isTargetRiscv64) [
               {
-                name = "bpf-next";
-                tag = "bpf-next-7.1";
-                version = "7.0.0-rc6";
-                source = "bpf-next";
+                name = "7.1";
+                tag = "v7.1-rc1";
+                version = "7.1.0-rc1";
+                source = "linus";
                 test_exe = "tracexec";
-                sha256 = "sha256-z9S4y2YCgsPoInlUTErvgJOj7OSy1c6xP443HXFPc/c=";
+                sha256 = "sha256-G1twFrk0o91FgHOk97yLCkkJIDzyB9sfvInLUiZjB+4=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
