@@ -109,7 +109,7 @@ jobs:
         uses: dtolnay/rust-toolchain@aad518f59d88bae90133242f9ddac7f8bbc5dddf # v1.94.1
         with:
           components: rustfmt
-      - uses: taiki-e/install-action@58e862542551f667fa44c8a2a4a1d64ad477c96a # v2.75.17
+      - uses: taiki-e/install-action@74e87cbfa15a59692b158178d8905a61bf6fca95 # v2.75.20
         with:
           tool: cargo-llvm-cov
       - name: Install native dependencies
