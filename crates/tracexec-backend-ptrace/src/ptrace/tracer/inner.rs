@@ -184,6 +184,7 @@ pub struct TracerInner {
   msg_tx: UnboundedSender<TracerMessage>,
   user: Option<User>,
   polling_interval: Option<Duration>,
+  tracee_env: Option<tracexec_core::elevate::EnvVars>,
   breakpoints: Arc<RwLock<BTreeMap<u32, BreakPoint>>>,
   _unsend_marker: PhantomUnsend,
   _unsync_marker: PhantomUnsync,
@@ -222,6 +223,7 @@ impl TracerInner {
       user,
       req_tx: _,
       polling_interval,
+      tracee_env,
     } = tracer;
     printer.init_thread_local(output);
     Ok(Self {
@@ -237,6 +239,7 @@ impl TracerInner {
       msg_tx,
       user,
       polling_interval,
+      tracee_env,
       _unsend_marker: PhantomData,
       _unsync_marker: PhantomData,
     })
@@ -256,6 +259,9 @@ impl TracerInner {
     let mut cmd = CommandBuilder::new(&args[0]);
     cmd.args(args.iter().skip(1));
     cmd.cwd(std::env::current_dir()?);
+    if let Some(env) = &self.tracee_env {
+      cmd.envs(env.iter().cloned());
+    }
 
     let seccomp_bpf = self.seccomp_bpf;
     let slave_pty = match &self.mode {

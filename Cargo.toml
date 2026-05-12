@@ -37,6 +37,7 @@ nix = { version = "0.31", features = [
     "ptrace",
     "process",
     "feature",
+    "socket",
     "term",
     "fs",
     "signal",

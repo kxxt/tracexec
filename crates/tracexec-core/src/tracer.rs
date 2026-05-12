@@ -30,6 +30,7 @@ use crate::{
     },
     options::SeccompBpf,
   },
+  elevate::EnvVars,
   event::{
     OutputMsg,
     TracerEventDetailsKind,
@@ -116,6 +117,8 @@ pub struct TracerBuilder {
   pub seccomp_bpf: SeccompBpf,
   pub ptrace_polling_delay: Option<u64>,
   pub ptrace_blocking: Option<bool>,
+  pub tracee_env: Option<EnvVars>,
+  pub tracexec_override_env: Option<EnvVars>,
 }
 
 impl TracerBuilder {
@@ -164,6 +167,22 @@ impl TracerBuilder {
   /// Default to current user.
   pub fn user(mut self, user: Option<User>) -> Self {
     self.user = user;
+    self
+  }
+
+  /// Sets the environment passed to the root tracee at exec time.
+  ///
+  /// When unset, the tracee inherits tracexec's current process environment.
+  pub fn tracee_env(mut self, env: Option<EnvVars>) -> Self {
+    self.tracee_env = env;
+    self
+  }
+
+  /// Sets the environment variables tracexec should consult for before using process env vars
+  ///
+  /// Or put it simply, this overrides std::env::vars for tracexec itself only.
+  pub fn tracexec_override_env(mut self, env: Option<EnvVars>) -> Self {
+    self.tracexec_override_env = env;
     self
   }
 

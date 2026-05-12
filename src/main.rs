@@ -42,6 +42,7 @@ use tracexec_core::{
       ExportFormat,
     },
   },
+  elevate,
   event::{
     TracerEvent,
     TracerEventDetails,
@@ -90,11 +91,22 @@ fn main() -> color_eyre::Result<()> {
     unreachable!();
   }
 
-  // Restore saved environment from a previous --elevate invocation.
-  // This must happen before logging, config loading, or any code that reads env vars.
-  if let Some(env_file) = &cli.restore_env_file {
-    tracexec_core::elevate::restore_env_from_file(env_file)?;
+  // Request the original environment from the unelevated parent. Only an
+  // allowlisted subset is consulted by elevated tracexec itself; the complete
+  // original environment is saved as data for the tracee's execve.
+  if cli.restore_env_socket.is_some() && !Uid::effective().is_root() {
+    bail!("--restore-env-socket is only available after privilege elevation");
   }
+  let restored_env = cli
+    .restore_env_socket
+    .take()
+    .map(|socket| elevate::request_env_from_parent(&socket))
+    .transpose()?;
+  let tracexec_env = restored_env
+    .as_ref()
+    .map(|env| elevate::filter_allowlisted_env(env));
+  let tracexec_env_ref = tracexec_env.as_deref();
+  let tracee_env = restored_env;
 
   // Apply project directory overrides from --elevate before anything
   // touches project_directory() (logging, config, themes).
@@ -107,7 +119,7 @@ fn main() -> color_eyre::Result<()> {
     tracexec_core::cli::config::set_project_dir_overrides(config_dir, data_dir, data_local_dir);
   }
 
-  if cli.color == Color::Auto && std::env::var_os("NO_COLOR").is_some() {
+  if cli.color == Color::Auto && elevate::env_var_os(tracexec_env_ref, "NO_COLOR").is_some() {
     // Respect NO_COLOR if --color=auto
     cli.color = Color::Never;
   }
@@ -120,17 +132,21 @@ fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
   }
   initialize_panic_handler();
-  log::initialize_logging()?;
+  log::initialize_logging(tracexec_env_ref)?;
   log::debug!("Commandline args: {:?}", cli);
 
   let runtime = tokio::runtime::Builder::new_multi_thread()
     .worker_threads(2)
     .enable_all()
     .build()?;
-  runtime.block_on(async_main(cli))
+  runtime.block_on(async_main(cli, tracee_env, tracexec_env))
 }
 
-async fn async_main(mut cli: Cli) -> color_eyre::Result<()> {
+async fn async_main(
+  mut cli: Cli,
+  tracee_env: Option<tracexec_core::elevate::EnvVars>,
+  tracexec_env: Option<tracexec_core::elevate::EnvVars>,
+) -> color_eyre::Result<()> {
   if let Some(cwd) = &cli.cwd {
     std::env::set_current_dir(cwd)?;
   }
@@ -173,7 +189,7 @@ async fn async_main(mut cli: Cli) -> color_eyre::Result<()> {
     } => {
       let modifier_args = modifier_args.processed();
       let output = Cli::get_output(output, cli.color)?;
-      let baseline = BaselineInfo::new()?;
+      let baseline = BaselineInfo::new_with_env(tracee_env.as_deref())?;
       let (tracer_tx, mut tracer_rx) = mpsc::unbounded_channel();
       let (tracer, token) = TracerBuilder::new()
         .mode(TracerMode::Log {
@@ -181,6 +197,7 @@ async fn async_main(mut cli: Cli) -> color_eyre::Result<()> {
         })
         .modifier(modifier_args)
         .user(user)
+        .tracee_env(tracee_env.clone())
         .tracer_tx(tracer_tx)
         .baseline(Arc::new(baseline))
         .filter(tracer_event_args.filter()?)
@@ -249,12 +266,16 @@ async fn async_main(mut cli: Cli) -> color_eyre::Result<()> {
           pixel_height: 0,
         })?;
         (
-          BaselineInfo::with_pts(&pair.slave)?,
+          BaselineInfo::with_pts_and_env(&pair.slave, tracee_env.as_deref())?,
           TracerMode::Tui(Some(pair.slave)),
           Some(pair.master),
         )
       } else {
-        (BaselineInfo::new()?, TracerMode::Tui(None), None)
+        (
+          BaselineInfo::new_with_env(tracee_env.as_deref())?,
+          TracerMode::Tui(None),
+          None,
+        )
       };
       let tracing_args = LogModeArgs {
         show_cmdline: false, // We handle cmdline in TUI
@@ -271,6 +292,7 @@ async fn async_main(mut cli: Cli) -> color_eyre::Result<()> {
         .mode(tracer_mode)
         .modifier(modifier_args.clone())
         .user(user)
+        .tracee_env(tracee_env.clone())
         .tracer_tx(tracer_tx)
         .baseline(baseline.clone())
         .filter(tracer_event_args.filter()?)
@@ -335,13 +357,14 @@ async fn async_main(mut cli: Cli) -> color_eyre::Result<()> {
         ..Default::default()
       };
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
-      let baseline = Arc::new(BaselineInfo::new()?);
+      let baseline = Arc::new(BaselineInfo::new_with_env(tracee_env.as_deref())?);
       let (tracer, token) = TracerBuilder::new()
         .mode(TracerMode::Log {
           foreground: tracing_args.foreground(),
         })
         .modifier(modifier_args)
         .user(user)
+        .tracee_env(tracee_env.clone())
         .tracer_tx(tracer_tx)
         .baseline(baseline.clone())
         .filter(TracerEventArgs::all().filter()?)
@@ -401,7 +424,7 @@ async fn async_main(mut cli: Cli) -> color_eyre::Result<()> {
     #[cfg(feature = "ebpf")]
     CliCommand::Ebpf { command } => {
       // TODO: warn if --user is set when not follow-forks
-      bpf::main(command, user, cli.color).await?;
+      bpf::main(command, user, cli.color, tracee_env, tracexec_env).await?;
     }
   }
   Ok(())

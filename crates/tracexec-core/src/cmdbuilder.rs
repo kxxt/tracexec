@@ -90,6 +90,7 @@ fn get_shell() -> String {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommandBuilder {
   args: Vec<OsString>,
+  env: Option<Vec<(OsString, OsString)>>,
   cwd: Option<PathBuf>,
   pub(crate) umask: Option<libc::mode_t>,
   controlling_tty: bool,
@@ -101,6 +102,7 @@ impl CommandBuilder {
   pub fn new<S: AsRef<OsStr>>(program: S) -> Self {
     Self {
       args: vec![program.as_ref().to_owned()],
+      env: None,
       cwd: None,
       umask: None,
       controlling_tty: true,
@@ -111,6 +113,7 @@ impl CommandBuilder {
   pub fn from_argv(args: Vec<OsString>) -> Self {
     Self {
       args,
+      env: None,
       cwd: None,
       umask: None,
       controlling_tty: true,
@@ -136,6 +139,7 @@ impl CommandBuilder {
   pub fn new_default_prog() -> Self {
     Self {
       args: vec![],
+      env: None,
       cwd: None,
       umask: None,
       controlling_tty: true,
@@ -175,6 +179,35 @@ impl CommandBuilder {
     &mut self.args
   }
 
+  pub fn env<K, V>(&mut self, key: K, value: V)
+  where
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+  {
+    self
+      .env
+      .get_or_insert_with(Vec::new)
+      .push((key.as_ref().to_owned(), value.as_ref().to_owned()));
+  }
+
+  pub fn envs<I, K, V>(&mut self, envs: I)
+  where
+    I: IntoIterator<Item = (K, V)>,
+    K: Into<OsString>,
+    V: Into<OsString>,
+  {
+    self.env = Some(
+      envs
+        .into_iter()
+        .map(|(key, value)| (key.into(), value.into()))
+        .collect(),
+    );
+  }
+
+  pub fn get_env(&self) -> Option<&[(OsString, OsString)]> {
+    self.env.as_deref()
+  }
+
   pub fn cwd<D>(&mut self, dir: D)
   where
     D: AsRef<Path>,
@@ -197,7 +230,13 @@ impl CommandBuilder {
   }
 
   fn resolve_path(&self) -> Option<OsString> {
-    env::var_os("PATH")
+    match &self.env {
+      Some(env) => env
+        .iter()
+        .rev()
+        .find_map(|(key, value)| (key == OsStr::new("PATH")).then_some(value.clone())),
+      None => env::var_os("PATH"),
+    }
   }
 
   fn search_path(&self, exe: &OsStr, cwd: &Path) -> color_eyre::Result<PathBuf> {
@@ -243,7 +282,6 @@ impl CommandBuilder {
 
   /// Convert the CommandBuilder to a `Command` instance.
   pub(crate) fn build(self) -> color_eyre::Result<Command> {
-    use std::os::unix::process::CommandExt;
     let cwd = env::current_dir()?;
     let dir = if let Some(dir) = self.cwd.as_deref() {
       dir.to_owned()
@@ -260,6 +298,20 @@ impl CommandBuilder {
         .into_iter()
         .map(|a| CString::new(a.into_vec()))
         .collect::<Result<_, _>>()?,
+      env: self
+        .env
+        .map(|env| {
+          env
+            .into_iter()
+            .map(|(key, value)| {
+              let mut bytes = key.into_vec();
+              bytes.push(b'=');
+              bytes.extend_from_slice(&value.into_vec());
+              CString::new(bytes)
+            })
+            .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?,
       cwd: dir,
     })
   }
@@ -268,6 +320,7 @@ impl CommandBuilder {
 pub struct Command {
   pub program: PathBuf,
   pub args: Vec<CString>,
+  pub env: Option<Vec<CString>>,
   pub cwd: PathBuf,
 }
 
@@ -420,6 +473,38 @@ mod tests {
       let args: Vec<&str> = cmd.args.iter().map(|c| c.to_str().unwrap()).collect();
 
       assert_eq!(args, ["echo", "hello"]);
+      assert!(cmd.env.is_none());
+      dir.close().unwrap()
+    }
+
+    #[test]
+    fn test_build_sets_explicit_env() {
+      let dir = TempDir::new().unwrap();
+      let exe = make_executable(&dir, "cmd");
+
+      let mut b = CommandBuilder::new("cmd");
+      b.envs([
+        (OsString::from("PATH"), dir.path().as_os_str().to_owned()),
+        (OsString::from("TRACEXEC_TEST"), OsString::from("value")),
+      ]);
+
+      let cmd = b.build().unwrap();
+
+      assert_eq!(cmd.program, exe);
+      let env: Vec<String> = cmd
+        .env
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|c| c.to_str().unwrap().to_owned())
+        .collect();
+      assert_eq!(
+        env,
+        vec![
+          "PATH=".to_string() + dir.path().to_str().unwrap(),
+          "TRACEXEC_TEST=value".to_string(),
+        ]
+      );
       dir.close().unwrap()
     }
 

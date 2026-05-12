@@ -1684,6 +1684,7 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+ "memoffset",
 ]
 
 [[package]]
@@ -3212,6 +3213,7 @@ dependencies = [
  "nix 0.31.1",
  "nutype",
  "paste",
+ "rand 0.10.1",
  "regex-cursor",
  "rusty-fork",
  "serde",

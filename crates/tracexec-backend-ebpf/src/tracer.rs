@@ -69,6 +69,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tracexec_core::{
   cli::args::ModifierArgs,
   cmdbuilder::CommandBuilder,
+  elevate,
   event::{
     ExecEvent,
     ExecSyscall,
@@ -159,6 +160,8 @@ pub struct EbpfTracer {
   tx: Option<UnboundedSender<TracerMessage>>,
   filter: BitFlags<TracerEventDetailsKind>,
   mode: TracerMode,
+  tracee_env: Option<elevate::EnvVars>,
+  tracexec_override_env: Option<elevate::EnvVars>,
 }
 
 mod private {
@@ -188,6 +191,8 @@ impl BuildEbpfTracer for TracerBuilder {
         .filter
         .unwrap_or_else(BitFlags::<TracerEventDetailsKind>::all),
       mode: self.mode.unwrap(),
+      tracee_env: self.tracee_env,
+      tracexec_override_env: self.tracexec_override_env,
     }
   }
 }
@@ -587,7 +592,8 @@ impl EbpfTracer {
       .inspect_err(|e| warn!("Failed to get kernel config: {e}"))
       .ok();
     // Check if we should use kprobe on kernels without CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS
-    if !kernel_have_ftrace_with_direct_calls(kconfig.as_ref()) {
+    let override_env = self.tracexec_override_env.as_deref();
+    if !kernel_have_ftrace_with_direct_calls(kconfig.as_ref(), override_env) {
       open_skel.progs.sys_execve_fentry.set_autoload(false);
       open_skel.progs.sys_execveat_fentry.set_autoload(false);
       open_skel.progs.sys_exit_execve_fexit.set_autoload(false);
@@ -604,7 +610,7 @@ impl EbpfTracer {
         .sys_exit_execveat_kretprobe
         .set_autoload(false);
       // Check if we can use sleepable fentry
-      if can_i_use_sleepable_fentry(kconfig.as_ref()) {
+      if can_i_use_sleepable_fentry(kconfig.as_ref(), override_env) {
         // Can use sleepable fentry :(
         open_skel.progs.sys_execve_fentry.set_flags(BPF_F_SLEEPABLE);
         open_skel
@@ -648,6 +654,9 @@ impl EbpfTracer {
       let mut cmdbuilder = CommandBuilder::new(cmd[0].as_ref());
       cmdbuilder.args(cmd.iter().skip(1));
       cmdbuilder.cwd(std::env::current_dir()?);
+      if let Some(env) = &self.tracee_env {
+        cmdbuilder.envs(env.iter().cloned());
+      }
       let pts = match &self.mode {
         TracerMode::Tui(tty) => tty.as_ref(),
         _ => None,

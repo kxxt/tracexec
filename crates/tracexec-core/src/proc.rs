@@ -8,7 +8,10 @@ use std::{
     BTreeSet,
     HashSet,
   },
-  ffi::CString,
+  ffi::{
+    CString,
+    OsString,
+  },
   fmt::{
     Display,
     Formatter,
@@ -721,30 +724,59 @@ pub struct BaselineInfo {
 }
 
 impl BaselineInfo {
-  pub fn new() -> color_eyre::Result<Self> {
-    let cwd = cached_str(&std::env::current_dir()?.to_string_lossy()).into();
-    let env = std::env::vars()
+  fn env_from_vars_os(
+    vars: impl IntoIterator<Item = (OsString, OsString)>,
+  ) -> BTreeMap<OutputMsg, OutputMsg> {
+    vars
+      .into_iter()
       .map(|(k, v)| {
         (
-          CACHE.get_or_insert_owned(k).into(),
-          CACHE.get_or_insert_owned(v).into(),
+          CACHE
+            .get_or_insert_owned(k.to_string_lossy().into_owned())
+            .into(),
+          CACHE
+            .get_or_insert_owned(v.to_string_lossy().into_owned())
+            .into(),
         )
       })
-      .collect();
+      .collect()
+  }
+
+  fn env_from_override(env: Option<&[(OsString, OsString)]>) -> BTreeMap<OutputMsg, OutputMsg> {
+    match env {
+      Some(env) => Self::env_from_vars_os(env.iter().cloned()),
+      None => std::env::vars()
+        .map(|(k, v)| {
+          (
+            CACHE.get_or_insert_owned(k).into(),
+            CACHE.get_or_insert_owned(v).into(),
+          )
+        })
+        .collect(),
+    }
+  }
+
+  pub fn new() -> color_eyre::Result<Self> {
+    Self::new_with_env(None)
+  }
+
+  pub fn new_with_env(env: Option<&[(OsString, OsString)]>) -> color_eyre::Result<Self> {
+    let cwd = cached_str(&std::env::current_dir()?.to_string_lossy()).into();
+    let env = Self::env_from_override(env);
     let fdinfo = FileDescriptorInfoCollection::new_baseline()?;
     Ok(Self { cwd, env, fdinfo })
   }
 
   pub fn with_pts(pts: &UnixSlavePty) -> color_eyre::Result<Self> {
+    Self::with_pts_and_env(pts, None)
+  }
+
+  pub fn with_pts_and_env(
+    pts: &UnixSlavePty,
+    env: Option<&[(OsString, OsString)]>,
+  ) -> color_eyre::Result<Self> {
     let cwd = cached_str(&std::env::current_dir()?.to_string_lossy()).into();
-    let env = std::env::vars()
-      .map(|(k, v)| {
-        (
-          CACHE.get_or_insert_owned(k).into(),
-          CACHE.get_or_insert_owned(v).into(),
-        )
-      })
-      .collect();
+    let env = Self::env_from_override(env);
     let fdinfo = FileDescriptorInfoCollection::with_pts(pts)?;
     Ok(Self { cwd, env, fdinfo })
   }

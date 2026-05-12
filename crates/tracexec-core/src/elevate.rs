@@ -1,44 +1,93 @@
 //! Privilege elevation support for tracexec.
 //!
-//! When `--elevate` is used, tracexec captures the current user's credentials
-//! and environment variables, saves them to a secure temporary file, then
-//! re-executes itself with elevated privileges via `sudo`. The elevated process
-//! restores the original environment from the file and passes `--user <username>`
-//! so the tracee runs as the original user.
-//!
-//! ## Security
-//!
-//! The environment file is created with mode 0600 and owned by the current user.
-//! On restore, the file is opened with `O_NOFOLLOW` (rejecting symlinks), its
-//! metadata is checked via `fstat` (avoiding TOCTOU races), and it is unlinked
-//! immediately after reading. Only the original user and root can access it.
+//! When `--elevate` is used, tracexec captures the current user's credentials,
+//! creates a private abstract Unix domain socket, and spawns `sudo tracexec`.
+//! The elevated child requests the complete original environment over that
+//! socket. The unelevated parent verifies the child's Unix socket credentials
+//! before sending anything, then waits for the elevated child to exit. The
+//! elevated tracexec process may only consult an allowlisted subset for its own
+//! behavior, while the tracee is spawned with the complete original environment.
 
 use std::{
-  ffi::OsString,
-  fs,
+  collections::HashSet,
+  ffi::{
+    OsStr,
+    OsString,
+  },
   io::{
+    ErrorKind,
     Read,
     Write,
   },
-  os::unix::{
-    ffi::OsStrExt,
-    fs::OpenOptionsExt,
+  os::{
+    linux::net::SocketAddrExt,
+    unix::{
+      ffi::{
+        OsStrExt,
+        OsStringExt,
+      },
+      net::{
+        SocketAddr,
+        UnixListener,
+        UnixStream,
+      },
+      process::ExitStatusExt,
+    },
   },
   path::Path,
-  process::Command,
+  process::{
+    Child,
+    Command,
+    ExitStatus,
+  },
+  sync::LazyLock,
+  time::{
+    Duration,
+    Instant,
+  },
 };
 
+use color_eyre::eyre::bail;
 use nix::{
-  fcntl::OFlag,
-  sys::stat::{
-    self,
-    SFlag,
+  sys::socket::{
+    getsockopt,
+    sockopt,
   },
   unistd::{
     Uid,
     User,
   },
 };
+use rand::distr::{
+  Alphanumeric,
+  SampleString,
+};
+
+pub type EnvVars = Vec<(OsString, OsString)>;
+
+const ENV_REQUEST_MAGIC: &[u8] = b"tracexec-env-v1";
+const ENV_SOCKET_ACCEPT_TIMEOUT: Duration = Duration::from_secs(180);
+
+/// Environment variables elevated tracexec may consult after `--elevate`.
+///
+/// Keep this list limited to variables that tracexec itself reads. The complete
+/// original environment is transferred as data, but only these keys are exposed
+/// to elevated tracexec behavior. The tracee still receives the complete
+/// original environment at `execve(2)`.
+///
+/// `TRACEXEC_DATA` is passed via cmdline and thus not allowed here.
+/// Variables only for development, like `TRACEXEC_BPFCOV_OUTDIR`,
+/// are also not allowed.
+pub static RESTORED_ENV_ALLOWLIST: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+  HashSet::from([
+    "NO_COLOR",
+    "RUST_LOG",
+    "TRACEXEC_LOG_LEVEL",
+    "TRACEXEC_NO_SLEEP",
+    "TRACEXEC_USE_FENTRY",
+    "TRACEXEC_USE_KPROBE",
+  ])
+});
 
 /// Saved credentials from before privilege elevation.
 #[derive(Debug, Clone)]
@@ -63,12 +112,55 @@ impl PreElevationCreds {
   }
 }
 
-/// Serialize all current environment variables into a byte buffer.
+pub fn env_value<'a>(env: &'a [(OsString, OsString)], key: &str) -> Option<&'a OsStr> {
+  let key = OsStr::new(key);
+  env
+    .iter()
+    .rev()
+    .find_map(|(candidate, value)| (candidate == key).then_some(value.as_os_str()))
+}
+
+pub fn env_var_os(env: Option<&[(OsString, OsString)]>, key: &str) -> Option<OsString> {
+  match env {
+    Some(env) => env_value(env, key).map(OsStr::to_owned),
+    None => std::env::var_os(key),
+  }
+}
+
+pub fn env_var_string(env: Option<&[(OsString, OsString)]>, key: &str) -> Option<String> {
+  match env {
+    Some(env) => env_value(env, key).map(|value| value.to_string_lossy().into_owned()),
+    None => std::env::var(key).ok(),
+  }
+}
+
+pub fn filter_allowlisted_env_from(
+  vars: impl IntoIterator<Item = (OsString, OsString)>,
+) -> EnvVars {
+  vars
+    .into_iter()
+    .filter(|(key, _)| {
+      key
+        .to_str()
+        .is_some_and(|key| RESTORED_ENV_ALLOWLIST.contains(key))
+    })
+    .collect()
+}
+
+pub fn filter_allowlisted_env(env: &[(OsString, OsString)]) -> EnvVars {
+  filter_allowlisted_env_from(env.iter().cloned())
+}
+
+fn collect_original_env() -> EnvVars {
+  std::env::vars_os().collect()
+}
+
+/// Serialize environment variables into a byte buffer.
 ///
-/// Uses the null-byte-separated `KEY=VALUE\0` format (same as `/proc/self/environ`).
-fn serialize_env() -> Vec<u8> {
+/// Uses the null-byte-separated `KEY=VALUE\0` format.
+fn serialize_env(env: &[(OsString, OsString)]) -> Vec<u8> {
   let mut buf = Vec::new();
-  for (key, value) in std::env::vars_os() {
+  for (key, value) in env {
     buf.extend_from_slice(key.as_bytes());
     buf.push(b'=');
     buf.extend_from_slice(value.as_bytes());
@@ -78,8 +170,7 @@ fn serialize_env() -> Vec<u8> {
 }
 
 /// Deserialize environment variables from null-byte-separated `KEY=VALUE\0` format.
-fn deserialize_env(data: &[u8]) -> Vec<(OsString, OsString)> {
-  use std::os::unix::ffi::OsStringExt;
+fn deserialize_env(data: &[u8]) -> EnvVars {
   let mut result = Vec::new();
   for entry in data.split(|&b| b == 0) {
     if entry.is_empty() {
@@ -94,80 +185,96 @@ fn deserialize_env(data: &[u8]) -> Vec<(OsString, OsString)> {
   result
 }
 
-/// Save the current environment to a temporary file with secure permissions.
-///
-/// Returns the path to the file. The file is created with mode 0600.
-fn save_env_to_file() -> color_eyre::Result<std::path::PathBuf> {
-  let dir = std::env::temp_dir();
-  let env_data = serialize_env();
-
-  // Create tempfile with a unique path, then write data to it.
-  // tempfile creates with mode 0600 by default on Unix.
-  let mut tmpfile = tempfile::Builder::new()
-    .prefix("tracexec-env-")
-    .tempfile_in(&dir)?;
-  tmpfile.write_all(&env_data)?;
-  tmpfile.flush()?;
-
-  // Persist so the file survives after we exec into sudo.
-  let path = tmpfile.into_temp_path().keep()?;
-  Ok(path)
+fn abstract_socket_addr(socket_name: &str) -> color_eyre::Result<SocketAddr> {
+  Ok(SocketAddr::from_abstract_name(socket_name.as_bytes())?)
 }
 
-/// Restore environment variables from a saved env file.
-///
-/// Security checks performed:
-/// - File is opened with `O_NOFOLLOW` to reject symlinks
-/// - `fstat` is used on the open fd to verify:
-///   - File is a regular file
-/// - File is unlinked immediately after reading
-pub fn restore_env_from_file(path: &Path) -> color_eyre::Result<()> {
-  // Open with O_NOFOLLOW to reject symlinks
-  let file = fs::OpenOptions::new()
-    .read(true)
-    .custom_flags(OFlag::O_NOFOLLOW.bits())
-    .open(path)
-    .map_err(|e| color_eyre::eyre::eyre!("Failed to open env file {}: {e}", path.display()))?;
+fn random_socket_name() -> String {
+  let suffix = Alphanumeric.sample_string(&mut rand::rng(), 32);
+  format!("tracexec-env-{}-{suffix}", std::process::id())
+}
 
-  let fd_stat = stat::fstat(&file)?;
+fn bind_env_socket(socket_name: &str) -> color_eyre::Result<UnixListener> {
+  Ok(UnixListener::bind_addr(&abstract_socket_addr(
+    socket_name,
+  )?)?)
+}
 
-  // Verify it's a regular file
-  let file_type = SFlag::from_bits_truncate(fd_stat.st_mode & SFlag::S_IFMT.bits());
-  if file_type != SFlag::S_IFREG {
-    color_eyre::eyre::bail!(
-      "Env file {} is not a regular file (mode={:#o})",
-      path.display(),
-      fd_stat.st_mode
+fn exit_code_from_status(status: ExitStatus) -> i32 {
+  status
+    .code()
+    .or_else(|| status.signal().map(|signal| 128 + signal))
+    .unwrap_or(1)
+}
+
+fn handle_env_request(
+  mut stream: UnixStream,
+  env: &[(OsString, OsString)],
+  required_uid: u32,
+) -> color_eyre::Result<()> {
+  let creds = getsockopt(&stream, sockopt::PeerCredentials)?;
+  if creds.uid() != required_uid {
+    bail!(
+      "Refusing to send environment variables to uid {} (expected uid {required_uid})",
+      creds.uid()
     );
   }
 
-  // Read the file contents
-  let mut data = Vec::new();
-  let mut file = file;
-  file.read_to_end(&mut data)?;
-
-  // Unlink immediately after reading
-  if let Err(e) = fs::remove_file(path) {
-    tracing::warn!("Failed to remove env file {}: {e}", path.display());
+  let mut request = vec![0; ENV_REQUEST_MAGIC.len()];
+  stream.read_exact(&mut request)?;
+  if request != ENV_REQUEST_MAGIC {
+    bail!("Invalid request");
   }
 
-  // Deserialize and restore
-  let saved_env = deserialize_env(&data);
-
-  // SAFETY: restore_env_from_file is called early in main.
-  unsafe {
-    // Clear all current env vars
-    for (key, _) in std::env::vars_os() {
-      std::env::remove_var(&key);
-    }
-
-    // Set the saved env vars
-    for (key, value) in saved_env {
-      std::env::set_var(key, value);
-    }
-  }
-
+  let payload = serialize_env(env);
+  stream.write_all(&(payload.len() as u32).to_be_bytes())?;
+  stream.write_all(&payload)?;
+  stream.flush()?;
   Ok(())
+}
+
+fn serve_env_to_child(
+  listener: &UnixListener,
+  child: &mut Child,
+  env: &[(OsString, OsString)],
+  timeout: Duration,
+) -> color_eyre::Result<Option<ExitStatus>> {
+  listener.set_nonblocking(true)?;
+  let deadline = Instant::now() + timeout;
+
+  loop {
+    if let Some(status) = child.try_wait()? {
+      return Ok(Some(status));
+    }
+
+    match listener.accept() {
+      Ok((stream, _)) => {
+        handle_env_request(stream, env, 0)?;
+        return Ok(None);
+      }
+      Err(e) if e.kind() == ErrorKind::WouldBlock => {
+        if Instant::now() >= deadline {
+          bail!("Timed out waiting for the elevated subprocess to request environment variables");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+      }
+      Err(e) => return Err(e.into()),
+    }
+  }
+}
+
+/// Request the complete original environment from the unelevated parent.
+pub fn request_env_from_parent(socket_name: &str) -> color_eyre::Result<EnvVars> {
+  let mut stream = UnixStream::connect_addr(&abstract_socket_addr(socket_name)?)?;
+  stream.write_all(ENV_REQUEST_MAGIC)?;
+  stream.flush()?;
+
+  let mut len = [0; 4];
+  stream.read_exact(&mut len)?;
+  let len = u32::from_be_bytes(len) as usize;
+  let mut payload = vec![0; len];
+  stream.read_exact(&mut payload)?;
+  Ok(deserialize_env(&payload))
 }
 
 /// Construct the command line for re-execution with elevation.
@@ -176,14 +283,14 @@ pub fn restore_env_from_file(path: &Path) -> color_eyre::Result<()> {
 /// into
 ///
 /// ```bash
-/// sudo tracexec --user <username> --restore-env-file <path> \
+/// sudo tracexec --user <username> --restore-env-socket <socket-name> \
 ///   --elevated-config-dir <path> --elevated-data-dir <path> \
 ///   --elevated-data-local-dir <path> [opts] <subcommand> [args] \
 ///   -- <cmd...>
 /// ```
 fn build_elevated_args(
   creds: &PreElevationCreds,
-  env_file: &Path,
+  socket_name: &str,
   config_dir: Option<&Path>,
   data_dir: Option<&Path>,
   data_local_dir: Option<&Path>,
@@ -191,7 +298,7 @@ fn build_elevated_args(
   build_elevated_args_from(
     std::env::args_os(),
     creds,
-    env_file,
+    socket_name,
     config_dir,
     data_dir,
     data_local_dir,
@@ -204,7 +311,7 @@ fn build_elevated_args(
 fn build_elevated_args_from(
   args: impl IntoIterator<Item = impl Into<OsString>>,
   creds: &PreElevationCreds,
-  env_file: &Path,
+  socket_name: &str,
   config_dir: Option<&Path>,
   data_dir: Option<&Path>,
   data_local_dir: Option<&Path>,
@@ -226,12 +333,12 @@ fn build_elevated_args_from(
       continue;
     }
     if !replaced && arg == "--elevate" {
-      // Replace the first --elevate with --user/--restore-env-file and optional dir overrides.
+      // Replace the first --elevate with --user/--restore-env-socket and optional dir overrides.
       replaced = true;
       result.push(OsString::from("--user"));
       result.push(OsString::from(&creds.username));
-      result.push(OsString::from("--restore-env-file"));
-      result.push(env_file.as_os_str().to_owned());
+      result.push(OsString::from("--restore-env-socket"));
+      result.push(OsString::from(socket_name));
       if let Some(dir) = config_dir {
         result.push(OsString::from("--elevated-config-dir"));
         result.push(dir.as_os_str().to_owned());
@@ -254,20 +361,17 @@ fn build_elevated_args_from(
 
 /// Re-execute tracexec with elevated privileges via sudo.
 ///
-/// This function:
-/// 1. Saves the current environment to a secure temp file
-/// 2. Re-execs via `sudo` (without `-E`) with `--user <username>` and `--restore-env-file <path>`
-///
-/// This function does not return on success (it replaces the current process).
+/// This function does not return on success: the unelevated parent exits with
+/// the same status as the elevated child.
 pub fn elevate_and_reexec() -> color_eyre::Result<std::convert::Infallible> {
-  use std::os::unix::process::CommandExt;
-
   if Uid::effective().is_root() {
     color_eyre::eyre::bail!("--elevate is not needed when already running as root");
   }
 
   let creds = PreElevationCreds::capture()?;
-  let env_file = save_env_to_file()?;
+  let socket_name = random_socket_name();
+  let listener = bind_env_socket(&socket_name)?;
+  let env = collect_original_env();
   let exe = std::env::current_exe()?;
 
   // Capture the current user's project directories so the elevated process
@@ -278,7 +382,7 @@ pub fn elevate_and_reexec() -> color_eyre::Result<std::convert::Infallible> {
   let data_local_dir = proj_dirs.as_ref().map(|d| d.data_local_dir().to_path_buf());
   let elevated_args = build_elevated_args(
     &creds,
-    &env_file,
+    &socket_name,
     config_dir.as_deref(),
     data_dir.as_deref(),
     data_local_dir.as_deref(),
@@ -294,18 +398,41 @@ pub fn elevate_and_reexec() -> color_eyre::Result<std::convert::Infallible> {
       .join(" ")
   );
 
-  let err = Command::new("sudo").arg(&exe).args(&elevated_args).exec();
-
-  // exec() only returns on error — clean up the env file
-  let _ = fs::remove_file(&env_file);
-  Err(err.into())
+  let mut child = Command::new("sudo")
+    .arg(&exe)
+    .args(&elevated_args)
+    .spawn()?;
+  match serve_env_to_child(&listener, &mut child, &env, ENV_SOCKET_ACCEPT_TIMEOUT) {
+    Ok(Some(status)) => std::process::exit(exit_code_from_status(status)),
+    Ok(None) => {
+      drop(listener);
+      let status = child.wait()?;
+      std::process::exit(exit_code_from_status(status));
+    }
+    Err(e) => {
+      let _ = child.kill();
+      let _ = child.wait();
+      Err(e)
+    }
+  }
 }
 
 #[cfg(test)]
 mod tests {
-  use std::os::unix::ffi::OsStringExt;
+  use std::{
+    os::unix::ffi::OsStringExt,
+    thread,
+  };
 
   use super::*;
+
+  fn test_creds() -> PreElevationCreds {
+    PreElevationCreds {
+      username: "testuser".to_string(),
+      uid: 1000,
+      gid: 1000,
+    }
+  }
 
   #[test]
   fn test_capture_creds() {
@@ -316,45 +443,34 @@ mod tests {
   }
 
   #[test]
+  fn test_allowlist_filters_unneeded_env_vars() {
+    let filtered = filter_allowlisted_env_from([
+      (OsString::from("TRACEXEC_NO_SLEEP"), OsString::from("1")),
+      (
+        OsString::from("TRACEXEC_TEST_MARKER"),
+        OsString::from("secret"),
+      ),
+      (OsString::from("PATH"), OsString::from("/usr/bin")),
+    ]);
+
+    assert_eq!(
+      filtered,
+      vec![(OsString::from("TRACEXEC_NO_SLEEP"), OsString::from("1"),),]
+    );
+  }
+
+  #[test]
   fn test_serialize_deserialize_roundtrip() {
     let original = vec![
-      (OsString::from("HOME"), OsString::from("/home/test")),
+      (OsString::from("TRACEXEC_NO_SLEEP"), OsString::from("1")),
       (OsString::from("PATH"), OsString::from("/usr/bin:/bin")),
       (OsString::from("EMPTY"), OsString::from("")),
       (OsString::from("MULTI_EQ"), OsString::from("a=b=c")),
     ];
 
-    let mut buf = Vec::new();
-    for (k, v) in &original {
-      buf.extend_from_slice(k.as_bytes());
-      buf.push(b'=');
-      buf.extend_from_slice(v.as_bytes());
-      buf.push(0);
-    }
-
-    let deserialized = deserialize_env(&buf);
+    let data = serialize_env(&original);
+    let deserialized = deserialize_env(&data);
     assert_eq!(deserialized, original);
-  }
-
-  #[test]
-  fn test_serialize_env_format() {
-    // serialize_env reads from the real env, just verify it produces null-terminated entries
-    let data = serialize_env();
-    if data.is_empty() {
-      return; // unlikely in a real test env
-    }
-    // Should end with a null byte (last entry's terminator)
-    assert_eq!(*data.last().unwrap(), 0u8);
-    // Every non-empty entry should contain '='
-    for entry in data.split(|&b| b == 0) {
-      if !entry.is_empty() {
-        assert!(
-          entry.contains(&b'='),
-          "entry missing '=': {:?}",
-          String::from_utf8_lossy(entry)
-        );
-      }
-    }
   }
 
   #[test]
@@ -386,102 +502,29 @@ mod tests {
   }
 
   #[test]
-  fn test_save_env_file() {
-    let env_file = save_env_to_file().unwrap();
+  fn test_env_socket_roundtrip() {
+    let socket_name = random_socket_name();
+    let listener = bind_env_socket(&socket_name).unwrap();
+    let env = vec![
+      (OsString::from("TRACEXEC_NO_SLEEP"), OsString::from("1")),
+      (OsString::from("PATH"), OsString::from("/usr/bin")),
+    ];
+    let expected = env.clone();
+    let uid = nix::unistd::getuid().as_raw();
 
-    // Verify the file exists and has correct permissions
-    let metadata = fs::metadata(&env_file).unwrap();
-    use std::os::unix::fs::MetadataExt;
-    assert_eq!(metadata.mode() & 0o7777, 0o600);
-    assert_eq!(metadata.uid(), nix::unistd::getuid().as_raw());
+    let server = thread::spawn(move || {
+      let (stream, _) = listener.accept().unwrap();
+      handle_env_request(stream, &env, uid).unwrap();
+    });
 
-    // Clean up: remove the file ourselves since we're not actually restoring
-    fs::remove_file(&env_file).unwrap();
-  }
-
-  #[test]
-  fn test_restore_env_rejects_symlink() {
-    let env_file = save_env_to_file().unwrap();
-    let symlink_path = env_file.with_extension("link");
-    std::os::unix::fs::symlink(&env_file, &symlink_path).unwrap();
-
-    // Opening a symlink with O_NOFOLLOW should fail
-    let result = restore_env_from_file(&symlink_path);
-    assert!(result.is_err());
-
-    let _ = fs::remove_file(&symlink_path);
-    let _ = fs::remove_file(&env_file);
-  }
-
-  #[test]
-  fn test_restore_env_preserves_values_in_subprocess() {
-    // We test that save + restore correctly round-trips by writing known values,
-    // saving, then restoring with the correct uid.
-    use std::os::unix::fs::PermissionsExt;
-
-    // Create a temp file with known env content
-    let dir = std::env::temp_dir();
-    let mut tmpfile = tempfile::Builder::new()
-      .prefix("tracexec-env-test-")
-      .tempfile_in(&dir)
-      .unwrap();
-
-    let test_env = b"TEST_RESTORE_A=hello_world\0TEST_RESTORE_B=foo=bar=baz\0TEST_RESTORE_C=\0";
-    tmpfile.write_all(test_env).unwrap();
-    tmpfile.flush().unwrap();
-    let path = tmpfile.into_temp_path().keep().unwrap();
-
-    // Verify permissions are 0600
-    let meta = fs::metadata(&path).unwrap();
-    assert_eq!(meta.permissions().mode() & 0o7777, 0o600);
-
-    let my_uid = nix::unistd::getuid().as_raw();
-
-    // We can't easily test the full env restoration in-process (it would
-    // clobber the test runner's env). Instead, verify the file passes
-    // all security checks by reading it manually the same way restore does.
-    let file = fs::OpenOptions::new()
-      .read(true)
-      .custom_flags(OFlag::O_NOFOLLOW.bits())
-      .open(&path)
-      .unwrap();
-    let fd_stat = stat::fstat(&file).unwrap();
-    assert_eq!(fd_stat.st_uid, my_uid);
-    assert_eq!(fd_stat.st_mode & 0o7777, 0o600);
-
-    let mut data = Vec::new();
-    let mut file = file;
-    file.read_to_end(&mut data).unwrap();
-    let restored = deserialize_env(&data);
-    assert_eq!(
-      restored,
-      vec![
-        (
-          OsString::from("TEST_RESTORE_A"),
-          OsString::from("hello_world")
-        ),
-        (
-          OsString::from("TEST_RESTORE_B"),
-          OsString::from("foo=bar=baz")
-        ),
-        (OsString::from("TEST_RESTORE_C"), OsString::from("")),
-      ]
-    );
-
-    let _ = fs::remove_file(&path);
+    let received = request_env_from_parent(&socket_name).unwrap();
+    server.join().unwrap();
+    assert_eq!(received, expected);
   }
 
   #[test]
   fn test_build_elevated_args_replaces_elevate() {
-    let creds = PreElevationCreds {
-      username: "testuser".to_string(),
-      uid: 1000,
-      gid: 1000,
-    };
-
-    let env_path = Path::new("/tmp/tracexec-env-abc123");
-
-    // Simulate: tracexec --elevate tui -t -- sudo ls
+    let creds = test_creds();
     let input_args = vec![
       OsString::from("tracexec"),
       OsString::from("--elevate"),
@@ -492,59 +535,20 @@ mod tests {
       OsString::from("ls"),
     ];
 
-    let result = build_elevated_args_from(input_args, &creds, env_path, None, None, None);
+    let result = build_elevated_args_from(input_args, &creds, "sock-name", None, None, None);
 
     assert_eq!(
       result,
       vec![
         OsString::from("--user"),
         OsString::from("testuser"),
-        OsString::from("--restore-env-file"),
-        OsString::from("/tmp/tracexec-env-abc123"),
+        OsString::from("--restore-env-socket"),
+        OsString::from("sock-name"),
         OsString::from("tui"),
         OsString::from("-t"),
         OsString::from("--"),
         OsString::from("sudo"),
         OsString::from("ls"),
-      ]
-    );
-  }
-
-  #[test]
-  fn test_build_elevated_args_with_ebpf() {
-    let creds = PreElevationCreds {
-      username: "alice".to_string(),
-      uid: 1001,
-      gid: 100,
-    };
-
-    let env_path = Path::new("/tmp/tracexec-env-xyz");
-
-    // Simulate: tracexec --elevate ebpf tui -t -- bash
-    let input_args = vec![
-      OsString::from("tracexec"),
-      OsString::from("--elevate"),
-      OsString::from("ebpf"),
-      OsString::from("tui"),
-      OsString::from("-t"),
-      OsString::from("--"),
-      OsString::from("bash"),
-    ];
-
-    let result = build_elevated_args_from(input_args, &creds, env_path, None, None, None);
-
-    assert_eq!(
-      result,
-      vec![
-        OsString::from("--user"),
-        OsString::from("alice"),
-        OsString::from("--restore-env-file"),
-        OsString::from("/tmp/tracexec-env-xyz"),
-        OsString::from("ebpf"),
-        OsString::from("tui"),
-        OsString::from("-t"),
-        OsString::from("--"),
-        OsString::from("bash"),
       ]
     );
   }
@@ -556,10 +560,6 @@ mod tests {
       uid: 1002,
       gid: 1002,
     };
-
-    let env_path = Path::new("/tmp/tracexec-env-999");
-
-    // Simulate: tracexec --color=always --elevate -C /tmp log -- ls
     let input_args = vec![
       OsString::from("tracexec"),
       OsString::from("--color=always"),
@@ -571,7 +571,7 @@ mod tests {
       OsString::from("ls"),
     ];
 
-    let result = build_elevated_args_from(input_args, &creds, env_path, None, None, None);
+    let result = build_elevated_args_from(input_args, &creds, "sock-999", None, None, None);
 
     assert_eq!(
       result,
@@ -579,8 +579,8 @@ mod tests {
         OsString::from("--color=always"),
         OsString::from("--user"),
         OsString::from("bob"),
-        OsString::from("--restore-env-file"),
-        OsString::from("/tmp/tracexec-env-999"),
+        OsString::from("--restore-env-socket"),
+        OsString::from("sock-999"),
         OsString::from("-C"),
         OsString::from("/tmp"),
         OsString::from("log"),
@@ -592,13 +592,7 @@ mod tests {
 
   #[test]
   fn test_build_elevated_args_passes_project_dirs() {
-    let creds = PreElevationCreds {
-      username: "testuser".to_string(),
-      uid: 1000,
-      gid: 1000,
-    };
-
-    let env_path = Path::new("/tmp/tracexec-env-abc123");
+    let creds = test_creds();
     let config_dir = Path::new("/home/testuser/.config/tracexec");
     let data_dir = Path::new("/home/testuser/.local/share/tracexec");
     let data_local_dir = Path::new("/home/testuser/.local/share/tracexec");
@@ -614,7 +608,7 @@ mod tests {
     let result = build_elevated_args_from(
       input_args,
       &creds,
-      env_path,
+      "sock-abc",
       Some(config_dir),
       Some(data_dir),
       Some(data_local_dir),
@@ -625,8 +619,8 @@ mod tests {
       vec![
         OsString::from("--user"),
         OsString::from("testuser"),
-        OsString::from("--restore-env-file"),
-        OsString::from("/tmp/tracexec-env-abc123"),
+        OsString::from("--restore-env-socket"),
+        OsString::from("sock-abc"),
         OsString::from("--elevated-config-dir"),
         OsString::from("/home/testuser/.config/tracexec"),
         OsString::from("--elevated-data-dir"),
@@ -642,16 +636,7 @@ mod tests {
 
   #[test]
   fn test_build_elevated_args_ignores_elevate_after_delimiter() {
-    let creds = PreElevationCreds {
-      username: "testuser".to_string(),
-      uid: 1000,
-      gid: 1000,
-    };
-
-    let env_path = Path::new("/tmp/tracexec-env-abc123");
-
-    // Simulate: tracexec --elevate log -- cmd --elevate
-    // The --elevate after -- should NOT be replaced.
+    let creds = test_creds();
     let input_args = vec![
       OsString::from("tracexec"),
       OsString::from("--elevate"),
@@ -661,15 +646,15 @@ mod tests {
       OsString::from("--elevate"),
     ];
 
-    let result = build_elevated_args_from(input_args, &creds, env_path, None, None, None);
+    let result = build_elevated_args_from(input_args, &creds, "sock-abc", None, None, None);
 
     assert_eq!(
       result,
       vec![
         OsString::from("--user"),
         OsString::from("testuser"),
-        OsString::from("--restore-env-file"),
-        OsString::from("/tmp/tracexec-env-abc123"),
+        OsString::from("--restore-env-socket"),
+        OsString::from("sock-abc"),
         OsString::from("log"),
         OsString::from("--"),
         OsString::from("cmd"),
