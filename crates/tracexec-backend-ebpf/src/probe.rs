@@ -2,12 +2,12 @@
 
 use std::{
   collections::HashMap,
-  env,
+  ffi::OsString,
 };
 
 use cfg_if::cfg_if;
 use procfs::ConfigSetting;
-use tracing::warn;
+use tracexec_core::elevate;
 
 pub fn kernel_have_syscall_wrappers(
   #[allow(unused)] kconfig: Option<&HashMap<String, ConfigSetting>>,
@@ -28,17 +28,16 @@ pub fn kernel_have_syscall_wrappers(
 
 pub fn kernel_have_ftrace_with_direct_calls(
   kconfig: Option<&HashMap<String, ConfigSetting>>,
+  override_env: Option<&[(OsString, OsString)]>,
 ) -> bool {
   // First, check special env `TRACEXEC_USE_KPROBE`
-  if env::var("TRACEXEC_USE_KPROBE")
-    .inspect_err(|e| warn!("Failed to read env TRACEXEC_USE_KPROBE: {e}"))
+  if elevate::env_var_string(override_env, "TRACEXEC_USE_KPROBE")
     .map(|v| !v.is_empty())
     .unwrap_or_default()
   {
     return false;
   }
-  env::var("TRACEXEC_USE_FENTRY")
-    .inspect_err(|e| warn!("Failed to read env TRACEXEC_USE_FENTRY: {e}"))
+  elevate::env_var_string(override_env, "TRACEXEC_USE_FENTRY")
     .map(|v| !v.is_empty())
     .unwrap_or_default() ||
   // Then, we try to read kernel config
@@ -64,8 +63,11 @@ pub fn kernel_have_ftrace_with_direct_calls(
   }
 }
 
-pub fn can_i_use_sleepable_fentry(kconfig: Option<&HashMap<String, ConfigSetting>>) -> bool {
-  if env::var("TRACEXEC_NO_SLEEP")
+pub fn can_i_use_sleepable_fentry(
+  kconfig: Option<&HashMap<String, ConfigSetting>>,
+  override_env: Option<&[(OsString, OsString)]>,
+) -> bool {
+  if elevate::env_var_string(override_env, "TRACEXEC_NO_SLEEP")
     .map(|v| !v.is_empty())
     .unwrap_or_default()
   {
@@ -105,7 +107,7 @@ mod tests {
         "CONFIG_FUNCTION_ERROR_INJECTION".to_string(),
         ConfigSetting::Yes,
       );
-      assert!(!can_i_use_sleepable_fentry(Some(&configs)));
+      assert!(!can_i_use_sleepable_fentry(Some(&configs), None));
     }
 
     #[test]
@@ -119,7 +121,7 @@ mod tests {
         "CONFIG_FUNCTION_ERROR_INJECTION".to_string(),
         ConfigSetting::Yes,
       );
-      assert!(can_i_use_sleepable_fentry(Some(&configs)));
+      assert!(can_i_use_sleepable_fentry(Some(&configs), None));
     }
 
     #[test]
@@ -129,7 +131,7 @@ mod tests {
         env::remove_var("TRACEXEC_NO_SLEEP");
       }
       let configs = HashMap::new();
-      assert!(!can_i_use_sleepable_fentry(Some(&configs)));
+      assert!(!can_i_use_sleepable_fentry(Some(&configs), None));
     }
 
     #[test]
@@ -138,7 +140,7 @@ mod tests {
       unsafe {
         env::remove_var("TRACEXEC_NO_SLEEP");
       }
-      assert!(can_i_use_sleepable_fentry(None));
+      assert!(can_i_use_sleepable_fentry(None, None));
     }
 
     #[test]
@@ -147,7 +149,7 @@ mod tests {
       unsafe {
         env::set_var("TRACEXEC_NO_SLEEP", "");
       }
-      assert!(can_i_use_sleepable_fentry(None));
+      assert!(can_i_use_sleepable_fentry(None, None));
     }
 
     #[test]
@@ -157,7 +159,7 @@ mod tests {
         env::set_var("TRACEXEC_USE_KPROBE", "1");
         env::remove_var("TRACEXEC_USE_FENTRY");
       }
-      assert!(!kernel_have_ftrace_with_direct_calls(None));
+      assert!(!kernel_have_ftrace_with_direct_calls(None, None));
     }
 
     #[test]
@@ -167,7 +169,7 @@ mod tests {
         env::set_var("TRACEXEC_USE_FENTRY", "1");
         env::remove_var("TRACEXEC_USE_KPROBE");
       }
-      assert!(kernel_have_ftrace_with_direct_calls(None));
+      assert!(kernel_have_ftrace_with_direct_calls(None, None));
     }
 
     #[test]
@@ -182,7 +184,7 @@ mod tests {
         "CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS".to_string(),
         ConfigSetting::Yes,
       );
-      assert!(kernel_have_ftrace_with_direct_calls(Some(&configs)));
+      assert!(kernel_have_ftrace_with_direct_calls(Some(&configs), None));
     }
   }
 

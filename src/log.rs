@@ -17,12 +17,17 @@
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 use std::{
+  env,
+  ffi::OsString,
   path::PathBuf,
   sync::LazyLock,
 };
 
 use color_eyre::eyre::Result;
-use tracexec_core::cli::config::project_directory;
+use tracexec_core::{
+  cli::config::project_directory,
+  elevate,
+};
 use tracexec_tui::restore_tui;
 pub use tracing::*;
 use tracing_error::ErrorLayer;
@@ -39,9 +44,8 @@ static LOG_ENV: LazyLock<String> =
   LazyLock::new(|| concat!(env!("CARGO_CRATE_NAME"), "_LOGLEVEL").to_uppercase());
 
 pub fn get_data_dir() -> PathBuf {
-  if let Some(s) = std::env::var(concat!(env!("CARGO_CRATE_NAME"), "_DATA").to_uppercase())
-    .ok()
-    .map(PathBuf::from)
+  if let Some(s) =
+    env::var_os(concat!(env!("CARGO_CRATE_NAME"), "_DATA").to_uppercase()).map(PathBuf::from)
   {
     s
   } else if let Some(proj_dirs) = project_directory() {
@@ -51,7 +55,7 @@ pub fn get_data_dir() -> PathBuf {
   }
 }
 
-pub fn initialize_logging() -> Result<()> {
+pub fn initialize_logging(override_env: Option<&[(OsString, OsString)]>) -> Result<()> {
   let directory = get_data_dir();
   std::fs::create_dir_all(directory.clone())?;
   let log_path = directory.join(LOG_FILE);
@@ -65,12 +69,12 @@ pub fn initialize_logging() -> Result<()> {
     .with_target(false)
     .with_ansi(false);
 
-  let file_subscriber = if std::env::var(LOG_ENV.clone()).is_ok() {
-    file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::from_env(
-      LOG_ENV.clone(),
-    ))
-  } else if std::env::var("RUST_LOG").is_ok() {
-    file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::from_env("RUST_LOG"))
+  let file_subscriber = if let Some(value) = elevate::env_var_string(override_env, &LOG_ENV)
+    .or_else(|| elevate::env_var_string(override_env, "TRACEXEC_LOG_LEVEL"))
+  {
+    file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::new(value))
+  } else if let Some(value) = elevate::env_var_string(override_env, "RUST_LOG") {
+    file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::new(value))
   } else {
     file_subscriber.with_filter(tracing_subscriber::filter::EnvFilter::new(concat!(
       env!("CARGO_CRATE_NAME"),

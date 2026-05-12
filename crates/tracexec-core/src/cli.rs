@@ -79,9 +79,10 @@ pub struct Cli {
     long,
     hide = true,
     conflicts_with = "elevate",
-    help = "Internal: path to a saved environment file from --elevate"
+    requires = "user",
+    help = "Internal: abstract Unix socket name used to request the original environment from --elevate"
   )]
-  pub restore_env_file: Option<PathBuf>,
+  pub restore_env_socket: Option<String>,
   #[arg(
     long,
     hide = true,
@@ -457,6 +458,20 @@ mod tests {
   }
 
   #[test]
+  fn test_cli_parse_restore_env_socket_requires_user() {
+    let args = vec![
+      "tracexec",
+      "--restore-env-socket",
+      "socket-name",
+      "log",
+      "--",
+      "ls",
+    ];
+    let result = Cli::try_parse_from(args);
+    assert!(result.is_err());
+  }
+
+  #[test]
   fn test_cli_parse_tui_theme_file_cli_source() {
     let args = vec![
       "tracexec",
@@ -512,7 +527,7 @@ mod tests {
       no_profile: false,
       user: None,
       elevate: false,
-      restore_env_file: None,
+      restore_env_socket: None,
       elevated_config_dir: None,
       elevated_data_dir: None,
       elevated_data_local_dir: None,
@@ -571,7 +586,7 @@ mod tests {
       no_profile: false,
       user: None,
       elevate: false,
-      restore_env_file: None,
+      restore_env_socket: None,
       elevated_config_dir: None,
       elevated_data_dir: None,
       elevated_data_local_dir: None,
@@ -635,7 +650,7 @@ mod tests {
       no_profile: false,
       user: None,
       elevate: false,
-      restore_env_file: None,
+      restore_env_socket: None,
       elevated_config_dir: None,
       elevated_data_dir: None,
       elevated_data_local_dir: None,

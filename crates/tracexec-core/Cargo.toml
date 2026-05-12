@@ -45,6 +45,7 @@ clap = { workspace = true }
 crossterm = { workspace = true }
 internment = { version = "0.8.6", default-features = false, features = ["arc", "serde"] }
 tempfile = { workspace = true }
+rand = "0.10"
 
 [dev-dependencies]
 serde_json = { workspace = true }

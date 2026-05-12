@@ -85,6 +85,7 @@ pub struct Tracer {
   user: Option<User>,
   req_tx: UnboundedSender<PendingRequest>,
   polling_interval: Option<Duration>,
+  tracee_env: Option<tracexec_core::elevate::EnvVars>,
 }
 
 #[derive(Debug, Clone)]
@@ -175,6 +176,7 @@ impl BuildPtraceTracer for TracerBuilder {
             )
           }
         },
+        tracee_env: self.tracee_env,
         mode: self.mode.unwrap(),
       },
       SpawnToken { req_rx, req_tx },

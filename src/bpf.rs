@@ -68,6 +68,8 @@ pub async fn main(
   command: EbpfCommand,
   user: Option<User>,
   color: Color,
+  tracee_env: Option<tracexec_core::elevate::EnvVars>,
+  tracexec_override_env: Option<tracexec_core::elevate::EnvVars>,
 ) -> color_eyre::Result<()> {
   let obj = Box::leak(Box::new(MaybeUninit::uninit()));
   match command {
@@ -78,7 +80,7 @@ pub async fn main(
       log_args,
     } => {
       let modifier_args = modifier_args.processed();
-      let baseline = Arc::new(BaselineInfo::new()?);
+      let baseline = Arc::new(BaselineInfo::new_with_env(tracee_env.as_deref())?);
       let output = Cli::get_output(output, color)?;
       let printer = Printer::new(
         PrinterArgs::from_cli(&log_args, &modifier_args),
@@ -92,6 +94,8 @@ pub async fn main(
         .printer(printer)
         .baseline(baseline)
         .user(user)
+        .tracee_env(tracee_env.clone())
+        .tracexec_override_env(tracexec_override_env.clone())
         .modifier(modifier_args)
         .build_ebpf();
       let running_tracer = tracer.spawn(&cmd, obj, Some(output))?;
@@ -134,12 +138,16 @@ pub async fn main(
           pixel_height: 0,
         })?;
         (
-          BaselineInfo::with_pts(&pair.slave)?,
+          BaselineInfo::with_pts_and_env(&pair.slave, tracee_env.as_deref())?,
           TracerMode::Tui(Some(pair.slave)),
           Some(pair.master),
         )
       } else {
-        (BaselineInfo::new()?, TracerMode::Tui(None), None)
+        (
+          BaselineInfo::new_with_env(tracee_env.as_deref())?,
+          TracerMode::Tui(None),
+          None,
+        )
       };
       let baseline = Arc::new(baseline);
       let frame_rate = tui_args.frame_rate.unwrap_or(60.);
@@ -175,6 +183,8 @@ pub async fn main(
         .modifier(modifier_args)
         .filter(tracer_event_args.filter()?)
         .user(user)
+        .tracee_env(tracee_env.clone())
+        .tracexec_override_env(tracexec_override_env.clone())
         .tracer_tx(tracer_tx)
         .build_ebpf();
       let running_tracer = tracer.spawn(&cmd, obj, None)?;
@@ -208,7 +218,7 @@ pub async fn main(
       no_foreground,
     } => {
       let modifier_args = modifier_args.processed();
-      let baseline = Arc::new(BaselineInfo::new()?);
+      let baseline = Arc::new(BaselineInfo::new_with_env(tracee_env.as_deref())?);
       let output = Cli::get_output(output, color)?;
       let log_args = LogModeArgs {
         show_cmdline: false,
@@ -235,6 +245,8 @@ pub async fn main(
         .baseline(baseline.clone())
         .tracer_tx(tx)
         .user(user)
+        .tracee_env(tracee_env.clone())
+        .tracexec_override_env(tracexec_override_env.clone())
         .build_ebpf();
       let running_tracer = tracer.spawn(&cmd, obj, None)?;
       let should_exit = running_tracer.should_exit.clone();

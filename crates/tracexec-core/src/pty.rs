@@ -82,6 +82,7 @@ use nix::{
     Pid,
     dup2,
     execv,
+    execve,
     fork,
   },
 };
@@ -641,11 +642,12 @@ fn spawn_command_from_pty_fd(
         _ = unsafe { libc::umask(mask) };
       }
 
-      execv(
-        &CString::new(cmd.program.into_os_string().into_vec()).unwrap(),
-        &cmd.args,
-      )
-      .unwrap();
+      let program = CString::new(cmd.program.into_os_string().into_vec()).unwrap();
+      if let Some(env) = &cmd.env {
+        execve(&program, &cmd.args, env).unwrap();
+      } else {
+        execv(&program, &cmd.args).unwrap();
+      }
       unreachable!()
     }
   }
