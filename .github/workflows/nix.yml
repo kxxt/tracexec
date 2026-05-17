@@ -45,11 +45,12 @@ jobs:
       - &install-nix
         uses: nixbuild/nix-quick-install-action@2c9db80fb984ceb1bcaa77cdda3fdf8cfba92035 # v34
         with:
+          nix_version: 2.31.2
           nix_conf: |
             keep-env-derivations = true
             keep-outputs = true
             http2 = false
-          
+
       - &attic-writable
         name: Setup Attic cache (Writable)
         uses: ryanccn/attic-action@1887fd507f03327c96c64cca30118c96eb17fdad # v0.4.1
@@ -58,7 +59,7 @@ jobs:
           endpoint: https://nix.kxxt.dev
           cache: tracexec
           token: ${{ secrets.NIX_CACHE_JWT }}
-      
+
       - &attic-rdonly
         name: Setup Attic cache (ReadOnly)
         uses: ryanccn/attic-action@1887fd507f03327c96c64cca30118c96eb17fdad # v0.4.1
@@ -85,9 +86,9 @@ jobs:
       - uses: actions/checkout@v6
 
       - *install-nix
-          
+
       - *attic-writable
-      
+
       - *attic-rdonly
 
       # Run Userspace<->Kernel CI
