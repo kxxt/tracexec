@@ -49,6 +49,13 @@ class Entry:
     end: int
 
 
+@dataclass(frozen=True)
+class Region:
+    text: str
+    start: int
+    end: int
+
+
 def fetch_text(url: str) -> str:
     with urllib.request.urlopen(url, timeout=60) as response:
         return response.read().decode("utf-8")
@@ -173,45 +180,109 @@ def find_longterm_release(
     return max(matches, key=lambda release: version_key(release.version))
 
 
-def split_entries(text: str) -> list[Entry]:
+def find_sources_region(text: str) -> Region:
+    sources_match = re.search(r"(?m)^[^\S\n]*sourcesFor[^\S\n]*=", text)
+    if sources_match is None:
+        raise RuntimeError("Could not locate UKCI sourcesFor definition")
+
+    targets_match = re.search(
+        r"(?m)^[^\S\n]*sourcesForTargets[^\S\n]*=",
+        text[sources_match.end() :],
+    )
+    if targets_match is None:
+        raise RuntimeError("Could not locate UKCI sourcesForTargets definition")
+
+    start = sources_match.start()
+    end = sources_match.end() + targets_match.start()
+    return Region(text=text[start:end], start=start, end=end)
+
+
+def split_entries(text: str, offset: int = 0) -> list[Entry]:
     entries: list[Entry] = []
-    start_pattern = re.compile(r"^              \{\n", re.MULTILINE)
-    for match in start_pattern.finditer(text):
-        start = match.start()
-        end_match = re.search(r"^              \}(?:\n|$)", text[match.end() :], re.MULTILINE)
-        if end_match is None:
+    stack: list[int] = []
+    in_comment = False
+    in_string = False
+    escaped = False
+
+    for index, char in enumerate(text):
+        if in_comment:
+            if char == "\n":
+                in_comment = False
             continue
-        end = match.end() + end_match.end()
-        block = text[start:end]
-        name_match = re.search(r'^\s+name = "([^"]+)";$', block, re.MULTILINE)
-        if name_match is None:
+
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
             continue
-        entries.append(Entry(name=name_match.group(1), block=block, start=start, end=end))
-    return entries
+
+        if char == "#":
+            in_comment = True
+        elif char == '"':
+            in_string = True
+        elif char == "{":
+            stack.append(index)
+        elif char == "}" and stack:
+            start = stack.pop()
+            end = index + 1
+            block = text[start:end]
+            name = field_value(block, "name")
+            if name is not None:
+                entries.append(
+                    Entry(name=name, block=block, start=offset + start, end=offset + end)
+                )
+
+    return sorted(entries, key=lambda entry: entry.start)
+
+
+def source_entries(text: str) -> list[Entry]:
+    region = find_sources_region(text)
+    return split_entries(region.text, offset=region.start)
+
+
+def field_value(block: str, field: str) -> str | None:
+    match = re.search(
+        rf'(?m)^[^\S\n]*{re.escape(field)}[^\S\n]*=[^\S\n]*"([^"]*)"[^\S\n]*;',
+        block,
+    )
+    if match is None:
+        return None
+    return match.group(1)
 
 
 def update_field(block: str, field: str, value: str) -> str:
-    return re.sub(
-        rf'^(\s+{re.escape(field)} = )"[^"]+"(;)$',
+    updated, count = re.subn(
+        rf'(?m)^([^\S\n]*{re.escape(field)}[^\S\n]*=[^\S\n]*)"[^"]*"([^\S\n]*;)',
         rf'\1"{value}"\2',
         block,
         count=1,
-        flags=re.MULTILINE,
     )
+    if count != 1:
+        raise RuntimeError(f"Could not update {field} in block:\n{block}")
+    return updated
 
 
 def set_optional_field(block: str, field: str, value: str | None) -> str:
-    pattern = re.compile(rf'^\s+{re.escape(field)} = "[^"]+";\n', re.MULTILINE)
+    pattern = re.compile(
+        rf'(?m)^[^\S\n]*{re.escape(field)}[^\S\n]*=[^\S\n]*"[^"]*"[^\S\n]*;\n?'
+    )
     if value is None:
         return pattern.sub("", block, count=1)
     if pattern.search(block):
         return update_field(block, field, value)
 
-    tag_line = re.search(r'^(\s+tag = "[^"]+";\n)', block, re.MULTILINE)
+    tag_line = re.search(
+        r'(?m)^([^\S\n]*)tag[^\S\n]*=[^\S\n]*"[^"]*"[^\S\n]*;\n?',
+        block,
+    )
     if tag_line is None:
         raise RuntimeError(f"Could not insert {field} into block:\n{block}")
     insert_at = tag_line.end()
-    return block[:insert_at] + f'                {field} = "{value}";\n' + block[insert_at:]
+    indent = tag_line.group(1)
+    return block[:insert_at] + f'{indent}{field} = "{value}";\n' + block[insert_at:]
 
 
 def update_block(block: str, update: KernelUpdate) -> str:
@@ -224,7 +295,7 @@ def update_block(block: str, update: KernelUpdate) -> str:
 
 
 def apply_updates(text: str, updates: dict[str, KernelUpdate]) -> str:
-    entries = split_entries(text)
+    entries = source_entries(text)
     replacements: list[tuple[int, int, str]] = []
     used_updates: set[str] = set()
 
@@ -249,12 +320,13 @@ def build_updates(
 ) -> dict[str, KernelUpdate]:
     hash_cache: dict[str, dict[str, str]] = {}
     updates: dict[str, KernelUpdate] = {}
+    entries = source_entries(current_text)
 
     lts_names = sorted(
         {
             entry.name
-            for entry in split_entries(current_text)
-            if re.fullmatch(r"\d+\.\dlts|\d+\.\d+lts", entry.name)
+            for entry in entries
+            if re.fullmatch(r"\d+\.\d+lts", entry.name)
         },
         key=lambda name: version_key(name.removesuffix("lts")),
     )
@@ -270,7 +342,7 @@ def build_updates(
         )
 
     stable = find_release(releases, "stable")
-    updates[find_stable_entry_name(current_text)] = KernelUpdate(
+    updates[find_stable_entry_name(entries)] = KernelUpdate(
         name=branch_name(stable.version),
         tag=stable.version,
         version=stable.version,
@@ -286,7 +358,7 @@ def build_updates(
             )
         if mainline.source is None:
             raise RuntimeError(f"kernel.org did not report a source URL for {mainline.version}")
-        updates[find_rc_entry_name(current_text)] = KernelUpdate(
+        updates[find_rc_entry_name(entries)] = KernelUpdate(
             name=branch_name(mainline.version),
             tag=f"v{mainline.version}",
             version=rc_nix_version(mainline.version),
@@ -297,19 +369,13 @@ def build_updates(
     return updates
 
 
-def find_stable_entry_name(text: str) -> str:
-    common_region_match = re.search(
-        r"\n            \+\+ \[(?P<region>.*?)\n            \]\s*\+\+ \(lib\.optionals",
-        text,
-        re.DOTALL,
-    )
-    if common_region_match is None:
-        raise RuntimeError("Could not locate the common UKCI kernel list")
-    region = common_region_match.group("region")
+def find_stable_entry_name(entries: list[Entry]) -> str:
     candidates = [
         entry
-        for entry in split_entries(region)
+        for entry in entries
         if re.fullmatch(r"\d+\.\d+", entry.name)
+        and (version := field_value(entry.block, "version")) is not None
+        and "-rc" not in version
     ]
     if len(candidates) != 1:
         names = ", ".join(entry.name for entry in candidates) or "<none>"
@@ -317,20 +383,13 @@ def find_stable_entry_name(text: str) -> str:
     return candidates[0].name
 
 
-def find_rc_entry_name(text: str) -> str:
-    rc_region_match = re.search(
-        r"\n            \]\s*\+\+ \(lib\.optionals \(!isTargetRiscv64\) \[(?P<region>.*?)\n            \]\);",
-        text,
-        re.DOTALL,
-    )
-    if rc_region_match is None:
-        raise RuntimeError("Could not locate the optional UKCI kernel list")
-    region = rc_region_match.group("region")
+def find_rc_entry_name(entries: list[Entry]) -> str:
     candidates = [
         entry
-        for entry in split_entries(region)
+        for entry in entries
         if re.fullmatch(r"\d+\.\d+", entry.name)
-        and re.search(r'^\s+version = "[^"]+-rc\d+";$', entry.block, re.MULTILINE)
+        and (version := field_value(entry.block, "version")) is not None
+        and re.fullmatch(r"\d+\.\d+\.0-rc\d+", version)
     ]
     if len(candidates) != 1:
         names = ", ".join(entry.name for entry in candidates) or "<none>"
