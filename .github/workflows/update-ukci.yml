@@ -1,0 +1,73 @@
+name: Update UKCI Kernels
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 7 * * 1'
+
+concurrency:
+  group: update-ukci-kernels
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Ensure automation label exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh label list --search ukci-automation --json name --jq '.[].name' | grep -qx ukci-automation; then
+            gh label create ukci-automation \
+              --color 0e8a16 \
+              --description "Automated UKCI kernel updates"
+          fi
+
+      - name: Check for pending UKCI automation PR
+        id: pending-pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          count="$(gh pr list --state open --label ukci-automation --json number --jq 'length')"
+          if [ "$count" != "0" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Found $count open UKCI automation PR(s); skipping update."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Nix
+        if: steps.pending-pr.outputs.skip != 'true'
+        uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31
+        with:
+          extra_nix_config: |
+            http2 = false
+
+      - name: Update UKCI kernel matrix
+        if: steps.pending-pr.outputs.skip != 'true'
+        run: python3 scripts/update-ukci-kernels.py
+
+      - name: Validate UKCI package evaluation
+        if: steps.pending-pr.outputs.skip != 'true'
+        run: nix eval --raw '.#ukci'
+
+      - name: Create pull request
+        if: steps.pending-pr.outputs.skip != 'true'
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
+        with:
+          token: ${{ github.token }}
+          branch: automation/update-ukci-kernels
+          delete-branch: true
+          commit-message: "chore: update UKCI kernels"
+          title: "chore: update UKCI kernels"
+          body: |
+            Automated UKCI kernel update
+          labels: ukci-automation

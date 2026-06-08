@@ -34,9 +34,13 @@
 }:
 let
   localVersion = "-ukci";
+  kernelOrgTag = lib.strings.removePrefix "v" tag;
+  kernelOrgMajor = builtins.head (lib.strings.splitString "." kernelOrgTag);
   sources = {
     mirror = "mirror://kernel/linux/kernel/v6.x/linux-${tag}.tar.xz";
     mirror-v5 = "mirror://kernel/linux/kernel/v5.x/linux-${tag}.tar.xz";
+    kernel-org = "https://cdn.kernel.org/pub/linux/kernel/v${kernelOrgMajor}.x/linux-${kernelOrgTag}.tar.xz";
+    torvalds = "https://git.kernel.org/torvalds/t/linux-${kernelOrgTag}.tar.gz";
     linus = "https://github.com/torvalds/linux/archive/refs/tags/${tag}.tar.gz";
     bpf-next = "https://git.kxxt.dev/kxxt/bpf-next/archive/${tag}.tar.gz";
   };
