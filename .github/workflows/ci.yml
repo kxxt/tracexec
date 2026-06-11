@@ -34,15 +34,15 @@ on:
     branches:
       - main
     paths: &trigger_paths
-      - '.cargo/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'deny.toml'
-      - 'rustfmt.toml'
-      - 'fixtures/**'
-      - 'crates/**'
-      - 'src/**'
-      - '.github/workflows/ci.yml'
+      - ".cargo/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "deny.toml"
+      - "rustfmt.toml"
+      - "fixtures/**"
+      - "crates/**"
+      - "src/**"
+      - ".github/workflows/ci.yml"
   pull_request:
     paths: *trigger_paths
   merge_group:
@@ -155,7 +155,7 @@ jobs:
           find /tmp/bpfcov -name '*.lcov' -print0 | xargs -0 -I{} echo -a {} | xargs lcov -o ebpf.lcov
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6.0.1
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }} # required for private repos or protected branches
           files: lcov.info,root-lcov.info,ebpf.lcov
@@ -185,7 +185,7 @@ jobs:
             arch: x86_64
             libpath: usr/lib/x86_64-linux-gnu
             no-default-features: false
-            args: '-F static,vendored'
+            args: "-F static,vendored"
             rust_flags: -C target-feature=+crt-static
             static_libseccomp: true
           - os: ubuntu-24.04
@@ -200,7 +200,7 @@ jobs:
             arch: aarch64
             libpath: usr/lib/aarch64-linux-gnu
             no-default-features: false
-            args: '-F static,vendored'
+            args: "-F static,vendored"
             rust_flags: -C target-feature=+crt-static
             static_libseccomp: true
           - os: ubuntu-24.04
@@ -208,14 +208,14 @@ jobs:
             target: riscv64gc-unknown-linux-gnu
             arch: riscv64
             libpath: usr/lib/riscv64-linux-gnu
-            args: '-F ebpf,vendored-libbpf'
+            args: "-F ebpf,vendored-libbpf"
             no-default-features: true
           - os: ubuntu-24.04
             os-arch: riscv64
             target: riscv64gc-unknown-linux-gnu
             arch: riscv64
             libpath: usr/lib/riscv64-linux-gnu
-            args: '-F ebpf,static,vendored'
+            args: "-F ebpf,static,vendored"
             no-default-features: true
             rust_flags: -C target-feature=+crt-static
             static_libseccomp: true
