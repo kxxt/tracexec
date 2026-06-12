@@ -508,14 +508,14 @@ mod tests {
     let _ = out;
 
     // real file
-    let path = PathBuf::from("test_output.txt");
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("test_output.txt");
     let mut out = Cli::get_output(Some(path.clone()), Color::Auto).unwrap();
     writeln!(out, "Hello world").unwrap();
     drop(out);
 
     let content = fs::read_to_string(path.clone()).unwrap();
     assert!(content.contains("Hello world"));
-    fs::remove_file(path).unwrap();
   }
 
   #[test]

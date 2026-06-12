@@ -3287,6 +3287,7 @@ dependencies = [
  "serial_test",
  "shell-quote",
  "shell-words",
+ "tempfile",
  "tokio",
  "tokio-util",
  "toml",
