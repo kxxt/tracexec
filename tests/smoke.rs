@@ -254,10 +254,8 @@ fn ebpf_collect_json_runs_tracee() -> Result<(), Box<dyn std::error::Error>> {
 #[file_serial(ignored)]
 #[ignore = "root"]
 fn ebpf_collect_perfetto_runs_tracee() -> Result<(), Box<dyn std::error::Error>> {
-  let output = std::env::temp_dir().join(format!(
-    "tracexec-ebpf-collect-perfetto-{}.pftrace",
-    std::process::id()
-  ));
+  let dir = tempfile::tempdir()?;
+  let output = dir.path().join("trace.pftrace");
   let mut cmd = Command::new(cargo::cargo_bin!());
   cmd
     .env("TRACEXEC_USE_KPROBE", "1")
@@ -275,7 +273,6 @@ fn ebpf_collect_perfetto_runs_tracee() -> Result<(), Box<dyn std::error::Error>>
     .arg("true");
   cmd.assert().success();
   assert!(std::fs::metadata(&output)?.len() > 0);
-  let _ = std::fs::remove_file(output);
   Ok(())
 }
 

@@ -666,15 +666,7 @@ pub fn load_theme_from_spec(spec: &ThemeSpec) -> color_eyre::Result<Theme> {
 
 #[cfg(test)]
 mod tests {
-  use std::{
-    env,
-    fs,
-    path::PathBuf,
-    time::{
-      SystemTime,
-      UNIX_EPOCH,
-    },
-  };
+  use std::fs;
 
   use ratatui::style::{
     Color,
@@ -683,15 +675,11 @@ mod tests {
 
   use super::*;
 
-  fn temp_path(label: &str) -> PathBuf {
-    let unique = SystemTime::now()
-      .duration_since(UNIX_EPOCH)
+  fn temp_dir(label: &str) -> tempfile::TempDir {
+    tempfile::Builder::new()
+      .prefix(&format!("tracexec-theme-{label}-"))
+      .tempdir()
       .unwrap()
-      .as_nanos();
-    env::temp_dir().join(format!(
-      "tracexec-theme-{label}-{unique}-{}",
-      std::process::id()
-    ))
   }
 
   #[test]
@@ -705,7 +693,8 @@ mod tests {
 
   #[test]
   fn theme_directories_prefer_user_theme_directory() {
-    let root = temp_path("user-preferred");
+    let root_dir = temp_dir("user-preferred");
+    let root = root_dir.path();
     let user_dir = root.join("user");
     let system_dir = root.join("system");
     let directories = ThemeDirectories {
@@ -723,13 +712,12 @@ mod tests {
       directories.resolve(Path::new("nord.toml"), None),
       user_dir.join("nord.toml")
     );
-
-    let _ = fs::remove_dir_all(root);
   }
 
   #[test]
   fn theme_directories_prefer_config_dir_over_data_dir() {
-    let root = temp_path("config-over-data");
+    let root_dir = temp_dir("config-over-data");
+    let root = root_dir.path();
     let config_dir = root.join("config");
     let user_dir = root.join("data");
     let system_dir = root.join("system");
@@ -750,13 +738,12 @@ mod tests {
       directories.resolve(Path::new("nord.toml"), None),
       config_dir.join("nord.toml")
     );
-
-    let _ = fs::remove_dir_all(root);
   }
 
   #[test]
   fn theme_directories_prefer_etc_over_system_directory() {
-    let root = temp_path("etc-preferred");
+    let root_dir = temp_dir("etc-preferred");
+    let root = root_dir.path();
     let etc_dir = root.join("etc");
     let system_dir = root.join("system");
     let directories = ThemeDirectories {
@@ -774,13 +761,12 @@ mod tests {
       directories.resolve(Path::new("amber.toml"), None),
       etc_dir.join("amber.toml")
     );
-
-    let _ = fs::remove_dir_all(root);
   }
 
   #[test]
   fn theme_directories_fall_back_to_system_directory() {
-    let root = temp_path("system-fallback");
+    let root_dir = temp_dir("system-fallback");
+    let root = root_dir.path();
     let system_dir = root.join("system");
     let directories = ThemeDirectories {
       user_config_dir: None,
@@ -794,13 +780,12 @@ mod tests {
       directories.resolve(Path::new("amber.toml"), None),
       system_dir.join("amber.toml")
     );
-
-    let _ = fs::remove_dir_all(root);
   }
 
   #[test]
   fn theme_directories_cwd_takes_precedence_when_from_cli() {
-    let root = temp_path("cwd-resolution");
+    let root_dir = temp_dir("cwd-resolution");
+    let root = root_dir.path();
     let cwd = root.join("cwd");
     let system_dir = root.join("system");
     let directories = ThemeDirectories {
@@ -818,8 +803,6 @@ mod tests {
       directories.resolve(Path::new("my.toml"), Some(&cwd)),
       cwd.join("my.toml")
     );
-
-    let _ = fs::remove_dir_all(root);
   }
 
   #[test]
@@ -842,14 +825,11 @@ mod tests {
 
   #[test]
   fn load_theme_file_from_absolute_path() {
-    let root = temp_path("absolute-path");
-    fs::create_dir_all(&root).unwrap();
-    let theme_path = root.join("theme.toml");
+    let root = temp_dir("absolute-path");
+    let theme_path = root.path().join("theme.toml");
     fs::write(&theme_path, "[tui]\napp-title = { fg = 'cyan' }").unwrap();
 
     let theme = load_theme_from_file(&theme_path, Path::new("/usr/bin/tracexec"), false).unwrap();
     assert_eq!(theme.app_title.fg, Some(Color::Cyan));
-
-    let _ = fs::remove_dir_all(root);
   }
 }
