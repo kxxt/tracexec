@@ -406,6 +406,23 @@ fn run_exec_and_collect_aux(
   })
 }
 
+fn with_optional_sleepable_skel(
+  test_name: &str,
+  prepare: impl for<'obj> FnOnce(&mut tracexec_backend_ebpf::bpf::skel::OpenTracexecSystemSkel<'obj>),
+  f: impl for<'obj> FnOnce(
+    &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'obj>,
+  ) -> color_eyre::Result<()>,
+) -> color_eyre::Result<()> {
+  match with_skel(test_name, prepare, f) {
+    Ok(()) => Ok(()),
+    Err(err) if format!("{err:?}").contains("Invalid argument (os error 22)") => {
+      eprintln!("skipping {test_name}: kernel rejected sleepable fentry probe: {err}");
+      Ok(())
+    }
+    Err(err) => Err(err),
+  }
+}
+
 #[rstest]
 #[file_serial(bpf)]
 #[ignore = "root"]
@@ -426,7 +443,7 @@ fn test_execve_kprobe_kretprobe_emits_exec_event(sh_executable: PathBuf) -> colo
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_execve_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
-  with_skel(function_name!(), prepare_execve_fentry_fexit, |skel| {
+  with_optional_sleepable_skel(function_name!(), prepare_execve_fentry_fexit, |skel| {
     let capture = run_exec_and_capture(skel, &sh_executable, Duration::from_secs(4))?;
     let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
@@ -464,7 +481,7 @@ fn test_execveat_kprobe_kretprobe_emits_exec_event(
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_execveat_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
-  with_skel(function_name!(), prepare_execveat_fentry_fexit, |skel| {
+  with_optional_sleepable_skel(function_name!(), prepare_execveat_fentry_fexit, |skel| {
     let capture = run_execveat_and_capture(skel, &sh_executable, Duration::from_secs(4))?;
     let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
@@ -506,7 +523,7 @@ fn test_execveat_from_non_main_thread_emits_non_main_exec_pid(
 fn test_compat_execve_emits_exec_event() -> color_eyre::Result<()> {
   use tracexec_backend_ebpf::test_utils::prepare_compat_execve;
   let bin = PathBuf::from(env!("CARGO_BIN_EXE_compat-exec"));
-  with_skel(function_name!(), prepare_compat_execve, |skel| {
+  with_optional_sleepable_skel(function_name!(), prepare_compat_execve, |skel| {
     let capture = run_binary_and_capture(skel, &bin, &[], Duration::from_secs(4))?;
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
     assert_eq!(capture.event.header.pid, capture.pid);
@@ -522,7 +539,7 @@ fn test_compat_execve_emits_exec_event() -> color_eyre::Result<()> {
 fn test_compat_execveat_emits_exec_event() -> color_eyre::Result<()> {
   use tracexec_backend_ebpf::test_utils::prepare_compat_execveat;
   let bin = PathBuf::from(env!("CARGO_BIN_EXE_compat-exec"));
-  with_skel(function_name!(), prepare_compat_execveat, |skel| {
+  with_optional_sleepable_skel(function_name!(), prepare_compat_execveat, |skel| {
     let capture = run_binary_and_capture(skel, &bin, &["execveat"], Duration::from_secs(4))?;
     assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
     assert_eq!(capture.event.header.pid, capture.pid);
