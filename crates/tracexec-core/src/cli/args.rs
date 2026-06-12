@@ -417,11 +417,9 @@ impl LogModeArgs {
           self.diff_fd = true;
         }
       }
-      Some(FileDescriptorDisplay::Hide) => {
-        if (!self.diff_fd) && (!self.show_fd) {
-          self.no_diff_fd = true;
-          self.no_show_fd = true;
-        }
+      Some(FileDescriptorDisplay::Hide) if (!self.diff_fd) && (!self.show_fd) => {
+        self.no_diff_fd = true;
+        self.no_show_fd = true;
       }
       _ => (),
     }
@@ -440,11 +438,9 @@ impl LogModeArgs {
             self.diff_env = true;
           }
         }
-        Some(EnvDisplay::Hide) => {
-          if (!self.show_env) && (!self.diff_env) {
-            self.no_diff_env = true;
-            self.no_show_env = true;
-          }
+        Some(EnvDisplay::Hide) if (!self.show_env) && (!self.diff_env) => {
+          self.no_diff_env = true;
+          self.no_show_env = true;
         }
         _ => (),
       }
@@ -455,10 +451,8 @@ impl LogModeArgs {
           self.less_colors = true;
         }
       }
-      Some(ColorLevel::More) => {
-        if !self.less_colors {
-          self.more_colors = true;
-        }
+      Some(ColorLevel::More) if !self.less_colors => {
+        self.more_colors = true;
       }
       _ => (),
     }
