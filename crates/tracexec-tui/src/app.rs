@@ -795,6 +795,7 @@ impl<T> OptionalAccessMut<T> for Option<T> {
 
 #[cfg(test)]
 mod tests {
+  use crossterm::event::KeyEvent;
   use insta::assert_snapshot;
   use nix::{
     sys::signal::Signal,
@@ -803,26 +804,53 @@ mod tests {
   use ratatui::{
     Terminal,
     backend::TestBackend,
+    text::Line,
   };
   use tracexec_core::{
-    cli::args::{
-      LogModeArgs,
-      ModifierArgs,
-      TuiModeArgs,
+    cli::{
+      args::{
+        LogModeArgs,
+        ModifierArgs,
+        TuiModeArgs,
+      },
+      keys::KeyList,
     },
     event::{
+      Event,
       EventId,
+      TracerEvent,
+      TracerEventDetails,
       TracerEventMessage,
+      TracerMessage,
     },
     proc::BaselineInfo,
+    pty::{
+      PtySystem,
+      native_pty_system,
+    },
+    timestamp::ts_from_boot_ns,
   };
 
   use super::*;
-  use crate::theme::{
-    current_theme,
-    load_theme_from_spec,
-    theme_spec_from_toml_str,
+  use crate::{
+    copy_popup::CopyPopupState,
+    details_popup::DetailsPopupState,
+    error_popup::InfoPopupState,
+    query::{
+      QueryBuilder,
+      QueryKind,
+    },
+    theme::{
+      current_theme,
+      load_theme_from_spec,
+      theme_spec_from_toml_str,
+    },
   };
+
+  fn key_event(keys: &KeyList) -> Event {
+    let binding = keys.first().unwrap();
+    Event::Key(KeyEvent::new(binding.code, binding.modifiers))
+  }
 
   #[test]
   fn app_no_pty_shrink_grow_noop_and_inspect_event_list() -> color_eyre::Result<()> {
@@ -865,6 +893,343 @@ mod tests {
     let mut none: Option<u32> = None;
     none.access_some_mut(|x| *x = 4);
     assert_eq!(none, None);
+  }
+
+  #[tokio::test]
+  async fn app_run_processes_queued_events_until_quit() -> color_eyre::Result<()> {
+    let baseline = std::sync::Arc::new(BaselineInfo::new()?);
+    let mut app = App::new(
+      None,
+      &LogModeArgs::default(),
+      &ModifierArgs::default(),
+      TuiModeArgs {
+        follow: true,
+        ..Default::default()
+      },
+      baseline,
+      None,
+      current_theme(),
+    )?;
+    app.disable_clipboard();
+
+    let mut tui = Tui::new()?;
+    let root_pid = Pid::from_raw(42);
+    let spawn = TracerEvent {
+      id: EventId::new(10),
+      details: TracerEventDetails::TraceeSpawn {
+        pid: root_pid,
+        timestamp: ts_from_boot_ns(1),
+      },
+    };
+    let info = TracerEvent {
+      id: EventId::new(11),
+      details: TracerEventDetails::Info(TracerEventMessage {
+        pid: Some(root_pid),
+        timestamp: None,
+        msg: "queued info".to_string(),
+      }),
+    };
+    tui
+      .event_tx
+      .send(Event::Tracer(TracerMessage::Event(spawn)))?;
+    tui
+      .event_tx
+      .send(Event::Tracer(TracerMessage::Event(info)))?;
+    tui
+      .event_tx
+      .send(Event::Tracer(TracerMessage::FatalError("boom".to_string())))?;
+    tui.event_tx.send(Event::Resize {
+      width: 100,
+      height: 30,
+    })?;
+    tui.event_tx.send(Event::Error)?;
+    tui.event_tx.send(Event::ShouldQuit)?;
+
+    app.run(&mut tui).await?;
+
+    assert_eq!(app.root_pid, Some(root_pid));
+    assert!(app.should_handle_internal_resize);
+    assert!(matches!(app.popup.last(), Some(ActivePopup::InfoPopup(_))));
+
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn app_run_dispatches_navigation_popups_and_search_keys() -> color_eyre::Result<()> {
+    let baseline = std::sync::Arc::new(BaselineInfo::new()?);
+    let mut app = App::new(
+      None,
+      &LogModeArgs::default(),
+      &ModifierArgs::default(),
+      TuiModeArgs::default(),
+      baseline,
+      None,
+      current_theme(),
+    )?;
+    app.disable_clipboard();
+
+    for id in 0..3 {
+      app.event_list.push(
+        EventId::new(id),
+        std::sync::Arc::new(TracerEventDetails::Info(TracerEventMessage {
+          pid: Some(Pid::from_raw(100 + id as i32)),
+          timestamp: None,
+          msg: format!("searchable event {id}"),
+        })),
+      );
+    }
+
+    let mut tui = Tui::new()?;
+    let keys = app.key_bindings.clone();
+    let events = [
+      Event::Render,
+      key_event(&keys.next_item),
+      key_event(&keys.prev_item),
+      key_event(&keys.page_down),
+      key_event(&keys.page_up),
+      key_event(&keys.page_left),
+      key_event(&keys.page_right),
+      key_event(&keys.scroll_left),
+      key_event(&keys.scroll_right),
+      key_event(&keys.scroll_top),
+      key_event(&keys.scroll_bottom),
+      key_event(&keys.scroll_start),
+      key_event(&keys.scroll_end),
+      key_event(&keys.event_toggle_follow),
+      key_event(&keys.event_toggle_env),
+      key_event(&keys.event_toggle_cwd),
+      key_event(&keys.switch_layout),
+      key_event(&keys.help),
+      key_event(&keys.close_popup),
+      key_event(&keys.event_view_details),
+      key_event(&keys.details_next_field),
+      key_event(&keys.details_prev_field),
+      key_event(&keys.details_cycle_tab),
+      key_event(&keys.details_next_tab),
+      key_event(&keys.details_prev_tab),
+      key_event(&keys.details_scroll_down),
+      key_event(&keys.details_scroll_up),
+      key_event(&keys.page_down),
+      key_event(&keys.page_up),
+      key_event(&keys.scroll_top),
+      key_event(&keys.scroll_bottom),
+      key_event(&keys.details_view_parent),
+      key_event(&keys.close_popup),
+      key_event(&keys.close_popup),
+      key_event(&keys.event_go_to_parent),
+      key_event(&keys.close_popup),
+      key_event(&keys.event_backtrace),
+      key_event(&keys.close_popup),
+      key_event(&keys.event_search),
+      Event::Key(KeyEvent::new(
+        crossterm::event::KeyCode::Char('s'),
+        crossterm::event::KeyModifiers::NONE,
+      )),
+      Event::Key(KeyEvent::new(
+        crossterm::event::KeyCode::Char('e'),
+        crossterm::event::KeyModifiers::NONE,
+      )),
+      key_event(&keys.query_toggle_case),
+      key_event(&keys.query_toggle_regex),
+      key_event(&keys.query_toggle_regex),
+      key_event(&keys.query_execute),
+      key_event(&keys.query_next_match),
+      key_event(&keys.query_prev_match),
+      key_event(&keys.event_search),
+      key_event(&keys.query_clear),
+      key_event(&keys.query_cancel),
+      Event::ShouldQuit,
+    ];
+    for event in events {
+      tui.event_tx.send(event)?;
+    }
+
+    app.run(&mut tui).await?;
+
+    assert!(matches!(app.layout, AppLayout::Vertical));
+    assert!(app.event_list.is_following());
+
+    Ok(())
+  }
+
+  fn render_app_to_string(app: &mut App, width: u16, height: u16) -> String {
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal
+      .draw(|f| {
+        app.render(f.area(), f.buffer_mut());
+      })
+      .unwrap();
+    format!("{:?}", terminal.backend().buffer())
+  }
+
+  #[test]
+  fn app_render_covers_small_areas_popups_search_and_experiments() -> color_eyre::Result<()> {
+    let baseline = std::sync::Arc::new(BaselineInfo::new()?);
+    let mut app = App::new(
+      None,
+      &LogModeArgs::default(),
+      &ModifierArgs::default(),
+      TuiModeArgs::default(),
+      baseline,
+      None,
+      current_theme(),
+    )?;
+    app.disable_clipboard();
+    app.activate_experiment("unit");
+
+    let event = std::sync::Arc::new(TracerEventDetails::Info(TracerEventMessage {
+      pid: Some(Pid::from_raw(321)),
+      timestamp: None,
+      msg: "render target".to_string(),
+    }));
+    app.event_list.push(EventId::new(0), event.clone());
+
+    let narrow = render_app_to_string(&mut app, 3, 12);
+    assert!(narrow.contains("too"));
+    app.should_handle_internal_resize = true;
+    let short = render_app_to_string(&mut app, 80, 5);
+    assert!(short.contains("too small"));
+
+    app.popup.push(ActivePopup::Help);
+    let help = render_app_to_string(&mut app, 100, 28);
+    assert!(help.contains("Help"));
+    app.popup.pop();
+
+    app.popup.push(ActivePopup::InfoPopup(InfoPopupState::info(
+      "Info".to_string(),
+      vec![Line::raw("render info popup")],
+      app.theme,
+    )));
+    let info = render_app_to_string(&mut app, 100, 28);
+    assert!(info.contains("render info popup"));
+    app.popup.pop();
+
+    app
+      .popup
+      .push(ActivePopup::CopyTargetSelection(CopyPopupState::new(
+        event.clone(),
+        app.key_bindings.clone(),
+        app.theme,
+      )));
+    let copy = render_app_to_string(&mut app, 100, 28);
+    assert!(copy.contains("Commandline") || copy.contains("Line"));
+    app.popup.pop();
+
+    let selected = app.event_list.get_for_test(EventId::new(0)).unwrap();
+    app
+      .popup
+      .push(ActivePopup::ViewDetails(DetailsPopupState::new(
+        &selected.borrow(),
+        &app.event_list,
+      )));
+    let details = render_app_to_string(&mut app, 100, 28);
+    assert!(details.contains("render target"));
+    app.popup.pop();
+
+    let mut query_builder = QueryBuilder::new(QueryKind::Search);
+    query_builder.edit();
+    app.query_builder = Some(query_builder);
+    let search = render_app_to_string(&mut app, 100, 28);
+    assert!(search.contains("Execute") || search.contains("Search"));
+
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn app_render_with_terminal_pane_covers_split_resize_and_footer() -> color_eyre::Result<()>
+  {
+    let baseline = std::sync::Arc::new(BaselineInfo::new()?);
+    let pty_pair = native_pty_system().openpty(PtySize {
+      rows: 24,
+      cols: 80,
+      pixel_width: 0,
+      pixel_height: 0,
+    })?;
+    let mut app = App::new(
+      None,
+      &LogModeArgs::default(),
+      &ModifierArgs::default(),
+      TuiModeArgs {
+        active_pane: Some(ActivePane::Terminal),
+        layout: Some(AppLayout::Vertical),
+        scrollback_lines: Some(32),
+        ..Default::default()
+      },
+      baseline,
+      Some(pty_pair.master),
+      current_theme(),
+    )?;
+    app.disable_clipboard();
+
+    assert_eq!(app.split_percentage, 50);
+    app.shrink_pane();
+    app.grow_pane();
+    assert_eq!(app.split_percentage, 50);
+
+    let rendered = render_app_to_string(&mut app, 100, 32);
+    assert!(rendered.contains("Terminal"));
+    assert!(rendered.contains("Events"));
+    assert!(!app.should_handle_internal_resize);
+
+    app.active_pane = ActivePane::Events;
+    app.layout = AppLayout::Horizontal;
+    app.should_handle_internal_resize = true;
+    let rendered = render_app_to_string(&mut app, 100, 32);
+    assert!(rendered.contains("Layout"));
+    assert!(rendered.contains("Grow/Shrink"));
+
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn app_run_dispatches_terminal_pane_keys() -> color_eyre::Result<()> {
+    let baseline = std::sync::Arc::new(BaselineInfo::new()?);
+    let pty_pair = native_pty_system().openpty(PtySize {
+      rows: 24,
+      cols: 80,
+      pixel_width: 0,
+      pixel_height: 0,
+    })?;
+    let mut app = App::new(
+      None,
+      &LogModeArgs::default(),
+      &ModifierArgs::default(),
+      TuiModeArgs {
+        active_pane: Some(ActivePane::Terminal),
+        scrollback_lines: Some(32),
+        ..Default::default()
+      },
+      baseline,
+      Some(pty_pair.master),
+      current_theme(),
+    )?;
+    app.disable_clipboard();
+
+    let mut tui = Tui::new()?;
+    let keys = app.key_bindings.clone();
+    tui.event_tx.send(Event::Render)?;
+    tui.event_tx.send(Event::Key(KeyEvent::new(
+      crossterm::event::KeyCode::Char('x'),
+      crossterm::event::KeyModifiers::NONE,
+    )))?;
+    tui.event_tx.send(key_event(&keys.switch_pane))?;
+    tui.event_tx.send(key_event(&keys.switch_pane))?;
+    tui
+      .event_tx
+      .send(key_event(&keys.terminal_toggle_scrollback))?;
+    tui.event_tx.send(key_event(&keys.terminal_scroll_up))?;
+    tui.event_tx.send(key_event(&keys.terminal_scroll_down))?;
+    tui.event_tx.send(key_event(&keys.terminal_page_up))?;
+    tui.event_tx.send(key_event(&keys.terminal_page_down))?;
+    tui.event_tx.send(key_event(&keys.terminal_scroll_top))?;
+    tui.event_tx.send(key_event(&keys.terminal_scroll_bottom))?;
+    tui.event_tx.send(Event::ShouldQuit)?;
+
+    app.run(&mut tui).await?;
+
+    assert!(matches!(app.active_pane, ActivePane::Terminal));
+
+    Ok(())
   }
 
   #[test]

@@ -22,6 +22,34 @@ fn log_mode_without_args_works() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+#[file_serial]
+fn generate_completions_runs_from_binary() -> Result<(), Box<dyn std::error::Error>> {
+  let mut cmd = Command::new(cargo::cargo_bin!());
+  cmd.arg("generate-completions").arg("bash");
+  cmd
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("_tracexec"));
+  Ok(())
+}
+
+#[test]
+#[file_serial]
+fn ebpf_tui_tty_without_command_errors_before_tracing() -> Result<(), Box<dyn std::error::Error>> {
+  let mut cmd = Command::new(cargo::cargo_bin!());
+  cmd
+    .arg("--color")
+    .arg("never")
+    .arg("ebpf")
+    .arg("tui")
+    .arg("--tty");
+  cmd.assert().failure().stderr(predicate::str::contains(
+    "not supported for eBPF system-wide tracing",
+  ));
+  Ok(())
+}
+
+#[test]
 #[file_serial(ignored)]
 #[ignore = "root"]
 fn elevate_fails_when_already_root() -> Result<(), Box<dyn std::error::Error>> {
@@ -142,5 +170,156 @@ fn restore_env_socket_passes_full_env_to_tracee() -> Result<(), Box<dyn std::err
     stdout.contains("SUDO=from_socket\n"),
     "SUDO_USER should come from the transferred original env, got stdout: {stdout}"
   );
+  Ok(())
+}
+
+#[test]
+#[file_serial(ignored)]
+#[ignore = "root"]
+fn ebpf_log_mode_runs_tracee() -> Result<(), Box<dyn std::error::Error>> {
+  let mut cmd = Command::new(cargo::cargo_bin!());
+  cmd
+    .env("TRACEXEC_USE_KPROBE", "1")
+    .arg("--color")
+    .arg("never")
+    .arg("ebpf")
+    .arg("log")
+    .arg("-o")
+    .arg("-")
+    .arg("--")
+    .arg("sh")
+    .arg("-c")
+    .arg("true");
+  cmd
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("sh"));
+  Ok(())
+}
+
+#[test]
+#[file_serial(ignored)]
+#[ignore = "root"]
+fn ebpf_collect_json_stream_runs_tracee() -> Result<(), Box<dyn std::error::Error>> {
+  let mut cmd = Command::new(cargo::cargo_bin!());
+  cmd
+    .env("TRACEXEC_USE_KPROBE", "1")
+    .arg("--color")
+    .arg("never")
+    .arg("ebpf")
+    .arg("collect")
+    .arg("-F")
+    .arg("json-stream")
+    .arg("-o")
+    .arg("-")
+    .arg("--")
+    .arg("sh")
+    .arg("-c")
+    .arg("true");
+  cmd.assert().success().stdout(
+    predicate::str::contains("\"generator\":\"tracexec_exporter_json\"")
+      .and(predicate::str::contains("\"syscall\":\"execve\""))
+      .and(predicate::str::contains("\"sh\"")),
+  );
+  Ok(())
+}
+
+#[test]
+#[file_serial(ignored)]
+#[ignore = "root"]
+fn ebpf_collect_json_runs_tracee() -> Result<(), Box<dyn std::error::Error>> {
+  let mut cmd = Command::new(cargo::cargo_bin!());
+  cmd
+    .env("TRACEXEC_USE_KPROBE", "1")
+    .arg("--color")
+    .arg("never")
+    .arg("ebpf")
+    .arg("collect")
+    .arg("-F")
+    .arg("json")
+    .arg("-o")
+    .arg("-")
+    .arg("--")
+    .arg("sh")
+    .arg("-c")
+    .arg("true");
+  cmd
+    .assert()
+    .success()
+    .stdout(predicate::str::contains("\"events\""));
+  Ok(())
+}
+
+#[test]
+#[file_serial(ignored)]
+#[ignore = "root"]
+fn ebpf_collect_perfetto_runs_tracee() -> Result<(), Box<dyn std::error::Error>> {
+  let output = std::env::temp_dir().join(format!(
+    "tracexec-ebpf-collect-perfetto-{}.pftrace",
+    std::process::id()
+  ));
+  let mut cmd = Command::new(cargo::cargo_bin!());
+  cmd
+    .env("TRACEXEC_USE_KPROBE", "1")
+    .arg("--color")
+    .arg("never")
+    .arg("ebpf")
+    .arg("collect")
+    .arg("-F")
+    .arg("perfetto")
+    .arg("-o")
+    .arg(&output)
+    .arg("--")
+    .arg("sh")
+    .arg("-c")
+    .arg("true");
+  cmd.assert().success();
+  assert!(std::fs::metadata(&output)?.len() > 0);
+  let _ = std::fs::remove_file(output);
+  Ok(())
+}
+
+#[test]
+#[file_serial(ignored)]
+#[ignore = "root"]
+fn ebpf_log_handles_malformed_exec_fixtures() -> Result<(), Box<dyn std::error::Error>> {
+  for fixture in [
+    env!("CARGO_BIN_EXE_corrupted-envp"),
+    env!("CARGO_BIN_EXE_empty-argv"),
+  ] {
+    let mut cmd = Command::new(cargo::cargo_bin!());
+    cmd
+      .env("TRACEXEC_USE_KPROBE", "1")
+      .arg("--color")
+      .arg("never")
+      .arg("ebpf")
+      .arg("log")
+      .arg("-o")
+      .arg("-")
+      .arg("--")
+      .arg(fixture);
+    cmd.assert().success();
+  }
+  Ok(())
+}
+
+#[test]
+#[file_serial(ignored)]
+#[ignore = "root"]
+fn ebpf_log_handles_threaded_and_repeated_exec_fixtures() -> Result<(), Box<dyn std::error::Error>>
+{
+  let mut cmd = Command::new(cargo::cargo_bin!());
+  cmd
+    .env("TRACEXEC_USE_KPROBE", "1")
+    .arg("--color")
+    .arg("never")
+    .arg("ebpf")
+    .arg("log")
+    .arg("-o")
+    .arg("-")
+    .arg("--")
+    .arg(env!("CARGO_BIN_EXE_exec-stress"))
+    .arg("2");
+  cmd.assert().success();
   Ok(())
 }
