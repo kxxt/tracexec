@@ -1492,4 +1492,242 @@ mod test {
     let action = rx.receive().unwrap();
     assert!(matches!(action, Action::BeginSearch));
   }
+
+  fn selected_event_list(
+    details: tracexec_core::event::TracerEventDetails,
+    is_ptrace: bool,
+    has_clipboard: bool,
+    is_primary: bool,
+  ) -> EventList {
+    let baseline = std::sync::Arc::new(tracexec_core::proc::BaselineInfo::new().unwrap());
+    let mut event_list = EventList::new(
+      baseline,
+      false,
+      tracexec_core::cli::args::ModifierArgs::default(),
+      1000,
+      is_ptrace,
+      has_clipboard,
+      is_primary,
+      current_theme(),
+    );
+    event_list.max_window_len = 10;
+    event_list.set_window((0, 10));
+    event_list.push(
+      tracexec_core::event::EventId::new(0),
+      std::sync::Arc::new(details),
+    );
+    event_list.scroll_to_id(Some(tracexec_core::event::EventId::new(0)));
+    event_list
+  }
+
+  fn info_details(message: &str) -> tracexec_core::event::TracerEventDetails {
+    tracexec_core::event::TracerEventDetails::Info(tracexec_core::event::TracerEventMessage {
+      pid: Some(nix::unistd::Pid::from_raw(100)),
+      timestamp: None,
+      msg: message.to_string(),
+    })
+  }
+
+  fn exec_details(
+    parent: Option<tracexec_core::event::ParentEventId>,
+  ) -> tracexec_core::event::TracerEventDetails {
+    use std::{
+      collections::BTreeMap,
+      sync::Arc,
+    };
+
+    use tracexec_core::{
+      cache::ArcStr,
+      event::{
+        ExecEvent,
+        ExecSyscall,
+        OutputMsg,
+      },
+      proc::{
+        CgroupInfo,
+        FileDescriptorInfoCollection,
+        diff_env,
+      },
+      timestamp::ts_from_boot_ns,
+    };
+
+    tracexec_core::event::TracerEventDetails::Exec(Box::new(ExecEvent {
+      syscall: ExecSyscall::Execve,
+      exec_pid: nix::unistd::Pid::from_raw(100),
+      pid: nix::unistd::Pid::from_raw(100),
+      cwd: OutputMsg::Ok(ArcStr::from("/tmp")),
+      comm: ArcStr::from("cmd"),
+      filename: OutputMsg::Ok(ArcStr::from("/bin/true")),
+      argv: Arc::new(Ok(vec![OutputMsg::Ok(ArcStr::from("true"))])),
+      envp: Arc::new(Ok(BTreeMap::new())),
+      has_dash_env: false,
+      cred: Ok(Default::default()),
+      interpreter: None,
+      env_diff: Ok(diff_env(&BTreeMap::new(), &BTreeMap::new())),
+      fdinfo: Arc::new(FileDescriptorInfoCollection::default()),
+      result: 0,
+      timestamp: ts_from_boot_ns(1),
+      parent,
+      cgroup: CgroupInfo::V2 {
+        path: "/".to_string(),
+      },
+    }))
+  }
+
+  fn key_event(key_list: &tracexec_core::cli::keys::KeyList) -> crossterm::event::KeyEvent {
+    let binding = key_list.first().unwrap();
+    crossterm::event::KeyEvent::new(binding.code, binding.modifiers)
+  }
+
+  fn drain_actions(
+    rx: &tracexec_core::primitives::local_chan::LocalUnboundedReceiver<crate::action::Action>,
+  ) -> Vec<crate::action::Action> {
+    let mut actions = Vec::new();
+    while let Some(action) = rx.receive() {
+      actions.push(action);
+    }
+    actions
+  }
+
+  #[tokio::test]
+  async fn handle_key_event_dispatches_clipboard_ptrace_and_terminal_actions() {
+    use tracexec_core::primitives::local_chan;
+
+    use crate::action::Action;
+
+    let event_list = selected_event_list(info_details("copy me"), true, true, true);
+    let (tx, rx) = local_chan::unbounded();
+
+    event_list
+      .handle_key_event(key_event(&keys().event_copy), keys(), &tx)
+      .await
+      .unwrap();
+    event_list
+      .handle_key_event(key_event(&keys().event_breakpoints), keys(), &tx)
+      .await
+      .unwrap();
+    event_list
+      .handle_key_event(key_event(&keys().event_hits), keys(), &tx)
+      .await
+      .unwrap();
+    event_list
+      .handle_key_event(key_event(&keys().event_send_ctrl_s), keys(), &tx)
+      .await
+      .unwrap();
+
+    let actions = drain_actions(&rx);
+    assert!(
+      actions
+        .iter()
+        .any(|a| matches!(a, Action::ShowCopyDialog(_)))
+    );
+    assert!(
+      actions
+        .iter()
+        .any(|a| matches!(a, Action::ShowBreakpointManager))
+    );
+    assert!(actions.iter().any(|a| matches!(a, Action::ShowHitManager)));
+    assert!(actions.iter().any(|a| {
+      matches!(a, Action::HandleTerminalKeyPress(ke) if ke.code == crossterm::event::KeyCode::Char('s')
+        && ke.modifiers == crossterm::event::KeyModifiers::CONTROL)
+    }));
+  }
+
+  #[tokio::test]
+  async fn handle_key_event_go_to_parent_covers_success_and_error_popups() {
+    use tracexec_core::{
+      event::{
+        EventId,
+        ParentEvent,
+      },
+      primitives::local_chan,
+    };
+
+    use crate::action::{
+      Action,
+      ActivePopup,
+    };
+
+    let mut event_list = selected_event_list(exec_details(None), false, false, true);
+    let (tx, rx) = local_chan::unbounded();
+    event_list
+      .handle_key_event(key_event(&keys().event_go_to_parent), keys(), &tx)
+      .await
+      .unwrap();
+    assert!(matches!(
+      rx.receive(),
+      Some(Action::SetActivePopup(ActivePopup::InfoPopup(_)))
+    ));
+
+    event_list = selected_event_list(info_details("not exec"), false, false, true);
+    event_list
+      .handle_key_event(key_event(&keys().event_go_to_parent), keys(), &tx)
+      .await
+      .unwrap();
+    assert!(matches!(
+      rx.receive(),
+      Some(Action::SetActivePopup(ActivePopup::InfoPopup(_)))
+    ));
+
+    event_list = selected_event_list(
+      exec_details(Some(ParentEvent::Spawn(EventId::new(99)))),
+      false,
+      false,
+      true,
+    );
+    event_list
+      .handle_key_event(key_event(&keys().event_go_to_parent), keys(), &tx)
+      .await
+      .unwrap();
+    assert!(matches!(
+      rx.receive(),
+      Some(Action::SetActivePopup(ActivePopup::InfoPopup(_)))
+    ));
+
+    event_list = selected_event_list(
+      exec_details(Some(ParentEvent::Spawn(EventId::new(0)))),
+      false,
+      false,
+      true,
+    );
+    event_list
+      .handle_key_event(key_event(&keys().event_go_to_parent), keys(), &tx)
+      .await
+      .unwrap();
+    assert!(matches!(
+      rx.receive(),
+      Some(Action::ScrollToId(id)) if id == EventId::new(0)
+    ));
+  }
+
+  #[tokio::test]
+  async fn handle_key_event_backtrace_covers_exec_and_non_exec_selection() {
+    use tracexec_core::primitives::local_chan;
+
+    use crate::action::{
+      Action,
+      ActivePopup,
+    };
+
+    let event_list = selected_event_list(exec_details(None), false, false, true);
+    let (tx, rx) = local_chan::unbounded();
+    event_list
+      .handle_key_event(key_event(&keys().event_backtrace), keys(), &tx)
+      .await
+      .unwrap();
+    assert!(matches!(
+      rx.receive(),
+      Some(Action::SetActivePopup(ActivePopup::Backtrace(_)))
+    ));
+
+    let event_list = selected_event_list(info_details("not exec"), false, false, true);
+    event_list
+      .handle_key_event(key_event(&keys().event_backtrace), keys(), &tx)
+      .await
+      .unwrap();
+    assert!(matches!(
+      rx.receive(),
+      Some(Action::SetActivePopup(ActivePopup::InfoPopup(_)))
+    ));
+  }
 }

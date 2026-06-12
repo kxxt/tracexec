@@ -42,7 +42,10 @@ use futures::{
   FutureExt,
   StreamExt,
 };
-use ratatui::backend::CrosstermBackend as Backend;
+#[cfg(not(test))]
+use ratatui::backend::CrosstermBackend;
+#[cfg(test)]
+use ratatui::backend::TestBackend;
 use tokio::{
   sync::mpsc::{
     self,
@@ -86,8 +89,14 @@ pub use event::TracerEventDetailsTuiExt;
 #[cfg(test)]
 pub mod test_utils;
 
+#[cfg(not(test))]
+type TuiBackend = CrosstermBackend<std::io::Stderr>;
+#[cfg(test)]
+type TuiBackend = TestBackend;
+type TuiTerminal = ratatui::Terminal<TuiBackend>;
+
 pub struct Tui {
-  pub terminal: ratatui::Terminal<Backend<std::io::Stderr>>,
+  pub terminal: TuiTerminal,
   pub task: JoinHandle<()>,
   pub cancellation_token: CancellationToken,
   pub event_rx: UnboundedReceiver<Event>,
@@ -110,7 +119,7 @@ pub fn restore_tui() -> Result<()> {
 impl Tui {
   pub fn new() -> Result<Self> {
     let frame_rate = 30.0;
-    let terminal = ratatui::Terminal::new(Backend::new(std::io::stderr()))?;
+    let terminal = Self::new_terminal()?;
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let cancellation_token = CancellationToken::new();
     let task = tokio::spawn(async {});
@@ -122,6 +131,18 @@ impl Tui {
       event_tx,
       frame_rate,
     })
+  }
+
+  #[cfg(not(test))]
+  fn new_terminal() -> Result<TuiTerminal> {
+    Ok(ratatui::Terminal::new(CrosstermBackend::new(
+      std::io::stderr(),
+    ))?)
+  }
+
+  #[cfg(test)]
+  fn new_terminal() -> Result<TuiTerminal> {
+    Ok(ratatui::Terminal::new(TestBackend::new(100, 30))?)
   }
 
   pub fn frame_rate(mut self, frame_rate: f64) -> Self {
@@ -228,7 +249,7 @@ impl Tui {
 }
 
 impl Deref for Tui {
-  type Target = ratatui::Terminal<Backend<std::io::Stderr>>;
+  type Target = TuiTerminal;
 
   fn deref(&self) -> &Self::Target {
     &self.terminal
@@ -244,5 +265,46 @@ impl DerefMut for Tui {
 impl Drop for Tui {
   fn drop(&mut self) {
     self.exit().unwrap();
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::time::Duration;
+
+  use tracexec_core::event::{
+    Event,
+    TracerEventDetails,
+    TracerEventMessage,
+  };
+
+  use super::*;
+
+  #[tokio::test]
+  async fn tui_new_frame_rate_start_next_and_stop() -> color_eyre::Result<()> {
+    let mut tui = Tui::new()?.frame_rate(120.0);
+    assert_eq!(tui.frame_rate, 120.0);
+
+    tui.event_tx.send(Event::Init)?;
+    let init = tokio::time::timeout(Duration::from_secs(1), tui.next()).await?;
+    assert_eq!(init, Some(Event::Init));
+
+    tui.event_tx.send(Event::Tracer(
+      TracerEventDetails::Info(TracerEventMessage {
+        pid: None,
+        timestamp: None,
+        msg: "from tracer".to_string(),
+      })
+      .into_tracer_msg(),
+    ))?;
+
+    let tracer_event = tokio::time::timeout(Duration::from_secs(1), tui.next()).await?;
+    assert!(matches!(tracer_event, Some(Event::Tracer(_))));
+
+    tui.cancel();
+    tui.stop()?;
+    assert!(tui.cancellation_token.is_cancelled());
+
+    Ok(())
   }
 }

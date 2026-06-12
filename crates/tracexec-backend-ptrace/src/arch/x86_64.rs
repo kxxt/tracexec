@@ -98,3 +98,66 @@ impl RegsExt for Regs {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn regs64() -> PtraceRegisters64 {
+    let mut regs = unsafe { std::mem::zeroed::<PtraceRegisters64>() };
+    regs.rdi = 1;
+    regs.rsi = 2;
+    regs.rdx = 3;
+    regs.r10 = 4;
+    regs.r8 = 5;
+    regs.r9 = 6;
+    regs.rbx = 0x1_0000_0007;
+    regs.rcx = 0x1_0000_0008;
+    regs
+  }
+
+  fn regs32() -> PtraceRegisters32 {
+    PtraceRegisters32 {
+      ebx: 11,
+      ecx: 12,
+      edx: 13,
+      esi: 14,
+      edi: 15,
+      ebp: 0,
+      eax: 0,
+      xds: 0,
+      xes: 0,
+      xfs: 0,
+      xgs: 0,
+      orig_eax: 0,
+      eip: 0,
+      xcs: 0,
+      eflags: 0,
+      esp: 0,
+      xss: 0,
+    }
+  }
+
+  #[test]
+  fn syscall_arg_maps_native_x64_register_order() {
+    let regs = Regs::X64(regs64());
+
+    for (idx, expected) in [1, 2, 3, 4, 5, 6].into_iter().enumerate() {
+      assert_eq!(regs.syscall_arg(idx, false), expected);
+    }
+  }
+
+  #[test]
+  fn syscall_arg_maps_compat_register_order_and_truncates_x64_values() {
+    let regs = Regs::X64(regs64());
+
+    for (idx, expected) in [7, 8, 3, 2, 1].into_iter().enumerate() {
+      assert_eq!(regs.syscall_arg(idx, true), expected);
+    }
+
+    let regs = Regs::X86(regs32());
+    for (idx, expected) in [11, 12, 13, 14, 15].into_iter().enumerate() {
+      assert_eq!(regs.syscall_arg(idx, true), expected);
+    }
+  }
+}

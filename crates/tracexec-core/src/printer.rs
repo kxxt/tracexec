@@ -817,3 +817,345 @@ impl Printer {
     })
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::{
+    collections::BTreeMap,
+    io,
+    sync::{
+      Arc,
+      Mutex,
+    },
+  };
+
+  use chrono::Local;
+  use nix::{
+    errno::Errno,
+    fcntl::OFlag,
+    unistd::Pid,
+  };
+
+  use super::*;
+  use crate::{
+    proc::{
+      CgroupInfo,
+      Cred,
+    },
+    timestamp::TimestampFormat,
+  };
+
+  #[derive(Clone, Default)]
+  struct CaptureWriter(Arc<Mutex<Vec<u8>>>);
+
+  impl Write for CaptureWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+      self.0.lock().unwrap().extend_from_slice(buf);
+      Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+      Ok(())
+    }
+  }
+
+  fn msg(value: &str) -> OutputMsg {
+    OutputMsg::Ok(ArcStr::from(value))
+  }
+
+  fn fd(fd: i32, path: &str, ino: u64, flags: OFlag) -> FileDescriptorInfo {
+    FileDescriptorInfo {
+      fd,
+      path: msg(path),
+      pos: 0,
+      flags,
+      mnt_id: 1,
+      ino,
+      mnt: ArcStr::from("mnt"),
+      extra: Vec::new(),
+    }
+  }
+
+  fn fd_collection(
+    entries: impl IntoIterator<Item = FileDescriptorInfo>,
+  ) -> FileDescriptorInfoCollection {
+    FileDescriptorInfoCollection {
+      fdinfo: entries.into_iter().map(|info| (info.fd, info)).collect(),
+    }
+  }
+
+  fn baseline() -> Arc<BaselineInfo> {
+    let mut env = BTreeMap::new();
+    env.insert(msg("KEEP"), msg("same"));
+    env.insert(msg("MODIFIED"), msg("old"));
+    env.insert(msg("REMOVED"), msg("gone"));
+
+    Arc::new(BaselineInfo {
+      cwd: msg("/baseline"),
+      env,
+      fdinfo: fd_collection([
+        fd(0, "/dev/stdin", 10, OFlag::empty()),
+        fd(1, "/dev/stdout", 11, OFlag::empty()),
+        fd(2, "/dev/stderr", 12, OFlag::empty()),
+      ]),
+    })
+  }
+
+  fn printer_args() -> PrinterArgs {
+    PrinterArgs {
+      trace_comm: true,
+      trace_argv: true,
+      trace_env: EnvPrintFormat::Diff,
+      trace_fd: FdPrintFormat::Diff,
+      trace_cwd: true,
+      print_cmdline: false,
+      successful_only: false,
+      trace_interpreter: true,
+      trace_filename: true,
+      decode_errno: true,
+      color: ColorLevel::Less,
+      stdio_in_cmdline: false,
+      fd_in_cmdline: false,
+      hide_cloexec_fds: false,
+      inline_timestamp_format: None,
+    }
+  }
+
+  fn exec_data(
+    argv: Result<Vec<OutputMsg>, Errno>,
+    envp: Result<BTreeMap<OutputMsg, OutputMsg>, Errno>,
+    fdinfo: FileDescriptorInfoCollection,
+  ) -> ExecData {
+    ExecData::new(
+      Pid::from_raw(123),
+      msg("/bin/echo"),
+      argv,
+      envp,
+      false,
+      Ok(Cred::default()),
+      msg("/exec-cwd"),
+      Some(vec![
+        Interpreter::Shebang(ArcStr::from("/usr/bin/env sh")),
+        Interpreter::None,
+      ]),
+      fdinfo,
+      Local::now(),
+      CgroupInfo::NotCollected,
+    )
+  }
+
+  fn run_with_output(printer: &Printer, f: impl FnOnce() -> color_eyre::Result<()>) -> String {
+    let bytes = Arc::new(Mutex::new(Vec::new()));
+    printer.init_thread_local(Some(Box::new(CaptureWriter(bytes.clone()))));
+    owo_colors::control::set_should_colorize(false);
+    f().unwrap();
+    printer.init_thread_local(None);
+    String::from_utf8(bytes.lock().unwrap().clone()).unwrap()
+  }
+
+  #[test]
+  fn list_printer_formats_lists_and_env_maps() {
+    let list = ListPrinter::new(ColorLevel::Less);
+    let mut out = Vec::new();
+
+    list.print_string_list(&mut out, &["one", "two"]).unwrap();
+    assert_eq!(String::from_utf8(out).unwrap(), "[one, two]");
+
+    let mut env = BTreeMap::new();
+    env.insert(msg("A"), msg("1"));
+    env.insert(msg("B"), msg("2"));
+    let mut out = Vec::new();
+    list.print_env(&mut out, &env).unwrap();
+    assert_eq!(
+      String::from_utf8(out).unwrap(),
+      "[\"A\"=\"1\", \"B\"=\"2\"]"
+    );
+  }
+
+  #[test]
+  fn print_fd_covers_diff_raw_hidden_and_none_modes() {
+    owo_colors::control::set_should_colorize(false);
+    let baseline = baseline();
+    let fds = fd_collection([
+      fd(1, "/tmp/stdout.log", 20, OFlag::empty()),
+      fd(2, "/dev/stderr", 12, OFlag::O_CLOEXEC),
+      fd(3, "/tmp/extra", 30, OFlag::empty()),
+      fd(4, "/tmp/closed-on-exec", 40, OFlag::O_CLOEXEC),
+    ]);
+
+    let mut args = printer_args();
+    args.trace_fd = FdPrintFormat::Diff;
+    let printer = Printer::new(args.clone(), baseline.clone());
+    let mut out = Vec::new();
+    printer.print_fd(&mut out, &fds).unwrap();
+    let rendered = String::from_utf8(out).unwrap();
+    dbg!(&rendered);
+    assert!(rendered.contains("closed: stdin"));
+    assert!(rendered.contains("stdout=\"/tmp/stdout.log\""));
+    assert!(rendered.contains("cloexec: stderr"));
+    assert!(rendered.contains("3=\"/tmp/extra\""));
+    assert!(rendered.contains("cloexec: 4=\"/tmp/closed-on-exec\""));
+
+    args.trace_fd = FdPrintFormat::Raw;
+    args.hide_cloexec_fds = true;
+    let printer = Printer::new(args.clone(), baseline.clone());
+    let mut out = Vec::new();
+    printer.print_fd(&mut out, &fds).unwrap();
+    let rendered = String::from_utf8(out).unwrap();
+    assert!(rendered.contains("1=\"/tmp/stdout.log\""));
+    assert!(!rendered.contains("closed-on-exec"));
+
+    args.trace_fd = FdPrintFormat::None;
+    let printer = Printer::new(args, baseline);
+    let mut out = Vec::new();
+    printer.print_fd(&mut out, &fds).unwrap();
+    assert!(out.is_empty());
+  }
+
+  #[test]
+  fn print_exec_trace_renders_diff_env_interpreters_and_errno() {
+    owo_colors::control::set_should_colorize(false);
+    let baseline = baseline();
+    let mut envp = BTreeMap::new();
+    envp.insert(msg("KEEP"), msg("same"));
+    envp.insert(msg("MODIFIED"), msg("new"));
+    envp.insert(msg("ADDED"), msg("value"));
+    let fds = fd_collection([
+      fd(0, "/dev/stdin", 10, OFlag::empty()),
+      fd(1, "/dev/stdout", 11, OFlag::empty()),
+      fd(2, "/dev/stderr", 12, OFlag::empty()),
+    ]);
+    let exec = exec_data(
+      Ok(vec![msg("/bin/echo"), msg("hello world")]),
+      Ok(envp),
+      fds,
+    );
+    let mut args = printer_args();
+    args.inline_timestamp_format = Some(TimestampFormat::try_new("%H:%M:%S".to_string()).unwrap());
+    let printer = Printer::new(args, baseline.clone());
+
+    let rendered = run_with_output(&printer, || {
+      printer.print_exec_trace(
+        Pid::from_raw(123),
+        ArcStr::from("echo"),
+        0,
+        &exec,
+        &baseline.env,
+        &baseline.cwd,
+      )
+    });
+
+    dbg!(&rendered);
+
+    assert!(rendered.contains("123<echo>: \"/bin/echo\""));
+    assert!(rendered.contains("[\"/bin/echo\", \"hello world\"]"));
+    assert!(rendered.contains("at \"/exec-cwd\""));
+    assert!(rendered.contains("interpreter"));
+    assert!(rendered.contains("+\"ADDED\"=\"value\""));
+    assert!(rendered.contains("M\"MODIFIED\"=\"new\""));
+    assert!(rendered.contains("-\"REMOVED\"=\"gone\""));
+  }
+
+  #[test]
+  fn print_exec_trace_renders_raw_env_and_warning_paths() {
+    owo_colors::control::set_should_colorize(false);
+    let baseline = baseline();
+    let fds = fd_collection([
+      fd(0, "/dev/stdin", 10, OFlag::empty()),
+      fd(1, "/dev/stdout", 11, OFlag::empty()),
+      fd(2, "/dev/stderr", 12, OFlag::empty()),
+    ]);
+    let exec = exec_data(Err(Errno::EACCES), Err(Errno::EPERM), fds);
+    let mut args = printer_args();
+    args.trace_env = EnvPrintFormat::Raw;
+    args.trace_argv = false;
+    let printer = Printer::new(args, baseline.clone());
+
+    let rendered = run_with_output(&printer, || {
+      printer.print_exec_trace(
+        Pid::from_raw(321),
+        ArcStr::from("bad"),
+        1,
+        &exec,
+        &baseline.env,
+        &baseline.cwd,
+      )
+    });
+
+    assert!(rendered.contains("Failed to read envp"));
+    assert!(rendered.contains("Failed to read argv"));
+    assert!(rendered.contains("warning"));
+  }
+
+  #[test]
+  fn print_exec_trace_renders_reconstructed_cmdline() {
+    owo_colors::control::set_should_colorize(false);
+    let baseline = baseline();
+    let mut envp = BTreeMap::new();
+    envp.insert(msg("KEEP"), msg("same"));
+    envp.insert(msg("MODIFIED"), msg("new value"));
+    envp.insert(msg("ADDED"), msg("value"));
+    let fds = fd_collection([
+      fd(0, "/tmp/stdin", 20, OFlag::empty()),
+      fd(1, "/tmp/stdout", 21, OFlag::empty()),
+      fd(2, "/tmp/stderr", 22, OFlag::O_CLOEXEC),
+      fd(5, "/tmp/fd5", 25, OFlag::empty()),
+      fd(6, "/tmp/fd6", 26, OFlag::O_CLOEXEC),
+    ]);
+    let exec = exec_data(
+      Ok(vec![msg("custom-argv0"), msg("hello world")]),
+      Ok(envp),
+      fds,
+    );
+    let mut args = printer_args();
+    args.trace_argv = false;
+    args.trace_env = EnvPrintFormat::None;
+    args.trace_fd = FdPrintFormat::None;
+    args.print_cmdline = true;
+    args.stdio_in_cmdline = true;
+    args.fd_in_cmdline = true;
+    args.trace_interpreter = false;
+    let printer = Printer::new(args, baseline.clone());
+
+    let rendered = run_with_output(&printer, || {
+      printer.print_exec_trace(
+        Pid::from_raw(456),
+        ArcStr::from("echo"),
+        0,
+        &exec,
+        &baseline.env,
+        &baseline.cwd,
+      )
+    });
+
+    assert!(rendered.contains("cmdline env"));
+    assert!(rendered.contains("</tmp/stdin"));
+    assert!(rendered.contains(">/tmp/stdout"));
+    assert!(rendered.contains("2>&-"));
+    assert!(rendered.contains("5<>/tmp/fd5"));
+    assert!(rendered.contains("-a custom-argv0"));
+    assert!(rendered.contains("-C /exec-cwd"));
+    assert!(rendered.contains("-u REMOVED"));
+    assert!(rendered.contains("ADDED=value"));
+    assert!(rendered.contains("MODIFIED=$'new value'"));
+    assert!(rendered.contains("/bin/echo $'hello world'"));
+  }
+
+  #[test]
+  fn print_new_child_respects_missing_output_and_comm_flag() {
+    owo_colors::control::set_should_colorize(false);
+    let baseline = baseline();
+    let mut args = printer_args();
+    args.trace_comm = false;
+    let printer = Printer::new(args, baseline);
+    printer.init_thread_local(None);
+    printer
+      .print_new_child(Pid::from_raw(1), "ignored", Pid::from_raw(2))
+      .unwrap();
+
+    let rendered = run_with_output(&printer, || {
+      printer.print_new_child(Pid::from_raw(1), "ignored", Pid::from_raw(2))
+    });
+    assert_eq!(rendered, "1: new child: 2\n");
+  }
+}

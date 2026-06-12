@@ -872,23 +872,35 @@ mod tests {
   use insta::assert_snapshot;
   use nix::{
     errno::Errno,
+    fcntl::OFlag,
     unistd::Pid,
   };
   use tracexec_core::{
     cache::ArcStr,
-    cli::args::ModifierArgs,
+    cli::{
+      args::ModifierArgs,
+      keys::TuiKeyBindings,
+    },
     event::{
+      EventId,
+      EventStatus,
       ExecEvent,
       ExecSyscall,
+      FriendlyError,
       OutputMsg,
+      ParentEvent,
       TracerEventDetails,
     },
+    primitives::local_chan,
     proc::{
       BaselineInfo,
       CgroupError,
       CgroupInfo,
       Cred,
+      CredInspectError,
+      FileDescriptorInfo,
       FileDescriptorInfoCollection,
+      diff_env,
     },
   };
 
@@ -897,6 +909,10 @@ mod tests {
     DetailsPopupState,
   };
   use crate::{
+    action::{
+      Action,
+      ActivePopup,
+    },
     event_list::EventList,
     test_utils::{
       test_area_full,
@@ -906,9 +922,13 @@ mod tests {
   };
 
   fn baseline_for_tests() -> Arc<BaselineInfo> {
+    let mut env = BTreeMap::new();
+    env.insert(OutputMsg::Ok("OLD".into()), OutputMsg::Ok("old".into()));
+    env.insert(OutputMsg::Ok("MOD".into()), OutputMsg::Ok("before".into()));
+    env.insert(OutputMsg::Ok("SAME".into()), OutputMsg::Ok("same".into()));
     Arc::new(BaselineInfo {
       cwd: OutputMsg::Ok("cwd".into()),
-      env: BTreeMap::new(),
+      env,
       fdinfo: FileDescriptorInfoCollection::new_baseline().unwrap(),
     })
   }
@@ -937,9 +957,58 @@ mod tests {
     }
   }
 
-  #[test]
-  fn snapshot_details_popup_exec_event() {
-    let list = EventList::new(
+  fn exec_event_with_env_and_fds() -> ExecEvent {
+    let mut event = exec_event();
+    let mut envp = BTreeMap::new();
+    envp.insert(OutputMsg::Ok("ADD".into()), OutputMsg::Ok("added".into()));
+    envp.insert(OutputMsg::Ok("MOD".into()), OutputMsg::Ok("after".into()));
+    envp.insert(OutputMsg::Ok("SAME".into()), OutputMsg::Ok("same".into()));
+    event.envp = Arc::new(Ok(envp.clone()));
+    event.env_diff = Ok(diff_env(&baseline_for_tests().env, &envp));
+    event.cred = Ok(Cred {
+      groups: vec![0, 12345],
+      uid_real: 0,
+      uid_effective: 12345,
+      uid_saved_set: 0,
+      uid_fs: 12345,
+      gid_real: 0,
+      gid_effective: 12345,
+      gid_saved_set: 0,
+      gid_fs: 12345,
+    });
+    let mut fdinfo = FileDescriptorInfoCollection::default();
+    fdinfo.fdinfo.insert(
+      0,
+      FileDescriptorInfo {
+        fd: 0,
+        path: OutputMsg::Ok("/tmp/stdin".into()),
+        pos: 7,
+        flags: OFlag::O_RDONLY | OFlag::O_CLOEXEC | OFlag::O_NONBLOCK,
+        mnt_id: 99,
+        ino: 123,
+        mnt: ArcStr::from("99 1 0:1 / /tmp rw - tmpfs tmpfs rw"),
+        extra: vec![ArcStr::from("eventfd-count: 1")],
+      },
+    );
+    fdinfo.fdinfo.insert(
+      3,
+      FileDescriptorInfo {
+        fd: 3,
+        path: OutputMsg::Err(FriendlyError::InspectError(Errno::EACCES)),
+        pos: 11,
+        flags: OFlag::O_WRONLY | OFlag::O_CREAT | OFlag::O_APPEND,
+        mnt_id: 100,
+        ino: 456,
+        mnt: ArcStr::from("100 1 0:2 / /var rw - ext4 /dev/sda rw"),
+        extra: Vec::new(),
+      },
+    );
+    event.fdinfo = Arc::new(fdinfo);
+    event
+  }
+
+  fn list_for_tests() -> EventList {
+    EventList::new(
       baseline_for_tests(),
       false,
       ModifierArgs::default(),
@@ -948,7 +1017,21 @@ mod tests {
       false,
       true,
       current_theme(),
-    );
+    )
+  }
+
+  fn event_for_details(id: u64, details: TracerEventDetails, status: EventStatus) -> super::Event {
+    super::Event {
+      details: Arc::new(details),
+      status: Some(status),
+      elapsed: None,
+      id: EventId::new(id),
+    }
+  }
+
+  #[test]
+  fn snapshot_details_popup_exec_event() {
+    let list = list_for_tests();
     let event = super::Event {
       details: Arc::new(TracerEventDetails::Exec(Box::new(exec_event()))),
       status: Some(tracexec_core::event::EventStatus::ProcessRunning),
@@ -963,16 +1046,7 @@ mod tests {
 
   #[test]
   fn snapshot_details_popup_execveat_non_main_thread() {
-    let list = EventList::new(
-      baseline_for_tests(),
-      false,
-      ModifierArgs::default(),
-      1024,
-      false,
-      false,
-      true,
-      current_theme(),
-    );
+    let list = list_for_tests();
     let mut event = exec_event();
     event.syscall = ExecSyscall::Execveat;
     event.exec_pid = Pid::from_raw(5001);
@@ -990,16 +1064,7 @@ mod tests {
 
   #[test]
   fn snapshot_details_popup_cgroupv1_warning() {
-    let list = EventList::new(
-      baseline_for_tests(),
-      false,
-      ModifierArgs::default(),
-      1024,
-      false,
-      false,
-      true,
-      current_theme(),
-    );
+    let list = list_for_tests();
     let mut event = exec_event();
     event.cgroup = CgroupInfo::V1Only;
     let event = super::Event {
@@ -1016,16 +1081,7 @@ mod tests {
 
   #[test]
   fn snapshot_details_popup_cgroup_error() {
-    let list = EventList::new(
-      baseline_for_tests(),
-      false,
-      ModifierArgs::default(),
-      1024,
-      false,
-      false,
-      true,
-      current_theme(),
-    );
+    let list = list_for_tests();
     let mut event = exec_event();
     event.cgroup = CgroupInfo::Error(CgroupError::ReadProcCgroup {
       kind: std::io::ErrorKind::NotFound,
@@ -1040,5 +1096,120 @@ mod tests {
     let area = test_area_full(90, 80);
     let rendered = test_render_stateful_widget_area(DetailsPopup::new(false), area, &mut state);
     assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn details_popup_renders_env_fd_tabs_and_handles_parent_keys() {
+    let mut list = list_for_tests();
+    let parent = exec_event();
+    list.push(
+      EventId::new(1),
+      Arc::new(TracerEventDetails::Exec(Box::new(parent))),
+    );
+    let mut child = exec_event_with_env_and_fds();
+    child.parent = Some(ParentEvent::Spawn(EventId::new(1)));
+    child.cgroup = CgroupInfo::NotCollected;
+    child.result = -2;
+    let event = event_for_details(
+      2,
+      TracerEventDetails::Exec(Box::new(child)),
+      EventStatus::ExecENOENT,
+    );
+    list.push(event.id, event.details.clone());
+
+    let mut state = DetailsPopupState::new(&event, &list);
+    assert_eq!(state.active_tab(), "Info");
+
+    state.next();
+    state.prev();
+    state.next_tab();
+    assert_eq!(state.active_tab(), "Environment");
+    let env_rendered = test_render_stateful_widget_area(
+      DetailsPopup::new(true),
+      test_area_full(100, 20),
+      &mut state,
+    );
+    assert!(env_rendered.contains("ADD"));
+    assert!(env_rendered.contains("OLD"));
+    assert!(env_rendered.contains("MOD"));
+
+    state.next_tab();
+    assert_eq!(state.active_tab(), "FdInfo");
+    let fd_rendered = test_render_stateful_widget_area(
+      DetailsPopup::new(true),
+      test_area_full(100, 24),
+      &mut state,
+    );
+    assert!(fd_rendered.contains("/tmp/stdin"));
+    assert!(fd_rendered.contains("eventfd-count"));
+
+    state.prev_tab();
+    state.circle_tab();
+    state.scroll_down();
+    state.scroll_up();
+    state.scroll_page_down();
+    state.scroll_page_up();
+    state.scroll_to_bottom();
+    state.scroll_to_top();
+
+    let (action_tx, action_rx) = local_chan::unbounded();
+    let keys = TuiKeyBindings::default();
+    state
+      .handle_key_event(
+        crossterm::event::KeyEvent::new(
+          keys.details_view_parent.first().unwrap().code,
+          keys.details_view_parent.first().unwrap().modifiers,
+        ),
+        &keys,
+        None,
+        &list,
+        &action_tx,
+      )
+      .unwrap();
+    assert!(matches!(
+      action_rx.receive(),
+      Some(Action::SetActivePopup(ActivePopup::ViewDetails(_)))
+    ));
+  }
+
+  #[test]
+  fn details_popup_formats_credential_errors_and_status_variants() {
+    let list = list_for_tests();
+    for (idx, status) in [
+      EventStatus::ExecFailure,
+      EventStatus::ProcessTerminated,
+      EventStatus::ProcessAborted,
+      EventStatus::ProcessKilled,
+      EventStatus::ProcessInterrupted,
+      EventStatus::ProcessSegfault,
+      EventStatus::ProcessIllegalInstruction,
+      EventStatus::ProcessExitedNormally,
+      EventStatus::ProcessExitedAbnormally(17),
+      EventStatus::ProcessSignaled(nix::sys::signal::Signal::SIGTERM.into()),
+      EventStatus::ProcessPaused,
+      EventStatus::ProcessDetached,
+      EventStatus::InternalError,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+      let mut event = exec_event();
+      event.result = -13;
+      event.cred = Err(CredInspectError::Io {
+        kind: std::io::ErrorKind::PermissionDenied,
+      });
+      let event = event_for_details(
+        100 + idx as u64,
+        TracerEventDetails::Exec(Box::new(event)),
+        status,
+      );
+      let state = DetailsPopupState::new(&event, &list);
+      assert!(state.details.iter().any(|(_, line)| {
+        let text = line.to_string();
+        text.contains("PermissionDenied")
+          || text.contains("Failed to read credential info")
+          || text.contains(&status.to_string())
+      }));
+    }
   }
 }

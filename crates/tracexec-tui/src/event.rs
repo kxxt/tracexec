@@ -566,3 +566,403 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::{
+    collections::BTreeMap,
+    sync::Arc,
+  };
+
+  use nix::{
+    errno::Errno,
+    fcntl::OFlag,
+    unistd::Pid,
+  };
+  use tracexec_core::{
+    cache::ArcStr,
+    event::{
+      ExecSyscall,
+      OutputMsg,
+    },
+    proc::{
+      CgroupInfo,
+      Cred,
+      FileDescriptorInfo,
+      diff_env,
+    },
+    timestamp::{
+      TimestampFormat,
+      ts_from_boot_ns,
+    },
+  };
+
+  use super::*;
+  use crate::action::{
+    CopyTarget,
+    SupportedShell,
+  };
+
+  fn msg(value: &str) -> OutputMsg {
+    OutputMsg::Ok(ArcStr::from(value))
+  }
+
+  fn fd(fd: i32, path: &str, ino: u64, flags: OFlag) -> FileDescriptorInfo {
+    FileDescriptorInfo {
+      fd,
+      path: msg(path),
+      pos: 0,
+      flags,
+      mnt_id: 1,
+      ino,
+      mnt: ArcStr::from("mnt"),
+      extra: Vec::new(),
+    }
+  }
+
+  fn fd_collection(
+    entries: impl IntoIterator<Item = FileDescriptorInfo>,
+  ) -> FileDescriptorInfoCollection {
+    FileDescriptorInfoCollection {
+      fdinfo: entries.into_iter().map(|info| (info.fd, info)).collect(),
+    }
+  }
+
+  fn baseline() -> BaselineInfo {
+    let mut env = BTreeMap::new();
+    env.insert(msg("KEEP"), msg("same"));
+    env.insert(msg("MODIFIED"), msg("old"));
+    env.insert(msg("REMOVED"), msg("gone"));
+
+    BaselineInfo {
+      cwd: msg("/base"),
+      env,
+      fdinfo: fd_collection([
+        fd(0, "/dev/stdin", 10, OFlag::empty()),
+        fd(1, "/dev/stdout", 11, OFlag::empty()),
+        fd(2, "/dev/stderr", 12, OFlag::empty()),
+      ]),
+    }
+  }
+
+  fn exec_details() -> TracerEventDetails {
+    let baseline = baseline();
+    let mut envp = BTreeMap::new();
+    envp.insert(msg("KEEP"), msg("same"));
+    envp.insert(msg("MODIFIED"), msg("new value"));
+    envp.insert(msg("-ADDED"), msg("dash"));
+
+    let fdinfo = fd_collection([
+      fd(0, "/tmp/stdin", 20, OFlag::empty()),
+      fd(1, "/tmp/stdout", 21, OFlag::empty()),
+      fd(2, "/tmp/stderr", 22, OFlag::O_CLOEXEC),
+      fd(5, "/tmp/fd5", 25, OFlag::empty()),
+      fd(6, "/tmp/fd6", 26, OFlag::O_CLOEXEC),
+    ]);
+    let env_diff = diff_env(&baseline.env, &envp);
+
+    TracerEventDetails::Exec(Box::new(ExecEvent {
+      syscall: ExecSyscall::Execve,
+      exec_pid: Pid::from_raw(42),
+      pid: Pid::from_raw(42),
+      cwd: msg("/work"),
+      comm: ArcStr::from("echo"),
+      filename: msg("/bin/echo"),
+      argv: Arc::new(Ok(vec![msg("custom-argv0"), msg("hello world")])),
+      envp: Arc::new(Ok(envp)),
+      has_dash_env: false,
+      cred: Ok(Cred::default()),
+      interpreter: None,
+      env_diff: Ok(env_diff),
+      fdinfo: Arc::new(fdinfo),
+      result: 0,
+      timestamp: ts_from_boot_ns(10),
+      parent: None,
+      cgroup: CgroupInfo::NotCollected,
+    }))
+  }
+
+  #[test]
+  fn event_line_formats_messages_spawn_exit_and_new_child() {
+    let baseline = baseline();
+    let modifier = ModifierArgs::default();
+    let theme = current_theme();
+    let timestamp = ts_from_boot_ns(1);
+    let cases = [
+      TracerEventDetails::Info(TracerEventMessage {
+        pid: Some(Pid::from_raw(1)),
+        timestamp: None,
+        msg: "info".to_string(),
+      }),
+      TracerEventDetails::Warning(TracerEventMessage {
+        pid: Some(Pid::from_raw(2)),
+        timestamp: None,
+        msg: "warn".to_string(),
+      }),
+      TracerEventDetails::Error(TracerEventMessage {
+        pid: Some(Pid::from_raw(3)),
+        timestamp: None,
+        msg: "err".to_string(),
+      }),
+      TracerEventDetails::NewChild {
+        timestamp,
+        ppid: Pid::from_raw(10),
+        pcomm: ArcStr::from("parent"),
+        pid: Pid::from_raw(11),
+      },
+      TracerEventDetails::TraceeSpawn {
+        pid: Pid::from_raw(20),
+        timestamp,
+      },
+      TracerEventDetails::TraceeExit {
+        timestamp,
+        signal: None,
+        exit_code: 7,
+      },
+    ];
+
+    let rendered = cases
+      .iter()
+      .map(|event| {
+        event
+          .to_event_line(
+            &baseline,
+            false,
+            &modifier,
+            RuntimeModifier::default(),
+            Some(EventStatus::ProcessRunning),
+            true,
+            Some("prefix ".into()),
+            false,
+            theme,
+          )
+          .to_string()
+      })
+      .collect::<Vec<_>>()
+      .join("\n");
+
+    assert!(rendered.contains("[info]: info"));
+    assert!(rendered.contains("[warn]: warn"));
+    assert!(rendered.contains("error: err"));
+    assert!(rendered.contains("new child 11"));
+    assert!(rendered.contains("tracee spawned: 20"));
+    assert!(rendered.contains("tracee exit: signal: None, exit_code: 7"));
+  }
+
+  #[test]
+  fn exec_event_line_formats_cmdline_masks_full_env_and_fds() {
+    let baseline = baseline();
+    let mut modifier = ModifierArgs {
+      stdio_in_cmdline: true,
+      fd_in_cmdline: true,
+      ..Default::default()
+    };
+    modifier.timestamp = true;
+    modifier.inline_timestamp_format =
+      Some(TimestampFormat::try_new("%H:%M:%S".to_string()).unwrap());
+    let event = exec_details();
+    let theme = current_theme();
+
+    let line = event.to_event_line(
+      &baseline,
+      false,
+      &modifier,
+      RuntimeModifier {
+        show_env: false,
+        show_cwd: false,
+      },
+      Some(EventStatus::ProcessRunning),
+      true,
+      Some("exec ".into()),
+      false,
+      theme,
+    );
+    assert!(line.cwd_mask.is_some());
+    assert!(line.env_mask.is_some());
+
+    let commandline = event
+      .to_event_line(
+        &baseline,
+        true,
+        &modifier,
+        RuntimeModifier::default(),
+        None,
+        false,
+        None,
+        false,
+        theme,
+      )
+      .to_string();
+    assert!(commandline.contains("env -a custom-argv0"));
+    assert!(commandline.contains("-C /work"));
+    assert!(commandline.contains("-u REMOVED"));
+    assert!(commandline.contains("--"));
+    assert!(commandline.contains("-ADDED=dash"));
+    assert!(commandline.contains("MODIFIED=$'new value'"));
+    assert!(commandline.contains("/bin/echo $'hello world'"));
+    assert!(commandline.contains("</tmp/stdin"));
+    assert!(commandline.contains(">/tmp/stdout"));
+    assert!(commandline.contains("2>&-"));
+    assert!(commandline.contains("5<>/tmp/fd5"));
+
+    let full_env = event
+      .to_event_line(
+        &baseline,
+        true,
+        &modifier,
+        RuntimeModifier::default(),
+        None,
+        false,
+        None,
+        true,
+        theme,
+      )
+      .to_string();
+    assert!(full_env.contains("-i --"));
+    assert!(full_env.contains("KEEP=same"));
+  }
+
+  #[test]
+  fn text_for_copy_covers_exec_targets_and_error_variants() {
+    let baseline = baseline();
+    let event = exec_details();
+    let modifier = ModifierArgs::default();
+
+    assert!(
+      event
+        .text_for_copy(
+          &baseline,
+          CopyTarget::Line,
+          &modifier,
+          RuntimeModifier::default()
+        )
+        .contains("/bin/echo")
+    );
+    assert!(
+      event
+        .text_for_copy(
+          &baseline,
+          CopyTarget::Commandline(SupportedShell::Bash),
+          &modifier,
+          RuntimeModifier::default()
+        )
+        .contains("custom-argv0")
+    );
+    assert!(
+      event
+        .text_for_copy(
+          &baseline,
+          CopyTarget::CommandlineWithFullEnv(SupportedShell::Sh),
+          &modifier,
+          RuntimeModifier::default()
+        )
+        .contains("-i --")
+    );
+    assert!(
+      event
+        .text_for_copy(
+          &baseline,
+          CopyTarget::CommandlineWithStdio(SupportedShell::Fish),
+          &modifier,
+          RuntimeModifier::default()
+        )
+        .contains("</tmp/stdin")
+    );
+    assert!(
+      event
+        .text_for_copy(
+          &baseline,
+          CopyTarget::CommandlineWithFds(SupportedShell::Bash),
+          &modifier,
+          RuntimeModifier::default()
+        )
+        .contains("5<>/tmp/fd5")
+    );
+    assert!(
+      event
+        .text_for_copy(
+          &baseline,
+          CopyTarget::Env,
+          &modifier,
+          RuntimeModifier::default()
+        )
+        .contains("\"KEEP\"=\"same\"")
+    );
+    assert!(
+      event
+        .text_for_copy(
+          &baseline,
+          CopyTarget::EnvDiff,
+          &modifier,
+          RuntimeModifier::default()
+        )
+        .contains("# Added:")
+    );
+    assert!(
+      event
+        .text_for_copy(
+          &baseline,
+          CopyTarget::Argv,
+          &modifier,
+          RuntimeModifier::default()
+        )
+        .contains("hello world")
+    );
+    assert_eq!(
+      event.text_for_copy(
+        &baseline,
+        CopyTarget::Filename,
+        &modifier,
+        RuntimeModifier::default()
+      ),
+      "/bin/echo"
+    );
+    assert_eq!(
+      event.text_for_copy(
+        &baseline,
+        CopyTarget::SyscallResult,
+        &modifier,
+        RuntimeModifier::default()
+      ),
+      "0"
+    );
+
+    let mut failing = match exec_details() {
+      TracerEventDetails::Exec(exec) => *exec,
+      _ => unreachable!(),
+    };
+    failing.argv = Arc::new(Err(Errno::EACCES));
+    failing.envp = Arc::new(Err(Errno::EPERM));
+    failing.env_diff = Err(Errno::EPERM);
+    let failing = TracerEventDetails::Exec(Box::new(failing));
+    assert!(
+      failing
+        .text_for_copy(
+          &baseline,
+          CopyTarget::Argv,
+          &modifier,
+          RuntimeModifier::default()
+        )
+        .contains("failed to read argv")
+    );
+    assert!(
+      failing
+        .text_for_copy(
+          &baseline,
+          CopyTarget::Env,
+          &modifier,
+          RuntimeModifier::default()
+        )
+        .contains("failed to read envp")
+    );
+    assert_eq!(
+      failing.text_for_copy(
+        &baseline,
+        CopyTarget::EnvDiff,
+        &modifier,
+        RuntimeModifier::default()
+      ),
+      "[failed to read envp]"
+    );
+  }
+}
