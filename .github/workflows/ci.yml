@@ -167,6 +167,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
+            job-name: check_and_test(x86_64, glibc, dynamic, default-features)
             os-arch: amd64
             target: x86_64-unknown-linux-gnu
             arch: x86_64
@@ -174,12 +175,14 @@ jobs:
             no-default-features: false
           # Test with eBPF feature disabled
           - os: ubuntu-24.04
+            job-name: check_and_test(x86_64, glibc, dynamic, no-default-features)
             os-arch: amd64
             target: x86_64-unknown-linux-gnu
             arch: x86_64
             libpath: usr/lib/x86_64-linux-gnu
             no-default-features: true
           - os: ubuntu-24.04
+            job-name: check_and_test(x86_64, glibc, static, default-features)
             os-arch: amd64
             target: x86_64-unknown-linux-gnu
             arch: x86_64
@@ -189,12 +192,14 @@ jobs:
             rust_flags: -C target-feature=+crt-static
             static_libseccomp: true
           - os: ubuntu-24.04
+            job-name: check_and_test(aarch64, glibc, dynamic, default-features)
             os-arch: arm64
             target: aarch64-unknown-linux-gnu
             arch: aarch64
             libpath: usr/lib/aarch64-linux-gnu
             no-default-features: false
           - os: ubuntu-24.04
+            job-name: check_and_test(aarch64, glibc, static, default-features)
             os-arch: arm64
             target: aarch64-unknown-linux-gnu
             arch: aarch64
@@ -204,6 +209,7 @@ jobs:
             rust_flags: -C target-feature=+crt-static
             static_libseccomp: true
           - os: ubuntu-24.04
+            job-name: check_and_test(riscv64, glibc, dynamic, no-default-features)
             os-arch: riscv64
             target: riscv64gc-unknown-linux-gnu
             arch: riscv64
@@ -211,6 +217,7 @@ jobs:
             args: "-F ebpf,vendored-libbpf"
             no-default-features: true
           - os: ubuntu-24.04
+            job-name: check_and_test(riscv64, glibc, static, no-default-features)
             os-arch: riscv64
             target: riscv64gc-unknown-linux-gnu
             arch: riscv64
@@ -219,6 +226,7 @@ jobs:
             no-default-features: true
             rust_flags: -C target-feature=+crt-static
             static_libseccomp: true
+    name: ${{ matrix.job-name }}
     runs-on: ${{ matrix.os }}
     env:
       RUSTFLAGS: ${{ matrix.rust_flags }}
