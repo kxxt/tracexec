@@ -47,44 +47,6 @@ use color_eyre::eyre::{
 use nix::libc;
 use tracing::warn;
 
-fn get_shell() -> String {
-  use std::{
-    ffi::CStr,
-    path::Path,
-    str,
-  };
-
-  use nix::unistd::{
-    AccessFlags,
-    access,
-  };
-
-  let ent = unsafe { libc::getpwuid(libc::getuid()) };
-  if !ent.is_null() {
-    let shell = unsafe { CStr::from_ptr((*ent).pw_shell) };
-    match shell.to_str().map(str::to_owned) {
-      Err(err) => {
-        warn!(
-          "passwd database shell could not be \
-                     represented as utf-8: {err:#}, \
-                     falling back to /bin/sh"
-        );
-      }
-      Ok(shell) => {
-        if let Err(err) = access(Path::new(&shell), AccessFlags::X_OK) {
-          warn!(
-            "passwd database shell={shell:?} which is \
-                         not executable ({err:#}), falling back to /bin/sh"
-          );
-        } else {
-          return shell;
-        }
-      }
-    }
-  }
-  "/bin/sh".into()
-}
-
 /// `CommandBuilder` is used to prepare a command to be spawned into a pty.
 /// The interface is intentionally similar to that of `std::process::Command`.
 #[derive(Clone, Debug, PartialEq, Eq)]

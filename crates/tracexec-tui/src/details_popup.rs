@@ -13,11 +13,7 @@ use itertools::{
 use nix::{
   errno::Errno,
   fcntl::OFlag,
-  unistd::{
-    Gid,
-    Group,
-    User,
-  },
+  unistd::Gid,
 };
 use ratatui::{
   buffer::Buffer,
@@ -44,6 +40,7 @@ use ratatui::{
   },
 };
 use tracexec_core::{
+  account,
   cli::keys::TuiKeyBindings,
   event::{
     EventId,
@@ -186,7 +183,7 @@ impl DetailsPopupState {
               .enumerate()
               {
                 if !map.contains_key(&uid)
-                  && let Some(user) = User::from_uid(uid.into()).ok().flatten()
+                  && let Some(user) = account::user_from_uid(uid.into()).ok().flatten()
                 {
                   map.insert(uid, user.name);
                 }
@@ -221,7 +218,7 @@ impl DetailsPopupState {
               .enumerate()
               {
                 if !map.contains_key(&gid)
-                  && let Some(user) = Group::from_gid(gid.into()).ok().flatten()
+                  && let Some(user) = account::group_from_gid(gid.into()).ok().flatten()
                 {
                   map.insert(gid, user.name);
                 }
@@ -247,7 +244,7 @@ impl DetailsPopupState {
               if !cred.groups.is_empty() {
                 let mut spans = Vec::new();
                 for &gid in cred.groups.iter() {
-                  if let Some(group) = Group::from_gid(Gid::from_raw(gid)).ok().flatten() {
+                  if let Some(group) = account::group_from_gid(Gid::from_raw(gid)).ok().flatten() {
                     spans.push(group.name.set_style(theme.uid_gid_name));
                     spans.push(format!("({gid})").set_style(theme.uid_gid_value));
                   } else {

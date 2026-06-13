@@ -3,6 +3,7 @@ use std::os::unix::ffi::OsStrExt;
 use atoi::atoi;
 use color_eyre::eyre::bail;
 
+pub mod account;
 pub mod breakpoint;
 pub mod cache;
 pub mod cli;
