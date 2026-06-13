@@ -53,10 +53,7 @@ use nix::{
     getsockopt,
     sockopt,
   },
-  unistd::{
-    Uid,
-    User,
-  },
+  unistd::Uid,
 };
 use rand::distr::{
   Alphanumeric,
@@ -102,7 +99,7 @@ impl PreElevationCreds {
   pub fn capture() -> color_eyre::Result<Self> {
     let uid = nix::unistd::getuid();
     let gid = nix::unistd::getgid();
-    let user = User::from_uid(uid)?
+    let user = crate::account::user_from_uid(uid)?
       .ok_or_else(|| color_eyre::eyre::eyre!("Failed to look up current user (uid={uid})"))?;
     Ok(Self {
       username: user.name,

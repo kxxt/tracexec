@@ -17,15 +17,13 @@ use color_eyre::eyre::{
   bail,
 };
 use futures::StreamExt;
-use nix::unistd::{
-  Uid,
-  User,
-};
+use nix::unistd::Uid;
 use signal_hook::consts::signal::*;
 use signal_hook_tokio::Signals;
 use tokio::sync::mpsc;
 use tracexec_backend_ptrace::ptrace::BuildPtraceTracer;
 use tracexec_core::{
+  account,
   cli::{
     Cli,
     CliCommand,
@@ -154,7 +152,7 @@ async fn async_main(
     if !Uid::effective().is_root() {
       bail!("--user option is only available when running tracexec as root!");
     }
-    Some(User::from_name(user)?.ok_or_eyre("Failed to get user info")?)
+    Some(account::user_from_name(user)?.ok_or_eyre("Failed to get user info")?)
   } else {
     None
   };
