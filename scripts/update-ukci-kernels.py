@@ -56,6 +56,13 @@ class Region:
     end: int
 
 
+@dataclass(frozen=True)
+class UpdatePlan:
+    updates: dict[str, KernelUpdate]
+    removal_starts: frozenset[int] = frozenset()
+    rc_addition: KernelUpdate | None = None
+
+
 def fetch_text(url: str) -> str:
     with urllib.request.urlopen(url, timeout=60) as response:
         return response.read().decode("utf-8")
@@ -294,32 +301,168 @@ def update_block(block: str, update: KernelUpdate) -> str:
     return updated
 
 
-def apply_updates(text: str, updates: dict[str, KernelUpdate]) -> str:
+def render_new_rc_block(update: KernelUpdate, test_exe: str, indent: str) -> str:
+    lines = [
+        "{",
+        f'  name = "{update.name}";',
+        f'  tag = "{update.tag}";',
+        f'  version = "{update.version}";',
+        f'  source = "{update.source}";',
+        f'  test_exe = "{test_exe}";',
+        f'  sha256 = "{update.sha256}";',
+        "  kernelPatches = [ ];",
+        "  extraMakeFlags = [ ];",
+        "}",
+    ]
+    return "\n".join(f"{indent}{line}" for line in lines)
+
+
+def find_matching_bracket(text: str, open_index: int) -> int:
+    stack: list[str] = []
+    in_comment = False
+    in_string = False
+    escaped = False
+
+    for index in range(open_index, len(text)):
+        char = text[index]
+
+        if in_comment:
+            if char == "\n":
+                in_comment = False
+            continue
+
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == "#":
+            in_comment = True
+        elif char == '"':
+            in_string = True
+        elif char in "[{(":
+            stack.append(char)
+        elif char in "]})":
+            if not stack:
+                raise RuntimeError("Unbalanced bracket while locating UKCI rc list")
+            opening = stack.pop()
+            if (opening, char) not in {("[", "]"), ("{", "}"), ("(", ")")}:
+                raise RuntimeError("Mismatched bracket while locating UKCI rc list")
+            if not stack:
+                return index
+
+    raise RuntimeError("Could not locate end of UKCI rc list")
+
+
+def find_rc_list_region(text: str) -> Region:
+    sources_region = find_sources_region(text)
+    match = re.search(
+        r"\]\s*\+\+\s*\(lib\.optionals\s+\(!isTargetRiscv64\)\s+\[",
+        sources_region.text,
+    )
+    if match is None:
+        raise RuntimeError("Could not locate UKCI rc source list")
+
+    open_index = sources_region.start + match.end() - 1
+    close_index = find_matching_bracket(text, open_index)
+    return Region(text=text[open_index + 1 : close_index], start=open_index + 1, end=close_index)
+
+
+def insert_rc_entry(text: str, update: KernelUpdate) -> str:
+    rc_region = find_rc_list_region(text)
+    stable_entry = find_stable_entry(source_entries(text))
+    test_exe = field_value(stable_entry.block, "test_exe")
+    if test_exe is None:
+        raise RuntimeError("Could not determine UKCI test_exe for new rc entry")
+
+    close_line_start = text.rfind("\n", 0, rc_region.end) + 1
+    list_indent = re.match(r"[^\S\n]*", text[close_line_start:]).group(0)
+    entry_indent = list_indent + "  "
+    rendered = render_new_rc_block(update, test_exe, entry_indent)
+
+    insertion = f"\n{rendered}\n{list_indent}"
+    return text[: rc_region.end] + insertion + text[rc_region.end :]
+
+
+def find_rc_entry(entries: list[Entry]) -> Entry | None:
+    candidates = [
+        entry
+        for entry in entries
+        if re.fullmatch(r"\d+\.\d+", entry.name)
+        and (version := field_value(entry.block, "version")) is not None
+        and re.fullmatch(r"\d+\.\d+\.0-rc\d+", version)
+    ]
+    if len(candidates) > 1:
+        names = ", ".join(entry.name for entry in candidates)
+        raise RuntimeError(f"Expected at most one rc UKCI entry, found: {names}")
+    return candidates[0] if candidates else None
+
+
+def find_stable_entry(entries: list[Entry]) -> Entry:
+    candidates = [
+        entry
+        for entry in entries
+        if re.fullmatch(r"\d+\.\d+", entry.name)
+        and (version := field_value(entry.block, "version")) is not None
+        and "-rc" not in version
+    ]
+    if len(candidates) != 1:
+        names = ", ".join(entry.name for entry in candidates) or "<none>"
+        raise RuntimeError(f"Expected one stable UKCI entry, found: {names}")
+    return candidates[0]
+
+
+def apply_update_plan(text: str, plan: UpdatePlan) -> str:
     entries = source_entries(text)
     replacements: list[tuple[int, int, str]] = []
     used_updates: set[str] = set()
+    used_removals: set[int] = set()
 
     for entry in entries:
-        update = updates.get(entry.name)
-        if update is None:
+        if entry.start in plan.removal_starts:
+            line_start = text.rfind("\n", 0, entry.start) + 1
+            start = line_start if text[line_start : entry.start].strip() == "" else entry.start
+            end = entry.end + 1 if entry.end < len(text) and text[entry.end] == "\n" else entry.end
+            replacements.append((start, end, ""))
+            used_removals.add(entry.start)
             continue
-        replacements.append((entry.start, entry.end, update_block(entry.block, update)))
-        used_updates.add(entry.name)
 
-    missing = set(updates) - used_updates
+        update = plan.updates.get(entry.name)
+        if update is not None:
+            replacements.append((entry.start, entry.end, update_block(entry.block, update)))
+            used_updates.add(entry.name)
+
+    missing = set(plan.updates) - used_updates
     if missing:
         raise RuntimeError(f"Could not find UKCI entries: {', '.join(sorted(missing))}")
 
+    missing_removals = set(plan.removal_starts) - used_removals
+    if missing_removals:
+        raise RuntimeError(
+            "Could not find UKCI entries to remove: "
+            + ", ".join(str(start) for start in sorted(missing_removals))
+        )
+
     for start, end, replacement in reversed(replacements):
         text = text[:start] + replacement + text[end:]
+
+    if plan.rc_addition is not None:
+        text = insert_rc_entry(text, plan.rc_addition)
+
     return text
 
 
 def build_updates(
     current_text: str, releases: list[KernelRelease], update_rc: bool
-) -> dict[str, KernelUpdate]:
+) -> UpdatePlan:
     hash_cache: dict[str, dict[str, str]] = {}
     updates: dict[str, KernelUpdate] = {}
+    removal_starts: set[int] = set()
+    rc_addition: KernelUpdate | None = None
     entries = source_entries(current_text)
 
     lts_names = sorted(
@@ -353,48 +496,41 @@ def build_updates(
     if update_rc:
         mainline = find_release(releases, "mainline")
         if "-rc" not in mainline.version:
-            raise RuntimeError(
-                f"kernel.org mainline release {mainline.version} is not an rc"
+            rc_entry = find_rc_entry(entries)
+            if rc_entry is not None:
+                removal_starts.add(rc_entry.start)
+        else:
+            if mainline.source is None:
+                raise RuntimeError(f"kernel.org did not report a source URL for {mainline.version}")
+            rc_update = KernelUpdate(
+                name=branch_name(mainline.version),
+                tag=f"v{mainline.version}",
+                version=rc_nix_version(mainline.version),
+                source="torvalds",
+                sha256=prefetch_rc_hash(mainline.source, mainline.version),
             )
-        if mainline.source is None:
-            raise RuntimeError(f"kernel.org did not report a source URL for {mainline.version}")
-        updates[find_rc_entry_name(entries)] = KernelUpdate(
-            name=branch_name(mainline.version),
-            tag=f"v{mainline.version}",
-            version=rc_nix_version(mainline.version),
-            source="torvalds",
-            sha256=prefetch_rc_hash(mainline.source, mainline.version),
-        )
+            rc_entry = find_rc_entry(entries)
+            if rc_entry is None:
+                rc_addition = rc_update
+            else:
+                updates[rc_entry.name] = rc_update
 
-    return updates
+    return UpdatePlan(
+        updates=updates,
+        removal_starts=frozenset(removal_starts),
+        rc_addition=rc_addition,
+    )
 
 
 def find_stable_entry_name(entries: list[Entry]) -> str:
-    candidates = [
-        entry
-        for entry in entries
-        if re.fullmatch(r"\d+\.\d+", entry.name)
-        and (version := field_value(entry.block, "version")) is not None
-        and "-rc" not in version
-    ]
-    if len(candidates) != 1:
-        names = ", ".join(entry.name for entry in candidates) or "<none>"
-        raise RuntimeError(f"Expected one stable UKCI entry, found: {names}")
-    return candidates[0].name
+    return find_stable_entry(entries).name
 
 
 def find_rc_entry_name(entries: list[Entry]) -> str:
-    candidates = [
-        entry
-        for entry in entries
-        if re.fullmatch(r"\d+\.\d+", entry.name)
-        and (version := field_value(entry.block, "version")) is not None
-        and re.fullmatch(r"\d+\.\d+\.0-rc\d+", version)
-    ]
-    if len(candidates) != 1:
-        names = ", ".join(entry.name for entry in candidates) or "<none>"
-        raise RuntimeError(f"Expected one rc UKCI entry, found: {names}")
-    return candidates[0].name
+    entry = find_rc_entry(entries)
+    if entry is None:
+        raise RuntimeError("Expected one rc UKCI entry, found: <none>")
+    return entry.name
 
 
 def main() -> int:
@@ -414,7 +550,7 @@ def main() -> int:
 
     current_text = args.ukci_file.read_text()
     releases = load_releases()
-    updated_text = apply_updates(
+    updated_text = apply_update_plan(
         current_text,
         build_updates(current_text, releases, update_rc=not args.no_update_rc),
     )
