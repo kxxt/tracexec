@@ -139,29 +139,29 @@ localFlake:
               }
               {
                 name = "6.12lts";
-                tag = "6.12.92";
+                tag = "6.12.93";
                 source = "mirror";
                 test_exe = "tracexec";
-                sha256 = "sha256-D+N2t9s8rERWs4KRvuT6pwkcuL76pvmHAxT10Sgvnj4=";
+                sha256 = "sha256-SSZIqHwLacWsf0O+ZHkrkADjQ5VQ1OguShRxDEkJT6M=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
               {
                 name = "6.18lts";
-                tag = "6.18.34";
+                tag = "6.18.35";
                 source = "mirror";
                 test_exe = "tracexec";
-                sha256 = "sha256-ZAxHMvtChCFm25fgMsH+fl/3LIWomCx1tA90vjVV12A=";
+                sha256 = "sha256-94YCkyIZEl4hHF9b/YTtz9TsXOiPyUT4JIQT9mW+8jY=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
               {
                 name = "7.0";
-                tag = "7.0.11";
-                version = "7.0.11";
+                tag = "7.0.12";
+                version = "7.0.12";
                 source = "kernel-org";
                 test_exe = "tracexec";
-                sha256 = "sha256-5WyDVt2gETamBBxu+DK9Dsmb0tNd/5eDKqXsEO0BQwQ=";
+                sha256 = "sha256-V+3JpB78HKa3l6+o9KWHow2ir2vKc1brVuHhpK2iZdo=";
                 kernelPatches = [ riscv64BpfLocalStorageFix ];
                 extraMakeFlags = [ ];
               }
@@ -176,16 +176,6 @@ localFlake:
               #   kernelPatches = [ ];
               #   extraMakeFlags = [ ];
               # }
-              {
-                name = "7.1";
-                tag = "v7.1-rc7";
-                version = "7.1.0-rc7";
-                source = "torvalds";
-                test_exe = "tracexec";
-                sha256 = "sha256-+e8qulBiKzbNTezdZ3ycjP43ycrtq68423UJWZBuoXs=";
-                kernelPatches = [ ];
-                extraMakeFlags = [ ];
-              }
             ]);
           sourcesForTargets =
             targetSystems:
