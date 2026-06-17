@@ -86,6 +86,88 @@ pub struct PseudoTerminalPane {
 
 const ESCAPE: u8 = 27;
 
+fn encode_key_event(key: &KeyEvent, application_cursor: bool) -> Option<Vec<u8>> {
+  let input_bytes = match key.code {
+    KeyCode::Char(ch) => {
+      let mut send = vec![0; 4];
+      ch.encode_utf8(&mut send);
+      send.drain(ch.len_utf8()..);
+      if ch.is_ascii() && key.modifiers == KeyModifiers::CONTROL {
+        let char = ch.to_ascii_uppercase();
+        // https://github.com/fyne-io/terminal/blob/master/input.go
+        // https://gist.github.com/ConnerWill/d4b6c776b509add763e17f9f113fd25b
+        match char {
+          '2' | '@' | ' ' => send = vec![0],
+          '3' | '[' => send = vec![27],
+          '4' | '\\' => send = vec![28],
+          '5' | ']' => send = vec![29],
+          '6' | '^' => send = vec![30],
+          '7' | '-' | '_' => send = vec![31],
+          char if ('A'..='_').contains(&char) => {
+            // Since A == 65,
+            // we can safely subtract 64 to get
+            // the corresponding control character
+            let ascii_val = char as u8;
+            let ascii_to_send = ascii_val - 64;
+            send = vec![ascii_to_send];
+          }
+          _ => {}
+        }
+      } else if key.modifiers == KeyModifiers::ALT {
+        send = vec![ESCAPE, ch as u8];
+      }
+      send
+    }
+    KeyCode::Enter => vec![b'\n'],
+    KeyCode::Backspace => vec![8],
+    KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down
+      if key.modifiers == KeyModifiers::NONE =>
+    {
+      let final_byte = match key.code {
+        KeyCode::Up => b'A',
+        KeyCode::Down => b'B',
+        KeyCode::Right => b'C',
+        KeyCode::Left => b'D',
+        _ => unreachable!(),
+      };
+      let prefix = if application_cursor { b'O' } else { b'[' };
+      vec![ESCAPE, prefix, final_byte]
+    }
+    KeyCode::Left => vec![ESCAPE, b'[', b'D'],
+    KeyCode::Right => vec![ESCAPE, b'[', b'C'],
+    KeyCode::Up => vec![ESCAPE, b'[', b'A'],
+    KeyCode::Down => vec![ESCAPE, b'[', b'B'],
+    KeyCode::Tab => vec![b'\t'],
+    KeyCode::Home => vec![ESCAPE, b'O', b'H'],
+    KeyCode::End => vec![ESCAPE, b'O', b'F'],
+    KeyCode::PageUp => vec![ESCAPE, b'[', b'5', b'~'],
+    KeyCode::PageDown => vec![ESCAPE, b'[', b'6', b'~'],
+    KeyCode::BackTab => vec![ESCAPE, b'[', b'Z'],
+    KeyCode::Delete => vec![ESCAPE, b'[', b'3', b'~'],
+    KeyCode::Insert => vec![ESCAPE, b'[', b'2', b'~'],
+    KeyCode::Esc => vec![ESCAPE],
+    KeyCode::F(1) => vec![ESCAPE, b'O', b'P'],
+    KeyCode::F(2) => vec![ESCAPE, b'O', b'Q'],
+    KeyCode::F(3) => vec![ESCAPE, b'O', b'R'],
+    KeyCode::F(4) => vec![ESCAPE, b'O', b'S'],
+    KeyCode::F(5) => vec![ESCAPE, b'[', b'1', b'5', b'~'],
+    KeyCode::F(6) => vec![ESCAPE, b'[', b'1', b'7', b'~'],
+    KeyCode::F(7) => vec![ESCAPE, b'[', b'1', b'8', b'~'],
+    KeyCode::F(8) => vec![ESCAPE, b'[', b'1', b'9', b'~'],
+    KeyCode::F(9) => vec![ESCAPE, b'[', b'2', b'0', b'~'],
+    KeyCode::F(10) => vec![ESCAPE, b'[', b'2', b'1', b'~'],
+    KeyCode::F(11) => vec![ESCAPE, b'[', b'2', b'3', b'~'],
+    KeyCode::F(12) => vec![ESCAPE, b'[', b'2', b'4', b'~'],
+    KeyCode::F(n) => {
+      // TODO: Handle Other F keys
+      warn!("Unhandled F key: {}", n);
+      return None;
+    }
+    _ => return None,
+  };
+  Some(input_bytes)
+}
+
 impl PseudoTerminalPane {
   pub fn new(
     size: PtySize,
@@ -216,70 +298,9 @@ impl PseudoTerminalPane {
       return true;
     }
 
-    let input_bytes = match key.code {
-      KeyCode::Char(ch) => {
-        let mut send = vec![0; 4];
-        ch.encode_utf8(&mut send);
-        send.drain(ch.len_utf8()..);
-        if ch.is_ascii() && key.modifiers == KeyModifiers::CONTROL {
-          let char = ch.to_ascii_uppercase();
-          // https://github.com/fyne-io/terminal/blob/master/input.go
-          // https://gist.github.com/ConnerWill/d4b6c776b509add763e17f9f113fd25b
-          match char {
-            '2' | '@' | ' ' => send = vec![0],
-            '3' | '[' => send = vec![27],
-            '4' | '\\' => send = vec![28],
-            '5' | ']' => send = vec![29],
-            '6' | '^' => send = vec![30],
-            '7' | '-' | '_' => send = vec![31],
-            char if ('A'..='_').contains(&char) => {
-              // Since A == 65,
-              // we can safely subtract 64 to get
-              // the corresponding control character
-              let ascii_val = char as u8;
-              let ascii_to_send = ascii_val - 64;
-              send = vec![ascii_to_send];
-            }
-            _ => {}
-          }
-        } else if key.modifiers == KeyModifiers::ALT {
-          send = vec![ESCAPE, ch as u8];
-        }
-        send
-      }
-      KeyCode::Enter => vec![b'\n'],
-      KeyCode::Backspace => vec![8],
-      KeyCode::Left => vec![ESCAPE, b'[', b'D'],
-      KeyCode::Right => vec![ESCAPE, b'[', b'C'],
-      KeyCode::Up => vec![ESCAPE, b'[', b'A'],
-      KeyCode::Down => vec![ESCAPE, b'[', b'B'],
-      KeyCode::Tab => vec![b'\t'],
-      KeyCode::Home => vec![ESCAPE, b'O', b'H'],
-      KeyCode::End => vec![ESCAPE, b'O', b'F'],
-      KeyCode::PageUp => vec![ESCAPE, b'[', b'5', b'~'],
-      KeyCode::PageDown => vec![ESCAPE, b'[', b'6', b'~'],
-      KeyCode::BackTab => vec![ESCAPE, b'[', b'Z'],
-      KeyCode::Delete => vec![ESCAPE, b'[', b'3', b'~'],
-      KeyCode::Insert => vec![ESCAPE, b'[', b'2', b'~'],
-      KeyCode::Esc => vec![ESCAPE],
-      KeyCode::F(1) => vec![ESCAPE, b'O', b'P'],
-      KeyCode::F(2) => vec![ESCAPE, b'O', b'Q'],
-      KeyCode::F(3) => vec![ESCAPE, b'O', b'R'],
-      KeyCode::F(4) => vec![ESCAPE, b'O', b'S'],
-      KeyCode::F(5) => vec![ESCAPE, b'[', b'1', b'5', b'~'],
-      KeyCode::F(6) => vec![ESCAPE, b'[', b'1', b'7', b'~'],
-      KeyCode::F(7) => vec![ESCAPE, b'[', b'1', b'8', b'~'],
-      KeyCode::F(8) => vec![ESCAPE, b'[', b'1', b'9', b'~'],
-      KeyCode::F(9) => vec![ESCAPE, b'[', b'2', b'0', b'~'],
-      KeyCode::F(10) => vec![ESCAPE, b'[', b'2', b'1', b'~'],
-      KeyCode::F(11) => vec![ESCAPE, b'[', b'2', b'3', b'~'],
-      KeyCode::F(12) => vec![ESCAPE, b'[', b'2', b'4', b'~'],
-      KeyCode::F(n) => {
-        // TODO: Handle Other F keys
-        warn!("Unhandled F key: {}", n);
-        return true;
-      }
-      _ => return true,
+    let application_cursor = self.parser.read().unwrap().screen().application_cursor();
+    let Some(input_bytes) = encode_key_event(key, application_cursor) else {
+      return true;
     };
 
     self.master_tx.send(Bytes::from(input_bytes)).await.ok();
@@ -374,6 +395,49 @@ mod tests {
 
   fn keys() -> &'static TuiKeyBindings {
     &KEY_BINDINGS
+  }
+
+  #[test]
+  fn encode_arrow_keys_respects_application_cursor_mode() {
+    assert_eq!(
+      encode_key_event(&KeyEvent::new(KeyCode::Right, KeyModifiers::NONE), false),
+      Some(vec![ESCAPE, b'[', b'C'])
+    );
+    assert_eq!(
+      encode_key_event(&KeyEvent::new(KeyCode::Right, KeyModifiers::NONE), true),
+      Some(vec![ESCAPE, b'O', b'C'])
+    );
+    assert_eq!(
+      encode_key_event(&KeyEvent::new(KeyCode::Left, KeyModifiers::NONE), true),
+      Some(vec![ESCAPE, b'O', b'D'])
+    );
+    assert_eq!(
+      encode_key_event(&KeyEvent::new(KeyCode::Up, KeyModifiers::NONE), true),
+      Some(vec![ESCAPE, b'O', b'A'])
+    );
+    assert_eq!(
+      encode_key_event(&KeyEvent::new(KeyCode::Down, KeyModifiers::NONE), true),
+      Some(vec![ESCAPE, b'O', b'B'])
+    );
+  }
+
+  #[test]
+  fn encode_modified_arrow_keys_uses_csi_sequence() {
+    assert_eq!(
+      encode_key_event(&KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL), true),
+      Some(vec![ESCAPE, b'[', b'C'])
+    );
+  }
+
+  #[test]
+  fn parser_tracks_application_cursor_mode() {
+    let mut parser = vt100::Parser::new(24, 80, 0);
+
+    assert!(!parser.screen().application_cursor());
+    parser.process(b"\x1b[?1h");
+    assert!(parser.screen().application_cursor());
+    parser.process(b"\x1b[?1l");
+    assert!(!parser.screen().application_cursor());
   }
 
   #[tokio::test]
