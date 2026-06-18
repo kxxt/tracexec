@@ -141,11 +141,18 @@ pub fn process_path(
   match fs {
     "pipefs" => OutputMsg::Ok(cached_string(format!("pipe:[{}]", event.ino))),
     "sockfs" => OutputMsg::Ok(cached_string(format!("socket:[{}]", event.ino))),
-    "anon_inodefs" => OutputMsg::Ok(cached_string(format!(
-      "anon_inode:{}",
-      paths.get(&event.path_id).unwrap().segments[0].as_ref()
-    ))),
-    _ => paths.get(&event.path_id).unwrap().to_owned().into(),
+    "anon_inodefs" => match paths
+      .get(&event.path_id)
+      .and_then(|path| path.segments.first())
+    {
+      Some(segment) => OutputMsg::Ok(cached_string(format!("anon_inode:{}", segment.as_ref()))),
+      None => OutputMsg::Err(BpfError::Dropped.into()),
+    },
+    _ => paths
+      .get(&event.path_id)
+      .cloned()
+      .map(Into::into)
+      .unwrap_or_else(|| OutputMsg::Err(BpfError::Dropped.into())),
   }
 }
 
@@ -406,6 +413,25 @@ mod tests {
     let normal = process_path(&event, "ext4", &paths);
     assert_eq!(normal.as_ref(), "/usr/bin");
     assert!(matches!(normal, OutputMsg::Ok(_)));
+  }
+
+  #[test]
+  fn test_process_path_missing_path_is_bpf_error() {
+    let mut event = fd_event::default();
+    event.path_id = 99;
+    let paths: HashMap<i32, Path> = HashMap::new();
+
+    let normal = process_path(&event, "ext4", &paths);
+    assert!(matches!(
+      normal,
+      OutputMsg::Err(FriendlyError::Bpf(BpfError::Dropped))
+    ));
+
+    let anon = process_path(&event, "anon_inodefs", &paths);
+    assert!(matches!(
+      anon,
+      OutputMsg::Err(FriendlyError::Bpf(BpfError::Dropped))
+    ));
   }
 
   #[test]
