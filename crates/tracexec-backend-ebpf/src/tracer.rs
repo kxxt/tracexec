@@ -152,6 +152,16 @@ use crate::{
   process_tracker::ProcessTracker,
 };
 
+fn dropped_output() -> OutputMsg {
+  OutputMsg::Err(BpfError::Dropped.into())
+}
+
+fn pad_with_dropped(items: &mut Vec<OutputMsg>, len: usize) {
+  if items.len() < len {
+    items.extend(repeat_n(dropped_output(), len - items.len()));
+  }
+}
+
 pub struct EbpfTracer {
   user: Option<User>,
   modifier: ModifierArgs,
@@ -265,18 +275,37 @@ impl EbpfTracer {
             let event: &exec_event = unsafe { &*(data.as_ptr() as *const _) };
             let eflags = BpfEventFlags::from_bits_truncate(header.flags);
             let mut storage = event_storage.borrow_mut();
-            let mut storage = storage.remove(&header.eid).unwrap();
+            let mut storage = storage.remove(&header.eid).unwrap_or_default();
             if event.ret != 0 && self.modifier.successful_only {
               return 0;
+            }
+            let argc = event.count[0] as usize;
+            let envc = event.count[1] as usize;
+            let expected_strings = argc.saturating_add(envc);
+            if storage.strings.len() < expected_strings {
+              warn!(
+                "missing auxiliary string events for exec event {}: received {}, expected {}",
+                header.eid,
+                storage.strings.len(),
+                expected_strings
+              );
+              pad_with_dropped(&mut storage.strings, expected_strings);
             }
             let mut has_dash_env = false;
             let envp = process_envp(
               eflags,
-              storage.strings.split_off(event.count[0] as usize),
+              storage.strings.split_off(argc),
               &mut has_dash_env,
             );
             let argv = process_argv(eflags, storage.strings);
-            let cwd: OutputMsg = storage.paths.remove(&AT_FDCWD).unwrap().into();
+            let cwd: OutputMsg = storage
+              .paths
+              .remove(&AT_FDCWD)
+              .map(Into::into)
+              .unwrap_or_else(|| {
+                warn!("missing CWD path event for exec event {}", header.eid);
+                dropped_output()
+              });
             // TODO: How should we handle possible truncation?
             let base_filename = process_base_filename(eflags, event);
             let filename = process_filename(base_filename, event, &cwd, &storage.fdinfo_map);
@@ -404,21 +433,28 @@ impl EbpfTracer {
             let msg = parse_string_event(header, data);
             let mut storage = event_storage.borrow_mut();
             let strings = &mut storage.entry(header.eid).or_default().strings;
-            // Catch event drop
-            if strings.len() != header.id as usize {
+            let index = header.id as usize;
+            if strings.len() < index {
               // Insert placeholders for dropped events
-              let dropped_event = OutputMsg::Err(BpfError::Dropped.into());
-              strings.extend(repeat_n(dropped_event, header.id as usize - strings.len()));
-              debug_assert_eq!(strings.len(), header.id as usize);
+              pad_with_dropped(strings, index);
+              debug_assert_eq!(strings.len(), index);
             }
             // TODO: check flags in header
-            strings.push(msg);
+            if strings.len() == index {
+              strings.push(msg);
+            } else {
+              warn!(
+                "received out-of-order string event {} for exec event {}",
+                index, header.eid
+              );
+              strings[index] = msg;
+            }
           }
           event_type::FD_EVENT => {
             assert_eq!(data.len(), size_of::<fd_event>());
             let event: &fd_event = unsafe { &*(data.as_ptr() as *const _) };
             let mut guard = event_storage.borrow_mut();
-            let storage = guard.get_mut(&header.eid).unwrap();
+            let storage = guard.entry(header.eid).or_default();
             let fs = utf8_lossy_cow_from_bytes_with_nul(&event.fstype);
             let path = process_path(event, &fs, &storage.paths);
             let fdinfo = FileDescriptorInfo {
@@ -442,7 +478,26 @@ impl EbpfTracer {
             let path = paths.entry(header.id as i32).or_default();
             // FIXME
             path.is_absolute = true;
-            assert_eq!(path.segments.len(), event.segment_count as usize);
+            let segment_count = event.segment_count as usize;
+            if path.segments.len() < segment_count {
+              warn!(
+                "missing path segment events for path {} of exec event {}: received {}, expected {}",
+                header.id,
+                header.eid,
+                path.segments.len(),
+                segment_count
+              );
+              pad_with_dropped(&mut path.segments, segment_count);
+            } else if path.segments.len() > segment_count {
+              warn!(
+                "too many path segment events for path {} of exec event {}: received {}, expected {}",
+                header.id,
+                header.eid,
+                path.segments.len(),
+                segment_count
+              );
+              path.segments.truncate(segment_count);
+            }
             // eprintln!("Received path {} = {:?}", event.header.id, path);
           }
           event_type::PATH_SEGMENT_EVENT => {
@@ -451,10 +506,21 @@ impl EbpfTracer {
             let mut storage = event_storage.borrow_mut();
             let paths = &mut storage.entry(header.eid).or_default().paths;
             let path = paths.entry(header.id as i32).or_default();
-            // The segments must arrive in order.
-            assert_eq!(path.segments.len(), event.index as usize);
+            let index = event.index as usize;
+            if path.segments.len() < index {
+              pad_with_dropped(&mut path.segments, index);
+            }
             // TODO: check for errors
-            path.segments.push(parse_path_segment(data));
+            let segment = parse_path_segment(data);
+            if path.segments.len() == index {
+              path.segments.push(segment);
+            } else {
+              warn!(
+                "received out-of-order path segment {} for path {} of exec event {}",
+                index, header.id, header.eid
+              );
+              path.segments[index] = segment;
+            }
           }
           event_type::GROUPS_EVENT => {
             let mut storage = event_storage.borrow_mut();
