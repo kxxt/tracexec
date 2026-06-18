@@ -50,8 +50,8 @@ fn main() {
   println!("cargo:rerun-if-env-changed=CLANG");
   println!("cargo:rerun-if-env-changed=BPF_CFLAGS");
   println!("cargo:rerun-if-changed={BPF_SRC}");
-  println!("cargo:rerun-if-changed=src/bpf/common.h");
-  println!("cargo:rerun-if-changed=src/bpf/interface.h");
+  println!("cargo:rerun-if-changed=src/common.h");
+  println!("cargo:rerun-if-changed=src/interface.h");
 }
 
 fn build_normal(
