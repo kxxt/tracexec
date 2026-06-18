@@ -1030,7 +1030,7 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
   ret = bpf_core_read(&entry->flags, sizeof(entry->flags), &file->f_flags);
   if (ret < 0) {
     debug("failed to read file->f_flags");
-    entry->flags |= FLAGS_READ_FAILURE;
+    event->header.flags |= FLAGS_READ_FAILURE;
   }
   if (cloexec) {
     entry->flags |= O_CLOEXEC;
