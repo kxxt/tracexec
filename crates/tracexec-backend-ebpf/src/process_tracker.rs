@@ -4,6 +4,7 @@ use tracexec_core::event::{
   EventId,
   ParentTracker,
 };
+use tracing::warn;
 
 #[derive(Default)]
 pub struct ProcessTracker {
@@ -71,13 +72,15 @@ impl ProcessTracker {
   }
 
   pub fn add(&mut self, pid: Pid) {
-    let ret = self.processes.insert(pid, Default::default());
-    assert!(ret.is_none())
+    if self.processes.insert(pid, Default::default()).is_some() {
+      warn!("process tracker saw duplicate add for {pid}; assuming PID reuse after lost exit");
+    }
   }
 
   pub fn remove(&mut self, pid: Pid) {
-    let ret = self.processes.remove(&pid);
-    assert!(ret.is_some())
+    if self.processes.remove(&pid).is_none() {
+      warn!("process tracker saw remove for unknown {pid}; assuming lost fork or duplicate exit");
+    }
   }
 
   pub fn maybe_remove(&mut self, pid: Pid) {
@@ -85,12 +88,11 @@ impl ProcessTracker {
   }
 
   pub fn associate_events(&mut self, pid: Pid, ids: impl IntoIterator<Item = EventId>) {
-    self
-      .processes
-      .get_mut(&pid)
-      .unwrap()
-      .associated_events
-      .extend(ids);
+    let state = self.processes.entry(pid).or_insert_with(|| {
+      warn!("process tracker saw event association for unknown {pid}; assuming lost fork");
+      Default::default()
+    });
+    state.associated_events.extend(ids);
   }
 
   pub fn force_associate_events(&mut self, pid: Pid, ids: impl IntoIterator<Item = EventId>) {
@@ -161,5 +163,33 @@ mod tests {
   fn test_maybe_remove_missing_pid_is_noop() {
     let mut tracker = ProcessTracker::default();
     tracker.maybe_remove(Pid::from_raw(999));
+  }
+
+  #[test]
+  fn test_add_existing_pid_resets_state_for_pid_reuse() {
+    let mut tracker = ProcessTracker::default();
+    let pid = Pid::from_raw(123);
+    tracker.add(pid);
+    tracker.associate_events(pid, [EventId::new(1)]);
+
+    tracker.add(pid);
+
+    assert_eq!(tracker.maybe_associated_events(pid), Some([].as_slice()));
+  }
+
+  #[test]
+  fn test_remove_missing_pid_is_noop() {
+    let mut tracker = ProcessTracker::default();
+    tracker.remove(Pid::from_raw(999));
+  }
+
+  #[test]
+  fn test_associate_events_inserts_missing_pid() {
+    let mut tracker = ProcessTracker::default();
+    let pid = Pid::from_raw(77);
+    tracker.associate_events(pid, [EventId::new(9)]);
+
+    let events = tracker.maybe_associated_events(pid).unwrap();
+    assert_eq!(events, [EventId::new(9)]);
   }
 }
