@@ -422,9 +422,10 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
   // thread exit
   if (pid != tgid)
     return 0;
-  // Not traced
-  void *ptr = bpf_map_lookup_elem(&tracee_closure, &tgid);
-  if (ptr == NULL && tracexec_config.follow_fork)
+  // Not traced. This must use should_trace(), not a raw closure lookup:
+  // the launched tracee can exit before its first exec event establishes
+  // tracee_tgid, and its exit still has to terminate userspace polling.
+  if (!should_trace(tgid))
     return 0;
   struct task_struct *current = (void *)bpf_get_current_task();
   int ret = -1;
@@ -444,9 +445,6 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
   entry->header.type = EXIT_EVENT;
   entry->header.pid = pid;
   entry->header.flags = 0;
-  // FIXME: In theory, if the userspace program fails after fork before exec,
-  //        then we won't have the tracee_tgid here and thus hang forever.
-  //        Though it is unlikely to happen in practice.
   if (tgid == tracee_tgid) {
     // We should exit now!
     entry->is_root_tracee = true;
