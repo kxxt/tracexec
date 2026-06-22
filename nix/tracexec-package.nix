@@ -4,9 +4,10 @@
   crane,
 }:
 {
-  cargoExtraArgs ? "--locked --no-default-features -F recommended",
   bpfClang ? pkgs.buildPackages.clang.cc,
-}:
+  cargoExtraArgs ? "--locked --no-default-features -F recommended",
+  ...
+}@args:
 let
   craneLib = crane.mkLib pkgs;
   isLibbpfSys = p: p.name == "libbpf-sys" && p.version == "1.6.3+v1.6.3";
@@ -59,32 +60,35 @@ let
     }
   );
 in
-craneLib.buildPackage {
-  inherit cargoExtraArgs cargoVendorDir;
-  inherit (baseArgs) src;
-  buildInputs = with pkgs; [
-    elfutils
-    zlib
-    libseccomp
-    libbpf
-    linuxHeaders
-    # For building libbpf-cargo (it runs on build)
-    pkgs.buildPackages.libbpf
-    pkgs.buildPackages.zlib
-    pkgs.buildPackages.elfutils
-  ];
-  nativeBuildInputs = [
-    pkgs.buildPackages.pkg-config
-    # For building eBPF, use unwrapped binary since bpf != target arch
-    bpfClang
-    # For generating binding to perfetto protos
-    # pkgs.buildPackages.protobuf
-  ];
-  hardeningDisable = [
-    "zerocallusedregs"
-  ];
-  BPF_CFLAGS = "-isystem ${pkgs.linuxHeaders}/include -I ${pkgs.libbpf}/include";
-  CLANG = "${bpfClang}/bin/clang";
-  # Don't store logs
-  TRACEXEC_DATA = "/tmp";
-}
+craneLib.buildPackage (
+  (builtins.removeAttrs args [ "bpfClang" ])
+  // {
+    inherit cargoExtraArgs cargoVendorDir;
+    inherit (baseArgs) src;
+    buildInputs = with pkgs; [
+      elfutils
+      zlib
+      libseccomp
+      libbpf
+      linuxHeaders
+      # For building libbpf-cargo (it runs on build)
+      pkgs.buildPackages.libbpf
+      pkgs.buildPackages.zlib
+      pkgs.buildPackages.elfutils
+    ];
+    nativeBuildInputs = [
+      pkgs.buildPackages.pkg-config
+      # For building eBPF, use unwrapped binary since bpf != target arch
+      bpfClang
+      # For generating binding to perfetto protos
+      # pkgs.buildPackages.protobuf
+    ];
+    hardeningDisable = [
+      "zerocallusedregs"
+    ];
+    BPF_CFLAGS = "-isystem ${pkgs.linuxHeaders}/include -I ${pkgs.libbpf}/include";
+    CLANG = "${bpfClang}/bin/clang";
+    # Don't store logs
+    TRACEXEC_DATA = "/tmp";
+  }
+)
