@@ -39,7 +39,10 @@ use libbpf_rs::{
     SkelBuilder,
   },
 };
-use libbpf_sys::BPF_F_SLEEPABLE;
+use libbpf_sys::{
+  BPF_F_NO_PREALLOC,
+  BPF_F_SLEEPABLE,
+};
 use nix::{
   errno::Errno,
   fcntl::OFlag,
@@ -148,6 +151,7 @@ use crate::{
     can_i_use_sleepable_fentry,
     kernel_have_ftrace_with_direct_calls,
     kernel_have_syscall_wrappers,
+    kernel_supports_sleepable_no_prealloc_hash_maps,
   },
   process_tracker::ProcessTracker,
 };
@@ -657,6 +661,12 @@ impl EbpfTracer {
     let kconfig = procfs::kernel_config()
       .inspect_err(|e| warn!("Failed to get kernel config: {e}"))
       .ok();
+    if kernel_supports_sleepable_no_prealloc_hash_maps() {
+      open_skel
+        .maps
+        .tracee_closure
+        .set_map_flags(BPF_F_NO_PREALLOC)?;
+    }
     // Check if we should use kprobe on kernels without CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS
     let override_env = self.tracexec_override_env.as_deref();
     if !kernel_have_ftrace_with_direct_calls(kconfig.as_ref(), override_env) {
