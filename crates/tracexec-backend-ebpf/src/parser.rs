@@ -133,26 +133,81 @@ pub fn process_envp(
   }
 }
 
+fn output_path_string(path: String, partial: bool) -> OutputMsg {
+  if partial {
+    OutputMsg::PartialOk(cached_string(path))
+  } else {
+    OutputMsg::Ok(cached_string(path))
+  }
+}
+
+fn normal_path(event: &fd_event, paths: &hashbrown::HashMap<i32, Path>) -> OutputMsg {
+  paths
+    .get(&event.path_id)
+    .cloned()
+    .map(Into::into)
+    .unwrap_or_else(|| OutputMsg::Err(BpfError::Dropped.into()))
+}
+
+fn first_path_segment<'a>(
+  event: &fd_event,
+  paths: &'a hashbrown::HashMap<i32, Path>,
+) -> Option<&'a OutputMsg> {
+  paths
+    .get(&event.path_id)
+    .and_then(|path| path.segments.first())
+}
+
+fn format_with_first_segment(
+  event: &fd_event,
+  paths: &hashbrown::HashMap<i32, Path>,
+  prefix: &str,
+  suffix: &str,
+) -> OutputMsg {
+  match first_path_segment(event, paths) {
+    Some(segment) => output_path_string(
+      format!("{prefix}{}{suffix}", segment.as_ref()),
+      segment.not_ok(),
+    ),
+    None => OutputMsg::Err(BpfError::Dropped.into()),
+  }
+}
+
+fn pseudo_name(event: &fd_event) -> Option<std::borrow::Cow<'_, str>> {
+  let name = utf8_lossy_cow_from_bytes_with_nul(&event.pseudo_name);
+  if name.is_empty() { None } else { Some(name) }
+}
+
 pub fn process_path(
   event: &fd_event,
   fs: &str,
   paths: &hashbrown::HashMap<i32, Path>,
 ) -> OutputMsg {
+  // If an event does not use dynamic dname, treat it like a normal one
+  if event.uses_d_dname == 0 {
+    return normal_path(event, paths);
+  }
+
   match fs {
     "pipefs" => OutputMsg::Ok(cached_string(format!("pipe:[{}]", event.ino))),
     "sockfs" => OutputMsg::Ok(cached_string(format!("socket:[{}]", event.ino))),
-    "anon_inodefs" => match paths
-      .get(&event.path_id)
-      .and_then(|path| path.segments.first())
-    {
-      Some(segment) => OutputMsg::Ok(cached_string(format!("anon_inode:{}", segment.as_ref()))),
+    "anon_inodefs" => format_with_first_segment(event, paths, "anon_inode:", ""),
+    "pidfs" => OutputMsg::Ok(cached_string("anon_inode:[pidfd]".to_string())),
+    "nsfs" => match pseudo_name(event) {
+      Some(name) => OutputMsg::Ok(cached_string(format!("{name}:[{}]", event.ino))),
       None => OutputMsg::Err(BpfError::Dropped.into()),
     },
-    _ => paths
-      .get(&event.path_id)
-      .cloned()
-      .map(Into::into)
-      .unwrap_or_else(|| OutputMsg::Err(BpfError::Dropped.into())),
+    "dmabuf" => match first_path_segment(event, paths) {
+      Some(segment) => {
+        let name = pseudo_name(event);
+        output_path_string(
+          format!("/{}:{}", segment.as_ref(), name.as_deref().unwrap_or("")),
+          segment.not_ok() || name.is_none(),
+        )
+      }
+      None => OutputMsg::Err(BpfError::Dropped.into()),
+    },
+    _ => format_with_first_segment(event, paths, "/", " (deleted)"),
   }
 }
 
@@ -381,6 +436,7 @@ mod tests {
     let mut event = fd_event::default();
     event.ino = 123;
     event.path_id = 1;
+    event.uses_d_dname = 1;
 
     let mut paths: HashMap<i32, Path> = HashMap::new();
     paths.insert(
@@ -400,6 +456,22 @@ mod tests {
     let anon = process_path(&event, "anon_inodefs", &paths);
     assert_eq!(anon.as_ref(), "anon_inode:eventpoll");
 
+    let pidfd = process_path(&event, "pidfs", &paths);
+    assert_eq!(pidfd.as_ref(), "anon_inode:[pidfd]");
+
+    event.pseudo_name[..4].copy_from_slice(b"mnt\0");
+    let ns = process_path(&event, "nsfs", &paths);
+    assert_eq!(ns.as_ref(), "mnt:[123]");
+
+    event.pseudo_name[0] = 0;
+    let dmabuf = process_path(&event, "dmabuf", &paths);
+    assert_eq!(dmabuf.as_ref(), "/eventpoll:");
+    assert!(matches!(dmabuf, OutputMsg::PartialOk(_)));
+
+    let simple = process_path(&event, "aio", &paths);
+    assert_eq!(simple.as_ref(), "/eventpoll (deleted)");
+    assert!(matches!(simple, OutputMsg::Ok(_)));
+
     paths.insert(
       1,
       Path {
@@ -410,6 +482,7 @@ mod tests {
         ],
       },
     );
+    event.uses_d_dname = 0;
     let normal = process_path(&event, "ext4", &paths);
     assert_eq!(normal.as_ref(), "/usr/bin");
     assert!(matches!(normal, OutputMsg::Ok(_)));
@@ -430,6 +503,19 @@ mod tests {
     let anon = process_path(&event, "anon_inodefs", &paths);
     assert!(matches!(
       anon,
+      OutputMsg::Err(FriendlyError::Bpf(BpfError::Dropped))
+    ));
+
+    event.uses_d_dname = 1;
+    let anon = process_path(&event, "anon_inodefs", &paths);
+    assert!(matches!(
+      anon,
+      OutputMsg::Err(FriendlyError::Bpf(BpfError::Dropped))
+    ));
+
+    let ns = process_path(&event, "nsfs", &paths);
+    assert!(matches!(
+      ns,
       OutputMsg::Err(FriendlyError::Bpf(BpfError::Dropped))
     ));
   }
