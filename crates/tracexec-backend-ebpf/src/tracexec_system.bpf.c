@@ -50,7 +50,6 @@ struct {
   __type(key, pid_t);
   // The value is useless. We just use this map as a hash set.
   __type(value, char);
-  __uint(map_flags, BPF_F_NO_PREALLOC);
 } tracee_closure SEC(".maps");
 
 // To avoid data race, for every task, only a single BPF program should access

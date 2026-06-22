@@ -9,6 +9,12 @@ use cfg_if::cfg_if;
 use procfs::ConfigSetting;
 use tracexec_core::elevate;
 
+const MIN_SLEEPABLE_NO_PREALLOC_HASH_MAPS: (u32, u32) = (6, 1);
+
+pub fn kernel_supports_sleepable_no_prealloc_hash_maps() -> bool {
+  tracexec_core::is_current_kernel_ge(MIN_SLEEPABLE_NO_PREALLOC_HASH_MAPS).unwrap_or_default()
+}
+
 pub fn kernel_have_syscall_wrappers(
   #[allow(unused)] kconfig: Option<&HashMap<String, ConfigSetting>>,
 ) -> bool {

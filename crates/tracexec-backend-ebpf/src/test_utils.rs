@@ -11,12 +11,18 @@ use libbpf_rs::skel::{
   Skel,
   SkelBuilder,
 };
-use libbpf_sys::BPF_F_SLEEPABLE;
+use libbpf_sys::{
+  BPF_F_NO_PREALLOC,
+  BPF_F_SLEEPABLE,
+};
 
-use crate::bpf::skel::{
-  OpenTracexecSystemSkel,
-  TracexecSystemSkel,
-  TracexecSystemSkelBuilder,
+use crate::{
+  bpf::skel::{
+    OpenTracexecSystemSkel,
+    TracexecSystemSkel,
+    TracexecSystemSkelBuilder,
+  },
+  probe::kernel_supports_sleepable_no_prealloc_hash_maps,
 };
 
 pub fn find_sh() -> PathBuf {
@@ -136,6 +142,12 @@ pub fn with_skel<T>(
   let builder = TracexecSystemSkelBuilder::default();
   let mut open_skel = builder.open(&mut obj)?;
   prepare(&mut open_skel);
+  if kernel_supports_sleepable_no_prealloc_hash_maps() {
+    open_skel
+      .maps
+      .tracee_closure
+      .set_map_flags(BPF_F_NO_PREALLOC)?;
+  }
   let mut skel = open_skel.load()?;
   skel.attach()?;
   let result = f(&mut skel);
