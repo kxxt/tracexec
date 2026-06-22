@@ -38,15 +38,18 @@ use tracexec_backend_ebpf::{
       exec_event,
       fd_event,
       path_event,
+      path_segment_event,
       tracexec_event_header,
     },
     utf8_lossy_cow_from_bytes_with_nul,
   },
+  event::Path,
   function_name,
   parser::{
     parse_groups_event,
     parse_path_segment,
     parse_string_event,
+    process_path,
   },
   test_utils::{
     find_sh,
@@ -56,6 +59,10 @@ use tracexec_backend_ebpf::{
     prepare_execveat_kprobe_kretprobe,
     with_skel,
   },
+};
+use tracexec_core::event::{
+  BpfError,
+  OutputMsg,
 };
 
 #[fixture]
@@ -71,11 +78,21 @@ struct ExecCapture {
 struct AuxCapture {
   pid: i32,
   exec: exec_event,
+  exec_events: Vec<exec_event>,
   strings: Vec<String>,
   path_events: Vec<path_event>,
   path_segments: Vec<String>,
+  raw_path_segments: Vec<PathSegmentCapture>,
   fd_events: Vec<fd_event>,
   groups_sizes: Vec<usize>,
+}
+
+#[derive(Clone)]
+struct PathSegmentCapture {
+  eid: u64,
+  path_id: i32,
+  index: usize,
+  segment: OutputMsg,
 }
 
 fn run_command_and_capture(
@@ -310,26 +327,39 @@ fn run_execveat_in_thread_and_capture(
   })
 }
 
-fn run_exec_and_collect_aux(
+fn run_command_and_collect_aux(
   skel: &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
-  sh_executable: &PathBuf,
+  mut cmd: Command,
   timeout: Duration,
 ) -> color_eyre::Result<AuxCapture> {
   #[derive(Default)]
   struct State {
     exec: Option<exec_event>,
+    exec_events: Vec<exec_event>,
     strings: Vec<String>,
     path_events: Vec<path_event>,
     path_segments: Vec<String>,
+    raw_path_segments: Vec<PathSegmentCapture>,
     fd_events: Vec<fd_event>,
     groups_sizes: Vec<usize>,
+  }
+
+  impl State {
+    fn event_count(&self) -> usize {
+      self.exec_events.len()
+        + self.strings.len()
+        + self.path_events.len()
+        + self.raw_path_segments.len()
+        + self.fd_events.len()
+        + self.groups_sizes.len()
+    }
   }
 
   let state: Arc<Mutex<State>> = Arc::new(Mutex::new(State::default()));
 
   let mut rb_builder = RingBufferBuilder::new();
   let slot = Arc::clone(&state);
-  let mut child = Command::new(sh_executable).arg("-c").arg("true").spawn()?;
+  let mut child = cmd.spawn()?;
   let child_pid = child.id() as i32;
 
   rb_builder.add(&skel.maps.events, move |data| {
@@ -348,6 +378,7 @@ fn run_exec_and_collect_aux(
           // SAFETY: exec_event is a plain old data struct produced by the eBPF program.
           let evt = unsafe { std::ptr::read(data.as_ptr() as *const exec_event) };
           guard.exec = Some(evt);
+          guard.exec_events.push(evt);
         }
       }
       event_type::STRING_EVENT => {
@@ -363,6 +394,16 @@ fn run_exec_and_collect_aux(
       }
       event_type::PATH_SEGMENT_EVENT => {
         let msg = parse_path_segment(data);
+        if data.len() == std::mem::size_of::<path_segment_event>() {
+          // SAFETY: path_segment_event is a plain old data struct produced by the eBPF program.
+          let evt = unsafe { std::ptr::read(data.as_ptr() as *const path_segment_event) };
+          guard.raw_path_segments.push(PathSegmentCapture {
+            eid: header.eid,
+            path_id: header.id as i32,
+            index: evt.index as usize,
+            segment: msg.clone(),
+          });
+        }
         guard.path_segments.push(msg.as_ref().to_string());
       }
       event_type::FD_EVENT => {
@@ -385,10 +426,25 @@ fn run_exec_and_collect_aux(
   let status = child.wait()?;
   assert!(status.success());
 
+  const POLL_INTERVAL: Duration = Duration::from_millis(50);
+  const QUIET_POLLS_TO_ASSUME_DRAINED: usize = 4;
+
   let start = Instant::now();
+  let mut quiet_polls_after_exec = 0;
   while start.elapsed() < timeout {
-    rb.poll(Duration::from_millis(50))?;
-    if state.lock().unwrap().exec.is_some() {
+    let before = state.lock().unwrap().event_count();
+    rb.poll(POLL_INTERVAL)?;
+    let guard = state.lock().unwrap();
+    let after = guard.event_count();
+    if guard.exec.is_some() && after == before {
+      quiet_polls_after_exec += 1;
+    } else {
+      quiet_polls_after_exec = 0;
+    }
+
+    // The child has exited, but ring-buffer samples can still be queued.
+    // Stop only after the exec event was seen and polling has gone quiet.
+    if quiet_polls_after_exec >= QUIET_POLLS_TO_ASSUME_DRAINED {
       break;
     }
   }
@@ -398,12 +454,80 @@ fn run_exec_and_collect_aux(
   Ok(AuxCapture {
     pid: child_pid,
     exec,
+    exec_events: guard.exec_events.clone(),
     strings: guard.strings.clone(),
     path_events: guard.path_events.clone(),
     path_segments: guard.path_segments.clone(),
+    raw_path_segments: guard.raw_path_segments.clone(),
     fd_events: guard.fd_events.clone(),
     groups_sizes: guard.groups_sizes.clone(),
   })
+}
+
+fn run_exec_and_collect_aux(
+  skel: &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
+  sh_executable: &PathBuf,
+  timeout: Duration,
+) -> color_eyre::Result<AuxCapture> {
+  let mut cmd = Command::new(sh_executable);
+  cmd.arg("-c").arg("true");
+  run_command_and_collect_aux(skel, cmd, timeout)
+}
+
+fn run_binary_and_collect_aux(
+  skel: &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
+  exe: &PathBuf,
+  args: &[&str],
+  timeout: Duration,
+) -> color_eyre::Result<AuxCapture> {
+  let mut cmd = Command::new(exe);
+  cmd.args(args);
+  run_command_and_collect_aux(skel, cmd, timeout)
+}
+
+fn fd_fstype(event: &fd_event) -> String {
+  utf8_lossy_cow_from_bytes_with_nul(event.fstype.as_slice()).to_string()
+}
+
+fn fd_pseudo_name(event: &fd_event) -> String {
+  utf8_lossy_cow_from_bytes_with_nul(event.pseudo_name.as_slice()).to_string()
+}
+
+fn paths_for_eid(capture: &AuxCapture, eid: u64) -> hashbrown::HashMap<i32, Path> {
+  let mut paths = hashbrown::HashMap::new();
+  for event in capture
+    .path_events
+    .iter()
+    .filter(|event| event.header.eid == eid)
+  {
+    paths.entry(event.header.id as i32).or_insert_with(|| Path {
+      is_absolute: true,
+      segments: Vec::with_capacity(event.segment_count as usize),
+    });
+  }
+
+  for segment in capture
+    .raw_path_segments
+    .iter()
+    .filter(|segment| segment.eid == eid)
+  {
+    let path = paths.entry(segment.path_id).or_insert_with(|| Path {
+      is_absolute: true,
+      segments: Vec::new(),
+    });
+    while path.segments.len() <= segment.index {
+      path.segments.push(OutputMsg::Err(BpfError::Dropped.into()));
+    }
+    path.segments[segment.index] = segment.segment.clone();
+  }
+
+  paths
+}
+
+fn rendered_fd_path(capture: &AuxCapture, event: &fd_event) -> OutputMsg {
+  let paths = paths_for_eid(capture, event.header.eid);
+  let fs = fd_fstype(event);
+  process_path(event, &fs, &paths)
 }
 
 fn with_optional_sleepable_skel(
@@ -591,6 +715,104 @@ fn test_exec_emits_auxiliary_events(sh_executable: PathBuf) -> color_eyre::Resul
         "expected non-empty GROUPS_EVENT payload"
       );
     }
+    Ok(())
+  })
+}
+
+#[rstest]
+#[file_serial(bpf)]
+#[ignore = "root"]
+fn test_exec_reports_pseudo_filesystem_fds_across_exec() -> color_eyre::Result<()> {
+  let bin = PathBuf::from(env!("CARGO_BIN_EXE_special-fds-exec"));
+  with_skel(function_name!(), prepare_execve_kprobe_kretprobe, |skel| {
+    let capture = run_binary_and_collect_aux(skel, &bin, &[], Duration::from_secs(4))?;
+    assert!(
+      capture.exec_events.len() >= 2,
+      "fixture should exec once after opening special fds"
+    );
+
+    let reexec_eid = capture
+      .exec_events
+      .iter()
+      .map(|event| event.header.eid)
+      .max()
+      .expect("missing exec events");
+    let reexec_fds = capture
+      .fd_events
+      .iter()
+      .filter(|event| event.header.eid == reexec_eid)
+      .collect::<Vec<_>>();
+    assert!(!reexec_fds.is_empty(), "missing fd events for re-exec");
+
+    let pipe_fds = reexec_fds
+      .iter()
+      .filter(|event| fd_fstype(event) == "pipefs" && event.uses_d_dname != 0)
+      .collect::<Vec<_>>();
+    assert!(
+      pipe_fds.len() >= 2,
+      "expected both inherited pipe fds, got {}",
+      pipe_fds.len()
+    );
+    assert!(
+      pipe_fds
+        .iter()
+        .all(|event| rendered_fd_path(&capture, event)
+          .as_ref()
+          .starts_with("pipe:[")),
+      "pipe fds should render as pipe:[ino]"
+    );
+
+    let socket_fds = reexec_fds
+      .iter()
+      .filter(|event| fd_fstype(event) == "sockfs" && event.uses_d_dname != 0)
+      .collect::<Vec<_>>();
+    assert!(
+      socket_fds.len() >= 2,
+      "expected both inherited socketpair fds, got {}",
+      socket_fds.len()
+    );
+    assert!(
+      socket_fds
+        .iter()
+        .all(|event| rendered_fd_path(&capture, event)
+          .as_ref()
+          .starts_with("socket:[")),
+      "socket fds should render as socket:[ino]"
+    );
+
+    let anon_paths = reexec_fds
+      .iter()
+      .filter(|event| fd_fstype(event) == "anon_inodefs" && event.uses_d_dname != 0)
+      .map(|event| rendered_fd_path(&capture, event).as_ref().to_string())
+      .collect::<Vec<_>>();
+    assert!(
+      anon_paths
+        .iter()
+        .any(|path| path.contains("eventfd") || path.contains("eventpoll")),
+      "expected inherited eventfd or epoll anon inode, got {anon_paths:?}"
+    );
+
+    let ns_fd = reexec_fds
+      .iter()
+      .find(|event| fd_fstype(event) == "nsfs")
+      .expect("expected inherited namespace fd");
+    assert_eq!(ns_fd.uses_d_dname, 1);
+    assert_eq!(fd_pseudo_name(ns_fd), "mnt");
+    assert!(
+      rendered_fd_path(&capture, ns_fd)
+        .as_ref()
+        .starts_with("mnt:["),
+      "namespace fd should render as mnt:[ino]"
+    );
+
+    if let Some(pidfd) = reexec_fds.iter().find(|event| fd_fstype(event) == "pidfs") {
+      assert_eq!(pidfd.uses_d_dname, 1);
+      assert_eq!(
+        rendered_fd_path(&capture, pidfd).as_ref(),
+        "anon_inode:[pidfd]"
+      );
+    }
+
     Ok(())
   })
 }
