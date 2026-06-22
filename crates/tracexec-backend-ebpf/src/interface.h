@@ -36,6 +36,8 @@
 #define PATH_SEGMENT_MAX 256
 // Linux doesn't seem to have a limit on fstype name length
 #define FSTYPE_NAME_MAX 256
+// Metadata used to reconstruct kernel d_dname() output for pseudo filesystems.
+#define PSEUDO_NAME_MAX 256
 
 #define BITS_PER_LONG 64
 #define NOFILE_MAX 2147483584
@@ -159,7 +161,9 @@ struct fd_event {
   s32 path_id;
   long unsigned int ino;
   loff_t pos;
+  u8 uses_d_dname;
   u8 fstype[FSTYPE_NAME_MAX];
+  u8 pseudo_name[PSEUDO_NAME_MAX];
 };
 
 struct path_event {

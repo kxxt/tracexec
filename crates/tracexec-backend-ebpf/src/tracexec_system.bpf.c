@@ -1314,10 +1314,76 @@ err_out:
   return 0;
 }
 
-static int read_fs_info(struct fd_event *fd_event, struct vfsmount *vfsmnt) {
+static __always_inline bool is_nsfs(const u8 *fstype) {
+  return fstype[0] == 'n' && fstype[1] == 's' && fstype[2] == 'f' &&
+         fstype[3] == 's' && fstype[4] == '\0';
+}
+
+static int read_dname_dispatch_info(struct fd_event *fd_event,
+                                    const struct path *path) {
+  if (fd_event == NULL || path == NULL || path->dentry == NULL ||
+      path->mnt == NULL) {
+    return -1;
+  }
+
+  const struct dentry_operations *d_op = BPF_CORE_READ(path->dentry, d_op);
+  if (d_op == NULL) {
+    return 0;
+  }
+  char *(*d_dname)(struct dentry *, char *, int) =
+      BPF_CORE_READ(d_op, d_dname);
+  if (d_dname == NULL) {
+    return 0;
+  }
+
+  struct dentry *parent = BPF_CORE_READ(path->dentry, d_parent);
+  struct dentry *mnt_root = BPF_CORE_READ(path->mnt, mnt_root);
+  if (parent == NULL || mnt_root == NULL) {
+    return -1;
+  }
+
+  // https://elixir.bootlin.com/linux/v6.19.7/source/fs/d_path.c#L281
+  // Not a root dentry or mount root dentry
+  if (parent != path->dentry || path->dentry != mnt_root) {
+    fd_event->uses_d_dname = 1;
+  }
+  return 0;
+}
+
+static int read_nsfs_name(struct fd_event *fd_event, const struct path *path) {
+  if (fd_event == NULL || path == NULL || path->dentry == NULL) {
+    return -1;
+  }
+
+  struct inode *inode = BPF_CORE_READ(path->dentry, d_inode);
+  if (inode == NULL) {
+    return -1;
+  }
+  struct ns_common *ns = BPF_CORE_READ(inode, i_private);
+  if (ns == NULL) {
+    return -1;
+  }
+  const struct proc_ns_operations *ns_ops = BPF_CORE_READ(ns, ops);
+  if (ns_ops == NULL) {
+    return -1;
+  }
+  const char *name = BPF_CORE_READ(ns_ops, name);
+  if (name == NULL) {
+    return -1;
+  }
+  return bpf_probe_read_kernel_str(&fd_event->pseudo_name,
+                                   sizeof(fd_event->pseudo_name), name);
+}
+
+static int read_fs_info(struct fd_event *fd_event, const struct path *path) {
   if (fd_event == NULL) {
     return 0;
   }
+  if (path == NULL || path->mnt == NULL) {
+    fd_event->header.flags |= PTR_READ_FAILURE;
+    return 0;
+  }
+  struct vfsmount *vfsmnt = path->mnt;
   struct mount *mount = container_of(vfsmnt, struct mount, mnt);
   long ret = bpf_core_read(&fd_event->mnt_id, sizeof(fd_event->mnt_id),
                            &mount->mnt_id);
@@ -1330,6 +1396,17 @@ static int read_fs_info(struct fd_event *fd_event, struct vfsmount *vfsmnt) {
                                   fstype_name);
   if (ret < 0)
     goto fstype_err_out;
+  ret = read_dname_dispatch_info(fd_event, path);
+  if (ret < 0) {
+    fd_event->header.flags |= PTR_READ_FAILURE;
+  }
+  if (is_nsfs(fd_event->fstype)) {
+    ret = read_nsfs_name(fd_event, path);
+    if (ret < 0) {
+      fd_event->header.flags |= STR_READ_FAILURE;
+      fd_event->pseudo_name[0] = '\0';
+    }
+  }
   return 0;
 fstype_err_out:
   fill_field_with_unknown(fd_event->fstype);
@@ -1387,7 +1464,7 @@ static int read_send_path(const struct path *path,
   // Get vfsmount and mnt_root
   struct vfsmount *vfsmnt = path->mnt;
   if (fd_event != NULL) {
-    read_fs_info(fd_event, vfsmnt);
+    read_fs_info(fd_event, path);
   }
   ret = bpf_core_read(&segment_ctx.mnt_root, sizeof(void *), &vfsmnt->mnt_root);
   if (ret < 0) {
