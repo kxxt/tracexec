@@ -21,6 +21,19 @@ update-readme:
 
   File.write("README.md", readme % helps)
 
+test-normal:
+  cargo test --workspace
+
+test-root:
+  #!/usr/bin/env bash
+  set -euo pipefail
+
+  triple="$(rustc -vV | sed -n 's/^host: //p' | tr '[:lower:]-' '[:upper:]_')"
+  export "CARGO_TARGET_${triple}_RUNNER=sudo -E"
+  cargo test --workspace -- --ignored
+
+test-all: test-normal test-root
+
 arch-family := if arch() == "x86_64" {
   "x86"
 } else if arch() == "aarch64" {
