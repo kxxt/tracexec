@@ -54,3 +54,7 @@ tempfile = { workspace = true }
 [[bin]]
 name = "compat-exec"
 path = "../../fixtures/compat-exec.rs"
+
+[[bin]]
+name = "special-fds-exec"
+path = "../../fixtures/special-fds-exec.rs"
