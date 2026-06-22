@@ -161,6 +161,8 @@ localFlake:
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
+            ])
+            ++ (lib.optionals (!isTargetRiscv64) [
               # {
               #   name = "bpf-next";
               #   tag = "bpf-next-7.1";
@@ -183,6 +185,12 @@ localFlake:
             21
             22
           ];
+          ebpfRootTestNames = lib.map (lib.removeSuffix ".rs") (
+            lib.filter (lib.hasSuffix ".rs") (
+              builtins.attrNames (builtins.readDir ../crates/tracexec-backend-ebpf/tests)
+            )
+          );
+          ebpfRootTestNamesSpaceSep = lib.concatStringsSep " " ebpfRootTestNames;
           tracexecForClang =
             targetPkgs: llvmVer:
             let
@@ -194,6 +202,86 @@ localFlake:
               pkgs = targetPkgs;
             })
               { inherit bpfClang; };
+          tracexecEbpfRootTestsForClang =
+            targetPkgs: llvmVer:
+            let
+              bpfClang = targetPkgs.buildPackages.${"llvmPackages_${toString llvmVer}"}.clang.cc;
+              cargoExtraArgs = "--locked --package tracexec-backend-ebpf --no-default-features -F ebpf-debug --tests";
+            in
+            (import ./tracexec-package.nix {
+              inherit (targetPkgs) lib;
+              inherit (localFlake) crane;
+              pkgs = targetPkgs;
+            })
+              {
+                inherit bpfClang;
+                pnameSuffix = "-ebpf-root-tests";
+                inherit cargoExtraArgs;
+                cargoArtifacts = targetPkgs.runCommand "empty-cargo-target" { } "mkdir -p $out/target";
+                doCheck = false;
+                doNotPostBuildInstallCargoBinaries = true;
+                buildPhaseCargoCommand = ''
+                  mkdir -p "$out/target"
+                  export CARGO_TARGET_DIR="$out/target"
+                  cargoBuildLog=$(mktemp cargoBuildLogXXXX.json)
+                  cargoWithProfile test --no-run --message-format json-render-diagnostics ${cargoExtraArgs} >"$cargoBuildLog"
+                '';
+                installPhaseCommand = ''
+                  mkdir -p "$out/bin"
+
+                  for test_name in ${ebpfRootTestNamesSpaceSep}; do
+                    installed=0
+                    for candidate in "$out"/target/*/release/deps/"$test_name"-* "$out"/target/release/deps/"$test_name"-*; do
+                      if [ -f "$candidate" ] && [ -x "$candidate" ] && [[ "$candidate" != *.d ]]; then
+                        ln -s "$candidate" "$out/bin/$test_name"
+                        installed=$((installed + 1))
+                      fi
+                    done
+                    if [ "$installed" -ne 1 ]; then
+                      echo "expected exactly one test binary for $test_name, found $installed" >&2
+                      exit 1
+                    fi
+                  done
+
+                  for helper in compat-exec special-fds-exec; do
+                    found=0
+                    for candidate in "$out"/target/*/release/"$helper" "$out"/target/release/"$helper"; do
+                      if [ -f "$candidate" ] && [ -x "$candidate" ]; then
+                        found=$((found + 1))
+                      fi
+                    done
+                    if [ "$found" -ne 1 ]; then
+                      echo "expected exactly one helper binary for $helper, found $found" >&2
+                      exit 1
+                    fi
+                  done
+
+                  find "$out/target" -type f | while IFS= read -r candidate; do
+                    keep=0
+                    base="$(basename "$candidate")"
+                    case "$base" in
+                      compat-exec|special-fds-exec)
+                        keep=1
+                        ;;
+                    esac
+                    for test_name in ${ebpfRootTestNamesSpaceSep}; do
+                      case "$base" in
+                        "$test_name"-*)
+                          if [ -x "$candidate" ] && [[ "$candidate" != *.d ]]; then
+                            keep=1
+                          fi
+                          ;;
+                      esac
+                    done
+                    if [ "$keep" -eq 0 ]; then
+                      rm -f "$candidate"
+                    fi
+                  done
+
+                  find "$out/target" -type d -empty -delete
+                  printf '%s\n' ${ebpfRootTestNamesSpaceSep} > "$out/tests.list"
+                '';
+              };
           # Build a single shared initramfs per target system (no kernel dependency)
           initramfsForTarget =
             targetSystem:
@@ -286,6 +374,7 @@ localFlake:
                 let
                   targetPkgs = pkgsForTarget builtKernel.targetSystem;
                   testPackage = tracexecForClang targetPkgs llvmVer;
+                  rootTestsPackage = tracexecEbpfRootTestsForClang targetPkgs llvmVer;
                 in
                 {
                   inherit (builtKernel)
@@ -294,7 +383,7 @@ localFlake:
                     targetArch
                     test_exe
                     ;
-                  inherit testPackage;
+                  inherit rootTestsPackage testPackage;
                   name = "${builtKernel.baseName}-clang${toString llvmVer}";
                   initramfs = initramfsMap.${builtKernel.targetSystem};
                 };
@@ -334,9 +423,10 @@ localFlake:
                   targetSystem,
                   test_exe,
                   testPackage,
+                  rootTestsPackage,
                   ...
                 }:
-                "${name}:${targetSystem}:${test_exe}:${testPackage}"
+                "${name}:${targetSystem}:${test_exe}:${testPackage}:${rootTestsPackage}"
               ) kernels;
               defaultPackage = if kernels == [ ] then "" else (builtins.head kernels).testPackage;
               ukciSummaryHeader =
@@ -404,8 +494,9 @@ localFlake:
                 #!/usr/bin/env sh
                 test_exe="$1"
                 package="$2"
-                port="''${3:-${vmSshPort}}"
-                poweroff="''${4:-0}"
+                root_tests_package="$3"
+                port="''${4:-${vmSshPort}}"
+                poweroff="''${5:-0}"
                 ssh="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 -p $port"
                 if [ "$poweroff" = "1" ]; then
                   cleanup() {
@@ -439,10 +530,12 @@ localFlake:
                   echo "Missing package path!"
                   exit 1
                 fi
-                ${pkgs.nix}/bin/nix copy --to ssh://root@127.0.0.1 "$package"
-                $ssh "$package"/bin/tracexec ebpf log -- ls
-                status=$?
-                exit "$status"
+                if [ -z "$root_tests_package" ]; then
+                  echo "Missing eBPF root test package path!"
+                  exit 1
+                fi
+                ${pkgs.nix}/bin/nix copy --to ssh://root@127.0.0.1 "$package" "$root_tests_package"
+                $ssh "set -e; for test_bin in \"$root_tests_package\"/bin/*; do echo \"running \$(basename \"\$test_bin\")\"; \"\$test_bin\" --ignored --test-threads=1 --nocapture; done"
               '';
               ukciDrv = pkgs.writeScriptBin ukciName ''
                 #!/usr/bin/env bash
@@ -479,7 +572,7 @@ localFlake:
                 fi
                 idx=0
                 for platform in ${platforms}; do
-                  IFS=: read -r kernel target_system test_exe package <<< "$platform"
+                  IFS=: read -r kernel target_system test_exe package root_tests_package <<< "$platform"
                   port=$(( ${vmSshPort} + idx ))
                   name="$kernel"
                   qemu_log="$logs_dir/$name.qemu.log"
@@ -497,7 +590,7 @@ localFlake:
                       ${runQemuDrv}/bin/${runQemuName} "$kernel" "$port" >"$qemu_log" 2>&1 &
                       qemu_pid=$!
                       ${pkgs.coreutils}/bin/timeout 600s \
-                        ${testQemuDrv}/bin/${testQemuName} "$test_exe" "$package" "$port" "1" >"$test_log" 2>&1
+                        ${testQemuDrv}/bin/${testQemuName} "$test_exe" "$package" "$root_tests_package" "$port" "1" >"$test_log" 2>&1
                       test_status=$?
                       if kill -0 "$qemu_pid" >/dev/null 2>&1; then
                         kill "$qemu_pid" >/dev/null 2>&1 || true
@@ -560,7 +653,7 @@ localFlake:
                   declare -A seen_row=
                   row_order=()
                   for platform in ${platforms}; do
-                    IFS=: read -r pname _ts _te _pkg <<< "$platform"
+                    IFS=: read -r pname _ts _te _pkg _rtp <<< "$platform"
                     row_key="''${pname%-clang*}"
                     if [ -z "''${seen_row[$row_key]+x}" ]; then
                       seen_row[$row_key]=1
