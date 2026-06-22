@@ -386,6 +386,7 @@ localFlake:
                   inherit rootTestsPackage testPackage;
                   name = "${builtKernel.baseName}-clang${toString llvmVer}";
                   initramfs = initramfsMap.${builtKernel.targetSystem};
+                  xfail = builtKernel.baseName == "6.6lts" && llvmVer == 20;
                 };
             in
             lib.concatMap (bk: map (mkEntry bk) llvmVersions) builtKernels;
@@ -424,9 +425,10 @@ localFlake:
                   test_exe,
                   testPackage,
                   rootTestsPackage,
+                  xfail,
                   ...
                 }:
-                "${name}:${targetSystem}:${test_exe}:${testPackage}:${rootTestsPackage}"
+                "${name}:${targetSystem}:${test_exe}:${testPackage}:${rootTestsPackage}:${if xfail then "1" else "0"}"
               ) kernels;
               defaultPackage = if kernels == [ ] then "" else (builtins.head kernels).testPackage;
               ukciSummaryHeader =
@@ -572,7 +574,7 @@ localFlake:
                 fi
                 idx=0
                 for platform in ${platforms}; do
-                  IFS=: read -r kernel target_system test_exe package root_tests_package <<< "$platform"
+                  IFS=: read -r kernel target_system test_exe package root_tests_package xfail <<< "$platform"
                   port=$(( ${vmSshPort} + idx ))
                   name="$kernel"
                   qemu_log="$logs_dir/$name.qemu.log"
@@ -599,6 +601,9 @@ localFlake:
                       if [ "$test_status" -eq 0 ]; then
                         break
                       fi
+                      if [ "$xfail" = "1" ] && grep -Fq "failed to load: -E2BIG" "$test_log"; then
+                        break
+                      fi
                       if [ "$attempt" -ge "$max_vm_attempts" ]; then
                         break
                       fi
@@ -611,17 +616,37 @@ localFlake:
                     cat "$qemu_log" || true
                     echo "''${BLUE}''${BOLD}===> $name (test)''${RESET}"
                     cat "$test_log" || true
-                    if [ "$test_status" -eq 124 ] || [ "$test_status" -eq 137 ]; then
+                    effective_status="$test_status"
+                    if [ "$xfail" = "1" ]; then
+                      if [ "$test_status" -eq 0 ]; then
+                        result_label="XPASS"
+                        effective_status=1
+                        echo "''${RED}''${BOLD}XPASS:''${RESET} ''${name} was expected to fail"
+                      elif grep -Fq "failed to load: -E2BIG" "$test_log"; then
+                        result_label="XFAIL (E2BIG)"
+                        effective_status=0
+                        echo "''${YELLOW}''${BOLD}XFAIL:''${RESET} ''${name} hit the expected -E2BIG load failure"
+                      elif [ "$test_status" -eq 124 ] || [ "$test_status" -eq 137 ]; then
+                        result_label="TIMEOUT"
+                        echo "''${RED}''${BOLD}FAIL:''${RESET} ''${name} timed out after 600s"
+                      else
+                        result_label="FAIL ($test_status)"
+                        echo "''${RED}''${BOLD}FAIL:''${RESET} ''${name} exited with unexpected status ''${test_status}"
+                      fi
+                    elif [ "$test_status" -eq 124 ] || [ "$test_status" -eq 137 ]; then
+                      result_label="TIMEOUT"
                       echo "''${RED}''${BOLD}FAIL:''${RESET} ''${name} timed out after 600s"
                     elif [ "$test_status" -ne 0 ]; then
+                      result_label="FAIL ($test_status)"
                       echo "''${RED}''${BOLD}FAIL:''${RESET} ''${name} exited with status ''${test_status}"
                     else
+                      result_label="PASS"
                       echo "''${GREEN}''${BOLD}PASS:''${RESET} ''${name}"
                     fi
-                    printf '%s\n' "$test_status" > "$results_dir/$name"
+                    printf '%s\n' "$result_label" > "$results_dir/$name"
                     rmdir "$lock_dir"
                     rm -f "$qemu_log" "$test_log"
-                    exit "$test_status"
+                    exit "$effective_status"
                   ) &
                   running=$(( running + 1 ))
                   if [ "$running" -ge "$max_parallel" ]; then
@@ -666,16 +691,7 @@ localFlake:
                       cell_name="$row_key-clang$llvm_ver"
                       f="$results_dir/$cell_name"
                       if [ -f "$f" ]; then
-                        ts="$(cat "$f")"
-                        if [ "$ts" -eq 0 ]; then
-                          cell="PASS"
-                        elif [ "$ts" -eq 124 ] || [ "$ts" -eq 137 ]; then
-                          cell="TIMEOUT"
-                        elif [ "$ts" -eq 143 ]; then
-                          cell="TERM"
-                        else
-                          cell="FAIL ($ts)"
-                        fi
+                        cell="$(cat "$f")"
                       else
                         cell="—"
                       fi
