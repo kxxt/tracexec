@@ -135,7 +135,10 @@ use crate::{
     utf8_lossy_cow_from_bytes_with_nul,
   },
   cgroup_cache::CgroupCache,
-  event::EventStorage,
+  event::{
+    EventStorage,
+    Path,
+  },
   parser::{
     parse_groups_event,
     parse_path_segment,
@@ -163,6 +166,37 @@ fn dropped_output() -> OutputMsg {
 fn pad_with_dropped(items: &mut Vec<OutputMsg>, len: usize) {
   if items.len() < len {
     items.extend(repeat_n(dropped_output(), len - items.len()));
+  }
+}
+
+fn finalize_path_segments(eid: u64, path_id: i32, path: &mut Path) {
+  let Some(expected) = path.expected_segment_count else {
+    return;
+  };
+  if path.segments.len() < expected {
+    warn!(
+      "missing path segment events for path {} of exec event {}: received {}, expected {}",
+      path_id,
+      eid,
+      path.segments.len(),
+      expected
+    );
+    pad_with_dropped(&mut path.segments, expected);
+  } else if path.segments.len() > expected {
+    warn!(
+      "too many path segment events for path {} of exec event {}: received {}, expected {}",
+      path_id,
+      eid,
+      path.segments.len(),
+      expected
+    );
+    path.segments.truncate(expected);
+  }
+}
+
+fn finalize_paths(eid: u64, paths: &mut hashbrown::HashMap<i32, Path>) {
+  for (&path_id, path) in paths {
+    finalize_path_segments(eid, path_id, path);
   }
 }
 
@@ -302,6 +336,7 @@ impl EbpfTracer {
               &mut has_dash_env,
             );
             let argv = process_argv(eflags, storage.strings);
+            finalize_paths(header.eid, &mut storage.paths);
             let cwd: OutputMsg = storage
               .paths
               .remove(&AT_FDCWD)
@@ -479,29 +514,20 @@ impl EbpfTracer {
             let event: &path_event = unsafe { &*(data.as_ptr() as *const _) };
             let mut storage = event_storage.borrow_mut();
             let paths = &mut storage.entry(header.eid).or_default().paths;
-            let path = paths.entry(header.id as i32).or_default();
-            // FIXME
-            path.is_absolute = true;
             let segment_count = event.segment_count as usize;
-            if path.segments.len() < segment_count {
+            let path_id = header.id as i32;
+            let path = paths.entry(path_id).or_default();
+            if path.expected_segment_count.is_some() {
               warn!(
-                "missing path segment events for path {} of exec event {}: received {}, expected {}",
-                header.id,
-                header.eid,
-                path.segments.len(),
-                segment_count
+                "received duplicate path event for path {} of exec event {}",
+                header.id, header.eid
               );
-              pad_with_dropped(&mut path.segments, segment_count);
-            } else if path.segments.len() > segment_count {
-              warn!(
-                "too many path segment events for path {} of exec event {}: received {}, expected {}",
-                header.id,
-                header.eid,
-                path.segments.len(),
-                segment_count
-              );
-              path.segments.truncate(segment_count);
             }
+            path.is_absolute = true;
+            path.expected_segment_count = Some(segment_count);
+            path
+              .segments
+              .reserve(segment_count.saturating_sub(path.segments.len()));
             // eprintln!("Received path {} = {:?}", event.header.id, path);
           }
           event_type::PATH_SEGMENT_EVENT => {
@@ -509,8 +535,23 @@ impl EbpfTracer {
             let event: &path_segment_event = unsafe { &*(data.as_ptr() as *const _) };
             let mut storage = event_storage.borrow_mut();
             let paths = &mut storage.entry(header.eid).or_default().paths;
-            let path = paths.entry(header.id as i32).or_default();
             let index = event.index as usize;
+            let Some(path) = paths.get_mut(&(header.id as i32)) else {
+              warn!(
+                "received path segment {} for path {} of exec event {} before path event",
+                index, header.id, header.eid
+              );
+              return 0;
+            };
+            if let Some(expected) = path.expected_segment_count
+              && index >= expected
+            {
+              warn!(
+                "received extra path segment {} for path {} of exec event {}: expected {} segments",
+                index, header.id, header.eid, expected
+              );
+              return 0;
+            }
             if path.segments.len() < index {
               pad_with_dropped(&mut path.segments, index);
             }
