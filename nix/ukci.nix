@@ -76,12 +76,6 @@ localFlake:
               isTargetAarch64 = targetSystem == "aarch64-linux";
               isTargetX86_64 = targetSystem == "x86_64-linux";
               isTargetRiscv64 = targetSystem == "riscv64-linux";
-              riscv64BpfLocalStorageFix = {
-                # BPF task local storage is broken on RISC-V after 6.19.
-                # I have posted this fix to mailing list.
-                name = "riscv64-bpf-local-storage-fix";
-                patch = ./patches/6.19-riscv64-fix-task-local-storage.patch;
-              };
             in
             (lib.optionals isTargetX86_64 [
               {
@@ -155,6 +149,8 @@ localFlake:
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
+            ]
+            ++ (lib.optionals (!isTargetRiscv64) [
               {
                 name = "7.1";
                 tag = "7.1.1";
@@ -162,10 +158,9 @@ localFlake:
                 source = "kernel-org";
                 test_exe = "tracexec";
                 sha256 = "sha256-UhX6NUHcfn9bzVG/flfxac7G/OUIylTj3IX97hQ3HX0=";
-                kernelPatches = [ riscv64BpfLocalStorageFix ];
+                kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
-            ] ++ (lib.optionals (!isTargetRiscv64) [
               # {
               #   name = "bpf-next";
               #   tag = "bpf-next-7.1";
@@ -183,7 +178,11 @@ localFlake:
               targetSystem: map (source: source // { inherit targetSystem; }) (sourcesFor targetSystem)
             ) targetSystems;
           inherit (localFlake) nixpkgs;
-          llvmVersions = [ 20 21 22 ];
+          llvmVersions = [
+            20
+            21
+            22
+          ];
           tracexecForClang =
             targetPkgs: llvmVer:
             let
@@ -272,7 +271,12 @@ localFlake:
                   baseName = if useArchSuffix then "${source.name}-${targetArch}" else source.name;
                 in
                 {
-                  inherit kernel targetSystem targetArch baseName;
+                  inherit
+                    kernel
+                    targetSystem
+                    targetArch
+                    baseName
+                    ;
                   inherit (source) test_exe;
                 };
               builtKernels = map buildKernelForSource sources;
@@ -284,7 +288,12 @@ localFlake:
                   testPackage = tracexecForClang targetPkgs llvmVer;
                 in
                 {
-                  inherit (builtKernel) kernel targetSystem targetArch test_exe;
+                  inherit (builtKernel)
+                    kernel
+                    targetSystem
+                    targetArch
+                    test_exe
+                    ;
                   inherit testPackage;
                   name = "${builtKernel.baseName}-clang${toString llvmVer}";
                   initramfs = initramfsMap.${builtKernel.targetSystem};
@@ -334,10 +343,7 @@ localFlake:
                 "| Kernel \ Clang | "
                 + lib.concatStringsSep " | " (map (v: "clang ${toString v}") llvmVersions)
                 + " |";
-              ukciSummarySep =
-                "| --- | "
-                + lib.concatStringsSep " | " (map (_: "---") llvmVersions)
-                + " |";
+              ukciSummarySep = "| --- | " + lib.concatStringsSep " | " (map (_: "---") llvmVersions) + " |";
               llvmVersionsSpaceSep = lib.concatStringsSep " " (map toString llvmVersions);
               runQemuDrv = pkgs.writeScriptBin runQemuName ''
                 #!/usr/bin/env bash
