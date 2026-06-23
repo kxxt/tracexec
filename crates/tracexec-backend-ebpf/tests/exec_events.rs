@@ -502,6 +502,7 @@ fn paths_for_eid(capture: &AuxCapture, eid: u64) -> hashbrown::HashMap<i32, Path
   {
     paths.entry(event.header.id as i32).or_insert_with(|| Path {
       is_absolute: true,
+      expected_segment_count: Some(event.segment_count as usize),
       segments: Vec::with_capacity(event.segment_count as usize),
     });
   }
@@ -511,14 +512,27 @@ fn paths_for_eid(capture: &AuxCapture, eid: u64) -> hashbrown::HashMap<i32, Path
     .iter()
     .filter(|segment| segment.eid == eid)
   {
-    let path = paths.entry(segment.path_id).or_insert_with(|| Path {
-      is_absolute: true,
-      segments: Vec::new(),
-    });
+    let Some(path) = paths.get_mut(&segment.path_id) else {
+      continue;
+    };
+    if let Some(expected) = path.expected_segment_count
+      && segment.index >= expected
+    {
+      continue;
+    }
     while path.segments.len() <= segment.index {
       path.segments.push(OutputMsg::Err(BpfError::Dropped.into()));
     }
     path.segments[segment.index] = segment.segment.clone();
+  }
+
+  for path in paths.values_mut() {
+    if let Some(expected) = path.expected_segment_count {
+      while path.segments.len() < expected {
+        path.segments.push(OutputMsg::Err(BpfError::Dropped.into()));
+      }
+      path.segments.truncate(expected);
+    }
   }
 
   paths
