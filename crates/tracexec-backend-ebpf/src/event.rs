@@ -36,7 +36,6 @@ pub struct Path {
   // paths from synthetic filesystems
   // with /
   pub is_absolute: bool,
-  pub expected_segment_count: Option<usize>,
   pub segments: Vec<OutputMsg>,
 }
 
@@ -88,7 +87,6 @@ mod tests {
   fn test_path_into_outputmsg_absolute_and_order() {
     let path = Path {
       is_absolute: true,
-      expected_segment_count: None,
       segments: vec![
         OutputMsg::Ok(cached_string("bin".to_string())),
         OutputMsg::Ok(cached_string("usr".to_string())),
@@ -103,7 +101,6 @@ mod tests {
   fn test_path_into_outputmsg_partial_on_error_segment() {
     let path = Path {
       is_absolute: true,
-      expected_segment_count: None,
       segments: vec![
         OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags)),
         OutputMsg::Ok(cached_string("tmp".to_string())),

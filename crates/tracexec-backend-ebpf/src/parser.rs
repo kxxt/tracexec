@@ -443,7 +443,6 @@ mod tests {
       1,
       Path {
         is_absolute: false,
-        expected_segment_count: None,
         segments: vec![OutputMsg::Ok(cached_string("eventpoll".to_string()))],
       },
     );
@@ -477,7 +476,6 @@ mod tests {
       1,
       Path {
         is_absolute: true,
-        expected_segment_count: None,
         segments: vec![
           OutputMsg::Ok(cached_string("bin".to_string())),
           OutputMsg::Ok(cached_string("usr".to_string())),
