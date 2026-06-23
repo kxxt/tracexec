@@ -1427,6 +1427,10 @@ static int read_send_path(const struct path *path,
   struct task_struct *current_task =
       (struct task_struct *)bpf_get_current_task_btf();
   int ret = -1;
+  // Read fs info before alloc path_event, which may fail (as seen on aarch64 in some cases).
+  if (fd_event != NULL) {
+    read_fs_info(fd_event, path);
+  }
   // Initialize
   struct path_event *event = bpf_task_storage_get(
       &path_event_cache, current_task, NULL, BPF_LOCAL_STORAGE_GET_F_CREATE);
@@ -1460,9 +1464,6 @@ static int read_send_path(const struct path *path,
   }
   // Get vfsmount and mnt_root
   struct vfsmount *vfsmnt = path->mnt;
-  if (fd_event != NULL) {
-    read_fs_info(fd_event, path);
-  }
   ret = bpf_core_read(&segment_ctx.mnt_root, sizeof(void *), &vfsmnt->mnt_root);
   if (ret < 0) {
     debug("failed to read vfsmnt->mnt_root");
