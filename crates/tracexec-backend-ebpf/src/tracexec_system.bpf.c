@@ -52,6 +52,15 @@ struct {
   __type(value, char);
 } tracee_closure SEC(".maps");
 
+// To avoid data race, for every task, only a single BPF program should access
+// this map. Currently that program is the fentry of execve family syscalls.
+struct {
+  __uint(type, BPF_MAP_TYPE_TASK_STORAGE);
+  __type(key, u32);
+  __type(value, struct path_event);
+  __uint(map_flags, BPF_F_NO_PREALLOC);
+} path_event_cache SEC(".maps");
+
 // A staging area for writing variable length strings
 // We cannot use per-cpu trick as bpf could be preempted.
 // Note that we update the max_entries in userspace before load.
@@ -985,7 +994,6 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
   entry->header.pid = event->header.pid;
   entry->header.eid = event->header.eid;
   entry->fd = fd_num;
-  fill_field_with_unknown(entry->fstype);
   // read f_path
   struct file *file;
   ret = bpf_core_read(&file, sizeof(void *), &fd_array[fd_num]);
@@ -1243,7 +1251,7 @@ struct mount_ctx {
 // bpf_loop helper:
 static int read_send_mount_segments(u32 index, struct mount_ctx *ctx) {
   int ret = 1; // break
-  if (ctx == NULL || ctx->path_event == NULL || ctx->segment_ctx == NULL)
+  if (ctx == NULL || ctx->path_event == NULL)
     return ret;
   // Read the mountpoint dentry
   struct dentry *mnt_mountpoint, *mnt_root;
@@ -1416,18 +1424,14 @@ static int read_send_path_stage2(struct path_event *event,
 static int read_send_path(const struct path *path,
                           struct tracexec_event_header *base_header,
                           s32 path_id, struct fd_event *fd_event) {
+  struct task_struct *current_task =
+      (struct task_struct *)bpf_get_current_task_btf();
   int ret = -1;
-  struct vfsmount *vfsmnt = path->mnt;
-  if (fd_event != NULL) {
-    read_fs_info(fd_event, path);
-  }
-
   // Initialize
-  struct path_event *event =
-      bpf_ringbuf_reserve(&events, sizeof(struct path_event), 0);
+  struct path_event *event = bpf_task_storage_get(
+      &path_event_cache, current_task, NULL, BPF_LOCAL_STORAGE_GET_F_CREATE);
   if (event == NULL) {
-    debug("Failed to allocate path event");
-    base_header->flags |= OUTPUT_FAILURE;
+    debug("This should not happen!");
     return 1;
   }
 
@@ -1454,7 +1458,11 @@ static int read_send_path(const struct path *path,
     debug("failed to read current->fs->root.dentry");
     goto ptr_err;
   }
-  // Get mnt_root
+  // Get vfsmount and mnt_root
+  struct vfsmount *vfsmnt = path->mnt;
+  if (fd_event != NULL) {
+    read_fs_info(fd_event, path);
+  }
   ret = bpf_core_read(&segment_ctx.mnt_root, sizeof(void *), &vfsmnt->mnt_root);
   if (ret < 0) {
     debug("failed to read vfsmnt->mnt_root");
@@ -1465,7 +1473,12 @@ static int read_send_path(const struct path *path,
 ptr_err:
   event->header.flags |= PTR_READ_FAILURE;
   event->segment_count = 0;
-  bpf_ringbuf_submit(event, 0);
+  ret = bpf_ringbuf_output(&events, event, sizeof(*event), BPF_RB_FORCE_WAKEUP);
+  bpf_task_storage_delete(&path_event_cache, current_task);
+  if (ret < 0) {
+    debug("Failed to output path_event to ringbuf");
+    return -1;
+  }
   return -1;
 }
 
@@ -1493,7 +1506,13 @@ static int read_send_path_stage2(struct path_event *event,
   }
   // Send path event to userspace
   event->segment_count = ctx.base_index;
-  bpf_ringbuf_submit(event, 0);
+  ret = bpf_ringbuf_output(&events, event, sizeof(*event), BPF_RB_FORCE_WAKEUP);
+  bpf_task_storage_delete(&path_event_cache,
+                          (void *)bpf_get_current_task_btf());
+  if (ret < 0) {
+    debug("Failed to output path_event to ringbuf");
+    return -1;
+  }
   return 0;
 ptr_err:
   event->header.flags |= PTR_READ_FAILURE;
@@ -1503,6 +1522,12 @@ loop_err:
   goto err_out;
 err_out:
   event->segment_count = 0;
-  bpf_ringbuf_submit(event, 0);
+  ret = bpf_ringbuf_output(&events, event, sizeof(*event), BPF_RB_FORCE_WAKEUP);
+  bpf_task_storage_delete(&path_event_cache,
+                          (void *)bpf_get_current_task_btf());
+  if (ret < 0) {
+    debug("Failed to output path_event to ringbuf");
+    return -1;
+  }
   return -1;
 }
