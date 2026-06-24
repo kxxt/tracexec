@@ -4,6 +4,7 @@ use std::{
   env,
   mem::MaybeUninit,
   path::PathBuf,
+  sync::LazyLock,
 };
 
 use libbpf_rs::skel::{
@@ -15,6 +16,8 @@ use libbpf_sys::{
   BPF_F_NO_PREALLOC,
   BPF_F_SLEEPABLE,
 };
+use procfs::ConfigSetting;
+use tracing::warn;
 
 use crate::{
   bpf::skel::{
@@ -22,8 +25,22 @@ use crate::{
     TracexecSystemSkel,
     TracexecSystemSkelBuilder,
   },
-  probe::kernel_supports_sleepable_no_prealloc_hash_maps,
+  probe::{
+    kernel_have_syscall_wrappers,
+    kernel_supports_sleepable_no_prealloc_hash_maps,
+  },
+  tracer::{
+    AttachSet,
+    attach_kprobes_without_syscall_wrappers,
+  },
 };
+
+pub static KCONFIG: LazyLock<Option<std::collections::HashMap<String, ConfigSetting>>> =
+  LazyLock::new(|| {
+    procfs::kernel_config()
+      .inspect_err(|e| warn!("Failed to get kernel config during test: {e}"))
+      .ok()
+  });
 
 pub fn find_sh() -> PathBuf {
   env::var_os("PATH")
@@ -48,32 +65,61 @@ pub fn disable_all_programs(open_skel: &mut OpenTracexecSystemSkel<'_>) {
   }
 }
 
-pub fn prepare_handle_exit_only(open_skel: &mut OpenTracexecSystemSkel<'_>) {
+pub fn prepare_handle_exit_only(
+  open_skel: &mut OpenTracexecSystemSkel<'_>,
+) -> Option<Box<LoadedSkelCallback>> {
   disable_all_programs(open_skel);
   open_skel.progs.handle_exit.set_autoload(true);
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
   }
+  None
 }
 
-pub fn prepare_trace_fork_only(open_skel: &mut OpenTracexecSystemSkel<'_>) {
+pub fn prepare_trace_fork_only(
+  open_skel: &mut OpenTracexecSystemSkel<'_>,
+) -> Option<Box<LoadedSkelCallback>> {
   disable_all_programs(open_skel);
   open_skel.progs.trace_fork.set_autoload(true);
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
   }
+  None
 }
 
-pub fn prepare_execve_kprobe_kretprobe(open_skel: &mut OpenTracexecSystemSkel<'_>) {
+pub fn prepare_execve_kprobe_kretprobe(
+  open_skel: &mut OpenTracexecSystemSkel<'_>,
+) -> Option<Box<LoadedSkelCallback>> {
   disable_all_programs(open_skel);
-  open_skel.progs.sys_execve_kprobe.set_autoload(true);
-  open_skel.progs.sys_exit_execve_kretprobe.set_autoload(true);
+  let kernel_have_syscall_wrappers = kernel_have_syscall_wrappers(KCONFIG.as_ref());
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
   }
+  if !kernel_have_syscall_wrappers {
+    Some(Box::new(attach_execve_kprobe_without_syscall_wrappers))
+  } else {
+    open_skel.progs.sys_execve_kprobe.set_autoload(true);
+    open_skel.progs.sys_exit_execve_kretprobe.set_autoload(true);
+    None
+  }
 }
 
-pub fn prepare_execve_fentry_fexit(open_skel: &mut OpenTracexecSystemSkel<'_>) {
+fn attach_execve_kprobe_without_syscall_wrappers(
+  skel: &mut TracexecSystemSkel<'_>,
+) -> Result<(), libbpf_rs::Error> {
+  attach_kprobes_without_syscall_wrappers(skel, AttachSet::Execve.into())
+}
+
+fn attach_execveat_kprobe_without_syscall_wrappers(
+  skel: &mut TracexecSystemSkel<'_>,
+) -> Result<(), libbpf_rs::Error> {
+  attach_kprobes_without_syscall_wrappers(skel, AttachSet::Execveat.into())
+}
+
+#[must_use]
+pub fn prepare_execve_fentry_fexit(
+  open_skel: &mut OpenTracexecSystemSkel<'_>,
+) -> Option<Box<LoadedSkelCallback>> {
   disable_all_programs(open_skel);
   open_skel.progs.sys_execve_fentry.set_autoload(true);
   open_skel.progs.sys_exit_execve_fexit.set_autoload(true);
@@ -81,21 +127,34 @@ pub fn prepare_execve_fentry_fexit(open_skel: &mut OpenTracexecSystemSkel<'_>) {
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
   }
+  None
 }
 
-pub fn prepare_execveat_kprobe_kretprobe(open_skel: &mut OpenTracexecSystemSkel<'_>) {
+#[must_use]
+pub fn prepare_execveat_kprobe_kretprobe(
+  open_skel: &mut OpenTracexecSystemSkel<'_>,
+) -> Option<Box<LoadedSkelCallback>> {
   disable_all_programs(open_skel);
-  open_skel.progs.sys_execveat_kprobe.set_autoload(true);
-  open_skel
-    .progs
-    .sys_exit_execveat_kretprobe
-    .set_autoload(true);
+  let kernel_have_syscall_wrappers = kernel_have_syscall_wrappers(KCONFIG.as_ref());
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
   }
+  if !kernel_have_syscall_wrappers {
+    Some(Box::new(attach_execveat_kprobe_without_syscall_wrappers))
+  } else {
+    open_skel.progs.sys_execveat_kprobe.set_autoload(true);
+    open_skel
+      .progs
+      .sys_exit_execveat_kretprobe
+      .set_autoload(true);
+    None
+  }
 }
 
-pub fn prepare_execveat_fentry_fexit(open_skel: &mut OpenTracexecSystemSkel<'_>) {
+#[must_use]
+pub fn prepare_execveat_fentry_fexit(
+  open_skel: &mut OpenTracexecSystemSkel<'_>,
+) -> Option<Box<LoadedSkelCallback>> {
   disable_all_programs(open_skel);
   open_skel.progs.sys_execveat_fentry.set_autoload(true);
   open_skel.progs.sys_exit_execveat_fexit.set_autoload(true);
@@ -106,10 +165,14 @@ pub fn prepare_execveat_fentry_fexit(open_skel: &mut OpenTracexecSystemSkel<'_>)
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
   }
+  None
 }
 
 #[cfg(target_arch = "x86_64")]
-pub fn prepare_compat_execve(open_skel: &mut OpenTracexecSystemSkel<'_>) {
+#[must_use]
+pub fn prepare_compat_execve(
+  open_skel: &mut OpenTracexecSystemSkel<'_>,
+) -> Option<Box<LoadedSkelCallback>> {
   disable_all_programs(open_skel);
   open_skel.progs.compat_sys_execve.set_autoload(true);
   open_skel.progs.compat_sys_exit_execve.set_autoload(true);
@@ -117,10 +180,13 @@ pub fn prepare_compat_execve(open_skel: &mut OpenTracexecSystemSkel<'_>) {
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
   }
+  None
 }
 
 #[cfg(target_arch = "x86_64")]
-pub fn prepare_compat_execveat(open_skel: &mut OpenTracexecSystemSkel<'_>) {
+pub fn prepare_compat_execveat(
+  open_skel: &mut OpenTracexecSystemSkel<'_>,
+) -> Option<Box<LoadedSkelCallback>> {
   disable_all_programs(open_skel);
   open_skel.progs.compat_sys_execveat.set_autoload(true);
   open_skel.progs.compat_sys_exit_execveat.set_autoload(true);
@@ -131,17 +197,20 @@ pub fn prepare_compat_execveat(open_skel: &mut OpenTracexecSystemSkel<'_>) {
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
   }
+  None
 }
+
+pub type LoadedSkelCallback = dyn FnOnce(&mut TracexecSystemSkel) -> Result<(), libbpf_rs::Error>;
 
 pub fn with_skel<T>(
   #[allow(unused)] test_name: &str,
-  prepare: impl for<'obj> FnOnce(&mut OpenTracexecSystemSkel<'obj>),
+  prepare: impl for<'obj> FnOnce(&mut OpenTracexecSystemSkel<'obj>) -> Option<Box<LoadedSkelCallback>>,
   f: impl for<'obj> FnOnce(&mut TracexecSystemSkel<'obj>) -> color_eyre::Result<T>,
 ) -> color_eyre::Result<T> {
   let mut obj = MaybeUninit::uninit();
   let builder = TracexecSystemSkelBuilder::default();
   let mut open_skel = builder.open(&mut obj)?;
-  prepare(&mut open_skel);
+  let callback = prepare(&mut open_skel);
   if kernel_supports_sleepable_no_prealloc_hash_maps() {
     open_skel
       .maps
@@ -150,6 +219,7 @@ pub fn with_skel<T>(
   }
   let mut skel = open_skel.load()?;
   skel.attach()?;
+  callback.map(|cb| cb(&mut skel)).transpose()?;
   let result = f(&mut skel);
 
   #[cfg(feature = "bpfcov")]

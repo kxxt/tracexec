@@ -5,7 +5,6 @@ use std::{
   process::Command,
   sync::{
     Arc,
-    LazyLock,
     Mutex,
   },
   time::{
@@ -26,7 +25,6 @@ use nix::{
     fork,
   },
 };
-use procfs::ConfigSetting;
 use rstest::{
   fixture,
   rstest,
@@ -55,6 +53,8 @@ use tracexec_backend_ebpf::{
   },
   probe::kernel_have_ftrace_with_direct_calls,
   test_utils::{
+    KCONFIG,
+    LoadedSkelCallback,
     find_sh,
     prepare_execve_fentry_fexit,
     prepare_execve_kprobe_kretprobe,
@@ -67,7 +67,6 @@ use tracexec_core::event::{
   BpfError,
   OutputMsg,
 };
-use tracing::warn;
 
 #[fixture]
 fn sh_executable() -> PathBuf {
@@ -536,7 +535,9 @@ fn rendered_fd_path(capture: &AuxCapture, event: &fd_event) -> OutputMsg {
 
 fn with_optional_sleepable_skel(
   test_name: &str,
-  prepare: impl for<'obj> FnOnce(&mut tracexec_backend_ebpf::bpf::skel::OpenTracexecSystemSkel<'obj>),
+  prepare: impl for<'obj> FnOnce(
+    &mut tracexec_backend_ebpf::bpf::skel::OpenTracexecSystemSkel<'obj>,
+  ) -> Option<Box<LoadedSkelCallback>>,
   f: impl for<'obj> FnOnce(
     &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'obj>,
   ) -> color_eyre::Result<()>,
@@ -550,13 +551,6 @@ fn with_optional_sleepable_skel(
     Err(err) => Err(err),
   }
 }
-
-static KCONFIG: LazyLock<Option<std::collections::HashMap<String, ConfigSetting>>> =
-  LazyLock::new(|| {
-    procfs::kernel_config()
-      .inspect_err(|e| warn!("Failed to get kernel config during test: {e}"))
-      .ok()
-  });
 
 fn kernel_supports_ftrace_with_direct_calls() -> bool {
   kernel_have_ftrace_with_direct_calls(KCONFIG.as_ref(), None)
