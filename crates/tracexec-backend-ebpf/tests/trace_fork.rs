@@ -1,5 +1,8 @@
 use std::{
-  path::PathBuf,
+  path::{
+    Path,
+    PathBuf,
+  },
   process::Command,
   sync::{
     Arc,
@@ -41,8 +44,8 @@ struct ForkCapture {
 }
 
 fn run_fork_and_capture(
-  skel: &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
-  sh_executable: &PathBuf,
+  skel: &tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
+  sh_executable: &Path,
   timeout: Duration,
 ) -> color_eyre::Result<ForkCapture> {
   let event_slot: Arc<Mutex<Option<fork_event>>> = Arc::new(Mutex::new(None));

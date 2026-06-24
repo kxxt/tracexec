@@ -285,8 +285,10 @@ mod tests {
 
   #[test]
   fn test_process_filename_non_execveat_passthrough() {
-    let mut event = exec_event::default();
-    event.is_execveat = MaybeUninit::new(false);
+    let event = exec_event {
+      is_execveat: MaybeUninit::new(false),
+      ..Default::default()
+    };
     let base = OutputMsg::Ok(cached_string("rel".to_string()));
     let cwd = OutputMsg::Ok(cached_string("/cwd".to_string()));
     let out = process_filename(
@@ -300,8 +302,10 @@ mod tests {
 
   #[test]
   fn test_process_filename_absolute_passthrough() {
-    let mut event = exec_event::default();
-    event.is_execveat = MaybeUninit::new(true);
+    let event = exec_event {
+      is_execveat: MaybeUninit::new(true),
+      ..Default::default()
+    };
     let base = OutputMsg::Ok(cached_string("/bin/ls".to_string()));
     let cwd = OutputMsg::Ok(cached_string("/cwd".to_string()));
     let out = process_filename(
@@ -315,9 +319,11 @@ mod tests {
 
   #[test]
   fn test_process_filename_execveat_cwd_join() {
-    let mut event = exec_event::default();
-    event.is_execveat = MaybeUninit::new(true);
-    event.fd = AT_FDCWD;
+    let event = exec_event {
+      is_execveat: MaybeUninit::new(true),
+      fd: AT_FDCWD,
+      ..Default::default()
+    };
     let base = OutputMsg::Ok(cached_string("rel".to_string()));
     let cwd = OutputMsg::Ok(cached_string("/home/user".to_string()));
     let out = process_filename(base, &event, &cwd, &FileDescriptorInfoCollection::default());
@@ -327,15 +333,19 @@ mod tests {
 
   #[test]
   fn test_process_filename_execveat_fd_join() {
-    let mut event = exec_event::default();
-    event.is_execveat = MaybeUninit::new(true);
-    event.fd = 5;
+    let event = exec_event {
+      is_execveat: MaybeUninit::new(true),
+      fd: 5,
+      ..Default::default()
+    };
     let base = OutputMsg::Ok(cached_string("rel".to_string()));
     let cwd = OutputMsg::Ok(cached_string("/cwd".to_string()));
     let mut fdmap = FileDescriptorInfoCollection::default();
-    let mut info = FileDescriptorInfo::default();
-    info.fd = 5;
-    info.path = OutputMsg::Ok(cached_string("/tmp".to_string()));
+    let info = FileDescriptorInfo {
+      fd: 5,
+      path: OutputMsg::Ok(cached_string("/tmp".to_string())),
+      ..Default::default()
+    };
     fdmap.fdinfo.insert(5, info);
     let out = process_filename(base, &event, &cwd, &fdmap);
     assert_eq!(out.as_ref(), "/tmp/rel");
@@ -344,9 +354,11 @@ mod tests {
 
   #[test]
   fn test_process_filename_invalid_fd_partial_ok() {
-    let mut event = exec_event::default();
-    event.is_execveat = MaybeUninit::new(true);
-    event.fd = 9;
+    let event = exec_event {
+      is_execveat: MaybeUninit::new(true),
+      fd: 9,
+      ..Default::default()
+    };
     let base = OutputMsg::Ok(cached_string("rel".to_string()));
     let cwd = OutputMsg::Ok(cached_string("/cwd".to_string()));
     let out = process_filename(base, &event, &cwd, &FileDescriptorInfoCollection::default());
@@ -356,15 +368,17 @@ mod tests {
 
   #[test]
   fn test_process_cred_ok() {
-    let mut event = exec_event::default();
-    event.uid = 1000;
-    event.euid = 1001;
-    event.suid = 1002;
-    event.fsuid = 1003;
-    event.gid = 2000;
-    event.egid = 2001;
-    event.sgid = 2002;
-    event.fsgid = 2003;
+    let event = exec_event {
+      uid: 1000,
+      euid: 1001,
+      suid: 1002,
+      fsuid: 1003,
+      gid: 2000,
+      egid: 2001,
+      sgid: 2002,
+      fsgid: 2003,
+      ..Default::default()
+    };
     let groups = Ok(vec![10, 11, 12]);
     let cred = process_cred(BitFlags::empty(), &event, groups).unwrap();
     assert_eq!(cred.groups, vec![10, 11, 12]);
@@ -433,10 +447,12 @@ mod tests {
 
   #[test]
   fn test_process_path_variants() {
-    let mut event = fd_event::default();
-    event.ino = 123;
-    event.path_id = 1;
-    event.uses_d_dname = 1;
+    let mut event = fd_event {
+      ino: 123,
+      path_id: 1,
+      uses_d_dname: 1,
+      ..Default::default()
+    };
 
     let mut paths: HashMap<i32, Path> = HashMap::new();
     paths.insert(
@@ -490,8 +506,10 @@ mod tests {
 
   #[test]
   fn test_process_path_missing_path_is_bpf_error() {
-    let mut event = fd_event::default();
-    event.path_id = 99;
+    let mut event = fd_event {
+      path_id: 99,
+      ..Default::default()
+    };
     let paths: HashMap<i32, Path> = HashMap::new();
 
     let normal = process_path(&event, "ext4", &paths);

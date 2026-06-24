@@ -4,7 +4,10 @@ use std::{
     fs::MetadataExt,
     process::ExitStatusExt,
   },
-  path::PathBuf,
+  path::{
+    Path,
+    PathBuf,
+  },
   process::Command,
   sync::{
     Arc,
@@ -77,8 +80,8 @@ struct ExitCapture {
 }
 
 fn run_exit_and_capture(
-  skel: &mut TracexecSystemSkel<'_>,
-  sh_executable: &PathBuf,
+  skel: &TracexecSystemSkel<'_>,
+  sh_executable: &Path,
   exit_code: i32,
   timeout: Duration,
 ) -> color_eyre::Result<ExitCapture> {
@@ -131,8 +134,8 @@ struct SignalCapture {
 }
 
 fn run_killed_and_capture(
-  skel: &mut TracexecSystemSkel<'_>,
-  sh_executable: &PathBuf,
+  skel: &TracexecSystemSkel<'_>,
+  sh_executable: &Path,
   signal: Signal,
   timeout: Duration,
 ) -> color_eyre::Result<SignalCapture> {
