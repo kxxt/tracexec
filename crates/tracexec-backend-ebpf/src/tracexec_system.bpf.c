@@ -122,7 +122,7 @@ static int read_fds(struct exec_event *event);
 static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event, bool cloexec);
 static int add_pid_to_closure(pid_t pid);
-static int read_send_path(const struct path *path,
+static int read_send_path(struct dentry* dentry_addr, struct vfsmount* mnt_addr,
                           struct tracexec_event_header *base_header,
                           s32 path_id, struct fd_event *fd_event);
 
@@ -227,7 +227,9 @@ int __always_inline fill_field_with_unknown(u8 *buf) {
   return 0;
 }
 
-int trace_exec_common(struct sys_enter_exec_args *ctx) {
+static __always_inline int
+trace_exec_common(bool is_execveat, bool is_compat, const u8 *base_filename,
+                  const u8 *const *argv, const u8 *const *envp) {
   // Collect timestamp
   u64 timestamp = bpf_ktime_get_boot_ns();
   // Collect UID/GID information
@@ -242,8 +244,6 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   int ret;
   // debug("sysenter: pid=%d, tgid=%d, tracee=%d", pid, tgid,
   // config.tracee_pid); Create event
-  if (!ctx)
-    return 0;
   struct exec_event *event = bpf_task_storage_get(
       &execs, (struct task_struct *)bpf_get_current_task_btf(), NULL,
       BPF_LOCAL_STORAGE_GET_F_CREATE);
@@ -265,8 +265,8 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   event->header.type = SYSEXIT_EVENT;
   event->header.eid = __sync_fetch_and_add(&event_counter, 1);
   event->count[0] = event->count[1] = event->fd_count = event->path_count = 0;
-  event->is_compat = ctx->is_compat;
-  event->is_execveat = ctx->is_execveat;
+  event->is_compat = is_compat;
+  event->is_execveat = is_execveat;
   // Read comm
   if (0 != bpf_get_current_comm(event->comm, sizeof(event->comm))) {
     // Failed to read comm
@@ -274,12 +274,12 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
     event->header.flags |= COMM_READ_FAILURE;
   };
   // Read base filename
-  if (ctx->base_filename == NULL) {
+  if (base_filename == NULL) {
     debug("filename is NULL");
     event->base_filename[0] = '\0';
   } else {
     ret = bpf_probe_read_user_str(
-        event->base_filename, sizeof(event->base_filename), ctx->base_filename);
+        event->base_filename, sizeof(event->base_filename), base_filename);
     if (ret < 0) {
       event->header.flags |= FILENAME_READ_ERR;
     } else if (ret == sizeof(event->base_filename)) {
@@ -292,22 +292,31 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   // Read argv
   struct reader_context reader_ctx;
   reader_ctx.event = event;
-  reader_ctx.ptr = ctx->argv;
-  reader_ctx.index = READ_ARG_STRINGS;
-  reader_ctx.is_compat = ctx->is_compat;
-  // bpf_loop allows 1 << 23 (~8 million) loops, otherwise we cannot achieve it
-  ret = bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
-  if (ret < 0) {
-    debug("Failed to iter over all args: %d!", ret);
-    event->header.flags |= LOOP_FAIL;
+  reader_ctx.is_compat = is_compat;
+  if (argv == NULL) {
+    event->count[READ_ARG_STRINGS] = 0;
+  } else {
+    reader_ctx.ptr = argv;
+    reader_ctx.index = READ_ARG_STRINGS;
+    // bpf_loop allows 1 << 23 (~8 million) loops, otherwise we cannot achieve
+    // it
+    ret = bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
+    if (ret < 0) {
+      debug("Failed to iter over all args: %d!", ret);
+      event->header.flags |= LOOP_FAIL;
+    }
   }
   // Read envp
-  reader_ctx.ptr = ctx->envp;
-  reader_ctx.index = READ_ENV_STRINGS;
-  ret = bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
-  if (ret < 0) {
-    debug("Failed to iter over all envs: %d!", ret);
-    event->header.flags |= LOOP_FAIL;
+  if (envp == NULL) {
+    event->count[READ_ENV_STRINGS] = 0;
+  } else {
+    reader_ctx.ptr = envp;
+    reader_ctx.index = READ_ENV_STRINGS;
+    ret = bpf_loop(ARGC_MAX, read_strings, &reader_ctx, 0);
+    if (ret < 0) {
+      debug("Failed to iter over all envs: %d!", ret);
+      event->header.flags |= LOOP_FAIL;
+    }
   }
   // Read file descriptors
   read_fds(event);
@@ -317,15 +326,18 @@ int trace_exec_common(struct sys_enter_exec_args *ctx) {
   event->cwd_path_id = -1;
   struct task_struct *current = (void *)bpf_get_current_task();
   // spin_lock(&fs->lock);
-  struct path pwd;
-  ret = BPF_CORE_READ_INTO(&pwd, current, fs, pwd);
+  struct dentry *pwd_dentry;
+  struct vfsmount *pwd_mnt;
+  ret = BPF_CORE_READ_INTO(&pwd_dentry, current, fs, pwd.dentry);
+  ret |= BPF_CORE_READ_INTO(&pwd_mnt, current, fs, pwd.mnt);
   if (ret < 0) {
     debug("failed to read current->fs->pwd: %d", ret);
     return 0;
   }
   // spin_unlock(&fs->lock);
   debug("Reading pwd...");
-  read_send_path(&pwd, &event->header, AT_FDCWD, NULL);
+  read_send_path(pwd_dentry, pwd_mnt, &event->header, AT_FDCWD,
+                 NULL);
   return 0;
 }
 
@@ -474,44 +486,23 @@ int handle_exit(struct trace_event_raw_sched_process_template *ctx) {
 SEC("kprobe/__" SYSCALL_PREFIX "_sys_execve")
 int BPF_KSYSCALL(sys_execve_kprobe, u8 *base_filename, u8 const *const *argv,
                  u8 const *const *envp) {
-  int key = 0;
-  struct sys_enter_exec_args common_ctx = {
-      .is_execveat = false,
-      .is_compat = false,
-      .argv = argv,
-      .envp = envp,
-      .base_filename = base_filename,
-  };
-  trace_exec_common(&common_ctx);
+  trace_exec_common(false, false, base_filename, argv, envp);
   return 0;
 }
 
 SEC("fentry/__" SYSCALL_PREFIX "_sys_execve")
 int BPF_PROG(sys_execve_fentry, struct pt_regs *regs) {
-  int key = 0;
-  struct sys_enter_exec_args common_ctx = {
-      .is_execveat = false,
-      .is_compat = false,
-      .argv = (u8 const *const *)PT_REGS_PARM2_CORE(regs),
-      .envp = (u8 const *const *)PT_REGS_PARM3_CORE(regs),
-      .base_filename = (u8 *)PT_REGS_PARM1_CORE(regs),
-  };
-  trace_exec_common(&common_ctx);
+  trace_exec_common(false, false, (u8 *)PT_REGS_PARM1_CORE(regs),
+                    (u8 const *const *)PT_REGS_PARM2_CORE(regs),
+                    (u8 const *const *)PT_REGS_PARM3_CORE(regs));
   return 0;
 }
 
 SEC("fentry/__" SYSCALL_PREFIX "_sys_execveat")
 int BPF_PROG(sys_execveat_fentry, struct pt_regs *regs, int ret) {
-  int key = 0;
-  struct sys_enter_exec_args common_ctx = {
-      .is_execveat = true,
-      .is_compat = false,
-      .argv = (u8 const *const *)PT_REGS_PARM3_CORE(regs),
-      .envp = (u8 const *const *)PT_REGS_PARM4_CORE(regs),
-      .base_filename = (u8 *)PT_REGS_PARM2_CORE(regs),
-  };
-  trace_exec_common(&common_ctx);
-  pid_t pid = (pid_t)bpf_get_current_pid_tgid();
+  trace_exec_common(true, false, (u8 *)PT_REGS_PARM2_CORE(regs),
+                    (u8 const *const *)PT_REGS_PARM3_CORE(regs),
+                    (u8 const *const *)PT_REGS_PARM4_CORE(regs));
   struct exec_event *event = bpf_task_storage_get(
       &execs, (struct task_struct *)bpf_get_current_task_btf(), NULL, BPF_ANY);
   if (!event || !ctx)
@@ -525,16 +516,7 @@ int BPF_PROG(sys_execveat_fentry, struct pt_regs *regs, int ret) {
 SEC("kprobe/__" SYSCALL_PREFIX "_sys_execveat")
 int BPF_KSYSCALL(sys_execveat_kprobe, s32 fd, u8 *base_filename,
                  u8 const *const *argv, u8 const *const *envp, u64 flags) {
-  int key = 0;
-  struct sys_enter_exec_args common_ctx = {
-      .is_execveat = true,
-      .is_compat = false,
-      .argv = argv,
-      .envp = envp,
-      .base_filename = base_filename,
-  };
-  trace_exec_common(&common_ctx);
-  pid_t pid = (pid_t)bpf_get_current_pid_tgid();
+  trace_exec_common(true, false, base_filename, argv, envp);
   struct exec_event *event = bpf_task_storage_get(
       &execs, (struct task_struct *)bpf_get_current_task_btf(), NULL, BPF_ANY);
   if (!event || !ctx)
@@ -695,16 +677,9 @@ int BPF_PROG(compat_sys_exit_execveat, struct pt_regs *regs, int ret) {
 
 SEC("fentry/__" SYSCALL_COMPAT_PREFIX "_sys_execveat")
 int BPF_PROG(compat_sys_execveat, struct pt_regs *regs, int ret) {
-  int key = 0;
-  struct sys_enter_exec_args common_ctx = {
-      .is_execveat = true,
-      .is_compat = true,
-      .argv = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM3_CORE(regs),
-      .envp = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM4_CORE(regs),
-      .base_filename = (u8 *)(u64)COMPAT_PT_REGS_PARM2_CORE(regs),
-  };
-  trace_exec_common(&common_ctx);
-  pid_t pid = (pid_t)bpf_get_current_pid_tgid();
+  trace_exec_common(true, true, (u8 *)(u64)COMPAT_PT_REGS_PARM2_CORE(regs),
+                    (u8 const *const *)(u64)COMPAT_PT_REGS_PARM3_CORE(regs),
+                    (u8 const *const *)(u64)COMPAT_PT_REGS_PARM4_CORE(regs));
   struct exec_event *event = bpf_task_storage_get(
       &execs, (struct task_struct *)bpf_get_current_task_btf(), NULL, BPF_ANY);
   if (!event || !ctx)
@@ -723,15 +698,9 @@ int BPF_PROG(compat_sys_exit_execve, struct pt_regs *regs, int ret) {
 SEC("fentry/__" SYSCALL_COMPAT_PREFIX "_sys_execve")
 int BPF_PROG(compat_sys_execve, struct pt_regs *regs) {
   //  int tp_sys_enter_execve(struct sys_enter_execve_args *ctx)
-  int key = 0;
-  struct sys_enter_exec_args common_ctx = (struct sys_enter_exec_args){
-      .is_execveat = false,
-      .is_compat = true,
-      .argv = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM2_CORE(regs),
-      .envp = (u8 const *const *)(u64)COMPAT_PT_REGS_PARM3_CORE(regs),
-      .base_filename = (u8 *)(u64)COMPAT_PT_REGS_PARM1_CORE(regs),
-  };
-  trace_exec_common(&common_ctx);
+  trace_exec_common(false, true, (u8 *)(u64)COMPAT_PT_REGS_PARM1_CORE(regs),
+                    (u8 const *const *)(u64)COMPAT_PT_REGS_PARM2_CORE(regs),
+                    (u8 const *const *)(u64)COMPAT_PT_REGS_PARM3_CORE(regs));
   return 0;
 }
 
@@ -1012,13 +981,16 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
   if (ret < 0) {
     entry->header.flags |= INO_READ_ERR;
   }
-  struct path path;
-  ret = bpf_core_read(&path, sizeof(path), &file->f_path);
+  struct dentry *dentry;
+  struct vfsmount *mnt;
+  ret = BPF_CORE_READ_INTO(&dentry, file, f_path.dentry);
+  ret |= BPF_CORE_READ_INTO(&mnt, file, f_path.mnt);
   if (ret < 0)
     goto ptr_err;
   // read name
   entry->path_id = event->path_count++;
-  ret = read_send_path(&path, &entry->header, entry->path_id, entry);
+  ret = read_send_path(dentry, mnt, &entry->header, entry->path_id,
+                       entry);
   if (ret < 0) {
     event->header.flags |= PATH_READ_ERR;
   }
@@ -1316,13 +1288,13 @@ static __always_inline bool is_nsfs(const u8 *fstype) {
 }
 
 static int read_dname_dispatch_info(struct fd_event *fd_event,
-                                    const struct path *path) {
-  if (fd_event == NULL || path == NULL || path->dentry == NULL ||
-      path->mnt == NULL) {
+                                    struct dentry *dentry,
+                                    struct vfsmount *mnt) {
+  if (fd_event == NULL || dentry == NULL || mnt == NULL) {
     return -1;
   }
 
-  const struct dentry_operations *d_op = BPF_CORE_READ(path->dentry, d_op);
+  const struct dentry_operations *d_op = BPF_CORE_READ(dentry, d_op);
   if (d_op == NULL) {
     return 0;
   }
@@ -1332,26 +1304,26 @@ static int read_dname_dispatch_info(struct fd_event *fd_event,
     return 0;
   }
 
-  struct dentry *parent = BPF_CORE_READ(path->dentry, d_parent);
-  struct dentry *mnt_root = BPF_CORE_READ(path->mnt, mnt_root);
+  struct dentry *parent = BPF_CORE_READ(dentry, d_parent);
+  struct dentry *mnt_root = BPF_CORE_READ(mnt, mnt_root);
   if (parent == NULL || mnt_root == NULL) {
     return -1;
   }
 
   // https://elixir.bootlin.com/linux/v6.19.7/source/fs/d_path.c#L281
   // Not a root dentry or mount root dentry
-  if (parent != path->dentry || path->dentry != mnt_root) {
+  if (parent != dentry || dentry != mnt_root) {
     fd_event->uses_d_dname = 1;
   }
   return 0;
 }
 
-static int read_nsfs_name(struct fd_event *fd_event, const struct path *path) {
-  if (fd_event == NULL || path == NULL || path->dentry == NULL) {
+static int read_nsfs_name(struct fd_event *fd_event, struct dentry *dentry) {
+  if (fd_event == NULL || dentry == NULL) {
     return -1;
   }
 
-  struct inode *inode = BPF_CORE_READ(path->dentry, d_inode);
+  struct inode *inode = BPF_CORE_READ(dentry, d_inode);
   if (inode == NULL) {
     return -1;
   }
@@ -1371,15 +1343,15 @@ static int read_nsfs_name(struct fd_event *fd_event, const struct path *path) {
                                    sizeof(fd_event->pseudo_name), name);
 }
 
-static int read_fs_info(struct fd_event *fd_event, const struct path *path) {
+static int read_fs_info(struct fd_event *fd_event, struct dentry *dentry,
+                        struct vfsmount *vfsmnt) {
   if (fd_event == NULL) {
     return 0;
   }
-  if (path == NULL || path->mnt == NULL) {
+  if (dentry == NULL || vfsmnt == NULL) {
     fd_event->header.flags |= PTR_READ_FAILURE;
     return 0;
   }
-  struct vfsmount *vfsmnt = path->mnt;
   struct mount *mount = container_of(vfsmnt, struct mount, mnt);
   long ret = bpf_core_read(&fd_event->mnt_id, sizeof(fd_event->mnt_id),
                            &mount->mnt_id);
@@ -1392,12 +1364,12 @@ static int read_fs_info(struct fd_event *fd_event, const struct path *path) {
                                   fstype_name);
   if (ret < 0)
     goto fstype_err_out;
-  ret = read_dname_dispatch_info(fd_event, path);
+  ret = read_dname_dispatch_info(fd_event, dentry, vfsmnt);
   if (ret < 0) {
     fd_event->header.flags |= PTR_READ_FAILURE;
   }
   if (is_nsfs(fd_event->fstype)) {
-    ret = read_nsfs_name(fd_event, path);
+    ret = read_nsfs_name(fd_event, dentry);
     if (ret < 0) {
       fd_event->header.flags |= STR_READ_FAILURE;
       fd_event->pseudo_name[0] = '\0';
@@ -1418,21 +1390,23 @@ static int read_send_path_stage2(struct path_event *event,
 // an absolute path.
 //
 // Arguments:
-//   path: a pointer to a path struct, this is not a kernel pointer
+//   dentry/mnt: kernel pointers to the path components
 //   fd_event: If not NULL, read mnt_id and fstype and set it in fd_event
-static int read_send_path(const struct path *path,
+static int read_send_path(struct dentry* dentry, struct vfsmount* mnt,
                           struct tracexec_event_header *base_header,
                           s32 path_id, struct fd_event *fd_event) {
-  struct task_struct *current_task =
-      (struct task_struct *)bpf_get_current_task_btf();
+  if (dentry == NULL || mnt == NULL) {
+    return -1;
+  }
   int ret = -1;
   // Read fs info before alloc path_event, which may fail (as seen on aarch64 in some cases).
   if (fd_event != NULL) {
-    read_fs_info(fd_event, path);
+    read_fs_info(fd_event, dentry, mnt);
   }
   // Initialize
   struct path_event *event = bpf_task_storage_get(
-      &path_event_cache, current_task, NULL, BPF_LOCAL_STORAGE_GET_F_CREATE);
+      &path_event_cache, (void *)bpf_get_current_task_btf(), NULL,
+      BPF_LOCAL_STORAGE_GET_F_CREATE);
   if (event == NULL) {
     debug("This should not happen!");
     return 1;
@@ -1451,7 +1425,7 @@ static int read_send_path(const struct path *path,
   struct task_struct *current = (void *)bpf_get_current_task();
   struct path_segment_ctx segment_ctx = {
       .path_event = event,
-      .dentry = path->dentry,
+      .dentry = dentry,
       .mnt_root = NULL,
       .root = NULL,
       .base_index = 0,
@@ -1462,7 +1436,7 @@ static int read_send_path(const struct path *path,
     goto ptr_err;
   }
   // Get vfsmount and mnt_root
-  struct vfsmount *vfsmnt = path->mnt;
+  struct vfsmount *vfsmnt = mnt;
   ret = bpf_core_read(&segment_ctx.mnt_root, sizeof(void *), &vfsmnt->mnt_root);
   if (ret < 0) {
     debug("failed to read vfsmnt->mnt_root");
@@ -1474,7 +1448,8 @@ ptr_err:
   event->header.flags |= PTR_READ_FAILURE;
   event->segment_count = 0;
   ret = bpf_ringbuf_output(&events, event, sizeof(*event), BPF_RB_FORCE_WAKEUP);
-  bpf_task_storage_delete(&path_event_cache, current_task);
+  bpf_task_storage_delete(&path_event_cache,
+                          (void *)bpf_get_current_task_btf());
   if (ret < 0) {
     debug("Failed to output path_event to ringbuf");
     return -1;
