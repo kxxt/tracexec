@@ -782,11 +782,10 @@ static int read_fds(struct exec_event *event) {
     debug("Failed to read fdt->close_on_exec! err: %d", ret);
     goto probe_failure_locked_rcu;
   }
-  unsigned int max_fds;
   // max_fds is 128 or 256 for most processes that does not open too many files
   // max_fds is a multiple of BITS_PER_LONG. TODO: Should we rely on this kernel
   // implementation detail.
-  ret = bpf_core_read(&max_fds, sizeof(max_fds), &fdt->max_fds);
+  ret = bpf_core_read(&ctx.size, sizeof(ctx.size), &fdt->max_fds);
   if (ret < 0) {
     debug("Failed to read fdt->max_fds! err: %d", ret);
     goto probe_failure_locked_rcu;
@@ -795,7 +794,7 @@ static int read_fds(struct exec_event *event) {
   // open_fds is a fd set, which is a bitmap
   // Ref:
   // https://github.com/torvalds/linux/blob/5189dafa4cf950e675f02ee04b577dfbbad0d9b1/fs/file.c#L279-L291
-  ctx.size = max_fds / BITS_PER_LONG;
+  ctx.size /= BITS_PER_LONG;
   ctx.size = min(ctx.size, FDSET_SIZE_MAX_IN_LONG);
   if (LINUX_KERNEL_VERSION >= MIN_KERNEL_VERSION_FOR_ITER_BITS) {
     // When using iter_bits, the unit of size is bit (not the number of words)
