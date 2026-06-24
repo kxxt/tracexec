@@ -791,7 +791,7 @@ impl EbpfTracer {
       let mut skel = open_skel.load()?;
       skel.attach()?;
       if !kernel_have_syscall_wrappers {
-        attach_kprobes_without_syscall_wrappers(&mut skel)?;
+        attach_kprobes_without_syscall_wrappers(&mut skel, AttachSet::all())?;
       }
 
       match waitpid(child, Some(WaitPidFlag::WSTOPPED))? {
@@ -806,7 +806,7 @@ impl EbpfTracer {
       let mut skel = open_skel.load()?;
       skel.attach()?;
       if !kernel_have_syscall_wrappers {
-        attach_kprobes_without_syscall_wrappers(&mut skel)?;
+        attach_kprobes_without_syscall_wrappers(&mut skel, AttachSet::all())?;
       }
       (skel, None)
     };
@@ -908,31 +908,48 @@ where
   }
 }
 
-fn attach_kprobes_without_syscall_wrappers(skel: &mut TracexecSystemSkel) -> libbpf_rs::Result<()> {
-  skel.links.sys_execve_kprobe = Some(
-    skel
-      .progs
-      .sys_execve_kprobe
-      .attach_kprobe(false, "__se_sys_execve")?,
-  );
-  skel.links.sys_execveat_kprobe = Some(
-    skel
-      .progs
-      .sys_execveat_kprobe
-      .attach_kprobe(false, "__se_sys_execveat")?,
-  );
-  skel.links.sys_exit_execve_kretprobe = Some(
-    skel
-      .progs
-      .sys_exit_execve_kretprobe
-      .attach_kprobe(true, "__se_sys_execve")?,
-  );
-  skel.links.sys_exit_execveat_kretprobe = Some(
-    skel
-      .progs
-      .sys_exit_execveat_kretprobe
-      .attach_kprobe(true, "__se_sys_execveat")?,
-  );
+#[enumflags2::bitflags]
+#[derive(Debug, Clone, Copy)]
+#[repr(u32)]
+pub enum AttachSet {
+  Execve,
+  Execveat,
+}
+
+pub fn attach_kprobes_without_syscall_wrappers(
+  skel: &mut TracexecSystemSkel,
+  attach_set: BitFlags<AttachSet>,
+) -> libbpf_rs::Result<()> {
+  if attach_set.contains(AttachSet::Execve) {
+    skel.links.sys_execve_kprobe = Some(
+      skel
+        .progs
+        .sys_execve_kprobe
+        .attach_kprobe(false, "__se_sys_execve")?,
+    );
+    skel.links.sys_exit_execve_kretprobe = Some(
+      skel
+        .progs
+        .sys_exit_execve_kretprobe
+        .attach_kprobe(true, "__se_sys_execve")?,
+    );
+  }
+
+  if attach_set.contains(AttachSet::Execveat) {
+    skel.links.sys_execveat_kprobe = Some(
+      skel
+        .progs
+        .sys_execveat_kprobe
+        .attach_kprobe(false, "__se_sys_execveat")?,
+    );
+
+    skel.links.sys_exit_execveat_kretprobe = Some(
+      skel
+        .progs
+        .sys_exit_execveat_kretprobe
+        .attach_kprobe(true, "__se_sys_execveat")?,
+    );
+  }
   Ok(())
 }
 
