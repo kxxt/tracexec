@@ -5,6 +5,7 @@ use std::{
   process::Command,
   sync::{
     Arc,
+    LazyLock,
     Mutex,
   },
   time::{
@@ -25,6 +26,7 @@ use nix::{
     fork,
   },
 };
+use procfs::ConfigSetting;
 use rstest::{
   fixture,
   rstest,
@@ -51,6 +53,7 @@ use tracexec_backend_ebpf::{
     parse_string_event,
     process_path,
   },
+  probe::kernel_have_ftrace_with_direct_calls,
   test_utils::{
     find_sh,
     prepare_execve_fentry_fexit,
@@ -64,6 +67,7 @@ use tracexec_core::event::{
   BpfError,
   OutputMsg,
 };
+use tracing::warn;
 
 #[fixture]
 fn sh_executable() -> PathBuf {
@@ -547,6 +551,17 @@ fn with_optional_sleepable_skel(
   }
 }
 
+static KCONFIG: LazyLock<Option<std::collections::HashMap<String, ConfigSetting>>> =
+  LazyLock::new(|| {
+    procfs::kernel_config()
+      .inspect_err(|e| warn!("Failed to get kernel config during test: {e}"))
+      .ok()
+  });
+
+fn kernel_supports_ftrace_with_direct_calls() -> bool {
+  kernel_have_ftrace_with_direct_calls(KCONFIG.as_ref(), None)
+}
+
 #[rstest]
 #[file_serial(bpf)]
 #[ignore = "root"]
@@ -567,6 +582,13 @@ fn test_execve_kprobe_kretprobe_emits_exec_event(sh_executable: PathBuf) -> colo
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_execve_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
+  if !kernel_supports_ftrace_with_direct_calls() {
+    eprintln!(
+      "Skipping {} due to missing CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS",
+      function_name!()
+    );
+    return Ok(());
+  }
   with_optional_sleepable_skel(function_name!(), prepare_execve_fentry_fexit, |skel| {
     let capture = run_exec_and_capture(skel, &sh_executable, Duration::from_secs(4))?;
     let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
@@ -605,6 +627,13 @@ fn test_execveat_kprobe_kretprobe_emits_exec_event(
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_execveat_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
+  if !kernel_supports_ftrace_with_direct_calls() {
+    eprintln!(
+      "Skipping {} due to missing CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS",
+      function_name!()
+    );
+    return Ok(());
+  }
   with_optional_sleepable_skel(function_name!(), prepare_execveat_fentry_fexit, |skel| {
     let capture = run_execveat_and_capture(skel, &sh_executable, Duration::from_secs(4))?;
     let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
