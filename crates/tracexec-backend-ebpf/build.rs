@@ -37,7 +37,9 @@ fn main() {
   if let Some(bpf_cflags) = bpf_cflags.as_deref() {
     clang_args.extend(bpf_cflags.split_ascii_whitespace().map(OsStr::new));
   }
-  if cfg!(any(feature = "ebpf-debug", debug_assertions)) {
+  let profile = env::var("PROFILE").unwrap_or_default();
+  let ebpf_debug = env::var_os("CARGO_FEATURE_EBPF_DEBUG").is_some() || profile != "release";
+  if ebpf_debug {
     clang_args.push(OsStr::new("-DEBPF_DEBUG"));
   }
 
