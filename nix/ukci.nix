@@ -206,7 +206,7 @@ localFlake:
             targetPkgs: llvmVer:
             let
               bpfClang = targetPkgs.buildPackages.${"llvmPackages_${toString llvmVer}"}.clang.cc;
-              cargoExtraArgs = "--locked --package tracexec-backend-ebpf --no-default-features -F ebpf-debug --tests";
+              cargoExtraArgs = "--locked --package tracexec-backend-ebpf --no-default-features --tests";
             in
             (import ./tracexec-package.nix {
               inherit (targetPkgs) lib;
@@ -386,7 +386,7 @@ localFlake:
                   inherit rootTestsPackage testPackage;
                   name = "${builtKernel.baseName}-clang${toString llvmVer}";
                   initramfs = initramfsMap.${builtKernel.targetSystem};
-                  xfail = builtKernel.baseName == "6.6lts" && llvmVer == 20;
+                  xfail = false;
                 };
             in
             lib.concatMap (bk: map (mkEntry bk) llvmVersions) builtKernels;
