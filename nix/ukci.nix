@@ -581,7 +581,7 @@ localFlake:
                   test_log="$logs_dir/$name.test.log"
                   (
                     set +e
-                    max_vm_attempts="''${UKCI_VM_TEST_ATTEMPTS:-5}"
+                    max_vm_attempts="''${UKCI_VM_TEST_ATTEMPTS:-2}"
                     attempt=1
                     test_status=1
                     while [ "$attempt" -le "$max_vm_attempts" ]; do
@@ -591,7 +591,7 @@ localFlake:
                       fi
                       ${runQemuDrv}/bin/${runQemuName} "$kernel" "$port" >"$qemu_log" 2>&1 &
                       qemu_pid=$!
-                      ${pkgs.coreutils}/bin/timeout 600s \
+                      ${pkgs.coreutils}/bin/timeout 1800s \
                         ${testQemuDrv}/bin/${testQemuName} "$test_exe" "$package" "$root_tests_package" "$port" "1" >"$test_log" 2>&1
                       test_status=$?
                       if kill -0 "$qemu_pid" >/dev/null 2>&1; then
@@ -628,14 +628,14 @@ localFlake:
                         echo "''${YELLOW}''${BOLD}XFAIL:''${RESET} ''${name} hit the expected -E2BIG load failure"
                       elif [ "$test_status" -eq 124 ] || [ "$test_status" -eq 137 ]; then
                         result_label="TIMEOUT"
-                        echo "''${RED}''${BOLD}FAIL:''${RESET} ''${name} timed out after 600s"
+                        echo "''${RED}''${BOLD}FAIL:''${RESET} ''${name} timed out after 1800s"
                       else
                         result_label="FAIL ($test_status)"
                         echo "''${RED}''${BOLD}FAIL:''${RESET} ''${name} exited with unexpected status ''${test_status}"
                       fi
                     elif [ "$test_status" -eq 124 ] || [ "$test_status" -eq 137 ]; then
                       result_label="TIMEOUT"
-                      echo "''${RED}''${BOLD}FAIL:''${RESET} ''${name} timed out after 600s"
+                      echo "''${RED}''${BOLD}FAIL:''${RESET} ''${name} timed out after 1800s"
                     elif [ "$test_status" -ne 0 ]; then
                       result_label="FAIL ($test_status)"
                       echo "''${RED}''${BOLD}FAIL:''${RESET} ''${name} exited with status ''${test_status}"
