@@ -1,7 +1,10 @@
 use std::{
   ffi::CString,
   os::unix::ffi::OsStrExt,
-  path::PathBuf,
+  path::{
+    Path as FsPath,
+    PathBuf,
+  },
   process::Command,
   sync::{
     Arc,
@@ -99,7 +102,7 @@ struct PathSegmentCapture {
 }
 
 fn run_command_and_capture(
-  skel: &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
+  skel: &tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
   mut cmd: Command,
   timeout: Duration,
 ) -> color_eyre::Result<ExecCapture> {
@@ -145,8 +148,8 @@ fn run_command_and_capture(
 }
 
 fn run_exec_and_capture(
-  skel: &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
-  sh_executable: &PathBuf,
+  skel: &tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
+  sh_executable: &FsPath,
   timeout: Duration,
 ) -> color_eyre::Result<ExecCapture> {
   let mut cmd = Command::new(sh_executable);
@@ -156,8 +159,8 @@ fn run_exec_and_capture(
 
 #[allow(unused)]
 fn run_binary_and_capture(
-  skel: &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
-  exe: &PathBuf,
+  skel: &tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
+  exe: &FsPath,
   args: &[&str],
   timeout: Duration,
 ) -> color_eyre::Result<ExecCapture> {
@@ -167,15 +170,15 @@ fn run_binary_and_capture(
 }
 
 fn run_execveat_and_capture(
-  skel: &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
-  exe: &PathBuf,
+  skel: &tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
+  exe: &FsPath,
   timeout: Duration,
 ) -> color_eyre::Result<ExecCapture> {
   let event_slot: Arc<Mutex<Option<exec_event>>> = Arc::new(Mutex::new(None));
 
   let mut rb_builder = RingBufferBuilder::new();
   let slot = Arc::clone(&event_slot);
-  let sh_path = exe.clone();
+  let sh_path = exe.to_path_buf();
   let sh_dir = sh_path
     .parent()
     .expect("sh has no parent directory")
@@ -244,15 +247,15 @@ fn run_execveat_and_capture(
 }
 
 fn run_execveat_in_thread_and_capture(
-  skel: &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
-  exe: &PathBuf,
+  skel: &tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
+  exe: &FsPath,
   timeout: Duration,
 ) -> color_eyre::Result<ExecCapture> {
   let event_slot: Arc<Mutex<Option<exec_event>>> = Arc::new(Mutex::new(None));
 
   let mut rb_builder = RingBufferBuilder::new();
   let slot = Arc::clone(&event_slot);
-  let sh_path = exe.clone();
+  let sh_path = exe.to_path_buf();
   let sh_dir = sh_path
     .parent()
     .expect("sh has no parent directory")
@@ -331,7 +334,7 @@ fn run_execveat_in_thread_and_capture(
 }
 
 fn run_command_and_collect_aux(
-  skel: &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
+  skel: &tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
   mut cmd: Command,
   timeout: Duration,
 ) -> color_eyre::Result<AuxCapture> {
@@ -468,8 +471,8 @@ fn run_command_and_collect_aux(
 }
 
 fn run_exec_and_collect_aux(
-  skel: &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
-  sh_executable: &PathBuf,
+  skel: &tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
+  sh_executable: &FsPath,
   timeout: Duration,
 ) -> color_eyre::Result<AuxCapture> {
   let mut cmd = Command::new(sh_executable);
@@ -478,8 +481,8 @@ fn run_exec_and_collect_aux(
 }
 
 fn run_binary_and_collect_aux(
-  skel: &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
-  exe: &PathBuf,
+  skel: &tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'_>,
+  exe: &FsPath,
   args: &[&str],
   timeout: Duration,
 ) -> color_eyre::Result<AuxCapture> {

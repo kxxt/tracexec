@@ -911,6 +911,7 @@ where
 #[enumflags2::bitflags]
 #[derive(Debug, Clone, Copy)]
 #[repr(u32)]
+#[allow(clippy::use_self)] // triggered in proc macro
 pub enum AttachSet {
   Execve,
   Execveat,

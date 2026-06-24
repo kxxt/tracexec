@@ -98,14 +98,12 @@ pub fn prepare_execve_kprobe_kretprobe(
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
   }
+  open_skel.progs.sys_execve_kprobe.set_autoload(true);
+  open_skel.progs.sys_exit_execve_kretprobe.set_autoload(true);
   if !kernel_have_syscall_wrappers {
-    open_skel.progs.sys_execve_kprobe.set_autoload(true);
-    open_skel.progs.sys_exit_execve_kretprobe.set_autoload(true);
     Some(Box::new(attach_execve_kprobe_without_syscall_wrappers))
   } else {
-    open_skel.progs.sys_execve_kprobe.set_autoload(true);
     open_skel.progs.sys_execve_kprobe.set_autoattach(true);
-    open_skel.progs.sys_exit_execve_kretprobe.set_autoload(true);
     open_skel
       .progs
       .sys_exit_execve_kretprobe
@@ -151,20 +149,15 @@ pub fn prepare_execveat_kprobe_kretprobe(
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
   }
+  open_skel.progs.sys_execveat_kprobe.set_autoload(true);
+  open_skel
+    .progs
+    .sys_exit_execveat_kretprobe
+    .set_autoload(true);
   if !kernel_have_syscall_wrappers {
-    open_skel.progs.sys_execveat_kprobe.set_autoload(true);
-    open_skel
-      .progs
-      .sys_exit_execveat_kretprobe
-      .set_autoload(true);
     Some(Box::new(attach_execveat_kprobe_without_syscall_wrappers))
   } else {
-    open_skel.progs.sys_execveat_kprobe.set_autoload(true);
     open_skel.progs.sys_execveat_kprobe.set_autoattach(true);
-    open_skel
-      .progs
-      .sys_exit_execveat_kretprobe
-      .set_autoload(true);
     open_skel
       .progs
       .sys_exit_execveat_kretprobe
