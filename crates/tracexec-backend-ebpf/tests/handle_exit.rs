@@ -205,6 +205,7 @@ fn run_configured_tracee_exit_without_exec(timeout: Duration) -> color_eyre::Res
   let mut open_skel = builder.open(&mut obj)?;
   disable_all_programs(&mut open_skel);
   open_skel.progs.handle_exit.set_autoload(true);
+  open_skel.progs.handle_exit.set_autoattach(true);
   let pid_ns_ino = std::fs::metadata("/proc/self/ns/pid")?.ino();
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(true);
