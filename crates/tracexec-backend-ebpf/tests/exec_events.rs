@@ -512,6 +512,7 @@ fn paths_for_eid(capture: &AuxCapture, eid: u64) -> hashbrown::HashMap<i32, Path
     paths.entry(event.header.id as i32).or_insert_with(|| Path {
       is_absolute: true,
       segments: Vec::with_capacity(event.segment_count as usize),
+      error: (event.header.flags != 0).then_some(BpfError::Flags.into()),
     });
   }
 
@@ -523,6 +524,7 @@ fn paths_for_eid(capture: &AuxCapture, eid: u64) -> hashbrown::HashMap<i32, Path
     let path = paths.entry(segment.path_id).or_insert_with(|| Path {
       is_absolute: true,
       segments: Vec::new(),
+      error: None,
     });
     while path.segments.len() <= segment.index {
       path.segments.push(OutputMsg::Err(BpfError::Dropped.into()));

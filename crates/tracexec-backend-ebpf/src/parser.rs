@@ -460,6 +460,7 @@ mod tests {
       Path {
         is_absolute: false,
         segments: vec![OutputMsg::Ok(cached_string("eventpoll".to_string()))],
+        error: None,
       },
     );
 
@@ -496,6 +497,7 @@ mod tests {
           OutputMsg::Ok(cached_string("bin".to_string())),
           OutputMsg::Ok(cached_string("usr".to_string())),
         ],
+        error: None,
       },
     );
     event.uses_d_dname = 0;

@@ -1,7 +1,10 @@
 use hashbrown::HashMap;
 use nix::libc::gid_t;
 use tracexec_core::{
-  event::OutputMsg,
+  event::{
+    FriendlyError,
+    OutputMsg,
+  },
   proc::{
     CredInspectError,
     FileDescriptorInfoCollection,
@@ -37,10 +40,17 @@ pub struct Path {
   // with /
   pub is_absolute: bool,
   pub segments: Vec<OutputMsg>,
+  pub error: Option<FriendlyError>,
 }
 
 impl From<Path> for OutputMsg {
   fn from(value: Path) -> Self {
+    if value.segments.is_empty()
+      && let Some(error) = value.error
+    {
+      return OutputMsg::Err(error);
+    }
+
     let mut s = String::with_capacity(
       value
         .segments
@@ -52,7 +62,7 @@ impl From<Path> for OutputMsg {
     if value.is_absolute {
       s.push('/');
     }
-    let mut error = false;
+    let mut error = value.error.is_some();
     for (idx, segment) in value.segments.iter().enumerate().rev() {
       if segment.not_ok() {
         error = true;
@@ -91,6 +101,7 @@ mod tests {
         OutputMsg::Ok(cached_string("bin".to_string())),
         OutputMsg::Ok(cached_string("usr".to_string())),
       ],
+      error: None,
     };
     let out: OutputMsg = path.into();
     assert_eq!(out.as_ref(), "/usr/bin");
@@ -105,9 +116,25 @@ mod tests {
         OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags)),
         OutputMsg::Ok(cached_string("tmp".to_string())),
       ],
+      error: None,
     };
     let out: OutputMsg = path.into();
     assert!(out.as_ref().contains("[err: bpf error]"));
     assert!(matches!(out, OutputMsg::PartialOk(_)));
+  }
+
+  #[test]
+  fn test_path_into_outputmsg_error_without_segments() {
+    let path = Path {
+      is_absolute: true,
+      segments: vec![],
+      error: Some(FriendlyError::Bpf(BpfError::Flags)),
+    };
+    let out: OutputMsg = path.into();
+    assert_eq!(out.as_ref(), "[err: bpf error]");
+    assert!(matches!(
+      out,
+      OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags))
+    ));
   }
 }
