@@ -23,7 +23,7 @@ mod private {
 pub trait OutputMsgTuiExt: Sealed {
   fn bash_escaped_with_style(&self, style: Style, theme: &Theme) -> Span<'static>;
   #[allow(unused)]
-  fn styled(&self, style: Style, theme: &Theme) -> Span<'_>;
+  fn styled(&self, style: Style, theme: &Theme) -> Span<'static>;
 }
 
 impl OutputMsgTuiExt for OutputMsg {
@@ -35,16 +35,16 @@ impl OutputMsgTuiExt for OutputMsg {
       Self::PartialOk(s) => {
         shell_quote::QuoteRefExt::<String>::quoted(s.as_str(), shell_quote::Bash)
           .set_style(style)
-          .patch_style(theme.inline_tracer_error)
+          .patch_style(theme.partial_ok)
       }
       Self::Err(e) => <&'static str>::from(e).set_style(theme.inline_tracer_error),
     }
   }
 
-  fn styled(&self, style: Style, theme: &Theme) -> Span<'_> {
+  fn styled(&self, style: Style, theme: &Theme) -> Span<'static> {
     match self {
-      Self::Ok(s) => (*s).set_style(style),
-      Self::PartialOk(s) => (*s).set_style(theme.inline_tracer_error),
+      Self::Ok(s) => s.to_string().set_style(style),
+      Self::PartialOk(s) => s.to_string().set_style(style).patch_style(theme.partial_ok),
       Self::Err(e) => <&'static str>::from(e).set_style(theme.inline_tracer_error),
     }
   }
@@ -71,11 +71,20 @@ mod tests {
   }
 
   #[test]
-  fn bash_escaped_with_style_marks_partial_ok_as_error() {
+  fn bash_escaped_with_style_marks_partial_ok_with_partial_style() {
     let msg = OutputMsg::PartialOk("oops".into());
     let span = msg.bash_escaped_with_style(Style::default(), current_theme());
     assert_eq!(span.content.as_ref(), "oops");
-    assert_eq!(span.style, current_theme().inline_tracer_error);
+    assert_eq!(span.style, current_theme().partial_ok);
+  }
+
+  #[test]
+  fn styled_partial_ok_keeps_base_style_and_marks_partial() {
+    let msg = OutputMsg::PartialOk("partial/path".into());
+    let base = Style::default().green();
+    let span = msg.styled(base, current_theme());
+    assert_eq!(span.content.as_ref(), "partial/path");
+    assert_eq!(span.style, base.patch(current_theme().partial_ok));
   }
 
   #[test]

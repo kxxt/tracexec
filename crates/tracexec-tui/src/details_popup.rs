@@ -78,6 +78,7 @@ use crate::{
     ActivePopup,
   },
   event::TracerEventDetailsTuiExt,
+  output::OutputMsgTuiExt,
 };
 
 pub struct DetailsPopup {
@@ -310,11 +311,11 @@ impl DetailsPopupState {
             EventStatus::InternalError => formatted.set_style(theme.status_internal_failure).into(),
           }
         }),
-        (" Cwd ", Span::from(exec.cwd.as_ref().to_owned()).into()),
+        (" Cwd ", exec.cwd.styled(Default::default(), theme).into()),
         (" Comm (Before exec) ", exec.comm.to_string().into()),
         (
           " Filename ",
-          Span::from(exec.filename.as_ref().to_owned()).into(),
+          exec.filename.styled(Default::default(), theme).into(),
         ),
         (
           " Interpreters ",

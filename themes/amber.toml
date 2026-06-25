@@ -12,6 +12,7 @@ fancy-help-desc = { fg = "black", bg = "yellow", remove-modifiers = ["slow-blink
 tracer-info = { fg = "#ffcf5a" }
 tracer-warning = { fg = "yellow" }
 tracer-error = { fg = "light-red" }
+partial-output = { fg = "yellow", modifiers = ["italic"] }
 filename = { fg = "#ffd36b" }
 cwd = { fg = "#ffcf5a" }
 query-match-current-no = { fg = "#ffb000", modifiers = ["bold"] }
