@@ -93,6 +93,8 @@ use tracexec_core::{
   proc::{
     BaselineInfo,
     CgroupInfo,
+    Fallible,
+    FdFlags,
     FileDescriptorInfo,
     diff_env,
   },
@@ -163,6 +165,33 @@ fn dropped_output() -> OutputMsg {
 fn pad_with_dropped(items: &mut Vec<OutputMsg>, len: usize) {
   if items.len() < len {
     items.extend(repeat_n(dropped_output(), len - items.len()));
+  }
+}
+
+fn fd_path_has_bpf_error(flags: BitFlags<BpfEventFlags>) -> bool {
+  flags.contains(BpfEventFlags::ERROR)
+    || flags.contains(BpfEventFlags::PTR_READ_FAILURE)
+    || flags.contains(BpfEventFlags::INO_READ_ERR)
+    || flags.contains(BpfEventFlags::MNTID_READ_ERR)
+    || flags.contains(BpfEventFlags::STR_READ_FAILURE)
+}
+
+fn mark_fd_path_for_errors(path: OutputMsg, flags: BitFlags<BpfEventFlags>) -> OutputMsg {
+  if !fd_path_has_bpf_error(flags) {
+    return path;
+  }
+
+  match path {
+    OutputMsg::Ok(path) => OutputMsg::PartialOk(path),
+    path => path,
+  }
+}
+
+fn fallible_fd_field<T>(value: T, failed: bool) -> Fallible<T> {
+  if failed {
+    Fallible::Err(BpfError::Flags.into())
+  } else {
+    Fallible::Ok(value)
   }
 }
 
@@ -457,17 +486,24 @@ impl EbpfTracer {
           event_type::FD_EVENT => {
             assert_eq!(data.len(), size_of::<fd_event>());
             let event: &fd_event = unsafe { &*(data.as_ptr() as *const _) };
+            let flags = BpfEventFlags::from_bits_truncate(event.header.flags);
             let mut guard = event_storage.borrow_mut();
             let storage = guard.entry(header.eid).or_default();
             let fs = utf8_lossy_cow_from_bytes_with_nul(&event.fstype);
-            let path = process_path(event, &fs, &storage.paths);
+            let path = mark_fd_path_for_errors(process_path(event, &fs, &storage.paths), flags);
             let fdinfo = FileDescriptorInfo {
               fd: event.fd as RawFd,
               path,
-              pos: event.pos as usize, // TODO: Handle error
+              pos: fallible_fd_field(
+                event.pos as usize,
+                flags.contains(BpfEventFlags::POS_READ_ERR),
+              ),
               flags: OFlag::from_bits_retain(event.flags as c_int),
-              mnt_id: event.mnt_id,
-              ino: event.ino,
+              mnt_id: fallible_fd_field(
+                event.mnt_id,
+                flags.contains(BpfEventFlags::MNTID_READ_ERR),
+              ),
+              ino: fallible_fd_field(event.ino, flags.contains(BpfEventFlags::INO_READ_ERR)),
               mnt: cached_cow(fs),
               extra: vec![],
             };
@@ -1025,6 +1061,23 @@ mod tests {
           .next()
       })
       .unwrap_or_else(|| PathBuf::from(bin))
+  }
+
+  #[test]
+  fn fd_path_marked_partial_on_fd_metadata_error() {
+    let flags = BitFlags::from_flag(BpfEventFlags::INO_READ_ERR);
+    let path = mark_fd_path_for_errors(OutputMsg::Ok("pipe:[0]".into()), flags);
+
+    assert_eq!(path.as_ref(), "pipe:[0]");
+    assert!(matches!(path, OutputMsg::PartialOk(_)));
+  }
+
+  #[test]
+  fn fd_field_marked_fallible_on_read_error() {
+    let field = fallible_fd_field(123_u64, true);
+
+    assert_eq!(field.to_string(), "[err: bpf error]");
+    assert!(matches!(field, Fallible::Err(_)));
   }
 
   fn run_ebpf_and_collect(
