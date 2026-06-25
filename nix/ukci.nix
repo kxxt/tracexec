@@ -186,12 +186,13 @@ localFlake:
             22
           ];
           latestLlvmVersions = [ (lib.last llvmVersions) ];
-          ebpfRootTestNames = lib.map (lib.removeSuffix ".rs") (
+          ebpfIntegrationRootTestNames = lib.map (lib.removeSuffix ".rs") (
             lib.filter (lib.hasSuffix ".rs") (
               builtins.attrNames (builtins.readDir ../crates/tracexec-backend-ebpf/tests)
             )
           );
-          ebpfRootTestNamesSpaceSep = lib.concatStringsSep " " ebpfRootTestNames;
+          ebpfExpectedRootTestNames = [ "tracexec_backend_ebpf" ] ++ ebpfIntegrationRootTestNames;
+          ebpfExpectedRootTestNamesSpaceSep = lib.concatStringsSep " " ebpfExpectedRootTestNames;
           tracexecForClang =
             targetPkgs: llvmVer:
             let
@@ -207,7 +208,7 @@ localFlake:
             targetPkgs: llvmVer:
             let
               bpfClang = targetPkgs.buildPackages.${"llvmPackages_${toString llvmVer}"}.clang.cc;
-              cargoExtraArgs = "--locked --package tracexec-backend-ebpf --no-default-features --tests";
+              cargoExtraArgs = "--locked --package tracexec-backend-ebpf --no-default-features";
             in
             (import ./tracexec-package.nix {
               inherit (targetPkgs) lib;
@@ -224,22 +225,42 @@ localFlake:
                 buildPhaseCargoCommand = ''
                   mkdir -p "$out/target"
                   export CARGO_TARGET_DIR="$out/target"
-                  cargoBuildLog=$(mktemp cargoBuildLogXXXX.json)
+                  cargoBuildLog="$out/cargo-test-build.jsonl"
                   cargoWithProfile test --no-run --message-format json-render-diagnostics ${cargoExtraArgs} >"$cargoBuildLog"
                 '';
                 installPhaseCommand = ''
                   mkdir -p "$out/bin"
 
-                  for test_name in ${ebpfRootTestNamesSpaceSep}; do
-                    installed=0
-                    for candidate in "$out"/target/*/release/deps/"$test_name"-* "$out"/target/release/deps/"$test_name"-*; do
-                      if [ -f "$candidate" ] && [ -x "$candidate" ] && [[ "$candidate" != *.d ]]; then
-                        ln -s "$candidate" "$out/bin/$test_name"
-                        installed=$((installed + 1))
-                      fi
-                    done
-                    if [ "$installed" -ne 1 ]; then
-                      echo "expected exactly one test binary for $test_name, found $installed" >&2
+                  test_executables=$(mktemp test-executablesXXXX)
+                  grep '"package_id":"path+file://.*/crates/tracexec-backend-ebpf#' "$out/cargo-test-build.jsonl" \
+                    | grep '"profile":{[^}]*"test":true}' \
+                    | grep -E '"target":\{"kind":\["(lib|test)"\]' \
+                    | sed -n 's/.*"target":{[^}]*"name":"\([^"]*\)".*"executable":"\([^"]*\)".*/\1 \2/p' \
+                    > "$test_executables"
+
+                  installed=0
+                  while read -r test_name executable; do
+                    if [ -z "$test_name" ] || [ -z "$executable" ]; then
+                      continue
+                    fi
+                    if [ ! -x "$executable" ]; then
+                      echo "missing test executable for $test_name: $executable" >&2
+                      exit 1
+                    fi
+                    install -Dm755 "$executable" "$out/bin/$test_name"
+                    printf '%s\n' "$test_name" >> "$out/tests.list"
+                    installed=$((installed + 1))
+                  done < "$test_executables"
+
+                  if [ "$installed" -eq 0 ]; then
+                    echo "expected at least one eBPF root test binary" >&2
+                    exit 1
+                  fi
+
+                  sort -o "$out/tests.list" "$out/tests.list"
+                  for test_name in ${ebpfExpectedRootTestNamesSpaceSep}; do
+                    if ! grep -qx "$test_name" "$out/tests.list"; then
+                      echo "expected root test binary $test_name was not installed" >&2
                       exit 1
                     fi
                   done
@@ -265,22 +286,12 @@ localFlake:
                         keep=1
                         ;;
                     esac
-                    for test_name in ${ebpfRootTestNamesSpaceSep}; do
-                      case "$base" in
-                        "$test_name"-*)
-                          if [ -x "$candidate" ] && [[ "$candidate" != *.d ]]; then
-                            keep=1
-                          fi
-                          ;;
-                      esac
-                    done
                     if [ "$keep" -eq 0 ]; then
                       rm -f "$candidate"
                     fi
                   done
 
                   find "$out/target" -type d -empty -delete
-                  printf '%s\n' ${ebpfRootTestNamesSpaceSep} > "$out/tests.list"
                 '';
               };
           # Build a single shared initramfs per target system (no kernel dependency)
