@@ -48,7 +48,7 @@ impl From<Path> for OutputMsg {
     if value.segments.is_empty()
       && let Some(error) = value.error
     {
-      return OutputMsg::Err(error);
+      return Self::Err(error);
     }
 
     let mut s = String::with_capacity(

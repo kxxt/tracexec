@@ -867,10 +867,10 @@ mod tests {
     FileDescriptorInfo {
       fd,
       path: msg(path),
-      pos: 0,
+      pos: 0.into(),
       flags,
-      mnt_id: 1,
-      ino,
+      mnt_id: 1.into(),
+      ino: ino.into(),
       mnt: ArcStr::from("mnt"),
       extra: Vec::new(),
     }

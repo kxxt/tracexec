@@ -56,7 +56,10 @@ use crate::{
     ArcStr,
     StringCache,
   },
-  event::OutputMsg,
+  event::{
+    FriendlyError,
+    OutputMsg,
+  },
   pty::UnixSlavePty,
 };
 
@@ -390,13 +393,61 @@ impl FileDescriptorInfoCollection {
 pub struct FileDescriptorInfo {
   pub fd: c_int,
   pub path: OutputMsg,
-  pub pos: usize,
+  pub pos: Fallible<usize>,
   #[serde(serialize_with = "serialize_oflags")]
   pub flags: OFlag,
-  pub mnt_id: c_int,
-  pub ino: u64,
+  pub mnt_id: Fallible<c_int>,
+  pub ino: Fallible<u64>,
   pub mnt: ArcStr,
   pub extra: Vec<ArcStr>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Fallible<T> {
+  Ok(T),
+  Err(FriendlyError),
+}
+
+impl<T> Fallible<T> {
+  pub fn ok(&self) -> Option<&T> {
+    match self {
+      Self::Ok(value) => Some(value),
+      Self::Err(_) => None,
+    }
+  }
+}
+
+impl<T> From<T> for Fallible<T> {
+  fn from(value: T) -> Self {
+    Self::Ok(value)
+  }
+}
+
+impl<T: Default> Default for Fallible<T> {
+  fn default() -> Self {
+    Self::Ok(T::default())
+  }
+}
+
+impl<T: Display> Display for Fallible<T> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    match self {
+      Self::Ok(value) => Display::fmt(value, f),
+      Self::Err(error) => Display::fmt(error, f),
+    }
+  }
+}
+
+impl<T: Serialize> Serialize for Fallible<T> {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    match self {
+      Self::Ok(value) => value.serialize(serializer),
+      Self::Err(error) => <&'static str>::from(error).serialize(serializer),
+    }
+  }
 }
 
 impl FileDescriptorInfo {
@@ -405,7 +456,16 @@ impl FileDescriptorInfo {
   }
 
   pub fn same_file_as(&self, other: &Self) -> bool {
-    self.ino == other.ino && self.mnt_id == other.mnt_id
+    self
+      .ino
+      .ok()
+      .zip(other.ino.ok())
+      .is_some_and(|(a, b)| a == b)
+      && self
+        .mnt_id
+        .ok()
+        .zip(other.mnt_id.ok())
+        .is_some_and(|(a, b)| a == b)
   }
 }
 
@@ -458,17 +518,19 @@ pub fn read_fdinfo(pid: Pid, fd: i32) -> color_eyre::Result<FileDescriptorInfo> 
     let key = parts.next().unwrap_or("");
     let value = parts.next().unwrap_or("");
     match key {
-      "pos:" => info.pos = value.parse()?,
+      "pos:" => info.pos = value.parse::<usize>()?.into(),
       "flags:" => info.flags = OFlag::from_bits_truncate(c_int::from_str_radix(value, 8)?),
-      "mnt_id:" => info.mnt_id = value.parse()?,
-      "ino:" => info.ino = value.parse()?,
+      "mnt_id:" => info.mnt_id = value.parse::<c_int>()?.into(),
+      "ino:" => info.ino = value.parse::<u64>()?.into(),
       _ => {
         let line = CACHE.get_or_insert_owned(line);
         info.extra.push(line)
       }
     }
   }
-  info.mnt = get_mountinfo_by_mnt_id(pid, info.mnt_id)?;
+  if let Some(mnt_id) = info.mnt_id.ok() {
+    info.mnt = get_mountinfo_by_mnt_id(pid, *mnt_id)?;
+  }
   info.path = read_fd(pid, fd).map(OutputMsg::Ok)?;
   Ok(info)
 }
@@ -979,14 +1041,14 @@ mod fdinfo_tests {
   #[test]
   fn test_fdinfo_same_file() {
     let a = FileDescriptorInfo {
-      ino: 1,
-      mnt_id: 2,
+      ino: 1.into(),
+      mnt_id: 2.into(),
       ..Default::default()
     };
 
     let b = FileDescriptorInfo {
-      ino: 1,
-      mnt_id: 2,
+      ino: 1.into(),
+      mnt_id: 2.into(),
       ..Default::default()
     };
 
@@ -997,14 +1059,14 @@ mod fdinfo_tests {
   #[test]
   fn test_fdinfo_not_same_file() {
     let a = FileDescriptorInfo {
-      ino: 1,
-      mnt_id: 2,
+      ino: 1.into(),
+      mnt_id: 2.into(),
       ..Default::default()
     };
 
     let b = FileDescriptorInfo {
-      ino: 3,
-      mnt_id: 2,
+      ino: 3.into(),
+      mnt_id: 2.into(),
       ..Default::default()
     };
 

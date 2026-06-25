@@ -18,6 +18,7 @@ use tracexec_core::{
   proc::{
     BaselineInfo,
     CgroupInfo,
+    Fallible,
   },
   tracer::ProcessExit,
 };
@@ -270,8 +271,22 @@ impl TracePacketCreator {
                   .da_string_interner
                   .intern_owned_with(flags, &mut da_interned_strings)
               }),
-              DebugAnnotationInternId::Pos.with_uint(v.pos as _),
-              DebugAnnotationInternId::MountId.with_int(v.mnt_id as _),
+              match &v.pos {
+                Fallible::Ok(pos) => DebugAnnotationInternId::Pos.with_uint(*pos as _),
+                Fallible::Err(error) => DebugAnnotationInternId::Pos.with_interned_string(
+                  self
+                    .da_string_interner
+                    .intern_with(<&'static str>::from(error), &mut da_interned_strings),
+                ),
+              },
+              match &v.mnt_id {
+                Fallible::Ok(mnt_id) => DebugAnnotationInternId::MountId.with_int(*mnt_id as _),
+                Fallible::Err(error) => DebugAnnotationInternId::MountId.with_interned_string(
+                  self
+                    .da_string_interner
+                    .intern_with(<&'static str>::from(error), &mut da_interned_strings),
+                ),
+              },
               DebugAnnotationInternId::Mount.with_interned_string(
                 self
                   .da_string_interner
@@ -288,7 +303,14 @@ impl TracePacketCreator {
                 }
                 extras
               }),
-              DebugAnnotationInternId::Inode.with_uint(v.ino),
+              match &v.ino {
+                Fallible::Ok(ino) => DebugAnnotationInternId::Inode.with_uint(*ino),
+                Fallible::Err(error) => DebugAnnotationInternId::Inode.with_interned_string(
+                  self
+                    .da_string_interner
+                    .intern_with(<&'static str>::from(error), &mut da_interned_strings),
+                ),
+              },
             ],
             ..Default::default()
           });
