@@ -477,11 +477,15 @@ impl EbpfTracer {
           event_type::PATH_EVENT => {
             assert_eq!(data.len(), size_of::<path_event>());
             let event: &path_event = unsafe { &*(data.as_ptr() as *const _) };
+            let flags = BpfEventFlags::from_bits_truncate(header.flags);
             let mut storage = event_storage.borrow_mut();
             let paths = &mut storage.entry(header.eid).or_default().paths;
             let path = paths.entry(header.id as i32).or_default();
             // FIXME
             path.is_absolute = true;
+            if !flags.is_empty() {
+              path.error = Some(BpfError::Flags.into());
+            }
             let segment_count = event.segment_count as usize;
             if path.segments.len() < segment_count {
               warn!(
