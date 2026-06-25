@@ -518,7 +518,6 @@ impl EbpfTracer {
             if path.segments.len() < index {
               pad_with_dropped(&mut path.segments, index);
             }
-            // TODO: check for errors
             let segment = parse_path_segment(data);
             if path.segments.len() == index {
               path.segments.push(segment);
