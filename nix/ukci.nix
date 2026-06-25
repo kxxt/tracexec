@@ -185,6 +185,7 @@ localFlake:
             21
             22
           ];
+          latestLlvmVersions = [ (lib.last llvmVersions) ];
           ebpfRootTestNames = lib.map (lib.removeSuffix ".rs") (
             lib.filter (lib.hasSuffix ".rs") (
               builtins.attrNames (builtins.readDir ../crates/tracexec-backend-ebpf/tests)
@@ -315,7 +316,10 @@ localFlake:
               storePaths = [ ];
             };
           mkKernels =
-            targetSystems:
+            {
+              targetSystems,
+              llvmVersions,
+            }:
             let
               sources = sourcesForTargets targetSystems;
               useArchSuffix = builtins.length targetSystems > 1;
@@ -390,13 +394,28 @@ localFlake:
                 };
             in
             lib.concatMap (bk: map (mkEntry bk) llvmVersions) builtKernels;
-          kernelsNative = mkKernels nativeTargetSystems;
-          kernelsCross = mkKernels crossTargetSystems;
+          kernelsNative = mkKernels {
+            targetSystems = nativeTargetSystems;
+            inherit llvmVersions;
+          };
+          kernelsNativeLatest = mkKernels {
+            targetSystems = nativeTargetSystems;
+            llvmVersions = latestLlvmVersions;
+          };
+          kernelsCross = mkKernels {
+            targetSystems = crossTargetSystems;
+            inherit llvmVersions;
+          };
+          kernelsCrossLatest = mkKernels {
+            targetSystems = crossTargetSystems;
+            llvmVersions = latestLlvmVersions;
+          };
           targetSystemsAll = nativeTargetSystems ++ crossTargetSystems;
           mkScripts =
             {
               nameSuffix ? "",
               kernels,
+              llvmVersions,
             }:
             let
               runQemuName = "run-qemu${nameSuffix}";
@@ -717,26 +736,56 @@ localFlake:
               test-qemu = testQemuDrv;
               ukci = ukciDrv;
             };
-          nativeScripts = mkScripts { kernels = kernelsNative; };
+          nativeScripts = mkScripts {
+            kernels = kernelsNative;
+            inherit llvmVersions;
+          };
+          nativeScriptsLatest = mkScripts {
+            nameSuffix = "-latest-llvm";
+            kernels = kernelsNativeLatest;
+            llvmVersions = latestLlvmVersions;
+          };
           mkTargetScriptAttrs =
-            targetSystem:
+            {
+              targetSystem,
+              latest ? false,
+            }:
             let
               arch = getArch targetSystem;
+              attrSuffix = "${arch}" + lib.optionalString latest "-latest-llvm";
+              llvmVersionsForScripts = if latest then latestLlvmVersions else llvmVersions;
               scripts = mkScripts {
-                nameSuffix = "-${arch}";
-                kernels = mkKernels [ targetSystem ];
+                nameSuffix = "-${arch}" + lib.optionalString latest "-latest-llvm";
+                kernels = mkKernels {
+                  targetSystems = [ targetSystem ];
+                  llvmVersions = llvmVersionsForScripts;
+                };
+                llvmVersions = llvmVersionsForScripts;
               };
             in
             lib.listToAttrs [
-              (lib.nameValuePair "run-qemu-${arch}" scripts.run-qemu)
-              (lib.nameValuePair "test-qemu-${arch}" scripts.test-qemu)
-              (lib.nameValuePair "ukci-${arch}" scripts.ukci)
+              (lib.nameValuePair "run-qemu-${attrSuffix}" scripts.run-qemu)
+              (lib.nameValuePair "test-qemu-${attrSuffix}" scripts.test-qemu)
+              (lib.nameValuePair "ukci-${attrSuffix}" scripts.ukci)
             ];
-          perTargetScripts = lib.foldl' lib.recursiveUpdate { } (map mkTargetScriptAttrs targetSystemsAll);
+          perTargetScripts = lib.foldl' lib.recursiveUpdate { } (
+            map (targetSystem: mkTargetScriptAttrs { inherit targetSystem; }) targetSystemsAll
+          );
+          perTargetScriptsLatest = lib.foldl' lib.recursiveUpdate { } (
+            map (
+              targetSystem:
+              mkTargetScriptAttrs {
+                inherit targetSystem;
+                latest = true;
+              }
+            ) targetSystemsAll
+          );
         in
         rec {
           inherit (nativeScripts) run-qemu test-qemu ukci;
+          ukci-latest-llvm = nativeScriptsLatest.ukci;
         }
-        // perTargetScripts;
+        // perTargetScripts
+        // perTargetScriptsLatest;
     };
 }

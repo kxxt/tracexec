@@ -6,6 +6,8 @@ permissions:
 on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 0'
   push:
     branches:
       - main
@@ -24,6 +26,7 @@ on:
       - 'flake.nix'
       - 'flake.lock'
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     paths: *trigger_paths
   merge_group:
 
@@ -68,13 +71,23 @@ jobs:
           cache: tracexec
           skip-push: true
 
+      - name: Select UKCI package
+        env:
+          FULL_UKCI: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
+        run: |
+          if [ "$FULL_UKCI" = "true" ]; then
+            echo "UKCI_PACKAGE=ukci" >> "$GITHUB_ENV"
+          else
+            echo "UKCI_PACKAGE=ukci-latest-llvm" >> "$GITHUB_ENV"
+          fi
+
       # Run Userspace<->Kernel CI
       - name: Run UKCI
         env:
           UKCI_SUMMARY_TITLE: UKCI (${{ matrix.os }})
-        run: nix run '.#ukci'
+        run: nix run ".#$UKCI_PACKAGE"
       - name: Add gc root for UKCI
-        run: sudo ln -s "$(nix eval --raw '.#ukci')" /nix/var/nix/gcroots/ukci
+        run: sudo ln -s "$(nix eval --raw ".#$UKCI_PACKAGE")" /nix/var/nix/gcroots/ukci
 
   nix-cross:
     strategy:
@@ -90,10 +103,20 @@ jobs:
 
       - *attic-rdonly
 
+      - name: Select UKCI package
+        env:
+          FULL_UKCI: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci')) }}
+        run: |
+          if [ "$FULL_UKCI" = "true" ]; then
+            echo "UKCI_PACKAGE=ukci-${{ matrix.arch }}" >> "$GITHUB_ENV"
+          else
+            echo "UKCI_PACKAGE=ukci-${{ matrix.arch }}-latest-llvm" >> "$GITHUB_ENV"
+          fi
+
       # Run Userspace<->Kernel CI
       - name: Run UKCI
         env:
           UKCI_SUMMARY_TITLE: UKCI (cross ${{ matrix.arch }})
-        run: nix run '.#ukci-${{ matrix.arch }}'
+        run: nix run ".#$UKCI_PACKAGE"
       - name: Add gc root for UKCI
-        run: sudo ln -s "$(nix eval --raw '.#ukci-${{ matrix.arch }}')" /nix/var/nix/gcroots/ukci
+        run: sudo ln -s "$(nix eval --raw ".#$UKCI_PACKAGE")" /nix/var/nix/gcroots/ukci

@@ -86,6 +86,27 @@
                   self'.packages.test-qemu-riscv64
                 ];
             };
+            devShells.cross = pkgs.mkShell {
+              inputsFrom = [ defaultShell ];
+              packages =  [
+                self'.packages.ukci-latest-llvm
+              ]
+              ++ lib.optionals (system != "aarch64-linux") [
+                self'.packages.ukci-aarch64-latest-llvm
+                self'.packages.run-qemu-aarch64-latest-llvm
+                self'.packages.test-qemu-aarch64-latest-llvm
+              ]
+              ++ lib.optionals (system != "x86_64-linux") [
+                self'.packages.ukci-x86_64-latest-llvm
+                self'.packages.run-qemu-x86_64-latest-llvm
+                self'.packages.test-qemu-x86_64-latest-llvm
+              ]
+              ++ lib.optionals (system != "riscv64-linux") [
+                self'.packages.ukci-riscv64-latest-llvm
+                self'.packages.run-qemu-riscv64-latest-llvm
+                self'.packages.test-qemu-riscv64-latest-llvm
+              ];
+            };
 
             treefmt.config = {
               inherit (config.flake-root) projectRootFile;
