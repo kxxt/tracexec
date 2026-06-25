@@ -17,6 +17,7 @@ tracer-warning = { fg = "#ebcb8b" }
 tracer-error = { fg = "#bf616a" }
 new-child-pid = { fg = "#8fbcbb" }
 tracer-event = { fg = "#b48ead" }
+partial-output = { fg = "#ebcb8b", modifiers = ["italic"] }
 filename = { fg = "#88c0d0" }
 cwd = { fg = "#8fbcbb" }
 modified-env-var = { fg = "#ebcb8b" }

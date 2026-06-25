@@ -47,8 +47,19 @@ use crate::{
 pub fn process_base_filename(eflags: BitFlags<BpfEventFlags>, event: &exec_event) -> OutputMsg {
   if eflags.contains(BpfEventFlags::FILENAME_READ_ERR) {
     OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags))
+  } else if eflags.contains(BpfEventFlags::POSSIBLE_TRUNCATION) {
+    OutputMsg::PartialOk(cached_cow(utf8_lossy_cow_from_bytes_with_nul(
+      &event.base_filename,
+    )))
   } else {
     cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.base_filename)).into()
+  }
+}
+
+fn output_starts_with(msg: &OutputMsg, needle: char) -> bool {
+  match msg {
+    OutputMsg::Ok(msg) | OutputMsg::PartialOk(msg) => msg.starts_with(needle),
+    OutputMsg::Err(_) => false,
   }
 }
 
@@ -63,7 +74,7 @@ pub fn process_filename(
     // SAFETY: the eBPF program ensures that this field is initialized
     event.is_execveat.assume_init()
   };
-  if !is_execveat || base_filename.is_ok_and(|s| s.starts_with('/')) {
+  if !is_execveat || output_starts_with(&base_filename, '/') {
     base_filename
   } else {
     match event.fd {
@@ -289,6 +300,15 @@ mod tests {
   }
 
   #[test]
+  fn test_process_base_filename_possible_truncation_is_partial() {
+    let mut event = exec_event::default();
+    event.base_filename[..4].copy_from_slice(b"bin\0");
+    let out = process_base_filename(flags_with(BpfEventFlags::POSSIBLE_TRUNCATION), &event);
+    assert_eq!(out.as_ref(), "bin");
+    assert!(matches!(out, OutputMsg::PartialOk(_)));
+  }
+
+  #[test]
   fn test_process_filename_non_execveat_passthrough() {
     let event = exec_event {
       is_execveat: MaybeUninit::new(false),
@@ -312,6 +332,23 @@ mod tests {
       ..Default::default()
     };
     let base = OutputMsg::Ok(cached_string("/bin/ls".to_string()));
+    let cwd = OutputMsg::Ok(cached_string("/cwd".to_string()));
+    let out = process_filename(
+      base.clone(),
+      &event,
+      &cwd,
+      &FileDescriptorInfoCollection::default(),
+    );
+    assert_eq!(out, base);
+  }
+
+  #[test]
+  fn test_process_filename_partial_absolute_passthrough() {
+    let event = exec_event {
+      is_execveat: MaybeUninit::new(true),
+      ..Default::default()
+    };
+    let base = OutputMsg::PartialOk(cached_string("/very/long/path".to_string()));
     let cwd = OutputMsg::Ok(cached_string("/cwd".to_string()));
     let out = process_filename(
       base.clone(),
