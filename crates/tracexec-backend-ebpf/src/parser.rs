@@ -224,9 +224,14 @@ pub fn parse_string_event(header: &tracexec_event_header, data: &[u8]) -> Output
 pub fn parse_path_segment(data: &[u8]) -> OutputMsg {
   assert_eq!(data.len(), size_of::<path_segment_event>());
   let event: &path_segment_event = unsafe { &*(data.as_ptr() as *const _) };
-  OutputMsg::Ok(cached_cow(utf8_lossy_cow_from_bytes_with_nul(
-    &event.segment,
-  )))
+  let flags = BpfEventFlags::from_bits_truncate(event.header.flags);
+  if flags.is_empty() {
+    OutputMsg::Ok(cached_cow(utf8_lossy_cow_from_bytes_with_nul(
+      &event.segment,
+    )))
+  } else {
+    OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags))
+  }
 }
 
 pub fn parse_groups_event(data: &[u8]) -> Vec<gid_t> {
@@ -591,6 +596,22 @@ mod tests {
     };
     let msg = parse_path_segment(data);
     assert_eq!(msg.as_ref(), "bin");
+    assert!(matches!(msg, OutputMsg::Ok(_)));
+  }
+
+  #[test]
+  fn test_parse_path_segment_event_error_flag() {
+    let mut event = path_segment_event::default();
+    event.header.flags = BpfEventFlags::PTR_READ_FAILURE as u32;
+    event.segment[..4].copy_from_slice(b"bin\0");
+    let data: &[u8] = unsafe {
+      std::slice::from_raw_parts(
+        &event as *const _ as *const u8,
+        size_of::<path_segment_event>(),
+      )
+    };
+    let msg = parse_path_segment(data);
+    assert!(matches!(msg, OutputMsg::Err(FriendlyError::Bpf(_))));
   }
 
   #[test]
