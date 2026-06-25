@@ -32,6 +32,26 @@ pub fn kernel_have_syscall_wrappers(
   }
 }
 
+pub fn kernel_rejects_syscall_wrapper_kprobes(
+  #[allow(unused)] kconfig: Option<&HashMap<String, ConfigSetting>>,
+) -> bool {
+  cfg_if! {
+    if #[cfg(target_arch = "riscv64")] {
+      let Some(configs) = kconfig else {
+        return false;
+      };
+      // RISC-V syscall wrappers can start at an ftrace patchable function entry,
+      // and generic kprobes rejects those without CONFIG_KPROBES_ON_FTRACE:
+      // https://github.com/torvalds/linux/blob/ab9de95c9cf952332ab79453b4b5d1bfca8e514f/kernel/kprobes.c#L1598-L1602
+      kernel_have_syscall_wrappers(kconfig)
+        && configs.contains_key("CONFIG_DYNAMIC_FTRACE")
+        && !configs.contains_key("CONFIG_KPROBES_ON_FTRACE")
+    } else {
+      false
+    }
+  }
+}
+
 pub fn kernel_have_ftrace_with_direct_calls(
   kconfig: Option<&HashMap<String, ConfigSetting>>,
   override_env: Option<&[(OsString, OsString)]>,
@@ -99,6 +119,7 @@ mod tests {
     can_i_use_sleepable_fentry,
     kernel_have_ftrace_with_direct_calls,
     kernel_have_syscall_wrappers,
+    kernel_rejects_syscall_wrapper_kprobes,
   };
 
   rusty_fork_test! {
@@ -209,5 +230,25 @@ mod tests {
   #[test]
   fn test_kernel_have_syscall_wrappers_on_non_riscv64() {
     assert!(kernel_have_syscall_wrappers(None));
+  }
+
+  #[test]
+  fn test_kernel_rejects_syscall_wrapper_kprobes_requires_config() {
+    let mut configs = HashMap::new();
+    configs.insert("CONFIG_DYNAMIC_FTRACE".to_string(), ConfigSetting::Yes);
+    configs.insert(
+      "CONFIG_ARCH_HAS_SYSCALL_WRAPPER".to_string(),
+      ConfigSetting::Yes,
+    );
+
+    cfg_if::cfg_if! {
+      if #[cfg(target_arch = "riscv64")] {
+        assert!(kernel_rejects_syscall_wrapper_kprobes(Some(&configs)));
+        configs.insert("CONFIG_KPROBES_ON_FTRACE".to_string(), ConfigSetting::Yes);
+        assert!(!kernel_rejects_syscall_wrapper_kprobes(Some(&configs)));
+      } else {
+        assert!(!kernel_rejects_syscall_wrapper_kprobes(Some(&configs)));
+      }
+    }
   }
 }

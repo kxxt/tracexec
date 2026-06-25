@@ -54,7 +54,10 @@ use tracexec_backend_ebpf::{
     parse_string_event,
     process_path,
   },
-  probe::kernel_have_ftrace_with_direct_calls,
+  probe::{
+    kernel_have_ftrace_with_direct_calls,
+    kernel_rejects_syscall_wrapper_kprobes,
+  },
   test_utils::{
     KCONFIG,
     LoadedSkelCallback,
@@ -555,6 +558,22 @@ fn with_optional_sleepable_skel(
   }
 }
 
+fn with_optional_syscall_wrapper_kprobe_skel(
+  test_name: &str,
+  prepare: impl for<'obj> FnOnce(
+    &mut tracexec_backend_ebpf::bpf::skel::OpenTracexecSystemSkel<'obj>,
+  ) -> Option<Box<LoadedSkelCallback>>,
+  f: impl for<'obj> FnOnce(
+    &mut tracexec_backend_ebpf::bpf::skel::TracexecSystemSkel<'obj>,
+  ) -> color_eyre::Result<()>,
+) -> color_eyre::Result<()> {
+  if kernel_rejects_syscall_wrapper_kprobes(KCONFIG.as_ref()) {
+    eprintln!("skipping {test_name}: kernel rejects syscall wrapper kprobes");
+    return Ok(());
+  }
+  with_skel(test_name, prepare, f)
+}
+
 fn kernel_supports_ftrace_with_direct_calls() -> bool {
   kernel_have_ftrace_with_direct_calls(KCONFIG.as_ref(), None)
 }
@@ -563,16 +582,20 @@ fn kernel_supports_ftrace_with_direct_calls() -> bool {
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_execve_kprobe_kretprobe_emits_exec_event(sh_executable: PathBuf) -> color_eyre::Result<()> {
-  with_skel(function_name!(), prepare_execve_kprobe_kretprobe, |skel| {
-    let capture = run_exec_and_capture(skel, &sh_executable, Duration::from_secs(2))?;
-    let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
-    assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
-    assert_eq!(capture.event.header.pid, capture.pid);
-    assert!(!is_execveat);
-    assert_eq!(capture.event.header.pid, capture.event.tgid);
-    assert_eq!(capture.event.ret, 0);
-    Ok(())
-  })
+  with_optional_syscall_wrapper_kprobe_skel(
+    function_name!(),
+    prepare_execve_kprobe_kretprobe,
+    |skel| {
+      let capture = run_exec_and_capture(skel, &sh_executable, Duration::from_secs(2))?;
+      let is_execveat = unsafe { capture.event.is_execveat.assume_init() };
+      assert_eq!(capture.event.header.r#type, event_type::SYSEXIT_EVENT);
+      assert_eq!(capture.event.header.pid, capture.pid);
+      assert!(!is_execveat);
+      assert_eq!(capture.event.header.pid, capture.event.tgid);
+      assert_eq!(capture.event.ret, 0);
+      Ok(())
+    },
+  )
 }
 
 #[rstest]
@@ -604,7 +627,7 @@ fn test_execve_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_ey
 fn test_execveat_kprobe_kretprobe_emits_exec_event(
   sh_executable: PathBuf,
 ) -> color_eyre::Result<()> {
-  with_skel(
+  with_optional_syscall_wrapper_kprobe_skel(
     function_name!(),
     prepare_execveat_kprobe_kretprobe,
     |skel| {
@@ -649,7 +672,7 @@ fn test_execveat_fentry_fexit_emits_exec_event(sh_executable: PathBuf) -> color_
 fn test_execveat_from_non_main_thread_emits_non_main_exec_pid(
   sh_executable: PathBuf,
 ) -> color_eyre::Result<()> {
-  with_skel(
+  with_optional_syscall_wrapper_kprobe_skel(
     function_name!(),
     prepare_execveat_kprobe_kretprobe,
     |skel| {
@@ -702,47 +725,51 @@ fn test_compat_execveat_emits_exec_event() -> color_eyre::Result<()> {
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_exec_emits_auxiliary_events(sh_executable: PathBuf) -> color_eyre::Result<()> {
-  with_skel(function_name!(), prepare_execve_kprobe_kretprobe, |skel| {
-    let capture = run_exec_and_collect_aux(skel, &sh_executable, Duration::from_secs(4))?;
-    assert_eq!(capture.exec.header.r#type, event_type::SYSEXIT_EVENT);
-    assert_eq!(capture.exec.header.pid, capture.pid);
-    assert_eq!(capture.exec.ret, 0);
-    assert!(!capture.strings.is_empty(), "expected STRING_EVENTs");
-    assert!(
-      capture.strings.iter().any(|s| s == "true"),
-      "expected STRING_EVENT containing argv 'true'"
-    );
-    assert!(
-      capture.strings.iter().any(|s| s.starts_with("PATH=")),
-      "expected STRING_EVENT containing PATH env"
-    );
-    assert!(!capture.path_events.is_empty(), "expected PATH_EVENTs");
-    assert!(
-      !capture.path_segments.is_empty(),
-      "expected PATH_SEGMENT_EVENTs"
-    );
-    assert!(
-      capture.path_segments.iter().any(|s| !s.is_empty()),
-      "expected non-empty path segments"
-    );
-    assert!(!capture.fd_events.is_empty(), "expected FD_EVENTs");
-    assert!(
-      capture
-        .fd_events
-        .iter()
-        .all(|e| !utf8_lossy_cow_from_bytes_with_nul(e.fstype.as_slice()).is_empty()),
-      "expected FD_EVENT with non-empty fstype"
-    );
-    let cred_err = (capture.exec.header.flags & (BpfEventFlags::CRED_READ_ERR as u32)) != 0;
-    if !cred_err {
-      assert!(!capture.groups_sizes.is_empty(), "expected GROUPS_EVENTs");
+  with_optional_syscall_wrapper_kprobe_skel(
+    function_name!(),
+    prepare_execve_kprobe_kretprobe,
+    |skel| {
+      let capture = run_exec_and_collect_aux(skel, &sh_executable, Duration::from_secs(4))?;
+      assert_eq!(capture.exec.header.r#type, event_type::SYSEXIT_EVENT);
+      assert_eq!(capture.exec.header.pid, capture.pid);
+      assert_eq!(capture.exec.ret, 0);
+      assert!(!capture.strings.is_empty(), "expected STRING_EVENTs");
       assert!(
-        capture.groups_sizes.iter().any(|s| *s > 0),
-        "expected non-empty GROUPS_EVENT payload"
+        capture.strings.iter().any(|s| s == "true"),
+        "expected STRING_EVENT containing argv 'true'"
       );
-    }
-    Ok(())
-  })
+      assert!(
+        capture.strings.iter().any(|s| s.starts_with("PATH=")),
+        "expected STRING_EVENT containing PATH env"
+      );
+      assert!(!capture.path_events.is_empty(), "expected PATH_EVENTs");
+      assert!(
+        !capture.path_segments.is_empty(),
+        "expected PATH_SEGMENT_EVENTs"
+      );
+      assert!(
+        capture.path_segments.iter().any(|s| !s.is_empty()),
+        "expected non-empty path segments"
+      );
+      assert!(!capture.fd_events.is_empty(), "expected FD_EVENTs");
+      assert!(
+        capture
+          .fd_events
+          .iter()
+          .all(|e| !utf8_lossy_cow_from_bytes_with_nul(e.fstype.as_slice()).is_empty()),
+        "expected FD_EVENT with non-empty fstype"
+      );
+      let cred_err = (capture.exec.header.flags & (BpfEventFlags::CRED_READ_ERR as u32)) != 0;
+      if !cred_err {
+        assert!(!capture.groups_sizes.is_empty(), "expected GROUPS_EVENTs");
+        assert!(
+          capture.groups_sizes.iter().any(|s| *s > 0),
+          "expected non-empty GROUPS_EVENT payload"
+        );
+      }
+      Ok(())
+    },
+  )
 }
 
 #[rstest]
@@ -750,95 +777,99 @@ fn test_exec_emits_auxiliary_events(sh_executable: PathBuf) -> color_eyre::Resul
 #[ignore = "root"]
 fn test_exec_reports_pseudo_filesystem_fds_across_exec() -> color_eyre::Result<()> {
   let bin = PathBuf::from(env!("CARGO_BIN_EXE_special-fds-exec"));
-  with_skel(function_name!(), prepare_execve_kprobe_kretprobe, |skel| {
-    let capture = run_binary_and_collect_aux(skel, &bin, &[], Duration::from_secs(4))?;
-    assert!(
-      capture.exec_events.len() >= 2,
-      "fixture should exec once after opening special fds"
-    );
-
-    let reexec_eid = capture
-      .exec_events
-      .iter()
-      .map(|event| event.header.eid)
-      .max()
-      .expect("missing exec events");
-    let reexec_fds = capture
-      .fd_events
-      .iter()
-      .filter(|event| event.header.eid == reexec_eid)
-      .collect::<Vec<_>>();
-    assert!(!reexec_fds.is_empty(), "missing fd events for re-exec");
-
-    let pipe_fds = reexec_fds
-      .iter()
-      .filter(|event| fd_fstype(event) == "pipefs" && event.uses_d_dname != 0)
-      .collect::<Vec<_>>();
-    assert!(
-      pipe_fds.len() >= 2,
-      "expected both inherited pipe fds, got {}",
-      pipe_fds.len()
-    );
-    assert!(
-      pipe_fds
-        .iter()
-        .all(|event| rendered_fd_path(&capture, event)
-          .as_ref()
-          .starts_with("pipe:[")),
-      "pipe fds should render as pipe:[ino]"
-    );
-
-    let socket_fds = reexec_fds
-      .iter()
-      .filter(|event| fd_fstype(event) == "sockfs" && event.uses_d_dname != 0)
-      .collect::<Vec<_>>();
-    assert!(
-      socket_fds.len() >= 2,
-      "expected both inherited socketpair fds, got {}",
-      socket_fds.len()
-    );
-    assert!(
-      socket_fds
-        .iter()
-        .all(|event| rendered_fd_path(&capture, event)
-          .as_ref()
-          .starts_with("socket:[")),
-      "socket fds should render as socket:[ino]"
-    );
-
-    let anon_paths = reexec_fds
-      .iter()
-      .filter(|event| fd_fstype(event) == "anon_inodefs" && event.uses_d_dname != 0)
-      .map(|event| rendered_fd_path(&capture, event).as_ref().to_string())
-      .collect::<Vec<_>>();
-    assert!(
-      anon_paths
-        .iter()
-        .any(|path| path.contains("eventfd") || path.contains("eventpoll")),
-      "expected inherited eventfd or epoll anon inode, got {anon_paths:?}"
-    );
-
-    let ns_fd = reexec_fds
-      .iter()
-      .find(|event| fd_fstype(event) == "nsfs")
-      .expect("expected inherited namespace fd");
-    assert_eq!(ns_fd.uses_d_dname, 1);
-    assert_eq!(fd_pseudo_name(ns_fd), "mnt");
-    assert!(
-      rendered_fd_path(&capture, ns_fd)
-        .as_ref()
-        .starts_with("mnt:["),
-      "namespace fd should render as mnt:[ino]"
-    );
-
-    if let Some(pidfd) = reexec_fds.iter().find(|event| fd_fstype(event) == "pidfs") {
-      assert_eq!(pidfd.uses_d_dname, 1);
-      assert_eq!(
-        rendered_fd_path(&capture, pidfd).as_ref(),
-        "anon_inode:[pidfd]"
+  with_optional_syscall_wrapper_kprobe_skel(
+    function_name!(),
+    prepare_execve_kprobe_kretprobe,
+    |skel| {
+      let capture = run_binary_and_collect_aux(skel, &bin, &[], Duration::from_secs(4))?;
+      assert!(
+        capture.exec_events.len() >= 2,
+        "fixture should exec once after opening special fds"
       );
-    }
 
-    Ok(())
-  })
+      let reexec_eid = capture
+        .exec_events
+        .iter()
+        .map(|event| event.header.eid)
+        .max()
+        .expect("missing exec events");
+      let reexec_fds = capture
+        .fd_events
+        .iter()
+        .filter(|event| event.header.eid == reexec_eid)
+        .collect::<Vec<_>>();
+      assert!(!reexec_fds.is_empty(), "missing fd events for re-exec");
+
+      let pipe_fds = reexec_fds
+        .iter()
+        .filter(|event| fd_fstype(event) == "pipefs" && event.uses_d_dname != 0)
+        .collect::<Vec<_>>();
+      assert!(
+        pipe_fds.len() >= 2,
+        "expected both inherited pipe fds, got {}",
+        pipe_fds.len()
+      );
+      assert!(
+        pipe_fds
+          .iter()
+          .all(|event| rendered_fd_path(&capture, event)
+            .as_ref()
+            .starts_with("pipe:[")),
+        "pipe fds should render as pipe:[ino]"
+      );
+
+      let socket_fds = reexec_fds
+        .iter()
+        .filter(|event| fd_fstype(event) == "sockfs" && event.uses_d_dname != 0)
+        .collect::<Vec<_>>();
+      assert!(
+        socket_fds.len() >= 2,
+        "expected both inherited socketpair fds, got {}",
+        socket_fds.len()
+      );
+      assert!(
+        socket_fds
+          .iter()
+          .all(|event| rendered_fd_path(&capture, event)
+            .as_ref()
+            .starts_with("socket:[")),
+        "socket fds should render as socket:[ino]"
+      );
+
+      let anon_paths = reexec_fds
+        .iter()
+        .filter(|event| fd_fstype(event) == "anon_inodefs" && event.uses_d_dname != 0)
+        .map(|event| rendered_fd_path(&capture, event).as_ref().to_string())
+        .collect::<Vec<_>>();
+      assert!(
+        anon_paths
+          .iter()
+          .any(|path| path.contains("eventfd") || path.contains("eventpoll")),
+        "expected inherited eventfd or epoll anon inode, got {anon_paths:?}"
+      );
+
+      let ns_fd = reexec_fds
+        .iter()
+        .find(|event| fd_fstype(event) == "nsfs")
+        .expect("expected inherited namespace fd");
+      assert_eq!(ns_fd.uses_d_dname, 1);
+      assert_eq!(fd_pseudo_name(ns_fd), "mnt");
+      assert!(
+        rendered_fd_path(&capture, ns_fd)
+          .as_ref()
+          .starts_with("mnt:["),
+        "namespace fd should render as mnt:[ino]"
+      );
+
+      if let Some(pidfd) = reexec_fds.iter().find(|event| fd_fstype(event) == "pidfs") {
+        assert_eq!(pidfd.uses_d_dname, 1);
+        assert_eq!(
+          rendered_fd_path(&capture, pidfd).as_ref(),
+          "anon_inode:[pidfd]"
+        );
+      }
+
+      Ok(())
+    },
+  )
 }
