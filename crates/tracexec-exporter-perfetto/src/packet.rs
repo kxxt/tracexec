@@ -265,11 +265,9 @@ impl TracePacketCreator {
                   .intern_with(v.path.as_ref(), &mut da_interned_strings),
               ),
               DebugAnnotationInternId::Flags.with_interned_string({
-                let mut flags = String::new();
-                bitflags::parser::to_writer(&v.flags, &mut flags).unwrap();
                 self
                   .da_string_interner
-                  .intern_owned_with(flags, &mut da_interned_strings)
+                  .intern_owned_with(v.flags.to_string(), &mut da_interned_strings)
               }),
               match &v.pos {
                 Fallible::Ok(pos) => DebugAnnotationInternId::Pos.with_uint(*pos as _),

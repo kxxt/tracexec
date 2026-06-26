@@ -83,6 +83,7 @@ use tracexec_core::{
     TracerEvent,
     TracerEventDetails,
     TracerEventDetailsKind,
+    TracerEventMessage,
     TracerMessage,
     filterable_event,
   },
@@ -96,10 +97,14 @@ use tracexec_core::{
     Fallible,
     FdFlags,
     FileDescriptorInfo,
+    FileDescriptorInfoCollection,
     diff_env,
   },
   pty,
-  timestamp::ts_from_boot_ns,
+  timestamp::{
+    Timestamp,
+    ts_from_boot_ns,
+  },
   tracee,
   tracer::{
     ExecData,
@@ -144,6 +149,7 @@ use crate::{
     parse_string_event,
     process_argv,
     process_base_filename,
+    process_comm,
     process_cred,
     process_envp,
     process_filename,
@@ -185,6 +191,62 @@ fn mark_fd_path_for_errors(path: OutputMsg, flags: BitFlags<BpfEventFlags>) -> O
     OutputMsg::Ok(path) => OutputMsg::PartialOk(path),
     path => path,
   }
+}
+
+fn aggregate_fd_collection_failed(flags: BitFlags<BpfEventFlags>) -> bool {
+  flags.intersects(BpfEventFlags::FDS_PROBE_FAILURE | BpfEventFlags::LOOP_FAIL)
+}
+
+fn apply_aggregate_fd_flags(
+  fds: &mut FileDescriptorInfoCollection,
+  flags: BitFlags<BpfEventFlags>,
+) {
+  if aggregate_fd_collection_failed(flags) {
+    fds.mark_error(BpfError::Flags.into());
+  }
+  // FLAGS_READ_FAILURE and PATH_READ_ERR are aggregate hints that at least one
+  // fd's flags or path failed. They do not identify which fd, so do not poison
+  // every fd here; emit warning events instead.
+}
+
+const TOO_MANY_ITEMS_WARNING: &str = "too many argv/env items; output was truncated";
+const FD_FLAGS_READ_WARNING: &str =
+  "some file descriptor flags are incomplete or could not be inspected";
+const FD_PATH_READ_WARNING: &str = "some file descriptor paths could not be inspected";
+
+fn exec_warning_messages(flags: BitFlags<BpfEventFlags>) -> impl Iterator<Item = &'static str> {
+  [
+    (BpfEventFlags::TOO_MANY_ITEMS, TOO_MANY_ITEMS_WARNING),
+    (BpfEventFlags::FLAGS_READ_FAILURE, FD_FLAGS_READ_WARNING),
+    (BpfEventFlags::PATH_READ_ERR, FD_PATH_READ_WARNING),
+  ]
+  .into_iter()
+  .filter_map(move |(flag, warning)| flags.contains(flag).then_some(warning))
+}
+
+fn send_exec_warning_events(
+  tx: Option<&UnboundedSender<TracerMessage>>,
+  filter: BitFlags<TracerEventDetailsKind>,
+  flags: BitFlags<BpfEventFlags>,
+  pid: Pid,
+  timestamp: Timestamp,
+) -> Result<(), tokio::sync::mpsc::error::SendError<TracerMessage>> {
+  if !filter.intersects(TracerEventDetailsKind::Warning) {
+    return Ok(());
+  }
+  if let Some(tx) = tx {
+    for warning in exec_warning_messages(flags) {
+      tx.send(
+        TracerEventDetails::Warning(TracerEventMessage {
+          timestamp: Some(timestamp),
+          pid: Some(pid),
+          msg: warning.to_string(),
+        })
+        .into_tracer_msg(),
+      )?;
+    }
+  }
+  Ok(())
 }
 
 fn fallible_fd_field<T>(value: T, failed: bool) -> Fallible<T> {
@@ -347,6 +409,7 @@ impl EbpfTracer {
               Some(cache) => cache.resolve(event.cgroup_id),
               None => CgroupInfo::NotCollected,
             };
+            apply_aggregate_fd_flags(&mut storage.fdinfo_map, eflags);
             let exec_data = ExecData::new(
               Pid::from_raw(header.pid),
               filename,
@@ -363,7 +426,7 @@ impl EbpfTracer {
             // Pid of the thread that triggers execve syscall
             // let pid = Pid::from_raw(header.pid);
             let tgid = Pid::from_raw(event.tgid);
-            let comm = cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.comm));
+            let comm = process_comm(eflags, event);
             self
               .printer
               .print_exec_trace(
@@ -461,6 +524,14 @@ impl EbpfTracer {
                 .transpose()
                 .unwrap();
             }
+            send_exec_warning_events(
+              self.tx.as_ref(),
+              self.filter,
+              eflags,
+              tgid,
+              exec_data.timestamp,
+            )
+            .unwrap();
           }
           event_type::STRING_EVENT => {
             let msg = parse_string_event(header, data);
@@ -498,7 +569,10 @@ impl EbpfTracer {
                 event.pos as usize,
                 flags.contains(BpfEventFlags::POS_READ_ERR),
               ),
-              flags: OFlag::from_bits_retain(event.flags as c_int),
+              flags: fallible_fd_field(
+                FdFlags::from(OFlag::from_bits_retain(event.flags as c_int)),
+                flags.contains(BpfEventFlags::FLAGS_READ_FAILURE),
+              ),
               mnt_id: fallible_fd_field(
                 event.mnt_id,
                 flags.contains(BpfEventFlags::MNTID_READ_ERR),
@@ -1078,6 +1152,128 @@ mod tests {
 
     assert_eq!(field.to_string(), "[err: bpf error]");
     assert!(matches!(field, Fallible::Err(_)));
+  }
+
+  fn fdinfo_for_test() -> FileDescriptorInfo {
+    FileDescriptorInfo {
+      fd: 3,
+      path: OutputMsg::Ok("pipe:[0]".into()),
+      pos: 0.into(),
+      flags: OFlag::O_RDONLY.into(),
+      mnt_id: 1.into(),
+      ino: 1.into(),
+      mnt: "pipefs".into(),
+      extra: Vec::new(),
+    }
+  }
+
+  #[test]
+  fn aggregate_flags_mark_fd_collection_unreliable() {
+    let mut fds = FileDescriptorInfoCollection::default();
+    fds.fdinfo.insert(3, fdinfo_for_test());
+
+    apply_aggregate_fd_flags(
+      &mut fds,
+      BitFlags::from_flag(BpfEventFlags::FDS_PROBE_FAILURE),
+    );
+
+    assert!(fds.error.is_some());
+  }
+
+  #[test]
+  fn aggregate_flags_preserve_fd_flags_on_partial_flag_read_failure() {
+    let mut fds = FileDescriptorInfoCollection::default();
+    fds.fdinfo.insert(3, fdinfo_for_test());
+
+    apply_aggregate_fd_flags(
+      &mut fds,
+      BitFlags::from_flag(BpfEventFlags::FLAGS_READ_FAILURE),
+    );
+
+    let fd = fds.fdinfo.get(&3).unwrap();
+    assert!(fd.flags.ok().is_some());
+    assert!(fd.flags.contains(OFlag::O_RDONLY));
+    assert!(fds.error.is_none());
+  }
+
+  #[test]
+  fn aggregate_flags_preserve_fd_paths_on_partial_path_read_failure() {
+    let mut fds = FileDescriptorInfoCollection::default();
+    fds.fdinfo.insert(3, fdinfo_for_test());
+
+    apply_aggregate_fd_flags(&mut fds, BitFlags::from_flag(BpfEventFlags::PATH_READ_ERR));
+
+    let fd = fds.fdinfo.get(&3).unwrap();
+    assert!(matches!(&fd.path, OutputMsg::Ok(path) if path.as_ref() == "pipe:[0]"));
+    assert!(fds.error.is_none());
+  }
+
+  #[test]
+  fn too_many_items_becomes_warning_message() {
+    let warnings =
+      exec_warning_messages(BitFlags::from_flag(BpfEventFlags::TOO_MANY_ITEMS)).collect::<Vec<_>>();
+
+    assert_eq!(warnings, vec![TOO_MANY_ITEMS_WARNING]);
+  }
+
+  #[test]
+  fn aggregate_exec_flags_emit_warning_events() {
+    let (tx, mut rx) = unbounded_channel();
+    let pid = Pid::from_raw(123);
+    let timestamp = ts_from_boot_ns(42);
+
+    send_exec_warning_events(
+      Some(&tx),
+      BitFlags::from_flag(TracerEventDetailsKind::Warning),
+      BpfEventFlags::TOO_MANY_ITEMS
+        | BpfEventFlags::FLAGS_READ_FAILURE
+        | BpfEventFlags::PATH_READ_ERR,
+      pid,
+      timestamp,
+    )
+    .unwrap();
+
+    let mut messages = Vec::new();
+    while let Ok(received) = rx.try_recv() {
+      let TracerMessage::Event(TracerEvent { details, .. }) = received else {
+        panic!("unexpected message: {received:?}");
+      };
+      let TracerEventDetails::Warning(TracerEventMessage {
+        timestamp,
+        pid,
+        msg,
+      }) = details
+      else {
+        panic!("unexpected event details: {details:?}");
+      };
+      assert_eq!(pid, Some(Pid::from_raw(123)));
+      assert_eq!(timestamp, Some(ts_from_boot_ns(42)));
+      messages.push(msg);
+    }
+    assert_eq!(
+      messages,
+      vec![
+        TOO_MANY_ITEMS_WARNING,
+        FD_FLAGS_READ_WARNING,
+        FD_PATH_READ_WARNING,
+      ]
+    );
+  }
+
+  #[test]
+  fn too_many_items_warning_event_respects_filter() {
+    let (tx, mut rx) = unbounded_channel();
+
+    send_exec_warning_events(
+      Some(&tx),
+      BitFlags::from_flag(TracerEventDetailsKind::Exec),
+      BitFlags::from_flag(BpfEventFlags::TOO_MANY_ITEMS),
+      Pid::from_raw(123),
+      ts_from_boot_ns(42),
+    )
+    .unwrap();
+
+    assert!(rx.try_recv().is_err());
   }
 
   fn run_ebpf_and_collect(

@@ -347,9 +347,22 @@ fn resolve_cgroup_id_in_dir(cgroup_id: u64, dir: &Path, root: &Path) -> CgroupIn
 pub struct FileDescriptorInfoCollection {
   #[serde(flatten)]
   pub fdinfo: BTreeMap<c_int, FileDescriptorInfo>,
+  #[serde(
+    skip_serializing_if = "Option::is_none",
+    serialize_with = "serialize_optional_friendly_error"
+  )]
+  pub error: Option<FriendlyError>,
 }
 
 impl FileDescriptorInfoCollection {
+  pub fn mark_error(&mut self, error: FriendlyError) {
+    self.error = Some(error);
+  }
+
+  pub fn is_reliable(&self) -> bool {
+    self.error.is_none()
+  }
+
   pub fn stdin(&self) -> Option<&FileDescriptorInfo> {
     self.fdinfo.get(&0)
   }
@@ -373,7 +386,10 @@ impl FileDescriptorInfoCollection {
     fdinfo.insert(1, read_fdinfo(pid, 1)?);
     fdinfo.insert(2, read_fdinfo(pid, 2)?);
 
-    Ok(Self { fdinfo })
+    Ok(Self {
+      fdinfo,
+      error: None,
+    })
   }
 
   pub fn with_pts(pts: &UnixSlavePty) -> color_eyre::Result<Self> {
@@ -394,12 +410,79 @@ pub struct FileDescriptorInfo {
   pub fd: c_int,
   pub path: OutputMsg,
   pub pos: Fallible<usize>,
-  #[serde(serialize_with = "serialize_oflags")]
-  pub flags: OFlag,
+  pub flags: Fallible<FdFlags>,
   pub mnt_id: Fallible<c_int>,
   pub ino: Fallible<u64>,
   pub mnt: ArcStr,
   pub extra: Vec<ArcStr>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FdFlags(OFlag);
+
+impl FdFlags {
+  pub fn contains(self, flag: OFlag) -> bool {
+    self.0.contains(flag)
+  }
+
+  pub fn intersects(self, flag: OFlag) -> bool {
+    self.0.intersects(flag)
+  }
+
+  pub fn iter(self) -> impl Iterator<Item = OFlag> {
+    self.0.iter()
+  }
+
+  pub fn as_oflag(self) -> OFlag {
+    self.0
+  }
+}
+
+impl From<OFlag> for FdFlags {
+  fn from(value: OFlag) -> Self {
+    Self(value)
+  }
+}
+
+impl Default for FdFlags {
+  fn default() -> Self {
+    Self(OFlag::empty())
+  }
+}
+
+impl From<OFlag> for Fallible<FdFlags> {
+  fn from(value: OFlag) -> Self {
+    Self::Ok(value.into())
+  }
+}
+
+impl Fallible<FdFlags> {
+  pub fn contains(&self, flag: OFlag) -> bool {
+    self.ok().is_some_and(|flags| flags.contains(flag))
+  }
+
+  pub fn intersects(&self, flag: OFlag) -> bool {
+    self.ok().is_some_and(|flags| flags.intersects(flag))
+  }
+
+  pub fn iter(&self) -> impl Iterator<Item = OFlag> + '_ {
+    self.ok().into_iter().flat_map(|flags| flags.iter())
+  }
+}
+
+impl Display for FdFlags {
+  fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    bitflags::parser::to_writer(&self.0, f).map_err(|_| fmt::Error)
+  }
+}
+
+impl Serialize for FdFlags {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    serialize_oflags(&self.0, serializer)
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -483,13 +566,26 @@ where
   seq.end()
 }
 
+fn serialize_optional_friendly_error<S>(
+  error: &Option<FriendlyError>,
+  serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+  S: Serializer,
+{
+  error
+    .as_ref()
+    .map(<&'static str>::from)
+    .serialize(serializer)
+}
+
 impl Default for FileDescriptorInfo {
   fn default() -> Self {
     Self {
       fd: Default::default(),
       path: OutputMsg::Ok(ArcStr::default()),
       pos: Default::default(),
-      flags: OFlag::empty(),
+      flags: OFlag::empty().into(),
       mnt_id: Default::default(),
       ino: Default::default(),
       mnt: Default::default(),
@@ -519,7 +615,7 @@ pub fn read_fdinfo(pid: Pid, fd: i32) -> color_eyre::Result<FileDescriptorInfo> 
     let value = parts.next().unwrap_or("");
     match key {
       "pos:" => info.pos = value.parse::<usize>()?.into(),
-      "flags:" => info.flags = OFlag::from_bits_truncate(c_int::from_str_radix(value, 8)?),
+      "flags:" => info.flags = OFlag::from_bits_truncate(c_int::from_str_radix(value, 8)?).into(),
       "mnt_id:" => info.mnt_id = value.parse::<c_int>()?.into(),
       "ino:" => info.ino = value.parse::<u64>()?.into(),
       _ => {

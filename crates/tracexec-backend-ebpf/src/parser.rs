@@ -14,6 +14,7 @@ use nix::libc::{
   gid_t,
 };
 use tracexec_core::{
+  cache::ArcStr,
   event::{
     BpfError,
     FriendlyError,
@@ -23,6 +24,7 @@ use tracexec_core::{
     Cred,
     CredInspectError,
     FileDescriptorInfoCollection,
+    cached_str,
     cached_string,
     parse_failiable_envp,
   },
@@ -44,9 +46,21 @@ use crate::{
   event::Path,
 };
 
+fn bpf_flags_error() -> FriendlyError {
+  FriendlyError::Bpf(BpfError::Flags)
+}
+
+pub fn process_comm(eflags: BitFlags<BpfEventFlags>, event: &exec_event) -> ArcStr {
+  if eflags.contains(BpfEventFlags::COMM_READ_FAILURE) {
+    cached_str(<&'static str>::from(&bpf_flags_error()))
+  } else {
+    cached_cow(utf8_lossy_cow_from_bytes_with_nul(&event.comm))
+  }
+}
+
 pub fn process_base_filename(eflags: BitFlags<BpfEventFlags>, event: &exec_event) -> OutputMsg {
   if eflags.contains(BpfEventFlags::FILENAME_READ_ERR) {
-    OutputMsg::Err(FriendlyError::Bpf(BpfError::Flags))
+    OutputMsg::Err(bpf_flags_error())
   } else if eflags.contains(BpfEventFlags::POSSIBLE_TRUNCATION) {
     OutputMsg::PartialOk(cached_cow(utf8_lossy_cow_from_bytes_with_nul(
       &event.base_filename,
@@ -121,8 +135,13 @@ pub fn process_argv(
   eflags: BitFlags<BpfEventFlags>,
   argv: Vec<OutputMsg>,
 ) -> Result<Vec<OutputMsg>, InspectError> {
-  // Failed to read argv pointer
-  if eflags.contains(BpfEventFlags::ARGV_READ_ERR) {
+  // read_strings() sets OUTPUT_FAILURE when one STRING_EVENT cannot be
+  // submitted to the ring buffer. The aggregate exec_event count still
+  // advances, and tracer.rs pads the missing slot with BpfError::Dropped, so
+  // preserve the vector and surface the bad argument in-place.
+  if eflags.intersects(
+    BpfEventFlags::ARGV_READ_ERR | BpfEventFlags::PTR_READ_FAILURE | BpfEventFlags::LOOP_FAIL,
+  ) {
     Err(InspectError::EFAULT)
   } else {
     Ok(argv)
@@ -134,8 +153,12 @@ pub fn process_envp(
   env: Vec<OutputMsg>,
   has_dash_env: &mut bool,
 ) -> Result<BTreeMap<OutputMsg, OutputMsg>, InspectError> {
-  // Failed to read envp pointer
-  if eflags.contains(BpfEventFlags::ENV_READ_ERR) {
+  // As with argv, OUTPUT_FAILURE marks one lost STRING_EVENT, not a failed
+  // envp array read. parse_failiable_envp keeps OutputMsg::Err entries
+  // visible as fallible key/value pairs.
+  if eflags.intersects(
+    BpfEventFlags::ENV_READ_ERR | BpfEventFlags::PTR_READ_FAILURE | BpfEventFlags::LOOP_FAIL,
+  ) {
     Err(InspectError::EFAULT)
   } else {
     let (envp, has_dash_env_) = parse_failiable_envp(env);
@@ -278,6 +301,22 @@ mod tests {
 
   fn flags_with(flag: BpfEventFlags) -> BitFlags<BpfEventFlags> {
     BitFlags::<BpfEventFlags>::from_bits_truncate(flag as u32)
+  }
+
+  #[test]
+  fn test_process_comm_error_flag() {
+    let mut event = exec_event::default();
+    event.comm[..5].copy_from_slice(b"bash\0");
+    let out = process_comm(flags_with(BpfEventFlags::COMM_READ_FAILURE), &event);
+    assert_eq!(out.as_ref(), "[err: bpf error]");
+  }
+
+  #[test]
+  fn test_process_comm_ok() {
+    let mut event = exec_event::default();
+    event.comm[..5].copy_from_slice(b"bash\0");
+    let out = process_comm(BitFlags::empty(), &event);
+    assert_eq!(out.as_ref(), "bash");
   }
 
   #[test]
@@ -455,6 +494,34 @@ mod tests {
   }
 
   #[test]
+  fn test_process_argv_aggregate_failure_flags() {
+    for flag in [BpfEventFlags::LOOP_FAIL, BpfEventFlags::PTR_READ_FAILURE] {
+      let res = process_argv(
+        flags_with(flag),
+        vec![OutputMsg::Ok(cached_string("echo".to_string()))],
+      );
+      assert_eq!(res, Err(Errno::EFAULT));
+    }
+  }
+
+  #[test]
+  fn test_process_argv_too_many_items_keeps_prefix() {
+    let argv = vec![OutputMsg::Ok(cached_string("echo".to_string()))];
+    let res = process_argv(flags_with(BpfEventFlags::TOO_MANY_ITEMS), argv.clone()).unwrap();
+    assert_eq!(res, argv);
+  }
+
+  #[test]
+  fn test_process_argv_output_failure_keeps_fallible_entries() {
+    let argv = vec![
+      OutputMsg::Ok(cached_string("echo".to_string())),
+      OutputMsg::Err(FriendlyError::Bpf(BpfError::Dropped)),
+    ];
+    let res = process_argv(flags_with(BpfEventFlags::OUTPUT_FAILURE), argv.clone()).unwrap();
+    assert_eq!(res, argv);
+  }
+
+  #[test]
   fn test_process_argv_ok() {
     let argv = vec![OutputMsg::Ok(cached_string("echo".to_string()))];
     let res = process_argv(BitFlags::empty(), argv.clone()).unwrap();
@@ -470,6 +537,62 @@ mod tests {
       &mut has_dash_env,
     );
     assert_eq!(res, Err(Errno::EFAULT));
+    assert!(!has_dash_env);
+  }
+
+  #[test]
+  fn test_process_envp_aggregate_failure_flags() {
+    for flag in [BpfEventFlags::LOOP_FAIL, BpfEventFlags::PTR_READ_FAILURE] {
+      let mut has_dash_env = false;
+      let res = process_envp(
+        flags_with(flag),
+        vec![OutputMsg::Ok(cached_string("FOO=bar".to_string()))],
+        &mut has_dash_env,
+      );
+      assert_eq!(res, Err(Errno::EFAULT));
+      assert!(!has_dash_env);
+    }
+  }
+
+  #[test]
+  fn test_process_envp_too_many_items_keeps_prefix() {
+    let mut has_dash_env = false;
+    let res = process_envp(
+      flags_with(BpfEventFlags::TOO_MANY_ITEMS),
+      vec![OutputMsg::Ok(cached_string("FOO=bar".to_string()))],
+      &mut has_dash_env,
+    )
+    .unwrap();
+    assert_eq!(res.len(), 1);
+    assert_eq!(res.keys().next().unwrap().as_ref(), "FOO");
+    assert!(!has_dash_env);
+  }
+
+  #[test]
+  fn test_process_envp_output_failure_keeps_fallible_entries() {
+    let dropped = OutputMsg::Err(FriendlyError::Bpf(BpfError::Dropped));
+    let mut has_dash_env = false;
+    let res = process_envp(
+      flags_with(BpfEventFlags::OUTPUT_FAILURE),
+      vec![
+        OutputMsg::Ok(cached_string("FOO=bar".to_string())),
+        dropped.clone(),
+      ],
+      &mut has_dash_env,
+    )
+    .unwrap();
+    assert_eq!(res.len(), 2);
+    assert_eq!(
+      res
+        .get(&OutputMsg::Ok(cached_string("FOO".to_string())))
+        .unwrap()
+        .as_ref(),
+      "bar"
+    );
+    assert!(matches!(
+      res.get(&dropped),
+      Some(OutputMsg::Err(FriendlyError::Bpf(BpfError::Dropped)))
+    ));
     assert!(!has_dash_env);
   }
 
