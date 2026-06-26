@@ -310,6 +310,7 @@ impl Printer {
     fd: i32,
     orig_fd: &FileDescriptorInfo,
     curr_fd: Option<&FileDescriptorInfo>,
+    fd_collection_reliable: bool,
     list_printer: &ListPrinter,
   ) -> io::Result<()> {
     let desc = match fd {
@@ -341,7 +342,7 @@ impl Printer {
         write!(out, "={}", fdinfo.path.bright_yellow())?;
         list_printer.comma(out)?;
       }
-    } else {
+    } else if fd_collection_reliable {
       write!(
         out,
         "{}{}",
@@ -363,10 +364,21 @@ impl Printer {
         write!(out, " {} ", "fd".purple())?;
         let list_printer = ListPrinter::new(self.args.color);
         list_printer.begin(out)?;
+        if let Some(error) = &fds.error {
+          write!(out, "{}", <&'static str>::from(error).bright_red())?;
+          list_printer.comma(out)?;
+        }
         // Stdio
         for fd in 0..=2 {
           let fdinfo_orig = self.baseline.fdinfo.get(fd).unwrap();
-          self.print_stdio_fd(out, fd, fdinfo_orig, fds.fdinfo.get(&fd), &list_printer)?;
+          self.print_stdio_fd(
+            out,
+            fd,
+            fdinfo_orig,
+            fds.fdinfo.get(&fd),
+            fds.is_reliable(),
+            &list_printer,
+          )?;
         }
         for (&fd, fdinfo) in fds.fdinfo.iter() {
           if fd < 3 {
@@ -395,7 +407,13 @@ impl Printer {
         write!(out, " {} ", "fd".purple())?;
         let list_printer = ListPrinter::new(self.args.color);
         list_printer.begin(out)?;
-        let last = fds.fdinfo.len() - 1;
+        if let Some(error) = &fds.error {
+          write!(out, "{}", <&'static str>::from(error).bright_red())?;
+          if !fds.fdinfo.is_empty() {
+            list_printer.comma(out)?;
+          }
+        }
+        let last = fds.fdinfo.len().saturating_sub(1);
         for (idx, (fd, fdinfo)) in fds.fdinfo.iter().enumerate() {
           if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
             if self.args.hide_cloexec_fds {
@@ -467,7 +485,6 @@ impl Printer {
           pid,
         });
       }
-
       match exec_data.argv.as_ref() {
         Err(e) => {
           _deferred_warnings.push(DeferredWarnings {
@@ -645,7 +662,7 @@ impl Printer {
                 fdinfo.path.cli_bash_escaped_with_style(THEME.modified_fd)
               )?;
             }
-          } else {
+          } else if exec_data.fdinfo.is_reliable() {
             // stdin is closed
             write!(out, " {}", "0>&-".bright_red().bold())?;
           }
@@ -662,7 +679,7 @@ impl Printer {
                 fdinfo.path.cli_bash_escaped_with_style(THEME.modified_fd)
               )?;
             }
-          } else {
+          } else if exec_data.fdinfo.is_reliable() {
             // stdout is closed
             write!(out, " {}", "1>&-".bright_red().bold())?;
           }
@@ -679,7 +696,7 @@ impl Printer {
                 fdinfo.path.cli_bash_escaped_with_style(THEME.modified_fd)
               )?;
             }
-          } else {
+          } else if exec_data.fdinfo.is_reliable() {
             // stderr is closed
             write!(out, " {}", "2>&-".bright_red().bold())?;
           }
@@ -690,7 +707,7 @@ impl Printer {
             if fd < 3 {
               continue;
             }
-            if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+            if fdinfo.flags.ok().is_none() || fdinfo.flags.contains(OFlag::O_CLOEXEC) {
               // Don't show fds that will be closed upon exec
               continue;
             }
@@ -868,7 +885,7 @@ mod tests {
       fd,
       path: msg(path),
       pos: 0.into(),
-      flags,
+      flags: flags.into(),
       mnt_id: 1.into(),
       ino: ino.into(),
       mnt: ArcStr::from("mnt"),
@@ -881,6 +898,7 @@ mod tests {
   ) -> FileDescriptorInfoCollection {
     FileDescriptorInfoCollection {
       fdinfo: entries.into_iter().map(|info| (info.fd, info)).collect(),
+      error: None,
     }
   }
 

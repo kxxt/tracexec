@@ -155,7 +155,7 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
               .bash_escaped_with_style(theme.modified_fd_in_cmdline, theme),
           );
         }
-      } else {
+      } else if curr.is_reliable() {
         // stdio fd is closed
         spans.push(fdstr.set_style(theme.cloexec_fd_in_cmdline));
         spans.push(">&-".set_style(theme.removed_fd_in_cmdline));
@@ -377,7 +377,7 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
             if fd < 3 {
               continue;
             }
-            if fdinfo.flags.intersects(OFlag::O_CLOEXEC) {
+            if fdinfo.flags.ok().is_none() || fdinfo.flags.intersects(OFlag::O_CLOEXEC) {
               // Skip fds that will be closed upon exec
               continue;
             }
@@ -612,7 +612,7 @@ mod tests {
       fd,
       path: msg(path),
       pos: 0.into(),
-      flags,
+      flags: flags.into(),
       mnt_id: 1.into(),
       ino: ino.into(),
       mnt: ArcStr::from("mnt"),
@@ -625,6 +625,7 @@ mod tests {
   ) -> FileDescriptorInfoCollection {
     FileDescriptorInfoCollection {
       fdinfo: entries.into_iter().map(|info| (info.fd, info)).collect(),
+      error: None,
     }
   }
 

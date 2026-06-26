@@ -49,7 +49,10 @@ use tracexec_core::{
     TracerEventDetails,
   },
   primitives::local_chan::LocalUnboundedSender,
-  proc::CgroupInfo,
+  proc::{
+    CgroupInfo,
+    Fallible,
+  },
 };
 use tui_scrollview::{
   ScrollView,
@@ -482,6 +485,16 @@ impl DetailsPopupState {
         }
       };
       let mut fdinfo = vec![];
+      if let Some(error) = &exec.fdinfo.error {
+        fdinfo.push(
+          vec![
+            "Fd Info".set_style(theme.sublabel),
+            ": ".into(),
+            <&'static str>::from(error).set_style(theme.inline_tracer_error),
+          ]
+          .into(),
+        );
+      }
       for (&fd, info) in exec.fdinfo.fdinfo.iter() {
         if hide_cloexec_fds && info.flags.contains(OFlag::O_CLOEXEC) {
           continue;
@@ -503,44 +516,53 @@ impl DetailsPopupState {
           .into(),
         );
         // Flags
-        let flags = info.flags.iter().map(|f| {
-          let style = match f {
-            OFlag::O_CLOEXEC => theme.open_flag_cloexec, // Close on exec
-            OFlag::O_RDONLY | OFlag::O_WRONLY | OFlag::O_RDWR => {
-              theme.open_flag_access_mode // Access Mode
-            }
-            OFlag::O_CREAT
-            | OFlag::O_DIRECTORY
-            | OFlag::O_EXCL
-            | OFlag::O_NOCTTY
-            | OFlag::O_NOFOLLOW
-            | OFlag::O_TMPFILE
-            | OFlag::O_TRUNC => theme.open_flag_creation, // File creation flags
-            #[allow(unreachable_patterns)]
-            OFlag::O_APPEND
-            | OFlag::O_ASYNC
-            | OFlag::O_DIRECT
-            | OFlag::O_DSYNC
-            | OFlag::O_LARGEFILE // will be 0x0 if __USE_LARGEFILE64
-            | OFlag::O_NOATIME
-            | OFlag::O_NONBLOCK
-            | OFlag::O_NDELAY // Same as O_NONBLOCK
-            | OFlag::O_PATH
-            | OFlag::O_SYNC => {
-              theme.open_flag_status // File status flags
-            }
-            _ => theme.open_flag_other, // Other flags
-          };
-          let mut flag_display = String::new();
-          bitflags::parser::to_writer(&f, &mut flag_display).unwrap();
-          flag_display.push(' ');
-          flag_display.set_style(style)
-        });
-        fdinfo.push(
-          chain!(["Flags".set_style(theme.sublabel), ": ".into()], flags)
-            .collect_vec()
-            .into(),
-        );
+        let flags = match &info.flags {
+          Fallible::Ok(flags) => {
+            let flags = flags.iter().map(|f| {
+              let style = match f {
+                OFlag::O_CLOEXEC => theme.open_flag_cloexec, // Close on exec
+                OFlag::O_RDONLY | OFlag::O_WRONLY | OFlag::O_RDWR => {
+                  theme.open_flag_access_mode // Access Mode
+                }
+                OFlag::O_CREAT
+                | OFlag::O_DIRECTORY
+                | OFlag::O_EXCL
+                | OFlag::O_NOCTTY
+                | OFlag::O_NOFOLLOW
+                | OFlag::O_TMPFILE
+                | OFlag::O_TRUNC => theme.open_flag_creation, // File creation flags
+                #[allow(unreachable_patterns)]
+                OFlag::O_APPEND
+                | OFlag::O_ASYNC
+                | OFlag::O_DIRECT
+                | OFlag::O_DSYNC
+                | OFlag::O_LARGEFILE // will be 0x0 if __USE_LARGEFILE64
+                | OFlag::O_NOATIME
+                | OFlag::O_NONBLOCK
+                | OFlag::O_NDELAY // Same as O_NONBLOCK
+                | OFlag::O_PATH
+                | OFlag::O_SYNC => {
+                  theme.open_flag_status // File status flags
+                }
+                _ => theme.open_flag_other, // Other flags
+              };
+              let mut flag_display = String::new();
+              bitflags::parser::to_writer(&f, &mut flag_display).unwrap();
+              flag_display.push(' ');
+              flag_display.set_style(style)
+            });
+            chain!(["Flags".set_style(theme.sublabel), ": ".into()], flags)
+              .collect_vec()
+              .into()
+          }
+          Fallible::Err(error) => vec![
+            "Flags".set_style(theme.sublabel),
+            ": ".into(),
+            <&'static str>::from(error).set_style(theme.inline_tracer_error),
+          ]
+          .into(),
+        };
+        fdinfo.push(flags);
         // Mount Info
         fdinfo.push(
           vec![
@@ -981,7 +1003,7 @@ mod tests {
         fd: 0,
         path: OutputMsg::Ok("/tmp/stdin".into()),
         pos: 7.into(),
-        flags: OFlag::O_RDONLY | OFlag::O_CLOEXEC | OFlag::O_NONBLOCK,
+        flags: (OFlag::O_RDONLY | OFlag::O_CLOEXEC | OFlag::O_NONBLOCK).into(),
         mnt_id: 99.into(),
         ino: 123.into(),
         mnt: ArcStr::from("99 1 0:1 / /tmp rw - tmpfs tmpfs rw"),
@@ -994,7 +1016,7 @@ mod tests {
         fd: 3,
         path: OutputMsg::Err(FriendlyError::InspectError(Errno::EACCES)),
         pos: 11.into(),
-        flags: OFlag::O_WRONLY | OFlag::O_CREAT | OFlag::O_APPEND,
+        flags: (OFlag::O_WRONLY | OFlag::O_CREAT | OFlag::O_APPEND).into(),
         mnt_id: 100.into(),
         ino: 456.into(),
         mnt: ArcStr::from("100 1 0:2 / /var rw - ext4 /dev/sda rw"),
