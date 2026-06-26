@@ -113,6 +113,7 @@ struct fdset_word_reader_context {
   struct exec_event *event;
   struct file **fd_array;
   long unsigned int fdset, cloexec;
+  bool flags_read_failure;
   unsigned int next_bit;
   unsigned int word_index;
 };
@@ -120,7 +121,8 @@ struct fdset_word_reader_context {
 static int read_strings(u32 index, struct reader_context *ctx);
 static int read_fds(struct exec_event *event);
 static int _read_fd(unsigned int fd_num, struct file **fd_array,
-                    struct exec_event *event, bool cloexec);
+                    struct exec_event *event, bool cloexec,
+                    bool flags_read_failure);
 static int add_pid_to_closure(pid_t pid);
 static int read_send_path(struct dentry* dentry_addr, struct vfsmount* mnt_addr,
                           struct tracexec_event_header *base_header,
@@ -818,17 +820,19 @@ static int iter_fdset_chunk(u32 chunk, void *data) {
     int offset = fd & 63;
 
     long unsigned int *pcloexec_set = &ctx->cloexec_set[index];
-    u64 cloexec_word;
+    u64 cloexec_word = 0;
+    bool flags_read_failure = false;
 
     ret = bpf_core_read(&cloexec_word, sizeof(cloexec_word), pcloexec_set);
     if (ret < 0) {
       debug("Failed to check if fd %u is cloexec", fd);
-      ctx->event->header.flags |= FLAGS_READ_FAILURE;
+      flags_read_failure = true;
     }
 
     cloexec = cloexec_word & (1UL << offset);
 
-    ret = _read_fd(fd, ctx->fd_array, ctx->event, cloexec);
+    ret = _read_fd(fd, ctx->fd_array, ctx->event, cloexec,
+                   flags_read_failure);
     if (ret != 0) {
       debug("Failed to get info about fd %u (inside bpf bits iter)", fd);
     }
@@ -912,7 +916,7 @@ static int read_fds_impl(u32 index, struct fdset_reader_context *ctx) {
   ret = bpf_core_read(&subctx.cloexec, sizeof(subctx.cloexec), pcloexec_set);
   if (ret < 0) {
     debug("Failed to read %u/%u member of close_on_exec", index, ctx->size);
-    event->header.flags |= FLAGS_READ_FAILURE;
+    subctx.flags_read_failure = true;
     // fallthrough
   }
   // debug("cloexec %u/%u = %lx", index, ctx->size, // subctx.fdset,
@@ -934,7 +938,8 @@ static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx) {
   bool cloexec = false;
   if (ctx->cloexec & (1UL << ctx->next_bit))
     cloexec = true;
-  _read_fd(fdnum, ctx->fd_array, ctx->event, cloexec);
+  _read_fd(fdnum, ctx->fd_array, ctx->event, cloexec,
+           ctx->flags_read_failure);
   ctx->next_bit = find_next_bit(ctx->fdset, ctx->next_bit + 1);
   return 0;
 }
@@ -943,7 +948,8 @@ static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx) {
 
 // Gather information about a single fd and send it back to userspace
 static int _read_fd(unsigned int fd_num, struct file **fd_array,
-                    struct exec_event *event, bool cloexec) {
+                    struct exec_event *event, bool cloexec,
+                    bool flags_read_failure) {
   if (event == NULL)
     return 1;
   event->fd_count++;
@@ -961,6 +967,7 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
   entry->header.type = FD_EVENT;
   entry->header.pid = event->header.pid;
   entry->header.eid = event->header.eid;
+  entry->header.flags = flags_read_failure ? FLAGS_READ_FAILURE : 0;
   entry->fd = fd_num;
   // read f_path
   struct file *file;
@@ -998,7 +1005,7 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
   ret = bpf_core_read(&entry->flags, sizeof(entry->flags), &file->f_flags);
   if (ret < 0) {
     debug("failed to read file->f_flags");
-    event->header.flags |= FLAGS_READ_FAILURE;
+    entry->header.flags |= FLAGS_READ_FAILURE;
   }
   if (cloexec) {
     entry->flags |= O_CLOEXEC;

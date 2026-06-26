@@ -204,20 +204,17 @@ fn apply_aggregate_fd_flags(
   if aggregate_fd_collection_failed(flags) {
     fds.mark_error(BpfError::Flags.into());
   }
-  // FLAGS_READ_FAILURE and PATH_READ_ERR are aggregate hints that at least one
-  // fd's flags or path failed. They do not identify which fd, so do not poison
-  // every fd here; emit warning events instead.
+  // PATH_READ_ERR is an aggregate hint that at least one fd path failed. It
+  // does not identify which fd, so do not poison every fd here; emit a warning
+  // event instead. FLAGS_READ_FAILURE is carried by each affected fd_event.
 }
 
 const TOO_MANY_ITEMS_WARNING: &str = "too many argv/env items; output was truncated";
-const FD_FLAGS_READ_WARNING: &str =
-  "some file descriptor flags are incomplete or could not be inspected";
 const FD_PATH_READ_WARNING: &str = "some file descriptor paths could not be inspected";
 
 fn exec_warning_messages(flags: BitFlags<BpfEventFlags>) -> impl Iterator<Item = &'static str> {
   [
     (BpfEventFlags::TOO_MANY_ITEMS, TOO_MANY_ITEMS_WARNING),
-    (BpfEventFlags::FLAGS_READ_FAILURE, FD_FLAGS_READ_WARNING),
     (BpfEventFlags::PATH_READ_ERR, FD_PATH_READ_WARNING),
   ]
   .into_iter()
@@ -1181,7 +1178,7 @@ mod tests {
   }
 
   #[test]
-  fn aggregate_flags_preserve_fd_flags_on_partial_flag_read_failure() {
+  fn exec_level_flags_read_failure_does_not_poison_fd_flags() {
     let mut fds = FileDescriptorInfoCollection::default();
     fds.fdinfo.insert(3, fdinfo_for_test());
 
@@ -1225,9 +1222,7 @@ mod tests {
     send_exec_warning_events(
       Some(&tx),
       BitFlags::from_flag(TracerEventDetailsKind::Warning),
-      BpfEventFlags::TOO_MANY_ITEMS
-        | BpfEventFlags::FLAGS_READ_FAILURE
-        | BpfEventFlags::PATH_READ_ERR,
+      BpfEventFlags::TOO_MANY_ITEMS | BpfEventFlags::PATH_READ_ERR,
       pid,
       timestamp,
     )
@@ -1250,14 +1245,7 @@ mod tests {
       assert_eq!(timestamp, Some(ts_from_boot_ns(42)));
       messages.push(msg);
     }
-    assert_eq!(
-      messages,
-      vec![
-        TOO_MANY_ITEMS_WARNING,
-        FD_FLAGS_READ_WARNING,
-        FD_PATH_READ_WARNING,
-      ]
-    );
+    assert_eq!(messages, vec![TOO_MANY_ITEMS_WARNING, FD_PATH_READ_WARNING]);
   }
 
   #[test]
