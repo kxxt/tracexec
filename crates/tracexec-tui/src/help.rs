@@ -48,6 +48,17 @@ where
   key_string.push('\u{00a0}');
   key_string.set_style(theme.help_key)
 }
+
+pub fn help_key_hover<'a, T>(k: T, theme: &Theme) -> Span<'a>
+where
+  T: Into<Cow<'a, str>> + Styled<Item = Span<'a>>,
+{
+  let mut key_string = String::from("\u{00a0}");
+  key_string.push_str(&k.into());
+  key_string.push('\u{00a0}');
+  key_string.set_style(theme.help_key_hover)
+}
+
 pub fn help_desc<'a, T>(d: T, theme: &Theme) -> Span<'a>
 where
   T: Into<Cow<'a, str>> + Styled<Item = Span<'a>>,
@@ -56,6 +67,16 @@ where
   desc_string.push_str(&d.into());
   desc_string.push('\u{00a0}');
   desc_string.set_style(theme.help_desc)
+}
+
+pub fn help_desc_hover<'a, T>(d: T, theme: &Theme) -> Span<'a>
+where
+  T: Into<Cow<'a, str>> + Styled<Item = Span<'a>>,
+{
+  let mut desc_string = String::from("\u{00a0}");
+  desc_string.push_str(&d.into());
+  desc_string.push('\u{00a0}');
+  desc_string.set_style(theme.help_desc_hover)
 }
 
 pub fn fancy_help_desc<'a, T>(d: T, theme: &Theme) -> Span<'a>
@@ -68,13 +89,42 @@ where
   desc_string.set_style(theme.fancy_help_desc)
 }
 
+/// A help bar item consisting of a key label, description, and an optional
+/// key event for mouse click simulation.
+pub struct HelpItem<'a> {
+  pub key_span: Span<'a>,
+  pub desc_span: Span<'a>,
+  /// The key event to simulate when this help item is clicked.
+  /// `None` means this item is not directly clickable (e.g., compound keys).
+  pub key_event: Option<crossterm::event::KeyEvent>,
+}
+
+impl<'a> HelpItem<'a> {
+  /// Total visual width (key + desc, not counting the zero-width separator).
+  pub fn width(&self) -> u16 {
+    (self.key_span.width() + self.desc_span.width()) as u16
+  }
+
+  /// Convert to a 3-element span array for legacy rendering.
+  pub fn into_spans(self) -> [Span<'a>; 3] {
+    [self.key_span, self.desc_span, "\u{200b}".into()]
+  }
+}
+
 macro_rules! help_item {
-  ($key: expr, $desc: expr, $theme:expr) => {{
-    [
-      crate::help::help_key($key, $theme),
-      crate::help::help_desc($desc, $theme),
-      "\u{200b}".into(),
-    ]
+  ($key:expr, $desc:expr, $theme:expr) => {{
+    $crate::help::HelpItem {
+      key_span: $crate::help::help_key($key, $theme),
+      desc_span: $crate::help::help_desc($desc, $theme),
+      key_event: None,
+    }
+  }};
+  ($key:expr, $desc:expr, $theme:expr, $binding:expr) => {{
+    $crate::help::HelpItem {
+      key_span: $crate::help::help_key($key, $theme),
+      desc_span: $crate::help::help_desc($desc, $theme),
+      key_event: $binding.first_key_event(),
+    }
   }};
 }
 
@@ -376,5 +426,32 @@ mod tests {
     let keys = TuiKeyBindings::default();
     let rendered = test_render_widget_area(help(area, &keys, current_theme()), area);
     assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn help_item_macro_without_binding() {
+    let theme = current_theme();
+    let item = help_item!("Esc", "Quit", theme);
+    assert!(item.key_event.is_none());
+    assert!(item.key_span.content.contains("Esc"));
+    assert!(item.desc_span.content.contains("Quit"));
+  }
+
+  #[test]
+  fn help_item_macro_with_binding() {
+    let theme = current_theme();
+    let keys = TuiKeyBindings::default();
+    let item = help_item!("Esc", "Quit", theme, &keys.quit);
+    assert!(item.key_event.is_some());
+    assert!(item.key_span.content.contains("Esc"));
+    assert!(item.desc_span.content.contains("Quit"));
+  }
+
+  #[test]
+  fn help_item_into_spans_length() {
+    let theme = current_theme();
+    let item = help_item!("Esc", "Quit", theme);
+    let spans = item.into_spans();
+    assert_eq!(spans.len(), 3);
   }
 }

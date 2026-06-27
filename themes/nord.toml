@@ -7,7 +7,9 @@ app-title = { fg = "#eceff4" }
 help-popup = { fg = "#2e3440", bg = "#88c0d0" }
 cli-flag = { fg = "#2e3440", bg = "#81a1c1" }
 help-key = { fg = "#2e3440", bg = "#88c0d0" }
+help-key-hover = { fg = "#2e3440", bg = "#8fbcbb", modifiers = ["bold"] }
 help-desc = { fg = "#d8dee9", bg = "#3b4252", remove-modifiers = ["italic"] }
+help-desc-hover = { fg = "#eceff4", bg = "#3b4252", modifiers = ["bold"] }
 pid-success = { fg = "#a3be8c" }
 pid-failure = { fg = "#bf616a" }
 pid-enoent = { fg = "#ebcb8b" }

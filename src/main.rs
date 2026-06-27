@@ -320,7 +320,7 @@ async fn async_main(
         current_theme(),
       )?;
       let mut tui = tracexec_tui::Tui::new()?.frame_rate(frame_rate);
-      tui.enter(tracer_rx)?;
+      tui.enter(tracer_rx, app.mouse_enabled)?;
       app.run(&mut tui).await?;
       // Now when TUI exits, the tracer thread is still running.
       // options:

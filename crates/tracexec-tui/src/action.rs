@@ -69,6 +69,8 @@ pub enum Action {
   PrevMatch,
   // Terminal
   HandleTerminalKeyPress(KeyEvent),
+  // Help bar mouse click
+  HandleHelpBarClick(KeyEvent),
   // Breakpoint
   ShowBreakpointManager,
   CloseBreakpointManager,

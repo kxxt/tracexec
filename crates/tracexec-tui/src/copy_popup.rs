@@ -3,7 +3,12 @@ use std::{
   sync::Arc,
 };
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{
+  KeyEvent,
+  MouseButton,
+  MouseEvent,
+  MouseEventKind,
+};
 use ratatui::{
   buffer::Buffer,
   layout::{
@@ -15,7 +20,6 @@ use ratatui::{
     Modifier,
     Style,
   },
-  text::Span,
   widgets::{
     Block,
     Borders,
@@ -33,13 +37,17 @@ use tracexec_core::{
   event::TracerEventDetails,
 };
 
-use super::help::help_item;
+use super::help::{
+  HelpItem,
+  help_item,
+};
 use crate::{
   action::{
     Action,
     CopyTarget,
     SupportedShell::Bash,
   },
+  mouse::position_in_rect,
   theme::Theme,
 };
 
@@ -51,6 +59,8 @@ pub struct CopyPopupState {
   pub event: Arc<TracerEventDetails>,
   pub state: ListState,
   pub available_targets: Vec<CopyTarget>,
+  rendered_area: Rect,
+  list_area: Rect,
   key_bindings: Arc<TuiKeyBindings>,
   theme: &'static Theme,
 }
@@ -143,6 +153,8 @@ impl CopyPopupState {
       event,
       state,
       available_targets,
+      rendered_area: Rect::default(),
+      list_area: Rect::default(),
       key_bindings,
       theme,
     }
@@ -175,8 +187,8 @@ impl CopyPopupState {
     None
   }
 
-  pub fn help_items(&self) -> impl Iterator<Item = Span<'_>> {
-    self.available_targets.iter().flat_map(|&target| {
+  pub fn help_items(&self) -> impl Iterator<Item = HelpItem<'_>> {
+    self.available_targets.iter().map(|&target| {
       let config = copy_target_config(target);
       let key_label = copy_target_binding(&self.key_bindings, target).display();
       help_item!(key_label, config.help_label, self.theme)
@@ -223,6 +235,41 @@ impl CopyPopupState {
       }));
     }
     Ok(None)
+  }
+
+  pub fn handle_mouse_event(&mut self, event: &MouseEvent) -> Option<Action> {
+    let col = event.column;
+    let row = event.row;
+
+    if !position_in_rect(col, row, &self.rendered_area) {
+      return None;
+    }
+
+    let hovered_target = position_in_rect(col, row, &self.list_area)
+      .then_some((row - self.list_area.y) as usize)
+      .filter(|idx| *idx < self.available_targets.len());
+
+    match event.kind {
+      MouseEventKind::Down(MouseButton::Left) => {
+        if let Some(idx) = hovered_target {
+          self.state.select(Some(idx));
+          return Some(Action::CopyToClipboard {
+            event: self.event.clone(),
+            target: self.selected(),
+          });
+        }
+      }
+      MouseEventKind::Moved => {
+        if let Some(idx) = hovered_target {
+          self.state.select(Some(idx));
+        }
+      }
+      MouseEventKind::ScrollUp => self.prev(),
+      MouseEventKind::ScrollDown => self.next(),
+      _ => {}
+    }
+
+    None
   }
 }
 
@@ -275,6 +322,13 @@ impl StatefulWidgetRef for CopyPopup {
     .highlight_symbol(">")
     .highlight_spacing(HighlightSpacing::Always);
     let popup_area = centered_popup_rect(38, list.len() as u16, area);
+    state.rendered_area = popup_area;
+    state.list_area = Rect {
+      x: popup_area.x.saturating_add(1),
+      y: popup_area.y.saturating_add(1),
+      width: popup_area.width.saturating_sub(2),
+      height: popup_area.height.saturating_sub(2),
+    };
     Clear.render(popup_area, buf);
     StatefulWidget::render(&list, popup_area, buf, &mut state.state);
   }
@@ -311,8 +365,8 @@ fn centered_popup_rect(width: u16, height: u16, area: Rect) -> Rect {
   let height = height.saturating_add(2).min(area.height);
   let width = width.saturating_add(2).min(area.width);
   Rect {
-    x: area.width.saturating_sub(width) / 2,
-    y: area.height.saturating_sub(height) / 2,
+    x: area.x + area.width.saturating_sub(width) / 2,
+    y: area.y + area.height.saturating_sub(height) / 2,
     width: min(width, area.width),
     height: min(height, area.height),
   }
@@ -320,15 +374,35 @@ fn centered_popup_rect(width: u16, height: u16, area: Rect) -> Rect {
 
 #[cfg(test)]
 mod tests {
-  use std::sync::Arc;
+  use std::{
+    collections::BTreeMap,
+    sync::Arc,
+  };
 
+  use crossterm::event::{
+    KeyModifiers,
+    MouseButton,
+    MouseEvent,
+    MouseEventKind,
+  };
   use insta::assert_snapshot;
+  use nix::unistd::Pid;
   use tracexec_core::{
+    cache::ArcStr,
     cli::keys::TuiKeyBindings,
     event::{
+      ExecEvent,
+      ExecSyscall,
+      OutputMsg,
       TracerEventDetails,
       TracerEventMessage,
     },
+    proc::{
+      CgroupInfo,
+      FileDescriptorInfoCollection,
+      diff_env,
+    },
+    timestamp::ts_from_boot_ns,
   };
 
   use super::{
@@ -336,12 +410,40 @@ mod tests {
     CopyPopupState,
   };
   use crate::{
+    action::{
+      Action,
+      CopyTarget,
+    },
     test_utils::{
       test_area_full,
       test_render_stateful_widget_area,
     },
     theme::current_theme,
   };
+
+  fn exec_details() -> TracerEventDetails {
+    TracerEventDetails::Exec(Box::new(ExecEvent {
+      syscall: ExecSyscall::Execve,
+      exec_pid: Pid::from_raw(100),
+      pid: Pid::from_raw(100),
+      cwd: OutputMsg::Ok(ArcStr::from("/tmp")),
+      comm: ArcStr::from("cmd"),
+      filename: OutputMsg::Ok(ArcStr::from("/bin/true")),
+      argv: Arc::new(Ok(vec![OutputMsg::Ok(ArcStr::from("true"))])),
+      envp: Arc::new(Ok(BTreeMap::new())),
+      has_dash_env: false,
+      cred: Ok(Default::default()),
+      interpreter: None,
+      env_diff: Ok(diff_env(&BTreeMap::new(), &BTreeMap::new())),
+      fdinfo: Arc::new(FileDescriptorInfoCollection::default()),
+      result: 0,
+      timestamp: ts_from_boot_ns(1),
+      parent: None,
+      cgroup: CgroupInfo::V2 {
+        path: "/".to_string(),
+      },
+    }))
+  }
 
   #[test]
   fn snapshot_copy_popup_info_event() {
@@ -355,5 +457,52 @@ mod tests {
     let area = test_area_full(40, 40);
     let rendered = test_render_stateful_widget_area(CopyPopup, area, &mut state);
     assert_snapshot!(rendered);
+  }
+
+  #[test]
+  fn mouse_click_on_target_selects_and_copies() {
+    let event = Arc::new(TracerEventDetails::Info(TracerEventMessage {
+      pid: None,
+      timestamp: None,
+      msg: "hello".to_string(),
+    }));
+    let mut state =
+      CopyPopupState::new(event, Arc::new(TuiKeyBindings::default()), current_theme());
+    let area = test_area_full(40, 40);
+    let _ = test_render_stateful_widget_area(CopyPopup, area, &mut state);
+
+    let action = state.handle_mouse_event(&MouseEvent {
+      kind: MouseEventKind::Down(MouseButton::Left),
+      column: state.list_area.x,
+      row: state.list_area.y,
+      modifiers: KeyModifiers::NONE,
+    });
+
+    assert!(matches!(
+      action,
+      Some(Action::CopyToClipboard {
+        target: CopyTarget::Line,
+        ..
+      })
+    ));
+  }
+
+  #[test]
+  fn mouse_move_over_target_updates_highlight() {
+    let event = Arc::new(exec_details());
+    let mut state =
+      CopyPopupState::new(event, Arc::new(TuiKeyBindings::default()), current_theme());
+    let area = test_area_full(80, 40);
+    let _ = test_render_stateful_widget_area(CopyPopup, area, &mut state);
+
+    let action = state.handle_mouse_event(&MouseEvent {
+      kind: MouseEventKind::Moved,
+      column: state.list_area.x,
+      row: state.list_area.y + 2,
+      modifiers: KeyModifiers::NONE,
+    });
+
+    assert!(action.is_none());
+    assert_eq!(state.state.selected(), Some(2));
   }
 }

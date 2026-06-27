@@ -514,6 +514,17 @@ pub struct TuiModeArgs {
   )]
   pub scrollback_lines: Option<usize>,
   #[clap(
+    long,
+    help = "Focus pane when the mouse hovers over it instead of requiring a click",
+    requires = "tty"
+  )]
+  pub focus_on_hover: Option<bool>,
+  #[clap(
+    long,
+    help = "Enable or disable mouse support in the TUI (default: true)"
+  )]
+  pub mouse: Option<bool>,
+  #[clap(
     long = "theme",
     help = "Path to a theme file to use for the TUI.",
     value_parser = theme_file_cli_parser,
@@ -576,6 +587,8 @@ impl TuiModeArgs {
     self.frame_rate = self.frame_rate.or(config.frame_rate);
     self.max_events = self.max_events.or(config.max_events);
     self.scrollback_lines = self.scrollback_lines.or(config.scrollback_lines);
+    self.focus_on_hover = self.focus_on_hover.or(config.focus_on_hover);
+    self.mouse = self.mouse.or(config.mouse);
     if self.theme_file.is_none()
       && let Some(path) = config.theme_file
     {

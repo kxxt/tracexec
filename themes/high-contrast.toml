@@ -6,7 +6,9 @@ active-border = { fg = "yellow", modifiers = ["bold"] }
 app-title = { fg = "white", bg = "black", modifiers = ["bold"] }
 help-popup = { fg = "black", bg = "white" }
 help-key = { fg = "black", bg = "white" }
+help-key-hover = { fg = "black", bg = "yellow", modifiers = ["bold"] }
 help-desc = { fg = "white", bg = "black", remove-modifiers = ["italic"] }
+help-desc-hover = { fg = "yellow", bg = "black", modifiers = ["bold"] }
 partial-output = { fg = "yellow", modifiers = ["bold", "italic"] }
 search-match = { bg = "white", fg = "black", remove-modifiers = ["reversed"] }
 query-no-match = { fg = "light-red", modifiers = ["bold"] }
