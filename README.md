@@ -69,8 +69,7 @@ Please [read the gdb-launcher example](demonstration/gdb-launcher/README.md) for
 
 ### eBPF mode
 
-The eBPF mode is currently experimental.
-The minimum supported kernel version is 5.17.
+Please check [platform support status](https://tracexec.kxxt.dev/support.html#linux-kernel-support-status) before using the eBPF backend.
 
 The following examples shows how to use eBPF in TUI mode.
 The `eBPF` command also supports regular `log` and `collect` subcommands.
@@ -155,6 +154,7 @@ Options:
   -P, --profile <PROFILE>  Load profile from this path
       --no-profile         Do not load profiles
   -u, --user <USER>        Run as user. This option is only available when running tracexec as root
+      --elevate            Re-execute tracexec with privilege elevation (e.g. via sudo). The original user credentials are saved and the tracee will run as the original user.
   -h, --help               Print help
   -V, --version            Print version
 
@@ -191,6 +191,10 @@ Options:
           Do not show timestamp information
       --inline-timestamp-format <INLINE_TIMESTAMP_FORMAT>
           Set the format of inline timestamp. See https://docs.rs/chrono/latest/chrono/format/strftime/index.html for available options.
+      --collect-cgroup
+          Collect cgroup information
+      --no-collect-cgroup
+          Do not collect cgroup information
       --seccomp-bpf <SECCOMP_BPF>
           Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
       --polling-interval <POLLING_INTERVAL>
@@ -315,6 +319,10 @@ Options:
           Do not show timestamp information
       --inline-timestamp-format <INLINE_TIMESTAMP_FORMAT>
           Set the format of inline timestamp. See https://docs.rs/chrono/latest/chrono/format/strftime/index.html for available options.
+      --collect-cgroup
+          Collect cgroup information
+      --no-collect-cgroup
+          Do not collect cgroup information
       --seccomp-bpf <SECCOMP_BPF>
           Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
       --polling-interval <POLLING_INTERVAL>
@@ -365,6 +373,10 @@ Options:
           Do not show timestamp information
       --inline-timestamp-format <INLINE_TIMESTAMP_FORMAT>
           Set the format of inline timestamp. See https://docs.rs/chrono/latest/chrono/format/strftime/index.html for available options.
+      --collect-cgroup
+          Collect cgroup information
+      --no-collect-cgroup
+          Do not collect cgroup information
       --seccomp-bpf <SECCOMP_BPF>
           Controls whether to enable seccomp-bpf optimization, which greatly improves performance [default: auto] [possible values: auto, on, off]
       --polling-interval <POLLING_INTERVAL>

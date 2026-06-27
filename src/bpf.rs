@@ -169,7 +169,6 @@ pub async fn main(
         pty_master,
         current_theme(),
       )?;
-      app.activate_experiment("eBPF");
       let printer = Printer::new(
         PrinterArgs::from_cli(&log_args, &modifier_args),
         baseline.clone(),
