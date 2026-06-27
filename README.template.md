@@ -69,8 +69,7 @@ Please [read the gdb-launcher example](demonstration/gdb-launcher/README.md) for
 
 ### eBPF mode
 
-The eBPF mode is currently experimental.
-The minimum supported kernel version is 5.17.
+Please check [platform support status](https://tracexec.kxxt.dev/support.html#linux-kernel-support-status) before using the eBPF backend.
 
 The following examples shows how to use eBPF in TUI mode.
 The `eBPF` command also supports regular `log` and `collect` subcommands.
