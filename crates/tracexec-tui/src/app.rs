@@ -795,6 +795,42 @@ impl App {
       self.hover_state.row = row;
     }
 
+    // When overlays are active (popups, breakpoint manager, hit manager),
+    // block mouse events from reaching the event list and terminal pane.
+    // Route events to the active popup and keep footer help entries clickable.
+    let has_overlay = !self.popup.is_empty()
+      || self.breakpoint_manager.is_some()
+      || self.hit_manager_state.as_ref().is_some_and(|h| h.visible);
+    if has_overlay {
+      if let Some(popup) = self.popup.last_mut() {
+        match popup {
+          ActivePopup::ViewDetails(state) => {
+            state.handle_mouse_event(&me);
+          }
+          ActivePopup::CopyTargetSelection(state) => {
+            if let Some(action) = state.handle_mouse_event(&me) {
+              action_tx.send(action);
+              return;
+            }
+          }
+          _ => {}
+        }
+      }
+
+      if position_in_rect(col, row, &self.layout_areas.footer)
+        && matches!(me.kind, MouseEventKind::Down(MouseButton::Left))
+      {
+        for entry in &self.help_bar_entries {
+          if position_in_rect(col, row, &entry.area) {
+            action_tx.send(Action::HandleHelpBarClick(entry.key_event));
+            return;
+          }
+        }
+      }
+
+      return;
+    }
+
     // Handle divider dragging between event list and terminal pane
     if self.term.is_some() {
       if self.dragging_divider {
@@ -876,22 +912,6 @@ impl App {
           return;
         }
       }
-    }
-
-    // When overlays are active (popups, breakpoint manager, hit manager),
-    // block mouse events from reaching the event list and terminal pane.
-    // But still route relevant events to the active popup.
-    let has_overlay = !self.popup.is_empty()
-      || self.breakpoint_manager.is_some()
-      || self.hit_manager_state.as_ref().is_some_and(|h| h.visible);
-    if has_overlay {
-      // Route mouse events to the topmost popup if applicable
-      if let Some(popup) = self.popup.last_mut()
-        && let ActivePopup::ViewDetails(state) = popup
-      {
-        state.handle_mouse_event(&me);
-      }
-      return;
     }
 
     // Check terminal pane clicks
