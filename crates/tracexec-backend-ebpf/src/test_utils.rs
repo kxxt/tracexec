@@ -136,6 +136,7 @@ pub fn prepare_execve_fentry_fexit(
   open_skel.progs.sys_execve_fentry.set_flags(BPF_F_SLEEPABLE);
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
+    rodata.tracexec_config.sleepable = MaybeUninit::new(true);
   }
   None
 }
@@ -181,6 +182,7 @@ pub fn prepare_execveat_fentry_fexit(
     .set_flags(BPF_F_SLEEPABLE);
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
+    rodata.tracexec_config.sleepable = MaybeUninit::new(true);
   }
   None
 }
@@ -198,6 +200,7 @@ pub fn prepare_compat_execve(
   open_skel.progs.compat_sys_execve.set_flags(BPF_F_SLEEPABLE);
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
+    rodata.tracexec_config.sleepable = MaybeUninit::new(true);
   }
   None
 }
@@ -220,6 +223,7 @@ pub fn prepare_compat_execveat(
     .set_flags(BPF_F_SLEEPABLE);
   if let Some(rodata) = open_skel.maps.rodata_data.as_deref_mut() {
     rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
+    rodata.tracexec_config.sleepable = MaybeUninit::new(true);
   }
   None
 }

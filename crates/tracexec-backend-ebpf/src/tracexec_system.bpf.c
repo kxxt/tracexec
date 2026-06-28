@@ -24,12 +24,14 @@ static pid_t tracee_tgid = 0;
 const volatile struct {
   u32 nofile;
   bool follow_fork;
+  bool sleepable;
   pid_t tracee_pid;
   unsigned int tracee_pidns_inum;
 } tracexec_config = {
     // https://www.kxxt.dev/blog/max-possible-value-of-rlimit-nofile/
     .nofile = 2147483584,
     .follow_fork = false,
+    .sleepable = false,
     .tracee_pid = 0,
     .tracee_pidns_inum = 0,
 };
@@ -119,6 +121,8 @@ struct fdset_word_reader_context {
 };
 
 static int read_strings(u32 index, struct reader_context *ctx);
+static __always_inline int read_user_string(void *dst, u32 size,
+                                            const void *unsafe_ptr);
 static int read_fds(struct exec_event *event);
 static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event, bool cloexec,
@@ -280,8 +284,8 @@ trace_exec_common(bool is_execveat, bool is_compat, const u8 *base_filename,
     debug("filename is NULL");
     event->base_filename[0] = '\0';
   } else {
-    ret = bpf_probe_read_user_str(
-        event->base_filename, sizeof(event->base_filename), base_filename);
+    ret = read_user_string(event->base_filename, sizeof(event->base_filename),
+                           base_filename);
     if (ret < 0) {
       event->header.flags |= FILENAME_READ_ERR;
     } else if (ret == sizeof(event->base_filename)) {
@@ -1025,15 +1029,32 @@ ptr_err:
   return 1;
 }
 
+static __always_inline int read_user_pointer(void *dst, u32 size,
+                                             const void *unsafe_ptr) {
+  if (tracexec_config.sleepable) {
+    return bpf_copy_from_user(dst, size, unsafe_ptr);
+  }
+  return bpf_probe_read_user(dst, size, unsafe_ptr);
+}
+
+static __always_inline int read_user_string(void *dst, u32 size,
+                                            const void *unsafe_ptr) {
+  if (tracexec_config.sleepable &&
+      LINUX_KERNEL_VERSION >= MIN_KERNEL_VERSION_FOR_COPY_FROM_USER_STR) {
+    return bpf_copy_from_user_str(dst, size, unsafe_ptr, BPF_ANY);
+  }
+  return bpf_probe_read_user_str(dst, size, unsafe_ptr);
+}
+
 static int read_strings(u32 index, struct reader_context *ctx) {
   struct exec_event *event = ctx->event;
   const u8 *argp = NULL;
   int ret;
   if (!ctx->is_compat)
-    ret = bpf_probe_read_user(&argp, sizeof(argp), &ctx->ptr[index]);
+    ret = read_user_pointer(&argp, sizeof(argp), &ctx->ptr[index]);
   else
-    ret = bpf_probe_read_user(&argp, sizeof(u32),
-                              (void *)ctx->ptr + index * sizeof(u32));
+    ret = read_user_pointer(&argp, sizeof(u32),
+                            (void *)ctx->ptr + index * sizeof(u32));
   if (ret < 0) {
     event->header.flags |= PTR_READ_FAILURE;
     debug("Failed to read pointer to arg: %d", ret);
@@ -1070,8 +1091,7 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   entry->header.eid = event->header.eid;
   entry->header.id = index + ctx->index * event->count[0];
   entry->header.flags = 0;
-  s64 bytes_read =
-      bpf_probe_read_user_str(entry->data, sizeof(entry->data), argp);
+  s64 bytes_read = read_user_string(entry->data, sizeof(entry->data), argp);
   if (bytes_read < 0) {
     debug("failed to read arg %d(addr:%x) from userspace", index, argp);
     entry->header.flags |= STR_READ_FAILURE;
