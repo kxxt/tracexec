@@ -797,6 +797,7 @@ impl EbpfTracer {
         .set_autoload(false);
       // Check if we can use sleepable fentry
       if can_i_use_sleepable_fentry(kconfig.as_ref(), override_env) {
+        rodata.tracexec_config.sleepable = MaybeUninit::new(true);
         // Can use sleepable fentry :(
         open_skel.progs.sys_execve_fentry.set_flags(BPF_F_SLEEPABLE);
         open_skel
