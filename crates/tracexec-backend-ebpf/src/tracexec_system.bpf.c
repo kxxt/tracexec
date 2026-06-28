@@ -1101,12 +1101,15 @@ static int read_strings(u32 index, struct reader_context *ctx) {
   } else if (bytes_read == 0) {
     entry->data[0] = '\0';
     bytes_read = 1;
-  } else if (bytes_read == sizeof(entry->data)) {
-    entry->header.flags |= POSSIBLE_TRUNCATION;
   }
-  ret = bpf_ringbuf_output(&events, entry,
-                           sizeof(struct tracexec_event_header) + bytes_read,
-                           BPF_RB_FORCE_WAKEUP);
+  u32 event_size = sizeof(struct tracexec_event_header) + bytes_read;
+  barrier_var(event_size);
+  // Don't let clang optimize away the following check,
+  // which is required by the verifier.
+  if (event_size > sizeof(*entry)) {
+    event_size = sizeof(*entry);
+  }
+  ret = bpf_ringbuf_output(&events, entry, event_size, BPF_RB_FORCE_WAKEUP);
   bpf_map_delete_elem(&cache, &key);
   if (ret < 0) {
     event->header.flags |= OUTPUT_FAILURE;
