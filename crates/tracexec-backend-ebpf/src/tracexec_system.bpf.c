@@ -29,11 +29,8 @@ const volatile struct {
   unsigned int tracee_pidns_inum;
 } tracexec_config = {
     // https://www.kxxt.dev/blog/max-possible-value-of-rlimit-nofile/
-    .nofile = 2147483584,
-    .follow_fork = false,
-    .sleepable = false,
-    .tracee_pid = 0,
-    .tracee_pidns_inum = 0,
+    .nofile = 2147483584, .follow_fork = false,   .sleepable = false,
+    .tracee_pid = 0,      .tracee_pidns_inum = 0,
 };
 
 struct {
@@ -128,7 +125,7 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
                     struct exec_event *event, bool cloexec,
                     bool flags_read_failure);
 static int add_pid_to_closure(pid_t pid);
-static int read_send_path(struct dentry* dentry_addr, struct vfsmount* mnt_addr,
+static int read_send_path(struct dentry *dentry_addr, struct vfsmount *mnt_addr,
                           struct tracexec_event_header *base_header,
                           s32 path_id, struct fd_event *fd_event);
 
@@ -233,9 +230,10 @@ int __always_inline fill_field_with_unknown(u8 *buf) {
   return 0;
 }
 
-static __always_inline int
-trace_exec_common(bool is_execveat, bool is_compat, const u8 *base_filename,
-                  const u8 *const *argv, const u8 *const *envp) {
+static __always_inline int trace_exec_common(bool is_execveat, bool is_compat,
+                                             const u8 *base_filename,
+                                             const u8 *const *argv,
+                                             const u8 *const *envp) {
   // Collect timestamp
   u64 timestamp = bpf_ktime_get_boot_ns();
   // Collect UID/GID information
@@ -342,8 +340,7 @@ trace_exec_common(bool is_execveat, bool is_compat, const u8 *base_filename,
   }
   // spin_unlock(&fs->lock);
   debug("Reading pwd...");
-  read_send_path(pwd_dentry, pwd_mnt, &event->header, AT_FDCWD,
-                 NULL);
+  read_send_path(pwd_dentry, pwd_mnt, &event->header, AT_FDCWD, NULL);
   return 0;
 }
 
@@ -404,8 +401,9 @@ SEC("tp_btf/sched_process_free")
 int handle_process_free(u64 *ctx) {
   if (!tracexec_config.follow_fork)
     return 0;
-  // DO NOT use bpf_get_current_pid_tgid() here as the task might be already dead and
-  // we might be in a different task context (usually idle process pid=0).
+  // DO NOT use bpf_get_current_pid_tgid() here as the task might be already
+  // dead and we might be in a different task context (usually idle process
+  // pid=0).
   struct task_struct *dying = (struct task_struct *)ctx[0];
   pid_t pid, tgid;
 
@@ -771,7 +769,7 @@ static int read_fds(struct exec_event *event) {
   // https://github.com/torvalds/linux/blob/5189dafa4cf950e675f02ee04b577dfbbad0d9b1/fs/file.c#L279-L291
   ctx.size /= BITS_PER_LONG;
   ctx.size = min(ctx.size, FDSET_SIZE_MAX_IN_LONG);
-  if (LINUX_KERNEL_VERSION >= MIN_KERNEL_VERSION_FOR_ITER_BITS) {
+  if (bpf_ksym_exists(bpf_iter_bits_new)) {
     // When using iter_bits, the unit of size is bit (not the number of words)
     ctx.size *= BITS_PER_LONG;
     u32 chunks =
@@ -835,8 +833,7 @@ static int iter_fdset_chunk(u32 chunk, void *data) {
 
     cloexec = cloexec_word & (1UL << offset);
 
-    ret = _read_fd(fd, ctx->fd_array, ctx->event, cloexec,
-                   flags_read_failure);
+    ret = _read_fd(fd, ctx->fd_array, ctx->event, cloexec, flags_read_failure);
     if (ret != 0) {
       debug("Failed to get info about fd %u (inside bpf bits iter)", fd);
     }
@@ -942,8 +939,7 @@ static int read_fdset_word(u32 index, struct fdset_word_reader_context *ctx) {
   bool cloexec = false;
   if (ctx->cloexec & (1UL << ctx->next_bit))
     cloexec = true;
-  _read_fd(fdnum, ctx->fd_array, ctx->event, cloexec,
-           ctx->flags_read_failure);
+  _read_fd(fdnum, ctx->fd_array, ctx->event, cloexec, ctx->flags_read_failure);
   ctx->next_bit = find_next_bit(ctx->fdset, ctx->next_bit + 1);
   return 0;
 }
@@ -1000,8 +996,7 @@ static int _read_fd(unsigned int fd_num, struct file **fd_array,
     goto ptr_err;
   // read name
   entry->path_id = event->path_count++;
-  ret = read_send_path(dentry, mnt, &entry->header, entry->path_id,
-                       entry);
+  ret = read_send_path(dentry, mnt, &entry->header, entry->path_id, entry);
   if (ret < 0) {
     event->header.flags |= PATH_READ_ERR;
   }
@@ -1039,8 +1034,7 @@ static __always_inline int read_user_pointer(void *dst, u32 size,
 
 static __always_inline int read_user_string(void *dst, u32 size,
                                             const void *unsafe_ptr) {
-  if (tracexec_config.sleepable &&
-      LINUX_KERNEL_VERSION >= MIN_KERNEL_VERSION_FOR_COPY_FROM_USER_STR) {
+  if (tracexec_config.sleepable && bpf_ksym_exists(bpf_copy_from_user_str)) {
     return bpf_copy_from_user_str(dst, size, unsafe_ptr, BPF_ANY);
   }
   return bpf_probe_read_user_str(dst, size, unsafe_ptr);
@@ -1328,8 +1322,7 @@ static int read_dname_dispatch_info(struct fd_event *fd_event,
   if (d_op == NULL) {
     return 0;
   }
-  char *(*d_dname)(struct dentry *, char *, int) =
-      BPF_CORE_READ(d_op, d_dname);
+  char *(*d_dname)(struct dentry *, char *, int) = BPF_CORE_READ(d_op, d_dname);
   if (d_dname == NULL) {
     return 0;
   }
@@ -1418,14 +1411,15 @@ fstype_err_out:
 // Arguments:
 //   dentry/mnt: kernel pointers to the path components
 //   fd_event: If not NULL, read mnt_id and fstype and set it in fd_event
-static int read_send_path(struct dentry* dentry, struct vfsmount* mnt,
+static int read_send_path(struct dentry *dentry, struct vfsmount *mnt,
                           struct tracexec_event_header *base_header,
                           s32 path_id, struct fd_event *fd_event) {
   if (dentry == NULL || mnt == NULL) {
     return -1;
   }
   int ret = -1;
-  // Read fs info before alloc path_event, which may fail (as seen on aarch64 in some cases).
+  // Read fs info before alloc path_event, which may fail (as seen on aarch64 in
+  // some cases).
   if (fd_event != NULL) {
     read_fs_info(fd_event, dentry, mnt);
   }
@@ -1456,11 +1450,11 @@ static int read_send_path(struct dentry* dentry, struct vfsmount* mnt,
       .path_id = event->header.id,
       .segment_ctx =
           {
-      .path_event = event,
-      .dentry = dentry,
-      .mnt_root = NULL,
-      .root = NULL,
-      .base_index = 0,
+              .path_event = event,
+              .dentry = dentry,
+              .mnt_root = NULL,
+              .root = NULL,
+              .base_index = 0,
           },
   };
   ctx.segment_ctx.root = BPF_CORE_READ(current, fs, root.dentry);

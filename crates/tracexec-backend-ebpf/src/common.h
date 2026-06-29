@@ -56,22 +56,20 @@ extern int LINUX_KERNEL_VERSION __kconfig;
 
 // Compatibility Shims
 
-extern void bpf_rcu_read_lock(void) __ksym;
-extern void bpf_rcu_read_unlock(void) __ksym;
-
-#define MIN_KERNEL_VERSION_FOR_RCU_KFUNC KERNEL_VERSION(6, 2, 0)
-#define MIN_KERNEL_VERSION_FOR_ITER_BITS KERNEL_VERSION(6, 11, 0)
-#define MIN_KERNEL_VERSION_FOR_COPY_FROM_USER_STR KERNEL_VERSION(6, 12, 0)
+extern void bpf_rcu_read_lock(void) __weak __ksym;
+extern void bpf_rcu_read_unlock(void) __weak __ksym;
+extern int bpf_iter_bits_new(struct bpf_iter_bits *it, const u64 *unsafe_ptr__ign, u32 nr_words) __weak __ksym;
+extern int bpf_copy_from_user_str(void *dst, u32 dst__sz, const void *unsafe_ptr__ign, u64 flags) __weak __ksym;
 
 int __always_inline rcu_read_lock() {
-  if (LINUX_KERNEL_VERSION >= MIN_KERNEL_VERSION_FOR_RCU_KFUNC) {
+  if (bpf_ksym_exists(bpf_rcu_read_lock)) {
     bpf_rcu_read_lock();
   }
   return 0;
 }
 
 int __always_inline rcu_read_unlock() {
-  if (LINUX_KERNEL_VERSION >= MIN_KERNEL_VERSION_FOR_RCU_KFUNC) {
+  if (bpf_ksym_exists(bpf_rcu_read_unlock)) {
     bpf_rcu_read_unlock();
   }
   return 0;
