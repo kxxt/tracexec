@@ -80,8 +80,8 @@ pub fn kernel_have_ftrace_with_direct_calls(
         // https://github.com/torvalds/linux/commit/2aa6ac03516d078cf0c35aaa273b5cd11ea9734c
         tracexec_core::is_current_kernel_ge((6, 4)).unwrap_or_default()
       } else if #[cfg(target_arch = "riscv64")] {
-        // https://github.com/torvalds/linux/commit/b21cdb9523e5561b97fd534dbb75d132c5c938ff
-        tracexec_core::is_current_kernel_ge((6, 16)).unwrap_or_default()
+        // https://github.com/torvalds/linux/commit/196c79f19a92764d45005599f35338cf0a9eafbb
+        tracexec_core::is_current_kernel_ge((6, 8)).unwrap_or_default()
       } else {
           compile_error!("unsupported architecture");
       }
