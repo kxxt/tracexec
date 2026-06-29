@@ -37,12 +37,12 @@ libbpf-rs = { version = "0.26.1", default-features = false }
 # libbpf-sys exists here because we want to control its features
 libbpf-sys = { version = "1", default-features = false }
 procfs = "0.18.0"
-bpfcov = { version = "0.2", optional = true }
+bpfcov = { version = "0.3.0-alpha.1", optional = true }
 
 
 [build-dependencies]
 libbpf-cargo = { version = "0.26.1", default-features = false }
-bpfcov = { version = "0.2", default-features = false, features = ["vendored"], optional = true }
+bpfcov = { version = "0.3.0-alpha.1", default-features = false, features = ["vendored"], optional = true }
 regex-lite = { version = "0.1", optional = true }
 
 [dev-dependencies]
