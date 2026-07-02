@@ -24,6 +24,21 @@ For example, if you are testing on a x86_64 linux machine, use
 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER='sudo -E' cargo test --workspace -- --ignored
 ```
 
+## eBPF Verifier Complexity
+
+Verifier complexity collection is available as an optional UKCI-style Nix runner.
+It boots the same UKCI kernels in QEMU, loads tracexec's eBPF programs with
+verifier stats enabled, and writes one JSON file per kernel/LLVM combination:
+
+```bash
+nix run .#ukci-complexity
+```
+
+By default, results are written to `verifier-complexity/`.
+Set `UKCI_COMPLEXITY_OUT_DIR` to use a different output directory.
+This runner is intentionally separate from `ukci` and is not part of the
+required UKCI test pass.
+
 ## Test Coverage
 
 Most of the time you do not need to calculate the test coverage by yourself because we are tracking
