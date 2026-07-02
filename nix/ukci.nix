@@ -161,7 +161,7 @@ localFlake:
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
-            
+
               {
                 name = "7.2";
                 tag = "v7.2-rc2";
@@ -305,6 +305,50 @@ localFlake:
                   find "$out/target" -type d -empty -delete
                 '';
               };
+          tracexecEbpfVerifierComplexityForClang =
+            targetPkgs: llvmVer:
+            let
+              bpfClang = targetPkgs.buildPackages.${"llvmPackages_${toString llvmVer}"}.clang.cc;
+              cargoExtraArgs = "--locked --package tracexec-backend-ebpf --no-default-features -F verifier-complexity --bin tracexec-verifier-complexity";
+            in
+            (import ./tracexec-package.nix {
+              inherit (targetPkgs) lib;
+              inherit (localFlake) crane;
+              pkgs = targetPkgs;
+            })
+              {
+                inherit bpfClang;
+                pnameSuffix = "-ebpf-verifier-complexity";
+                inherit cargoExtraArgs;
+                cargoArtifacts = targetPkgs.runCommand "empty-cargo-target" { } "mkdir -p $out/target";
+                doCheck = false;
+                doNotPostBuildInstallCargoBinaries = true;
+                buildPhaseCargoCommand = ''
+                  mkdir -p "$out/target"
+                  export CARGO_TARGET_DIR="$out/target"
+                  cargoWithProfile build --message-format json-render-diagnostics ${cargoExtraArgs}
+                '';
+                installPhaseCommand = ''
+                  mkdir -p "$out/bin"
+
+                  found=0
+                  for candidate in \
+                    "$out"/target/*/release/tracexec-verifier-complexity \
+                    "$out"/target/release/tracexec-verifier-complexity
+                  do
+                    if [ -f "$candidate" ] && [ -x "$candidate" ]; then
+                      install -Dm755 "$candidate" "$out/bin/tracexec-verifier-complexity"
+                      found=$((found + 1))
+                    fi
+                  done
+                  if [ "$found" -ne 1 ]; then
+                    echo "expected exactly one tracexec-verifier-complexity binary, found $found" >&2
+                    exit 1
+                  fi
+
+                  rm -rf "$out/target"
+                '';
+              };
           # Build a single shared initramfs per target system (no kernel dependency)
           initramfsForTarget =
             targetSystem:
@@ -401,6 +445,7 @@ localFlake:
                   targetPkgs = pkgsForTarget builtKernel.targetSystem;
                   testPackage = tracexecForClang targetPkgs llvmVer;
                   rootTestsPackage = tracexecEbpfRootTestsForClang targetPkgs llvmVer;
+                  complexityPackage = tracexecEbpfVerifierComplexityForClang targetPkgs llvmVer;
                 in
                 {
                   inherit (builtKernel)
@@ -410,6 +455,7 @@ localFlake:
                     test_exe
                     ;
                   inherit rootTestsPackage testPackage;
+                  inherit complexityPackage;
                   name = "${builtKernel.baseName}-clang${toString llvmVer}";
                   initramfs = initramfsMap.${builtKernel.targetSystem};
                   xfail = false;
@@ -442,7 +488,9 @@ localFlake:
             let
               runQemuName = "run-qemu${nameSuffix}";
               testQemuName = "test-qemu${nameSuffix}";
+              testQemuComplexityName = "test-qemu-complexity${nameSuffix}";
               ukciName = "ukci${nameSuffix}";
+              ukciComplexityName = "ukci-complexity${nameSuffix}";
               shellCases = lib.concatMapStrings (
                 {
                   name,
@@ -470,6 +518,15 @@ localFlake:
                   ...
                 }:
                 "${name}:${targetSystem}:${test_exe}:${testPackage}:${rootTestsPackage}:${if xfail then "1" else "0"}"
+              ) kernels;
+              complexityPlatforms = lib.concatMapStringsSep " " (
+                {
+                  name,
+                  targetSystem,
+                  complexityPackage,
+                  ...
+                }:
+                "${name}:${targetSystem}:${complexityPackage}"
               ) kernels;
               defaultPackage = if kernels == [ ] then "" else (builtins.head kernels).testPackage;
               ukciSummaryHeader =
@@ -579,6 +636,34 @@ localFlake:
                 fi
                 ${pkgs.nix}/bin/nix copy --to ssh://root@127.0.0.1 "$package" "$root_tests_package"
                 $ssh "set -e; for test_bin in \"$root_tests_package\"/bin/*; do echo \"running \$(basename \"\$test_bin\")\"; \"\$test_bin\" --ignored --test-threads=1 --nocapture; done"
+              '';
+              testQemuComplexityDrv = pkgs.writeScriptBin testQemuComplexityName ''
+                #!/usr/bin/env sh
+                complexity_package="$1"
+                build_label="''${2:-manual}"
+                port="''${3:-${vmSshPort}}"
+                poweroff="''${4:-0}"
+                ssh="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@127.0.0.1 -p $port"
+                if [ "$poweroff" = "1" ]; then
+                  cleanup() {
+                    $ssh poweroff -f >/dev/null 2>&1 || true
+                  }
+                  trap cleanup EXIT INT TERM
+                fi
+
+                for i in $(seq 1 100); do
+                  [ $i -gt 1 ] && sleep 5;
+                  $ssh true && break;
+                done;
+
+                $ssh uname -a >&2
+                export NIX_SSHOPTS="-p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+                if [ -z "$complexity_package" ]; then
+                  echo "Missing eBPF verifier complexity package path!" >&2
+                  exit 1
+                fi
+                ${pkgs.nix}/bin/nix copy --to ssh://root@127.0.0.1 "$complexity_package" >&2
+                $ssh "TRACEXEC_VERIFIER_BUILD=\"$build_label\" \"$complexity_package\"/bin/tracexec-verifier-complexity"
               '';
               ukciDrv = pkgs.writeScriptBin ukciName ''
                 #!/usr/bin/env bash
@@ -752,11 +837,156 @@ localFlake:
                 rm -rf "$logs_dir" "$results_dir"
                 exit "$status"
               '';
+              ukciComplexityDrv = pkgs.writeScriptBin ukciComplexityName ''
+                #!/usr/bin/env bash
+
+                set -e
+
+                output_dir="''${UKCI_COMPLEXITY_OUT_DIR:-verifier-complexity}"
+                mkdir -p "$output_dir"
+                logs_dir="$(mktemp -d)"
+                results_dir="$(mktemp -d)"
+                lock_dir="$logs_dir/.lock"
+                status=0
+                running=0
+                if command -v nproc >/dev/null 2>&1; then
+                  max_parallel="''${UKCI_MAX_PARALLEL:-$(nproc)}"
+                else
+                  max_parallel="''${UKCI_MAX_PARALLEL:-$(getconf _NPROCESSORS_ONLN)}"
+                fi
+                if [ -z "$max_parallel" ] || [ "$max_parallel" -lt 1 ]; then
+                  max_parallel=1
+                fi
+                if [ -t 1 ]; then
+                  RED="$(printf '\033[31m')"
+                  GREEN="$(printf '\033[32m')"
+                  YELLOW="$(printf '\033[33m')"
+                  BLUE="$(printf '\033[34m')"
+                  BOLD="$(printf '\033[1m')"
+                  RESET="$(printf '\033[0m')"
+                else
+                  RED=""
+                  GREEN=""
+                  YELLOW=""
+                  BLUE=""
+                  BOLD=""
+                  RESET=""
+                fi
+
+                idx=0
+                for platform in ${complexityPlatforms}; do
+                  IFS=: read -r kernel target_system complexity_package <<< "$platform"
+                  port=$(( ${vmSshPort} + idx ))
+                  name="$kernel"
+                  qemu_log="$logs_dir/$name.qemu.log"
+                  complexity_log="$logs_dir/$name.complexity.log"
+                  json_tmp="$output_dir/$name.json.tmp"
+                  json_out="$output_dir/$name.json"
+                  (
+                    set +e
+                    ${runQemuDrv}/bin/${runQemuName} "$kernel" "$port" >"$qemu_log" 2>&1 &
+                    qemu_pid=$!
+                    ${pkgs.coreutils}/bin/timeout 900s \
+                      ${testQemuComplexityDrv}/bin/${testQemuComplexityName} "$complexity_package" "$name" "$port" "1" >"$json_tmp" 2>"$complexity_log"
+                    test_status=$?
+                    if kill -0 "$qemu_pid" >/dev/null 2>&1; then
+                      kill "$qemu_pid" >/dev/null 2>&1 || true
+                    fi
+                    wait "$qemu_pid" 2>/dev/null || true
+                    while ! mkdir "$lock_dir" 2>/dev/null; do
+                      sleep 0.1
+                    done
+                    echo "''${BLUE}''${BOLD}===> $name (qemu)''${RESET}"
+                    cat "$qemu_log" || true
+                    echo "''${BLUE}''${BOLD}===> $name (complexity)''${RESET}"
+                    cat "$complexity_log" || true
+                    if [ "$test_status" -eq 0 ]; then
+                      mv "$json_tmp" "$json_out"
+                      result_label="PASS"
+                      count="$(grep -c '"program"' "$json_out" || true)"
+                      echo "''${GREEN}''${BOLD}PASS:''${RESET} ''${name} wrote ''${count} records to $json_out"
+                    elif [ "$test_status" -eq 124 ] || [ "$test_status" -eq 137 ]; then
+                      rm -f "$json_tmp"
+                      result_label="TIMEOUT"
+                      echo "''${RED}''${BOLD}FAIL:''${RESET} ''${name} timed out after 900s"
+                    else
+                      rm -f "$json_tmp"
+                      result_label="FAIL ($test_status)"
+                      echo "''${RED}''${BOLD}FAIL:''${RESET} ''${name} exited with status ''${test_status}"
+                    fi
+                    printf '%s\n' "$result_label" > "$results_dir/$name"
+                    rmdir "$lock_dir"
+                    rm -f "$qemu_log" "$complexity_log"
+                    exit "$test_status"
+                  ) &
+                  running=$(( running + 1 ))
+                  if [ "$running" -ge "$max_parallel" ]; then
+                    if ! wait -n; then
+                      status=1
+                    fi
+                    running=$(( running - 1 ))
+                  fi
+                  idx=$(( idx + 1 ))
+                done
+
+                while [ "$running" -gt 0 ]; do
+                  if ! wait -n; then
+                    status=1
+                  fi
+                  running=$(( running - 1 ))
+                done
+
+                summary_title="''${UKCI_SUMMARY_TITLE:-UKCI eBPF verifier complexity}"
+                render_summary_table() {
+                  echo "## $summary_title"
+                  echo ""
+                  echo "${ukciSummaryHeader}"
+                  echo "${ukciSummarySep}"
+                  declare -A seen_row=
+                  row_order=()
+                  for platform in ${complexityPlatforms}; do
+                    IFS=: read -r pname _ts _pkg <<< "$platform"
+                    row_key="''${pname%-clang*}"
+                    if [ -z "''${seen_row[$row_key]+x}" ]; then
+                      seen_row[$row_key]=1
+                      row_order+=("$row_key")
+                    fi
+                  done
+                  for row_key in "''${row_order[@]}"; do
+                    line="| $row_key |"
+                    for llvm_ver in ${llvmVersionsSpaceSep}; do
+                      cell_name="$row_key-clang$llvm_ver"
+                      f="$results_dir/$cell_name"
+                      if [ -f "$f" ]; then
+                        cell="$(cat "$f")"
+                      else
+                        cell="—"
+                      fi
+                      line="$line $cell |"
+                    done
+                    echo "$line"
+                  done
+                  echo ""
+                  echo "JSON output directory: $output_dir"
+                  echo ""
+                }
+                set +e
+                render_summary_table
+                if [ -n "''${GITHUB_STEP_SUMMARY:-}" ]; then
+                  render_summary_table >> "$GITHUB_STEP_SUMMARY"
+                fi
+                set -e
+
+                rm -rf "$logs_dir" "$results_dir"
+                exit "$status"
+              '';
             in
             {
               run-qemu = runQemuDrv;
               test-qemu = testQemuDrv;
+              test-qemu-complexity = testQemuComplexityDrv;
               ukci = ukciDrv;
+              ukci-complexity = ukciComplexityDrv;
             };
           nativeScripts = mkScripts {
             kernels = kernelsNative;
@@ -788,7 +1018,9 @@ localFlake:
             lib.listToAttrs [
               (lib.nameValuePair "run-qemu-${attrSuffix}" scripts.run-qemu)
               (lib.nameValuePair "test-qemu-${attrSuffix}" scripts.test-qemu)
+              (lib.nameValuePair "test-qemu-complexity-${attrSuffix}" scripts.test-qemu-complexity)
               (lib.nameValuePair "ukci-${attrSuffix}" scripts.ukci)
+              (lib.nameValuePair "ukci-complexity-${attrSuffix}" scripts.ukci-complexity)
             ];
           perTargetScripts = lib.foldl' lib.recursiveUpdate { } (
             map (targetSystem: mkTargetScriptAttrs { inherit targetSystem; }) targetSystemsAll
@@ -804,8 +1036,16 @@ localFlake:
           );
         in
         rec {
-          inherit (nativeScripts) run-qemu test-qemu ukci;
+          inherit (nativeScripts)
+            run-qemu
+            test-qemu
+            test-qemu-complexity
+            ukci
+            ukci-complexity
+            ;
           ukci-latest-llvm = nativeScriptsLatest.ukci;
+          ukci-complexity-latest-llvm = nativeScriptsLatest.ukci-complexity;
+          test-qemu-complexity-latest-llvm = nativeScriptsLatest.test-qemu-complexity;
         }
         // perTargetScripts
         // perTargetScriptsLatest;

@@ -3268,6 +3268,8 @@ dependencies = [
  "regex-lite",
  "rstest",
  "rusty-fork",
+ "serde",
+ "serde_json",
  "serial_test",
  "tempfile",
  "tokio",

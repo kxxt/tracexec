@@ -18,6 +18,7 @@ default = ["vendored-libbpf"]
 bpfcov = ["dep:bpfcov", "dep:regex-lite"]
 ebpf-debug = []
 static = ["libbpf-sys/static"]
+verifier-complexity = ["dep:serde", "dep:serde_json"]
 vendored = ["libbpf-sys/vendored", "vendored-libbpf"]
 vendored-libbpf = ["libbpf-sys/vendored-libbpf", "libbpf-cargo/default"]
 
@@ -38,6 +39,8 @@ libbpf-rs = { version = "0.26.1", default-features = false }
 libbpf-sys = { version = "1", default-features = false }
 procfs = "0.18.0"
 bpfcov = { version = "0.3.0-alpha.1", optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 
 
 [build-dependencies]
@@ -58,3 +61,8 @@ path = "../../fixtures/compat-exec.rs"
 [[bin]]
 name = "special-fds-exec"
 path = "../../fixtures/special-fds-exec.rs"
+
+[[bin]]
+name = "tracexec-verifier-complexity"
+path = "src/bin/verifier_complexity.rs"
+required-features = ["verifier-complexity"]
