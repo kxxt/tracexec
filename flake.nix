@@ -47,6 +47,23 @@
             ...
           }:
           let
+            plotVerifierComplexity = pkgs.writeShellApplication {
+              name = "plot-verifier-complexity";
+              runtimeInputs = [
+                (pkgs.python3.withPackages (pythonPackages: [
+                  pythonPackages.matplotlib
+                ]))
+              ];
+              text = ''
+                script="''${TRACEXEC_PLOT_VERIFIER_COMPLEXITY_SCRIPT:-scripts/plot-verifier-complexity.py}"
+                if [ ! -f "$script" ]; then
+                  echo "plot-verifier-complexity: could not find $script" >&2
+                  echo "run this from the tracexec repository root, or set TRACEXEC_PLOT_VERIFIER_COMPLEXITY_SCRIPT" >&2
+                  exit 1
+                fi
+                exec python3 "$script" "$@"
+              '';
+            };
             defaultShell = pkgs.mkShell {
               name = "Development Shell";
               packages =
@@ -66,6 +83,7 @@
           in
           {
             packages.default = self'.packages.tracexec;
+            packages.plot-verifier-complexity = plotVerifierComplexity;
             devShells.default = defaultShell;
             devShells.extended = pkgs.mkShell {
               inputsFrom = [ defaultShell ];
