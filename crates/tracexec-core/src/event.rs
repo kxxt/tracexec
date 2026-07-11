@@ -13,7 +13,10 @@ use chrono::{
   Local,
 };
 use clap::ValueEnum;
-use crossterm::event::KeyEvent;
+use crossterm::event::{
+  KeyEvent,
+  MouseEvent,
+};
 use enumflags2::BitFlags;
 use filterable_enum::FilterableEnum;
 use nix::{
@@ -55,6 +58,7 @@ pub use parent::*;
 pub enum Event {
   ShouldQuit,
   Key(KeyEvent),
+  Mouse(MouseEvent),
   Tracer(TracerMessage),
   Render,
   Resize { width: u16, height: u16 },

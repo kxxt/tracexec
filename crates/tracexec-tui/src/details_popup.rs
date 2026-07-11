@@ -4,7 +4,12 @@ use std::ops::{
 };
 
 use arboard::Clipboard;
-use crossterm::event::KeyEvent;
+use crossterm::event::{
+  KeyEvent,
+  MouseButton,
+  MouseEvent,
+  MouseEventKind,
+};
 use hashbrown::HashMap;
 use itertools::{
   Itertools,
@@ -23,10 +28,7 @@ use ratatui::{
     Size,
   },
   style::Styled,
-  text::{
-    Line,
-    Span,
-  },
+  text::Line,
   widgets::{
     Block,
     Borders,
@@ -69,10 +71,12 @@ use super::{
     EventList,
   },
   help::{
+    HelpItem,
     help_desc,
     help_item,
     help_key,
   },
+  mouse::position_in_rect,
   theme::Theme,
 };
 use crate::{
@@ -105,6 +109,10 @@ pub struct DetailsPopupState {
   available_tabs: Vec<&'static str>,
   tab_index: usize,
   parent_id: Option<EventId>,
+  /// The area where the popup was last rendered (for mouse hit testing).
+  rendered_area: Rect,
+  /// The position of each tab label in screen coordinates, set during render.
+  tab_areas: Vec<Rect>,
 }
 
 impl DetailsPopupState {
@@ -624,6 +632,8 @@ impl DetailsPopupState {
       available_tabs,
       tab_index: 0,
       parent_id,
+      rendered_area: Rect::default(),
+      tab_areas: Vec::new(),
     }
   }
 
@@ -667,9 +677,9 @@ impl DetailsPopupState {
     self.available_tabs[self.tab_index]
   }
 
-  pub fn update_help(&self, keys: &TuiKeyBindings, items: &mut Vec<Span<'_>>) {
+  pub fn update_help<'a>(&self, keys: &TuiKeyBindings, items: &mut Vec<HelpItem<'a>>) {
     if self.active_tab() == "Info" {
-      items.extend(help_item!(
+      items.push(help_item!(
         format!(
           "{}/{}",
           keys.details_prev_field.display(),
@@ -679,7 +689,7 @@ impl DetailsPopupState {
         self.theme
       ));
     }
-    items.extend(help_item!(
+    items.push(help_item!(
       format!(
         "{}/{}/{}",
         keys.details_prev_tab.display(),
@@ -690,12 +700,59 @@ impl DetailsPopupState {
       self.theme
     ));
     if self.env.is_some() {
-      items.extend(help_item!(
+      items.push(help_item!(
         keys.details_view_parent.display(),
         "View\u{00a0}Parent\u{00a0}Details",
-        self.theme
+        self.theme,
+        &keys.details_view_parent
       ));
     }
+  }
+
+  /// Handle a mouse event within the details popup.
+  /// Returns `true` if the event was consumed.
+  pub fn handle_mouse_event(&mut self, event: &MouseEvent) -> bool {
+    let col = event.column;
+    let row = event.row;
+
+    // Check tab clicks
+    if matches!(event.kind, MouseEventKind::Down(MouseButton::Left)) {
+      for (i, tab_area) in self.tab_areas.iter().enumerate() {
+        if position_in_rect(col, row, tab_area) {
+          let old = self.tab_index;
+          self.tab_index = i;
+          if old != self.tab_index {
+            self.scroll.scroll_to_top();
+          }
+          return true;
+        }
+      }
+    }
+
+    // Check scroll events within the popup area
+    if position_in_rect(col, row, &self.rendered_area) {
+      match event.kind {
+        MouseEventKind::ScrollUp => {
+          self.scroll_up();
+          return true;
+        }
+        MouseEventKind::ScrollDown => {
+          self.scroll_down();
+          return true;
+        }
+        MouseEventKind::ScrollLeft => {
+          self.scroll_left();
+          return true;
+        }
+        MouseEventKind::ScrollRight => {
+          self.scroll_right();
+          return true;
+        }
+        _ => {}
+      }
+    }
+
+    false
   }
 
   pub fn handle_key_event(
@@ -783,6 +840,7 @@ impl DerefMut for DetailsPopupState {
 impl StatefulWidgetRef for DetailsPopup {
   fn render_ref(&self, area: Rect, buf: &mut Buffer, state: &mut DetailsPopupState) {
     Clear.render(area, buf);
+    state.rendered_area = area;
     let theme = state.theme;
     let block = Block::new()
       .title(" Details ")
@@ -806,6 +864,19 @@ impl StatefulWidgetRef for DetailsPopup {
       + state.available_tabs.len().saturating_sub(1) as u16; // vertical bar
     let start = screen.right().saturating_sub(tabs_width);
     tabs.render(Rect::new(start, 0, tabs_width, 1), buf);
+
+    // Compute per-tab click areas for mouse support
+    // Each tab occupies: " label " (1 space + label + 1 space), separated by "│"
+    state.tab_areas.clear();
+    let mut tab_x = start;
+    for (i, tab_label) in state.available_tabs.iter().enumerate() {
+      let tab_w = tab_label.len() as u16 + 2; // space + label + space
+      state.tab_areas.push(Rect::new(tab_x, 0, tab_w, 1));
+      tab_x += tab_w;
+      if i + 1 < state.available_tabs.len() {
+        tab_x += 1; // separator "│"
+      }
+    }
 
     // Tab Info
     let paragraph = match state.tab_index {

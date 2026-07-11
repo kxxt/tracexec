@@ -7,7 +7,9 @@ app-title = { fg = "#ffb000" }
 help-popup = { fg = "black", bg = "#ffb000" }
 cli-flag = { fg = "black", bg = "#ffb000" }
 help-key = { fg = "black", bg = "yellow" }
+help-key-hover = { fg = "black", bg = "#ffe066", modifiers = ["bold"] }
 help-desc = { fg = "#ffd36b", bg = "dark-gray" }
+help-desc-hover = { fg = "white", bg = "dark-gray", modifiers = ["bold"] }
 fancy-help-desc = { fg = "black", bg = "yellow", remove-modifiers = ["slow-blink"] }
 tracer-info = { fg = "#ffcf5a" }
 tracer-warning = { fg = "yellow" }

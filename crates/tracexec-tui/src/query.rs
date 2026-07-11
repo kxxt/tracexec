@@ -8,10 +8,7 @@ use crossterm::event::{
 use itertools::Itertools;
 use ratatui::{
   style::Styled,
-  text::{
-    Line,
-    Span,
-  },
+  text::Line,
   widgets::{
     StatefulWidget,
     Widget,
@@ -34,7 +31,10 @@ use tui_prompts::{
 
 use super::{
   event_line::EventLine,
-  help::help_item,
+  help::{
+    HelpItem,
+    help_item,
+  },
   theme::Theme,
 };
 use crate::action::Action;
@@ -251,11 +251,21 @@ impl QueryBuilder {
 }
 
 impl QueryBuilder {
-  pub fn help(&self, keys: &TuiKeyBindings, theme: &Theme) -> Vec<Span<'_>> {
+  pub fn help<'a>(&self, keys: &TuiKeyBindings, theme: &'a Theme) -> Vec<HelpItem<'a>> {
     if self.editing {
-      [
-        help_item!(keys.query_cancel.display(), "Cancel\u{00a0}Search", theme),
-        help_item!(keys.query_execute.display(), "Execute\u{00a0}Search", theme),
+      vec![
+        help_item!(
+          keys.query_cancel.display(),
+          "Cancel\u{00a0}Search",
+          theme,
+          &keys.query_cancel
+        ),
+        help_item!(
+          keys.query_execute.display(),
+          "Execute\u{00a0}Search",
+          theme,
+          &keys.query_execute
+        ),
         help_item!(
           keys.query_toggle_case.display(),
           if self.case_sensitive {
@@ -263,7 +273,8 @@ impl QueryBuilder {
           } else {
             "Case\u{00a0}Insensitive"
           },
-          theme
+          theme,
+          &keys.query_toggle_case
         ),
         help_item!(
           keys.query_toggle_regex.display(),
@@ -272,25 +283,31 @@ impl QueryBuilder {
           } else {
             "Text\u{00a0}Mode"
           },
-          theme
+          theme,
+          &keys.query_toggle_regex
         ),
-        help_item!(keys.query_clear.display(), "Clear", theme),
+        help_item!(
+          keys.query_clear.display(),
+          "Clear",
+          theme,
+          &keys.query_clear
+        ),
       ]
-      .into_iter()
-      .flatten()
-      .collect()
     } else {
-      [
-        help_item!(keys.query_next_match.display(), "Next\u{00a0}Match", theme),
+      vec![
+        help_item!(
+          keys.query_next_match.display(),
+          "Next\u{00a0}Match",
+          theme,
+          &keys.query_next_match
+        ),
         help_item!(
           keys.query_prev_match.display(),
           "Previous\u{00a0}Match",
-          theme
+          theme,
+          &keys.query_prev_match
         ),
       ]
-      .into_iter()
-      .flatten()
-      .collect()
     }
   }
 }
@@ -476,8 +493,10 @@ mod tests {
     let qb = QueryBuilder::new(QueryKind::Search);
     let keys = TuiKeyBindings::default();
     let help = qb.help(&keys, current_theme());
-    assert!(help.iter().any(|span| span.content.contains("Esc")));
-    assert!(help.iter().any(|span| span.content.contains("Enter")));
+    assert!(help.iter().any(|item| item.key_span.content.contains("Esc") || item.desc_span.content.contains("Esc")));
+    assert!(help.iter().any(
+      |item| item.key_span.content.contains("Enter") || item.desc_span.content.contains("Enter")
+    ));
   }
 
   #[test]

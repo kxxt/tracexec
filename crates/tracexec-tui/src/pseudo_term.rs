@@ -39,6 +39,9 @@ use crossterm::event::{
   KeyCode,
   KeyEvent,
   KeyModifiers,
+  MouseButton,
+  MouseEvent,
+  MouseEventKind,
 };
 use ratatui::{
   prelude::{
@@ -342,6 +345,202 @@ impl PseudoTerminalPane {
   pub fn exit(&self) {
     self.master_cancellation_token.cancel()
   }
+
+  /// Handle a mouse event by converting it to xterm mouse escape sequences
+  /// and sending them to the PTY. The `col` and `row` are relative to the
+  /// Scroll up by one line in scrollback mode.
+  /// Returns true if scrollback mode is active and the scroll was handled.
+  pub fn scroll_up(&self) -> bool {
+    if !self.scrollback_mode.get() {
+      return false;
+    }
+    let mut parser = self.parser.write().unwrap();
+    let screen = parser.screen_mut();
+    let current = screen.scrollback();
+    if current < self.scrollback_lines {
+      screen.set_scrollback(current + 1);
+    }
+    true
+  }
+
+  /// Scroll down by one line in scrollback mode.
+  /// Returns true if scrollback mode is active and the scroll was handled.
+  pub fn scroll_down(&self) -> bool {
+    if !self.scrollback_mode.get() {
+      return false;
+    }
+    let mut parser = self.parser.write().unwrap();
+    let screen = parser.screen_mut();
+    let current = screen.scrollback();
+    if current > 0 {
+      screen.set_scrollback(current - 1);
+    }
+    true
+  }
+
+  /// terminal pane's inner area (0-based).
+  /// Only sends escape sequences when the terminal has enabled mouse capture,
+  /// respecting both the protocol mode and encoding.
+  pub async fn handle_mouse_event(&self, event: &MouseEvent, col: u16, row: u16) {
+    let (mode, encoding) = {
+      let parser = self.parser.read().unwrap();
+      let screen = parser.screen();
+      (
+        screen.mouse_protocol_mode(),
+        screen.mouse_protocol_encoding(),
+      )
+    };
+
+    // Only forward mouse events if the program running in the terminal
+    // has enabled mouse reporting (e.g. via DECSET 1000/1002/1003).
+    if mode == vt100::MouseProtocolMode::None {
+      return;
+    }
+
+    // Filter events based on the protocol mode
+    let dominated = match mode {
+      vt100::MouseProtocolMode::None => unreachable!(),
+      // X10: only button press
+      vt100::MouseProtocolMode::Press => matches!(
+        event.kind,
+        MouseEventKind::Down(_)
+          | MouseEventKind::ScrollUp
+          | MouseEventKind::ScrollDown
+          | MouseEventKind::ScrollLeft
+          | MouseEventKind::ScrollRight
+      ),
+      // VT200: button press and release
+      vt100::MouseProtocolMode::PressRelease => matches!(
+        event.kind,
+        MouseEventKind::Down(_)
+          | MouseEventKind::Up(_)
+          | MouseEventKind::ScrollUp
+          | MouseEventKind::ScrollDown
+          | MouseEventKind::ScrollLeft
+          | MouseEventKind::ScrollRight
+      ),
+      // Button press, release, and drag (motion with button held)
+      vt100::MouseProtocolMode::ButtonMotion => matches!(
+        event.kind,
+        MouseEventKind::Down(_)
+          | MouseEventKind::Up(_)
+          | MouseEventKind::Drag(_)
+          | MouseEventKind::ScrollUp
+          | MouseEventKind::ScrollDown
+          | MouseEventKind::ScrollLeft
+          | MouseEventKind::ScrollRight
+      ),
+      // Everything including plain motion
+      vt100::MouseProtocolMode::AnyMotion => true,
+    };
+    if !dominated {
+      return;
+    }
+
+    let seq = match encoding {
+      vt100::MouseProtocolEncoding::Sgr => encode_sgr_mouse(event, col, row),
+      // Default and UTF-8 both use the traditional encoding
+      vt100::MouseProtocolEncoding::Default | vt100::MouseProtocolEncoding::Utf8 => {
+        encode_default_mouse(event, col, row)
+      }
+    };
+    if let Some(seq) = seq {
+      self
+        .master_tx
+        .send(Bytes::from(seq.into_bytes()))
+        .await
+        .ok();
+    }
+  }
+}
+
+/// Encode a mouse event as an SGR (1006) escape sequence.
+fn encode_sgr_mouse(event: &MouseEvent, col: u16, row: u16) -> Option<String> {
+  // SGR (1006) mouse encoding: ESC [ < button ; col ; row M/m
+  // button: 0 = left, 1 = middle, 2 = right, 64 = scroll up, 65 = scroll down
+  // +32 for motion events
+  // M = press/motion, m = release
+  let (button, is_release) = match event.kind {
+    MouseEventKind::Down(MouseButton::Left) => (0u8, false),
+    MouseEventKind::Down(MouseButton::Middle) => (1, false),
+    MouseEventKind::Down(MouseButton::Right) => (2, false),
+    MouseEventKind::Up(MouseButton::Left) => (0, true),
+    MouseEventKind::Up(MouseButton::Middle) => (1, true),
+    MouseEventKind::Up(MouseButton::Right) => (2, true),
+    MouseEventKind::Drag(MouseButton::Left) => (32, false),
+    MouseEventKind::Drag(MouseButton::Middle) => (33, false),
+    MouseEventKind::Drag(MouseButton::Right) => (34, false),
+    MouseEventKind::ScrollUp => (64, false),
+    MouseEventKind::ScrollDown => (65, false),
+    MouseEventKind::ScrollLeft => (66, false),
+    MouseEventKind::ScrollRight => (67, false),
+    MouseEventKind::Moved => (35, false),
+  };
+
+  // Add modifier flags
+  let mut button = button;
+  if event.modifiers.contains(KeyModifiers::SHIFT) {
+    button += 4;
+  }
+  if event.modifiers.contains(KeyModifiers::ALT) {
+    button += 8;
+  }
+  if event.modifiers.contains(KeyModifiers::CONTROL) {
+    button += 16;
+  }
+
+  // SGR format: ESC [ < button ; col+1 ; row+1 M/m
+  let suffix = if is_release { 'm' } else { 'M' };
+  Some(format!(
+    "\x1b[<{};{};{}{}",
+    button,
+    col + 1,
+    row + 1,
+    suffix
+  ))
+}
+
+/// Encode a mouse event in the traditional X10/default format.
+/// Returns `None` for events that cannot be represented (release events in
+/// default encoding use button=3, coordinates > 222 are unrepresentable).
+fn encode_default_mouse(event: &MouseEvent, col: u16, row: u16) -> Option<String> {
+  // Traditional encoding: ESC [ M Cb Cx Cy
+  // Cb = button + 32, Cx = col + 33, Cy = row + 33
+  // Coordinates are limited to 222 (255 - 33)
+  if col > 222 || row > 222 {
+    return None;
+  }
+
+  let button: u8 = match event.kind {
+    MouseEventKind::Down(MouseButton::Left) => 0,
+    MouseEventKind::Down(MouseButton::Middle) => 1,
+    MouseEventKind::Down(MouseButton::Right) => 2,
+    MouseEventKind::Up(_) => 3, // Release is encoded as button 3
+    MouseEventKind::Drag(MouseButton::Left) => 32,
+    MouseEventKind::Drag(MouseButton::Middle) => 33,
+    MouseEventKind::Drag(MouseButton::Right) => 34,
+    MouseEventKind::ScrollUp => 64,
+    MouseEventKind::ScrollDown => 65,
+    MouseEventKind::ScrollLeft => 66,
+    MouseEventKind::ScrollRight => 67,
+    MouseEventKind::Moved => 35,
+  };
+
+  let mut button = button;
+  if event.modifiers.contains(KeyModifiers::SHIFT) {
+    button += 4;
+  }
+  if event.modifiers.contains(KeyModifiers::ALT) {
+    button += 8;
+  }
+  if event.modifiers.contains(KeyModifiers::CONTROL) {
+    button += 16;
+  }
+
+  let cb = (button + 32) as char;
+  let cx = (col as u8 + 33) as char;
+  let cy = (row as u8 + 33) as char;
+  Some(format!("\x1b[M{cb}{cx}{cy}"))
 }
 
 impl Widget for &PseudoTerminalPane {
@@ -870,6 +1069,97 @@ mod tests {
       .await;
     assert!(result);
     assert_eq!(term.scrollback(), 0);
+
+    Ok(())
+  }
+
+  #[test]
+  fn handle_mouse_event_sgr_encoding() -> color_eyre::Result<()> {
+    use super::encode_sgr_mouse;
+
+    // Left button down at col=5, row=3
+    let mouse = MouseEvent {
+      kind: MouseEventKind::Down(MouseButton::Left),
+      column: 10,
+      row: 5,
+      modifiers: KeyModifiers::NONE,
+    };
+    assert_eq!(encode_sgr_mouse(&mouse, 5, 3), Some("\x1b[<0;6;4M".into()));
+
+    // Scroll up at col=2, row=1
+    let mouse = MouseEvent {
+      kind: MouseEventKind::ScrollUp,
+      column: 10,
+      row: 5,
+      modifiers: KeyModifiers::NONE,
+    };
+    assert_eq!(encode_sgr_mouse(&mouse, 2, 1), Some("\x1b[<64;3;2M".into()));
+
+    // Release with shift modifier
+    let mouse = MouseEvent {
+      kind: MouseEventKind::Up(MouseButton::Left),
+      column: 10,
+      row: 5,
+      modifiers: KeyModifiers::SHIFT,
+    };
+    assert_eq!(encode_sgr_mouse(&mouse, 5, 3), Some("\x1b[<4;6;4m".into()));
+
+    // Right button drag with control
+    let mouse = MouseEvent {
+      kind: MouseEventKind::Drag(MouseButton::Right),
+      column: 0,
+      row: 0,
+      modifiers: KeyModifiers::CONTROL,
+    };
+    assert_eq!(
+      encode_sgr_mouse(&mouse, 10, 20),
+      Some("\x1b[<50;11;21M".into())
+    );
+
+    // Moved event returns button=35 (motion without button)
+    let mouse = MouseEvent {
+      kind: MouseEventKind::Moved,
+      column: 0,
+      row: 0,
+      modifiers: KeyModifiers::NONE,
+    };
+    assert_eq!(encode_sgr_mouse(&mouse, 0, 0), Some("\x1b[<35;1;1M".into()));
+
+    Ok(())
+  }
+
+  #[test]
+  fn handle_mouse_event_default_encoding() -> color_eyre::Result<()> {
+    use super::encode_default_mouse;
+
+    // Left button down at col=0, row=0
+    let mouse = MouseEvent {
+      kind: MouseEventKind::Down(MouseButton::Left),
+      column: 10,
+      row: 5,
+      modifiers: KeyModifiers::NONE,
+    };
+    // button=0 → Cb=32=' ', col=0+33=33='!', row=0+33=33='!'
+    assert_eq!(encode_default_mouse(&mouse, 0, 0), Some("\x1b[M !!".into()));
+
+    // Release → button=3 → Cb=35='#'
+    let mouse = MouseEvent {
+      kind: MouseEventKind::Up(MouseButton::Left),
+      column: 10,
+      row: 5,
+      modifiers: KeyModifiers::NONE,
+    };
+    assert_eq!(encode_default_mouse(&mouse, 5, 3), Some("\x1b[M#&$".into()));
+
+    // Coordinates > 222 are not representable
+    let mouse = MouseEvent {
+      kind: MouseEventKind::Down(MouseButton::Left),
+      column: 10,
+      row: 5,
+      modifiers: KeyModifiers::NONE,
+    };
+    assert_eq!(encode_default_mouse(&mouse, 223, 0), None);
+    assert_eq!(encode_default_mouse(&mouse, 0, 223), None);
 
     Ok(())
   }

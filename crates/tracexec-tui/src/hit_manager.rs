@@ -16,11 +16,7 @@ use crossterm::event::{
   KeyEvent,
   KeyModifiers,
 };
-use either::Either;
-use itertools::{
-  Itertools,
-  chain,
-};
+use itertools::Itertools;
 use nix::{
   sys::signal::Signal,
   unistd::Pid,
@@ -79,6 +75,7 @@ use tui_widget_list::{
 use super::{
   error_popup::InfoPopupState,
   help::{
+    HelpItem,
     cli_flag,
     help_item,
     help_key,
@@ -162,6 +159,9 @@ pub struct HitManagerState {
   editor_state: TextState<'static>,
   key_bindings: Arc<TuiKeyBindings>,
   theme: &'static Theme,
+  /// Title-bar help items populated during rendering (area + HelpItem).
+  /// Rendered by App with hover support.
+  pub title_bar_items: Vec<(Rect, HelpItem<'static>)>,
 }
 
 impl HitManagerState {
@@ -183,6 +183,7 @@ impl HitManagerState {
       editor_state: TextState::new(),
       key_bindings,
       theme,
+      title_bar_items: Vec::new(),
     })
   }
 
@@ -195,51 +196,71 @@ impl HitManagerState {
     self.editing = None;
   }
 
-  pub fn help(&self, keys: &TuiKeyBindings) -> impl Iterator<Item = Span<'_>> {
+  pub fn help(&self, keys: &TuiKeyBindings) -> Vec<HelpItem<'_>> {
     if self.editing.is_none() {
-      Either::Left(chain!(
-        [
-          help_item!(keys.hit_close.display(), "Back", self.theme),
-          help_item!(
-            keys.hit_resume.display(),
-            "Resume\u{00a0}Process",
-            self.theme
-          ),
-          help_item!(
-            keys.hit_detach.display(),
-            "Detach\u{00a0}Process",
-            self.theme
-          ),
-          help_item!(
-            keys.hit_edit_default_command.display(),
-            "Edit\u{00a0}Default\u{00a0}Command",
-            self.theme
-          )
-        ],
-        if self.default_external_command.is_some() {
-          Some(help_item!(
-            keys.hit_run_default_command.display(),
-            "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Default\u{00a0}Command",
-            self.theme
-          ))
-        } else {
-          None
-        },
-        [help_item!(
-          keys.hit_run_custom_command.display(),
-          "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Command",
-          self.theme
-        ),]
-      ))
+      let mut items = vec![
+        help_item!(
+          keys.hit_close.display(),
+          "Back",
+          self.theme,
+          &keys.hit_close
+        ),
+        help_item!(
+          keys.hit_resume.display(),
+          "Resume\u{00a0}Process",
+          self.theme,
+          &keys.hit_resume
+        ),
+        help_item!(
+          keys.hit_detach.display(),
+          "Detach\u{00a0}Process",
+          self.theme,
+          &keys.hit_detach
+        ),
+        help_item!(
+          keys.hit_edit_default_command.display(),
+          "Edit\u{00a0}Default\u{00a0}Command",
+          self.theme,
+          &keys.hit_edit_default_command
+        ),
+      ];
+      if self.default_external_command.is_some() {
+        items.push(help_item!(
+          keys.hit_run_default_command.display(),
+          "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Default\u{00a0}Command",
+          self.theme,
+          &keys.hit_run_default_command
+        ));
+      }
+      items.push(help_item!(
+        keys.hit_run_custom_command.display(),
+        "Detach,\u{00a0}Stop\u{00a0}and\u{00a0}Run\u{00a0}Command",
+        self.theme,
+        &keys.hit_run_custom_command
+      ));
+      items
     } else {
-      Either::Right(chain!([
-        help_item!(keys.hit_editor_save.display(), "Save", self.theme),
-        help_item!(keys.hit_editor_clear.display(), "Clear", self.theme),
-        help_item!(keys.hit_editor_cancel.display(), "Cancel", self.theme),
-      ],))
+      vec![
+        help_item!(
+          keys.hit_editor_save.display(),
+          "Save",
+          self.theme,
+          &keys.hit_editor_save
+        ),
+        help_item!(
+          keys.hit_editor_clear.display(),
+          "Clear",
+          self.theme,
+          &keys.hit_editor_clear
+        ),
+        help_item!(
+          keys.hit_editor_cancel.display(),
+          "Cancel",
+          self.theme,
+          &keys.hit_editor_cancel
+        ),
+      ]
     }
-    .into_iter()
-    .flatten()
   }
 
   fn close_when_empty(&self) -> Option<Action> {
@@ -852,6 +873,7 @@ impl StatefulWidget for HitManager {
   type State = HitManagerState;
 
   fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+    state.title_bar_items.clear();
     let theme = state.theme;
     let help_area = Rect {
       x: buf.area.width.saturating_sub(10),
@@ -860,9 +882,15 @@ impl StatefulWidget for HitManager {
       height: 1,
     };
     Clear.render(help_area, buf);
-    Line::default()
-      .spans(help_item!(state.key_bindings.help.display(), "Help", theme))
-      .render(help_area, buf);
+    state.title_bar_items.push((
+      help_area,
+      help_item!(
+        state.key_bindings.help.display(),
+        "Help",
+        theme,
+        &state.key_bindings.help
+      ),
+    ));
     let editor_area = Rect {
       x: 0,
       y: 1,

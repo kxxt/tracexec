@@ -78,6 +78,12 @@
 # Number of scrollback lines to keep in the pseudo terminal
 # scrollback_lines = 1000
 
+# Whether to switch active pane on mouse hover (default: false)
+# focus_on_hover = false
+
+# Enable or disable mouse support in the TUI (default: true)
+# mouse = true
+
 # Load a TUI theme from a file.
 # Absolute paths are used as-is.
 # Relative paths are resolved relative to the theme directories, in the following order:

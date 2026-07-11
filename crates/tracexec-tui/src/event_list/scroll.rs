@@ -250,6 +250,23 @@ impl EventList {
   }
 }
 
+/// Mouse support
+impl EventList {
+  /// Select the item at the given row offset from the top of the visible area.
+  /// Returns true if an item was selected, false if the row is out of range.
+  pub fn select_row(&mut self, row: usize) -> bool {
+    if self.events.is_empty() {
+      return false;
+    }
+    let abs_index = self.window.0 + row;
+    if abs_index >= self.events.len() || abs_index >= self.window.1 {
+      return false;
+    }
+    self.state.select(Some(row));
+    true
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use std::{
@@ -360,5 +377,27 @@ mod tests {
     assert_eq!(list.horizontal_offset, 60);
     list.scroll_to_start();
     assert_eq!(list.horizontal_offset, 0);
+  }
+
+  #[test]
+  fn select_row_within_window() {
+    let mut list = make_list(5, 3);
+    assert!(list.select_row(0));
+    assert_eq!(list.state.selected(), Some(0));
+    assert!(list.select_row(2));
+    assert_eq!(list.state.selected(), Some(2));
+  }
+
+  #[test]
+  fn select_row_out_of_window() {
+    let mut list = make_list(5, 3);
+    assert!(!list.select_row(3));
+    assert!(!list.select_row(5));
+  }
+
+  #[test]
+  fn select_row_empty_list() {
+    let mut list = make_list(0, 3);
+    assert!(!list.select_row(0));
   }
 }

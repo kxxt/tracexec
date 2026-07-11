@@ -30,6 +30,8 @@ use color_eyre::eyre::Result;
 use crossterm::{
   cursor,
   event::{
+    DisableMouseCapture,
+    EnableMouseCapture,
     Event as CrosstermEvent,
     KeyEventKind,
   },
@@ -76,6 +78,7 @@ pub mod event_line;
 mod event_list;
 pub mod help;
 mod hit_manager;
+pub mod mouse;
 mod output;
 mod partial_line;
 mod pseudo_term;
@@ -104,14 +107,28 @@ pub struct Tui {
   pub frame_rate: f64,
 }
 
-pub fn init_tui() -> Result<()> {
+pub fn init_tui(mouse: bool) -> Result<()> {
   crossterm::terminal::enable_raw_mode()?;
-  crossterm::execute!(std::io::stdout(), EnterAlternateScreen, cursor::Hide)?;
+  if mouse {
+    crossterm::execute!(
+      std::io::stdout(),
+      EnterAlternateScreen,
+      cursor::Hide,
+      EnableMouseCapture
+    )?;
+  } else {
+    crossterm::execute!(std::io::stdout(), EnterAlternateScreen, cursor::Hide)?;
+  }
   Ok(())
 }
 
 pub fn restore_tui() -> Result<()> {
-  crossterm::execute!(std::io::stdout(), LeaveAlternateScreen, cursor::Show)?;
+  crossterm::execute!(
+    std::io::stdout(),
+    LeaveAlternateScreen,
+    cursor::Show,
+    DisableMouseCapture
+  )?;
   crossterm::terminal::disable_raw_mode()?;
   Ok(())
 }
@@ -186,6 +203,9 @@ impl Tui {
                           height: rows,
                       }).unwrap();
                   },
+                  CrosstermEvent::Mouse(mouse) => {
+                      event_tx.send(Event::Mouse(mouse)).unwrap();
+                  },
                   _ => {},
                 }
               }
@@ -224,8 +244,8 @@ impl Tui {
     Ok(())
   }
 
-  pub fn enter(&mut self, tracer_rx: UnboundedReceiver<TracerMessage>) -> Result<()> {
-    init_tui()?;
+  pub fn enter(&mut self, tracer_rx: UnboundedReceiver<TracerMessage>, mouse: bool) -> Result<()> {
+    init_tui(mouse)?;
     self.start(tracer_rx);
     Ok(())
   }
