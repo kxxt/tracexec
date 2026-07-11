@@ -255,20 +255,21 @@ fn run_configured_tracee_exit_without_exec(timeout: Duration) -> color_eyre::Res
 }
 
 #[rstest]
+#[case::success(0)]
+#[case::code_7(7)]
+#[case::code_42(42)]
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_handle_exit_emits_exit_event_for_exit_codes(
+  #[case] exit_code: i32,
   sh_executable: PathBuf,
 ) -> color_eyre::Result<()> {
-  let exit_codes = [0, 7, 42];
   with_skel(function_name!(), prepare_handle_exit_only, |skel| {
-    for exit_code in exit_codes {
-      let capture = run_exit_and_capture(skel, &sh_executable, exit_code, Duration::from_secs(2))?;
-      assert_eq!(capture.event.header.r#type, event_type::EXIT_EVENT);
-      assert_eq!(capture.event.header.pid, capture.pid);
-      assert_eq!(capture.event.code, exit_code);
-      assert_eq!(capture.event.sig, 0);
-    }
+    let capture = run_exit_and_capture(skel, &sh_executable, exit_code, Duration::from_secs(2))?;
+    assert_eq!(capture.event.header.r#type, event_type::EXIT_EVENT);
+    assert_eq!(capture.event.header.pid, capture.pid);
+    assert_eq!(capture.event.code, exit_code);
+    assert_eq!(capture.event.sig, 0);
     Ok(())
   })
 }
@@ -302,21 +303,22 @@ fn test_handle_exit_emits_multiple_events_in_sequence(
 }
 
 #[rstest]
+#[case::sigkill(Signal::SIGKILL)]
+#[case::sigterm(Signal::SIGTERM)]
+#[case::sigint(Signal::SIGINT)]
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_handle_exit_emits_signal_for_killed_tracee(
+  #[case] signal: Signal,
   sh_executable: PathBuf,
 ) -> color_eyre::Result<()> {
-  let signals = [Signal::SIGKILL, Signal::SIGTERM, Signal::SIGINT];
   with_skel(function_name!(), prepare_handle_exit_only, |skel| {
-    for signal in signals {
-      let capture = run_killed_and_capture(skel, &sh_executable, signal, Duration::from_secs(2))?;
-      assert_eq!(capture.exit.event.header.r#type, event_type::EXIT_EVENT);
-      assert_eq!(capture.exit.event.header.pid, capture.exit.pid);
-      assert_eq!(capture.exit.event.sig, signal as u32);
-      assert_eq!(capture.exit.event.code, 0);
-      assert_eq!(capture.status.signal(), Some(signal as i32));
-    }
+    let capture = run_killed_and_capture(skel, &sh_executable, signal, Duration::from_secs(2))?;
+    assert_eq!(capture.exit.event.header.r#type, event_type::EXIT_EVENT);
+    assert_eq!(capture.exit.event.header.pid, capture.exit.pid);
+    assert_eq!(capture.exit.event.sig, signal as u32);
+    assert_eq!(capture.exit.event.code, 0);
+    assert_eq!(capture.status.signal(), Some(signal as i32));
     Ok(())
   })
 }
