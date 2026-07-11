@@ -5,6 +5,10 @@ use ratatui::{
   layout::Size,
   text::Line,
 };
+pub use tracexec_core::copy::{
+  CopyTarget,
+  SupportedShell,
+};
 use tracexec_core::event::{
   EventId,
   TracerEventDetails,
@@ -84,27 +88,6 @@ impl Action {
       theme,
     )))
   }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CopyTarget {
-  Line,
-  Commandline(SupportedShell),
-  CommandlineWithFullEnv(SupportedShell),
-  CommandlineWithStdio(SupportedShell),
-  CommandlineWithFds(SupportedShell),
-  Env,
-  Argv,
-  Filename,
-  SyscallResult,
-  EnvDiff,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SupportedShell {
-  Bash,
-  Sh,
-  Fish,
 }
 
 #[derive(Debug)]

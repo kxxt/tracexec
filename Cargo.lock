@@ -3260,7 +3260,6 @@ dependencies = [
  "strum",
  "tokio",
  "tracexec-core",
- "tracexec-tui",
  "tracing",
 ]
 

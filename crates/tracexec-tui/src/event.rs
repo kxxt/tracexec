@@ -4,9 +4,11 @@ use itertools::{
   Itertools,
   chain,
 };
-use nix::fcntl::OFlag;
 use ratatui::{
-  style::Styled,
+  style::{
+    Style,
+    Styled,
+  },
   text::{
     Line,
     Span,
@@ -14,6 +16,12 @@ use ratatui::{
 };
 use tracexec_core::{
   cli::args::ModifierArgs,
+  copy::{
+    self,
+    CommandlinePartKind,
+    OutputStatus,
+    SupportedShell,
+  },
   event::{
     EventStatus,
     ExecEvent,
@@ -21,10 +29,7 @@ use tracexec_core::{
     TracerEventDetails,
     TracerEventMessage,
   },
-  proc::{
-    BaselineInfo,
-    FileDescriptorInfoCollection,
-  },
+  proc::BaselineInfo,
   timestamp::Timestamp,
 };
 
@@ -35,7 +40,6 @@ use crate::{
     EventLine,
     Mask,
   },
-  output::OutputMsgTuiExt,
   theme::{
     Theme,
     current_theme,
@@ -48,6 +52,37 @@ mod private {
   pub trait Sealed {}
 
   impl Sealed for TracerEventDetails {}
+}
+
+fn commandline_part_style(
+  kind: CommandlinePartKind,
+  output_status: Option<OutputStatus>,
+  theme: &Theme,
+) -> Style {
+  let style = match kind {
+    CommandlinePartKind::Plain => Style::default(),
+    CommandlinePartKind::TracerEvent => theme.tracer_event,
+    CommandlinePartKind::Arg0 => theme.arg0,
+    CommandlinePartKind::Cwd => theme.cwd,
+    CommandlinePartKind::DeletedEnvVar => theme.deleted_env_var,
+    CommandlinePartKind::AddedEnvVar => theme.added_env_var,
+    CommandlinePartKind::ModifiedEnvVar => theme.modified_env_var,
+    CommandlinePartKind::UnchangedEnvKey => theme.unchanged_env_key,
+    CommandlinePartKind::UnchangedEnvVal => theme.unchanged_env_val,
+    CommandlinePartKind::Filename => theme.filename,
+    CommandlinePartKind::Argv => theme.argv,
+    CommandlinePartKind::InlineTracerError => theme.inline_tracer_error,
+    CommandlinePartKind::ModifiedFdInCommandline => theme.modified_fd_in_cmdline,
+    CommandlinePartKind::RemovedFdInCommandline => theme.removed_fd_in_cmdline,
+    CommandlinePartKind::CloexecFdInCommandline => theme.cloexec_fd_in_cmdline,
+    CommandlinePartKind::AddedFdInCommandline => theme.added_fd_in_cmdline,
+  };
+
+  match output_status {
+    Some(OutputStatus::PartialOk) => style.patch(theme.partial_ok),
+    Some(OutputStatus::Err) => theme.inline_tracer_error,
+    Some(OutputStatus::Ok) | None => style,
+  }
 }
 
 pub trait TracerEventDetailsTuiExt: Sealed {
@@ -125,43 +160,6 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
     full_env: bool,
     theme: &Theme,
   ) -> EventLine {
-    fn handle_stdio_fd(
-      fd: i32,
-      baseline: &BaselineInfo,
-      curr: &FileDescriptorInfoCollection,
-      spans: &mut Vec<Span>,
-      theme: &Theme,
-    ) {
-      let (fdstr, redir) = match fd {
-        0 => (" 0", "<"),
-        1 => (" 1", ">"),
-        2 => (" 2", "2>"),
-        _ => unreachable!(),
-      };
-
-      let space: Span = " ".into();
-      let fdinfo_orig = baseline.fdinfo.get(fd).unwrap();
-      if let Some(fdinfo) = curr.get(fd) {
-        if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
-          // stdio fd will be closed
-          spans.push(fdstr.set_style(theme.cloexec_fd_in_cmdline));
-          spans.push(">&-".set_style(theme.cloexec_fd_in_cmdline));
-        } else if fdinfo.not_same_file_as(fdinfo_orig) {
-          spans.push(space.clone());
-          spans.push(redir.set_style(theme.modified_fd_in_cmdline));
-          spans.push(
-            fdinfo
-              .path
-              .bash_escaped_with_style(theme.modified_fd_in_cmdline, theme),
-          );
-        }
-      } else if curr.is_reliable() {
-        // stdio fd is closed
-        spans.push(fdstr.set_style(theme.cloexec_fd_in_cmdline));
-        spans.push(">&-".set_style(theme.removed_fd_in_cmdline));
-      }
-    }
-
     let mut env_range = None;
     let mut cwd_range = None;
 
@@ -248,15 +246,9 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
       Self::Exec(exec) => {
         let ExecEvent {
           pid,
-          cwd,
           comm,
-          filename,
-          argv,
           interpreter: _,
-          env_diff,
           result,
-          fdinfo,
-          envp,
           ..
         } = exec.as_ref();
         let mut spans = extra_prefix
@@ -276,121 +268,35 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
               event_status.map(|s| <&'static str>::from(s).into()),
               Some(format!("<{comm}>").set_style(theme.comm)),
               Some(": ".into()),
-              Some("env".set_style(theme.tracer_event)),
             ]
             .into_iter()
             .flatten(),
           )
-        } else {
-          spans.push("env".set_style(theme.tracer_event));
         };
-        let space: Span = " ".into();
-
-        // Handle argv[0]
-        let _ = argv.as_deref().inspect(|v| {
-          v.first().inspect(|&arg0| {
-            if filename != arg0 {
-              spans.push(space.clone());
-              spans.push("-a ".set_style(theme.arg0));
-              spans.push(arg0.bash_escaped_with_style(theme.arg0, theme));
-            }
-          });
+        let commandline = copy::exec_commandline(
+          exec,
+          baseline,
+          modifier,
+          rt_modifier_effective,
+          full_env,
+          SupportedShell::Bash,
+        );
+        let commandline_offset = spans.len();
+        cwd_range = commandline
+          .cwd_range
+          .map(|range| (commandline_offset + range.start)..(commandline_offset + range.end));
+        env_range = commandline.env_range.map(|range| {
+          (
+            commandline_offset + range.start,
+            commandline_offset + range.end,
+          )
         });
-        // Handle cwd
-        if cwd != &baseline.cwd && rt_modifier_effective.show_cwd {
-          let range_start = spans.len();
-          spans.push(space.clone());
-          spans.push("-C ".set_style(theme.cwd));
-          spans.push(cwd.bash_escaped_with_style(theme.cwd, theme));
-          cwd_range = Some(range_start..(spans.len()))
-        }
-        if rt_modifier_effective.show_env {
-          env_range = Some((spans.len(), 0));
-          if !full_env {
-            if let Ok(env_diff) = env_diff {
-              // Handle env diff
-              for k in env_diff.removed.iter() {
-                spans.push(space.clone());
-                spans.push("-u ".set_style(theme.deleted_env_var));
-                spans.push(k.bash_escaped_with_style(theme.deleted_env_var, theme));
-              }
-              if env_diff.need_env_argument_separator() {
-                spans.push(space.clone());
-                spans.push("--".into());
-              }
-              for (k, v) in env_diff.added.iter() {
-                // Added env vars
-                spans.push(space.clone());
-                spans.push(k.bash_escaped_with_style(theme.added_env_var, theme));
-                spans.push("=".set_style(theme.added_env_var));
-                spans.push(v.bash_escaped_with_style(theme.added_env_var, theme));
-              }
-              for (k, v) in env_diff.modified.iter() {
-                // Modified env vars
-                spans.push(space.clone());
-                spans.push(k.bash_escaped_with_style(theme.modified_env_var, theme));
-                spans.push("=".set_style(theme.modified_env_var));
-                spans.push(v.bash_escaped_with_style(theme.modified_env_var, theme));
-              }
-            }
-          } else if let Ok(envp) = &**envp {
-            spans.push(space.clone());
-            spans.push("-i --".into()); // TODO: style
-            for (k, v) in envp.iter() {
-              spans.push(space.clone());
-              spans.push(k.bash_escaped_with_style(theme.unchanged_env_key, theme));
-              spans.push("=".set_style(theme.unchanged_env_key));
-              spans.push(v.bash_escaped_with_style(theme.unchanged_env_val, theme));
-            }
-          }
-
-          if let Some(r) = env_range.as_mut() {
-            r.1 = spans.len();
-          }
-        }
-        spans.push(space.clone());
-        // Filename
-        spans.push(filename.bash_escaped_with_style(theme.filename, theme));
-        // Argv[1..]
-        match argv.as_ref() {
-          Ok(argv) => {
-            for arg in argv.iter().skip(1) {
-              spans.push(space.clone());
-              spans.push(arg.bash_escaped_with_style(theme.argv, theme));
-            }
-          }
-          Err(_) => {
-            spans.push(space.clone());
-            spans.push("[failed to read argv]".set_style(theme.inline_tracer_error));
-          }
-        }
-
-        // Handle file descriptors
-        if modifier.stdio_in_cmdline {
-          for fd in 0..=2 {
-            handle_stdio_fd(fd, baseline, fdinfo, &mut spans, theme);
-          }
-        }
-
-        if modifier.fd_in_cmdline {
-          for (&fd, fdinfo) in fdinfo.fdinfo.iter() {
-            if fd < 3 {
-              continue;
-            }
-            if fdinfo.flags.ok().is_none() || fdinfo.flags.intersects(OFlag::O_CLOEXEC) {
-              // Skip fds that will be closed upon exec
-              continue;
-            }
-            spans.push(space.clone());
-            spans.push(fd.to_string().set_style(theme.added_fd_in_cmdline));
-            spans.push("<>".set_style(theme.added_fd_in_cmdline));
-            spans.push(
-              fdinfo
-                .path
-                .bash_escaped_with_style(theme.added_fd_in_cmdline, theme),
-            )
-          }
-        }
+        spans.extend(commandline.parts.into_iter().map(|part| {
+          Span::styled(
+            part.text,
+            commandline_part_style(part.kind, part.output_status, theme),
+          )
+        }));
 
         Line::default().spans(spans)
       }
@@ -457,113 +363,7 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
         .to_string()
         .into();
     }
-    // Other targets are only available for Exec events
-    let Self::Exec(event) = self else {
-      panic!("Copy target {target:?} is only available for Exec events");
-    };
-    let mut modifier_args = ModifierArgs::default();
-    match target {
-      CopyTarget::Commandline(_) => self
-        .to_event_line(
-          baseline,
-          true,
-          &modifier_args,
-          Default::default(),
-          None,
-          false,
-          None,
-          false,
-          current_theme(),
-        )
-        .to_string()
-        .into(),
-      CopyTarget::CommandlineWithFullEnv(_) => self
-        .to_event_line(
-          baseline,
-          true,
-          &modifier_args,
-          Default::default(),
-          None,
-          false,
-          None,
-          true,
-          current_theme(),
-        )
-        .to_string()
-        .into(),
-      CopyTarget::CommandlineWithStdio(_) => {
-        modifier_args.stdio_in_cmdline = true;
-        self
-          .to_event_line(
-            baseline,
-            true,
-            &modifier_args,
-            Default::default(),
-            None,
-            false,
-            None,
-            false,
-            current_theme(),
-          )
-          .to_string()
-          .into()
-      }
-      CopyTarget::CommandlineWithFds(_) => {
-        modifier_args.fd_in_cmdline = true;
-        modifier_args.stdio_in_cmdline = true;
-        self
-          .to_event_line(
-            baseline,
-            true,
-            &modifier_args,
-            Default::default(),
-            None,
-            false,
-            None,
-            false,
-            current_theme(),
-          )
-          .to_string()
-          .into()
-      }
-      CopyTarget::Env => match event.envp.as_ref() {
-        Ok(envp) => envp
-          .iter()
-          .map(|(k, v)| format!("{k}={v}"))
-          .join("\n")
-          .into(),
-        Err(e) => format!("[failed to read envp: {e}]").into(),
-      },
-      CopyTarget::EnvDiff => {
-        let Ok(env_diff) = event.env_diff.as_ref() else {
-          return "[failed to read envp]".into();
-        };
-        let mut result = String::new();
-        result.push_str("# Added:\n");
-        for (k, v) in env_diff.added.iter() {
-          result.push_str(&format!("{k}={v}\n"));
-        }
-        result.push_str("# Modified: (original first)\n");
-        for (k, v) in env_diff.modified.iter() {
-          result.push_str(&format!(
-            "{}={}\n{}={}\n",
-            k,
-            baseline.env.get(k).unwrap(),
-            k,
-            v
-          ));
-        }
-        result.push_str("# Removed:\n");
-        for k in env_diff.removed.iter() {
-          result.push_str(&format!("{}={}\n", k, baseline.env.get(k).unwrap()));
-        }
-        result.into()
-      }
-      CopyTarget::Argv => Self::argv_to_string(&event.argv).into(),
-      CopyTarget::Filename => Cow::Borrowed(event.filename.as_ref()),
-      CopyTarget::SyscallResult => event.result.to_string().into(),
-      CopyTarget::Line => unreachable!(),
-    }
+    copy::text_for_copy(self, baseline, target, modifier_args, rt_modifier)
   }
 }
 
@@ -589,6 +389,7 @@ mod tests {
       CgroupInfo,
       Cred,
       FileDescriptorInfo,
+      FileDescriptorInfoCollection,
       diff_env,
     },
     timestamp::{
