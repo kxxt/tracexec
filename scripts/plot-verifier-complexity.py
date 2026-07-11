@@ -140,15 +140,6 @@ def parse_metrics(value: str) -> list[str]:
 def record_metric(record: dict[str, Any], metric: str) -> float | None:
     value = record.get(metric)
 
-    if value is None and metric == "stack_depth":
-        depths = record.get("stack_depths")
-        if isinstance(depths, list):
-            values = [number(depth) for depth in depths]
-            values = [
-                depth for depth in values if depth is not None and math.isfinite(depth)
-            ]
-            return max(values) if values else None
-
     result = number(value)
     return result if result is not None and math.isfinite(result) else None
 

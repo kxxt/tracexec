@@ -78,6 +78,7 @@ struct VerifierMetrics {
   peak_states: u64,
   mark_read: u64,
   verification_time_microseconds: Option<u64>,
+  stack_depth: Option<u64>,
   stack_depths: Vec<u64>,
 }
 
@@ -279,7 +280,6 @@ fn run_case(
           text
         )
       })?;
-      let stack_depth = metrics.stack_depths.iter().copied().max();
       Ok(ComplexityRecord {
         collection: COLLECTION,
         build: build.to_string(),
@@ -294,7 +294,7 @@ fn run_case(
         peak_states: metrics.peak_states,
         mark_read: metrics.mark_read,
         verification_time_microseconds: metrics.verification_time_microseconds,
-        stack_depth,
+        stack_depth: metrics.stack_depth,
         stack_depths: metrics.stack_depths,
       })
     })
@@ -349,6 +349,7 @@ fn verifier_log_text(buf: &[u8]) -> String {
 
 fn parse_verifier_metrics(log: &str) -> Option<VerifierMetrics> {
   let mut verification_time_microseconds = None;
+  let mut stack_depth = None;
   let mut stack_depths = Vec::new();
   let mut processed = None;
 
@@ -359,12 +360,10 @@ fn parse_verifier_metrics(log: &str) -> Option<VerifierMetrics> {
     {
       verification_time_microseconds = value.parse().ok();
     } else if let Some(value) = line.strip_prefix("stack depth ") {
-      stack_depths = value
-        .split('+')
-        .filter(|part| !part.is_empty())
-        .map(str::parse)
-        .collect::<Result<Vec<_>, _>>()
-        .ok()?;
+      if let Some((depths, explicit_max)) = parse_stack_depth_line(value) {
+        stack_depth = explicit_max;
+        stack_depths = depths;
+      }
     } else if line.starts_with("processed ") {
       processed = Some(parse_processed_line(line)?);
     }
@@ -381,8 +380,32 @@ fn parse_verifier_metrics(log: &str) -> Option<VerifierMetrics> {
     peak_states,
     mark_read,
     verification_time_microseconds,
+    stack_depth,
     stack_depths,
   })
+}
+
+fn parse_stack_depth_line(line: &str) -> Option<(Vec<u64>, Option<u64>)> {
+  let mut parts = line.split_whitespace();
+  let depth_list = parts.next()?;
+  let depths = depth_list
+    .split('+')
+    .filter(|part| !part.is_empty())
+    .map(str::parse)
+    .collect::<Result<Vec<_>, _>>()
+    .ok()?;
+  if depths.is_empty() {
+    return None;
+  }
+
+  let mut explicit_max = None;
+  while let Some(part) = parts.next() {
+    if part == "max" {
+      explicit_max = parts.next().and_then(|value| value.parse().ok());
+    }
+  }
+
+  Some((depths, explicit_max))
 }
 
 fn parse_processed_line(line: &str) -> Option<(u64, u64, u64, u64, u64, u64)> {
@@ -539,4 +562,54 @@ fn prepare_compat_execveat_fentry(open_skel: &mut OpenTracexecSystemSkel<'_>) ->
 
   let _ = prepare_compat_execveat(open_skel);
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn parses_stack_depth_with_explicit_max() {
+    let metrics = parse_verifier_metrics(
+      "verification time 955 usec\n\
+       stack depth 24+16 max 48\n\
+       insns processed 96+7\n\
+       processed 103 insns (limit 1000000) max_states_per_insn 0 total_states 8 peak_states 8 mark_read 0\n",
+    )
+    .expect("metrics should parse");
+
+    assert_eq!(metrics.verification_time_microseconds, Some(955));
+    assert_eq!(metrics.stack_depth, Some(48));
+    assert_eq!(metrics.stack_depths, vec![24, 16]);
+    assert_eq!(metrics.insns_processed, 103);
+    assert_eq!(metrics.insns_limit, 1_000_000);
+    assert_eq!(metrics.total_states, 8);
+    assert_eq!(metrics.peak_states, 8);
+  }
+
+  #[test]
+  fn leaves_stack_depth_unset_without_explicit_max() {
+    let metrics = parse_verifier_metrics(
+      "verification time 10 usec\n\
+       stack depth 24+16\n\
+       processed 103 insns (limit 1000000) max_states_per_insn 0 total_states 8 peak_states 8 mark_read 0\n",
+    )
+    .expect("metrics should parse");
+
+    assert_eq!(metrics.stack_depth, None);
+    assert_eq!(metrics.stack_depths, vec![24, 16]);
+  }
+
+  #[test]
+  fn unknown_stack_depth_format_does_not_hide_processed_metrics() {
+    let metrics = parse_verifier_metrics(
+      "stack depth some future format\n\
+       processed 103 insns (limit 1000000) max_states_per_insn 0 total_states 8 peak_states 8 mark_read 0\n",
+    )
+    .expect("processed metrics should still parse");
+
+    assert_eq!(metrics.stack_depth, None);
+    assert!(metrics.stack_depths.is_empty());
+    assert_eq!(metrics.insns_processed, 103);
+  }
 }
