@@ -3,6 +3,8 @@
 # BPF
 *.skel.rs
 *.bpf.o
+/verifier-complexity
+/verifier-complexity-plots
 # Clangd
 .cache
 compile_commands.json
