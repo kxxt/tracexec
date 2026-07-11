@@ -11,6 +11,11 @@ use chrono::{
 };
 use tracexec_core::{
   cli::args::ModifierArgs,
+  copy::{
+    self,
+    CopyTarget,
+    SupportedShell,
+  },
   event::{
     RuntimeModifier,
     TracerEventDetails,
@@ -21,13 +26,6 @@ use tracexec_core::{
     Fallible,
   },
   tracer::ProcessExit,
-};
-use tracexec_tui::{
-  TracerEventDetailsTuiExt,
-  action::{
-    CopyTarget,
-    SupportedShell,
-  },
 };
 
 use crate::{
@@ -211,17 +209,17 @@ impl TracePacketCreator {
       DebugAnnotationInternId::SyscallRet.with_int(event.result),
       DebugAnnotationInternId::Pid.with_uint(event.pid.as_raw() as _),
       DebugAnnotationInternId::Cmdline.with_string(
-        event_details
-          .text_for_copy(
-            &self.baseline,
-            CopyTarget::Commandline(SupportedShell::Bash),
-            &self.modifier_args,
-            RuntimeModifier {
-              show_env: true,
-              show_cwd: true,
-            },
-          )
-          .to_string(),
+        copy::text_for_copy(
+          event_details,
+          &self.baseline,
+          CopyTarget::Commandline(SupportedShell::Bash),
+          &self.modifier_args,
+          RuntimeModifier {
+            show_env: true,
+            show_cwd: true,
+          },
+        )
+        .to_string(),
       ),
       DebugAnnotationInternId::Env.with_dict({
         if let Ok(env) = event.envp.as_ref() {
