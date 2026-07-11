@@ -39,6 +39,17 @@ Set `UKCI_COMPLEXITY_OUT_DIR` to use a different output directory.
 This runner is intentionally separate from `ukci` and is not part of the
 required UKCI test pass.
 
+To plot the collected results from the repository root:
+
+```bash
+nix run .#plot-verifier-complexity -- verifier-complexity
+```
+
+The plotting script writes charts and a summary under
+`verifier-complexity-plots/` by default. Use `-o` to choose another output
+directory, and `--log-scale` when comparing runs with large differences between
+the smallest and largest verifier counts.
+
 ## Test Coverage
 
 Most of the time you do not need to calculate the test coverage by yourself because we are tracking
