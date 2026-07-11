@@ -4,14 +4,7 @@ use std::{
     PathBuf,
   },
   process::Command,
-  sync::{
-    Arc,
-    Mutex,
-  },
-  time::{
-    Duration,
-    Instant,
-  },
+  time::Duration,
 };
 
 use libbpf_rs::RingBufferBuilder;
@@ -33,6 +26,10 @@ use tracexec_backend_ebpf::{
   },
 };
 
+mod common;
+
+use common::EventSlot;
+
 #[fixture]
 fn sh_executable() -> PathBuf {
   find_sh()
@@ -48,10 +45,10 @@ fn run_fork_and_capture(
   sh_executable: &Path,
   timeout: Duration,
 ) -> color_eyre::Result<ForkCapture> {
-  let event_slot: Arc<Mutex<Option<fork_event>>> = Arc::new(Mutex::new(None));
+  let event_slot = EventSlot::<fork_event>::new();
 
   let mut rb_builder = RingBufferBuilder::new();
-  let slot = Arc::clone(&event_slot);
+  let slot = event_slot.clone();
   let mut child = Command::new(sh_executable)
     .arg("-c")
     .arg("sleep 0.2 & wait")
@@ -59,31 +56,14 @@ fn run_fork_and_capture(
   let parent_pid = child.id() as i32;
 
   rb_builder.add(&skel.maps.events, move |data| {
-    if data.len() == std::mem::size_of::<fork_event>() {
-      // SAFETY: fork_event is a plain old data struct produced by the eBPF program.
-      let evt = unsafe { std::ptr::read(data.as_ptr() as *const fork_event) };
-      if evt.parent_tgid == parent_pid {
-        *slot.lock().unwrap() = Some(evt);
-      }
-    }
+    slot.store_matching(data, |evt| evt.parent_tgid == parent_pid);
     0
   })?;
   let rb = rb_builder.build()?;
 
   let _status = child.wait()?;
 
-  let start = Instant::now();
-  while start.elapsed() < timeout {
-    rb.poll(Duration::from_millis(50))?;
-    if event_slot.lock().unwrap().is_some() {
-      break;
-    }
-  }
-
-  let event = event_slot
-    .lock()
-    .unwrap()
-    .expect("missing fork event for child");
+  let event = event_slot.wait(&rb, timeout, "missing fork event for child")?;
   Ok(ForkCapture {
     child_pid: event.header.pid,
     event,

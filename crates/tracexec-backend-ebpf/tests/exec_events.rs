@@ -77,6 +77,10 @@ use tracexec_core::event::{
   OutputMsg,
 };
 
+mod common;
+
+use common::EventSlot;
+
 #[fixture]
 fn sh_executable() -> PathBuf {
   find_sh()
@@ -193,22 +197,17 @@ fn run_command_and_capture(
   mut cmd: Command,
   timeout: Duration,
 ) -> color_eyre::Result<ExecCapture> {
-  let event_slot: Arc<Mutex<Option<exec_event>>> = Arc::new(Mutex::new(None));
+  let event_slot = EventSlot::<exec_event>::new();
 
   let mut rb_builder = RingBufferBuilder::new();
-  let slot = Arc::clone(&event_slot);
+  let slot = event_slot.clone();
   let mut child = cmd.spawn()?;
   let child_pid = child.id() as i32;
 
   rb_builder.add(&skel.maps.events, move |data| {
-    if data.len() == std::mem::size_of::<exec_event>() {
-      // SAFETY: exec_event is a plain old data struct produced by the eBPF program.
-      //         bpf ringbuf sample is 8 byte aligned.
-      let evt = unsafe { std::ptr::read(data.as_ptr() as *const exec_event) };
-      if evt.header.pid == child_pid && evt.header.r#type == event_type::SYSEXIT_EVENT {
-        *slot.lock().unwrap() = Some(evt);
-      }
-    }
+    slot.store_matching(data, |evt| {
+      evt.header.pid == child_pid && evt.header.r#type == event_type::SYSEXIT_EVENT
+    });
     0
   })?;
   let rb = rb_builder.build()?;
@@ -216,18 +215,7 @@ fn run_command_and_capture(
   let status = child.wait()?;
   assert!(status.success());
 
-  let start = Instant::now();
-  while start.elapsed() < timeout {
-    rb.poll(Duration::from_millis(50))?;
-    if event_slot.lock().unwrap().is_some() {
-      break;
-    }
-  }
-
-  let event = event_slot
-    .lock()
-    .unwrap()
-    .expect("missing exec event for child");
+  let event = event_slot.wait(&rb, timeout, "missing exec event for child")?;
   Ok(ExecCapture {
     pid: child_pid,
     event,
@@ -270,10 +258,10 @@ fn run_execveat_and_capture(
   exe: &FsPath,
   timeout: Duration,
 ) -> color_eyre::Result<ExecCapture> {
-  let event_slot: Arc<Mutex<Option<exec_event>>> = Arc::new(Mutex::new(None));
+  let event_slot = EventSlot::<exec_event>::new();
 
   let mut rb_builder = RingBufferBuilder::new();
-  let slot = Arc::clone(&event_slot);
+  let slot = event_slot.clone();
   let sh_path = exe.to_path_buf();
   let sh_dir = sh_path
     .parent()
@@ -309,14 +297,9 @@ fn run_execveat_and_capture(
   };
 
   rb_builder.add(&skel.maps.events, move |data| {
-    if data.len() == std::mem::size_of::<exec_event>() {
-      // SAFETY: exec_event is a plain old data struct produced by the eBPF program.
-      //         bpf ringbuf sample is 8 byte aligned.
-      let evt = unsafe { std::ptr::read(data.as_ptr() as *const exec_event) };
-      if evt.header.pid == child_pid && evt.header.r#type == event_type::SYSEXIT_EVENT {
-        *slot.lock().unwrap() = Some(evt);
-      }
-    }
+    slot.store_matching(data, |evt| {
+      evt.header.pid == child_pid && evt.header.r#type == event_type::SYSEXIT_EVENT
+    });
     0
   })?;
   let rb = rb_builder.build()?;
@@ -324,18 +307,7 @@ fn run_execveat_and_capture(
   let status = waitpid(Pid::from_raw(child_pid), None)?;
   assert_eq!(status, WaitStatus::Exited(Pid::from_raw(child_pid), 0));
 
-  let start = Instant::now();
-  while start.elapsed() < timeout {
-    rb.poll(Duration::from_millis(50))?;
-    if event_slot.lock().unwrap().is_some() {
-      break;
-    }
-  }
-
-  let event = event_slot
-    .lock()
-    .unwrap()
-    .expect("missing exec event for child");
+  let event = event_slot.wait(&rb, timeout, "missing exec event for child")?;
   Ok(ExecCapture {
     pid: child_pid,
     event,
@@ -347,10 +319,10 @@ fn run_execveat_in_thread_and_capture(
   exe: &FsPath,
   timeout: Duration,
 ) -> color_eyre::Result<ExecCapture> {
-  let event_slot: Arc<Mutex<Option<exec_event>>> = Arc::new(Mutex::new(None));
+  let event_slot = EventSlot::<exec_event>::new();
 
   let mut rb_builder = RingBufferBuilder::new();
-  let slot = Arc::clone(&event_slot);
+  let slot = event_slot.clone();
   let sh_path = exe.to_path_buf();
   let sh_dir = sh_path
     .parent()
@@ -393,17 +365,11 @@ fn run_execveat_in_thread_and_capture(
   };
 
   rb_builder.add(&skel.maps.events, move |data| {
-    if data.len() == std::mem::size_of::<exec_event>() {
-      // SAFETY: exec_event is a plain old data struct produced by the eBPF program.
-      //         bpf ringbuf sample is 8 byte aligned.
-      let evt = unsafe { std::ptr::read(data.as_ptr() as *const exec_event) };
-      if evt.tgid == child_pid
+    slot.store_matching(data, |evt| {
+      evt.tgid == child_pid
         && evt.header.r#type == event_type::SYSEXIT_EVENT
         && evt.header.pid != evt.tgid
-      {
-        *slot.lock().unwrap() = Some(evt);
-      }
-    }
+    });
     0
   })?;
   let rb = rb_builder.build()?;
@@ -411,18 +377,7 @@ fn run_execveat_in_thread_and_capture(
   let status = waitpid(Pid::from_raw(child_pid), None)?;
   assert_eq!(status, WaitStatus::Exited(Pid::from_raw(child_pid), 0));
 
-  let start = Instant::now();
-  while start.elapsed() < timeout {
-    rb.poll(Duration::from_millis(50))?;
-    if event_slot.lock().unwrap().is_some() {
-      break;
-    }
-  }
-
-  let event = event_slot
-    .lock()
-    .unwrap()
-    .expect("missing non-main-thread exec event for child");
+  let event = event_slot.wait(&rb, timeout, "missing non-main-thread exec event for child")?;
   Ok(ExecCapture {
     pid: child_pid,
     event,

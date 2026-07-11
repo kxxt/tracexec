@@ -9,14 +9,7 @@ use std::{
     PathBuf,
   },
   process::Command,
-  sync::{
-    Arc,
-    Mutex,
-  },
-  time::{
-    Duration,
-    Instant,
-  },
+  time::Duration,
 };
 
 use libbpf_rs::{
@@ -69,6 +62,10 @@ use tracexec_backend_ebpf::{
   },
 };
 
+mod common;
+
+use common::EventSlot;
+
 #[fixture]
 fn sh_executable() -> PathBuf {
   find_sh()
@@ -85,10 +82,10 @@ fn run_exit_and_capture(
   exit_code: i32,
   timeout: Duration,
 ) -> color_eyre::Result<ExitCapture> {
-  let event_slot: Arc<Mutex<Option<exit_event>>> = Arc::new(Mutex::new(None));
+  let event_slot = EventSlot::<exit_event>::new();
 
   let mut rb_builder = RingBufferBuilder::new();
-  let slot = Arc::clone(&event_slot);
+  let slot = event_slot.clone();
   let mut child = Command::new(sh_executable)
     .arg("-c")
     .arg(format!("exit {exit_code}"))
@@ -96,32 +93,14 @@ fn run_exit_and_capture(
   let child_pid = child.id() as i32;
 
   rb_builder.add(&skel.maps.events, move |data| {
-    if data.len() == std::mem::size_of::<exit_event>() {
-      // SAFETY: exit_event is a plain old data struct produced by the eBPF program.
-      //         bpf ringbuf sample is 8 byte aligned.
-      let evt = unsafe { std::ptr::read(data.as_ptr() as *const exit_event) };
-      if evt.header.pid == child_pid {
-        *slot.lock().unwrap() = Some(evt);
-      }
-    }
+    slot.store_matching(data, |evt| evt.header.pid == child_pid);
     0
   })?;
   let rb = rb_builder.build()?;
 
   let _status = child.wait()?;
 
-  let start = Instant::now();
-  while start.elapsed() < timeout {
-    rb.poll(Duration::from_millis(50))?;
-    if event_slot.lock().unwrap().is_some() {
-      break;
-    }
-  }
-
-  let event = event_slot
-    .lock()
-    .unwrap()
-    .expect("missing exit event for child");
+  let event = event_slot.wait(&rb, timeout, "missing exit event for child")?;
   Ok(ExitCapture {
     pid: child_pid,
     event,
@@ -139,10 +118,10 @@ fn run_killed_and_capture(
   signal: Signal,
   timeout: Duration,
 ) -> color_eyre::Result<SignalCapture> {
-  let event_slot: Arc<Mutex<Option<exit_event>>> = Arc::new(Mutex::new(None));
+  let event_slot = EventSlot::<exit_event>::new();
 
   let mut rb_builder = RingBufferBuilder::new();
-  let slot = Arc::clone(&event_slot);
+  let slot = event_slot.clone();
   let mut child = Command::new(sh_executable)
     .arg("-c")
     .arg("sleep 20")
@@ -150,14 +129,7 @@ fn run_killed_and_capture(
   let child_pid = child.id() as i32;
 
   rb_builder.add(&skel.maps.events, move |data| {
-    if data.len() == std::mem::size_of::<exit_event>() {
-      // SAFETY: exit_event is a plain old data struct produced by the eBPF program.
-      //         bpf ringbuf sample is 8 byte aligned.
-      let evt = unsafe { std::ptr::read(data.as_ptr() as *const exit_event) };
-      if evt.header.pid == child_pid {
-        *slot.lock().unwrap() = Some(evt);
-      }
-    }
+    slot.store_matching(data, |evt| evt.header.pid == child_pid);
     0
   })?;
   let rb = rb_builder.build()?;
@@ -166,18 +138,7 @@ fn run_killed_and_capture(
   let status = child.wait()?;
   assert_eq!(status.signal(), Some(signal as i32));
 
-  let start = Instant::now();
-  while start.elapsed() < timeout {
-    rb.poll(Duration::from_millis(50))?;
-    if event_slot.lock().unwrap().is_some() {
-      break;
-    }
-  }
-
-  let event = event_slot
-    .lock()
-    .unwrap()
-    .expect("missing exit event for child");
+  let event = event_slot.wait(&rb, timeout, "missing exit event for child")?;
   Ok(SignalCapture {
     exit: ExitCapture {
       pid: child_pid,
@@ -188,7 +149,7 @@ fn run_killed_and_capture(
 }
 
 fn run_configured_tracee_exit_without_exec(timeout: Duration) -> color_eyre::Result<ExitCapture> {
-  let event_slot: Arc<Mutex<Option<exit_event>>> = Arc::new(Mutex::new(None));
+  let event_slot = EventSlot::<exit_event>::new();
 
   // SAFETY: the child immediately stops itself and then exits after the parent
   // attaches BPF programs.
@@ -219,16 +180,9 @@ fn run_configured_tracee_exit_without_exec(timeout: Duration) -> color_eyre::Res
   skel.attach()?;
 
   let mut rb_builder = RingBufferBuilder::new();
-  let slot = Arc::clone(&event_slot);
+  let slot = event_slot.clone();
   rb_builder.add(&skel.maps.events, move |data| {
-    if data.len() == std::mem::size_of::<exit_event>() {
-      // SAFETY: exit_event is a plain old data struct produced by the eBPF program.
-      //         bpf ringbuf sample is 8 byte aligned.
-      let evt = unsafe { std::ptr::read(data.as_ptr() as *const exit_event) };
-      if evt.header.pid == child_pid.as_raw() {
-        *slot.lock().unwrap() = Some(evt);
-      }
-    }
+    slot.store_matching(data, |evt| evt.header.pid == child_pid.as_raw());
     0
   })?;
   let rb = rb_builder.build()?;
@@ -236,18 +190,7 @@ fn run_configured_tracee_exit_without_exec(timeout: Duration) -> color_eyre::Res
   kill(child_pid, Signal::SIGCONT)?;
   assert_eq!(waitpid(child_pid, None)?, WaitStatus::Exited(child_pid, 23));
 
-  let start = Instant::now();
-  while start.elapsed() < timeout {
-    rb.poll(Duration::from_millis(50))?;
-    if event_slot.lock().unwrap().is_some() {
-      break;
-    }
-  }
-
-  let event = event_slot
-    .lock()
-    .unwrap()
-    .expect("missing exit event for pre-exec root tracee");
+  let event = event_slot.wait(&rb, timeout, "missing exit event for pre-exec root tracee")?;
   Ok(ExitCapture {
     pid: child_pid.as_raw(),
     event,
