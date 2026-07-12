@@ -692,6 +692,15 @@ mod tests {
     assert_eq!(
       event.text_for_copy(
         &baseline,
+        CopyTarget::ArgvJoined,
+        &modifier,
+        RuntimeModifier::default()
+      ),
+      "custom-argv0 hello world"
+    );
+    assert_eq!(
+      event.text_for_copy(
+        &baseline,
         CopyTarget::Filename,
         &modifier,
         RuntimeModifier::default()
@@ -725,6 +734,15 @@ mod tests {
           RuntimeModifier::default()
         )
         .contains("failed to read argv")
+    );
+    assert_eq!(
+      failing.text_for_copy(
+        &baseline,
+        CopyTarget::ArgvJoined,
+        &modifier,
+        RuntimeModifier::default()
+      ),
+      "[failed to read argv]"
     );
     assert!(
       failing
