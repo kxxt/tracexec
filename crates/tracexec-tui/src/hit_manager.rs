@@ -71,10 +71,7 @@ use tui_prompts::{
   TextPrompt,
   TextState,
 };
-use tui_widget_list::{
-  ListBuilder,
-  ListView,
-};
+use tui_widget_list::ListView;
 
 use super::{
   error_popup::InfoPopupState,
@@ -84,6 +81,10 @@ use super::{
     help_key,
   },
   theme::Theme,
+  ui::{
+    paragraph_list_builder,
+    select_first_if_unset,
+  },
 };
 use crate::action::Action;
 
@@ -903,20 +904,10 @@ impl StatefulWidget for HitManager {
       .borders(Borders::ALL)
       .title_alignment(Alignment::Center);
     let items = state.hits.values().cloned().collect_vec();
-    let builder = ListBuilder::new(move |ctx| {
-      let item = &items[ctx.index];
-      let paragraph = item.paragraph(ctx.is_selected, theme);
-      let line_count = paragraph
-        .line_count(ctx.cross_axis_size)
-        .try_into()
-        .unwrap_or(u16::MAX);
-      (paragraph, line_count)
-    });
+    let builder = paragraph_list_builder(&items, theme, BreakPointHitEntry::paragraph);
     let list = ListView::new(builder, state.hits.len());
 
-    if !state.hits.is_empty() && state.list_state.selected.is_none() {
-      state.list_state.select(Some(0));
-    }
+    select_first_if_unset(&mut state.list_state, state.hits.len());
 
     if state.tracer.seccomp_bpf() {
       let warning = state.seccomp_bpf_warning();
