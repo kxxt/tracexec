@@ -5,145 +5,14 @@ use serde::{
   Serialize,
 };
 
-/// Partial theme specification loaded from a TOML file or inline config table.
-/// Only fields that are explicitly set override the defaults; all others fall
-/// through to the built-in theme.
+/// Invoke a callback macro with every style-valued TUI theme field.
 ///
-/// Unknown keys are **not** rejected — they are collected in `extra` so callers
-/// can emit user-visible warnings at an appropriate point.
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub struct ThemeSpec {
-  pub inactive_border: Option<StyleSpec>,
-  pub active_border: Option<StyleSpec>,
-  pub popup_border: Option<StyleSpec>,
-  pub app_title: Option<StyleSpec>,
-  pub help_popup: Option<StyleSpec>,
-  pub inline_timestamp: Option<StyleSpec>,
-  pub cli_flag: Option<StyleSpec>,
-  pub help_key: Option<StyleSpec>,
-  pub help_desc: Option<StyleSpec>,
-  pub fancy_help_desc: Option<StyleSpec>,
-  pub pid_success: Option<StyleSpec>,
-  pub pid_failure: Option<StyleSpec>,
-  pub pid_enoent: Option<StyleSpec>,
-  pub pid_in_msg: Option<StyleSpec>,
-  pub comm: Option<StyleSpec>,
-  pub tracer_info: Option<StyleSpec>,
-  pub tracer_warning: Option<StyleSpec>,
-  pub tracer_error: Option<StyleSpec>,
-  pub new_child_pid: Option<StyleSpec>,
-  pub tracer_event: Option<StyleSpec>,
-  pub inline_tracer_error: Option<StyleSpec>,
-  pub partial_ok: Option<StyleSpec>,
-  pub filename: Option<StyleSpec>,
-  pub modified_fd_in_cmdline: Option<StyleSpec>,
-  pub removed_fd_in_cmdline: Option<StyleSpec>,
-  pub cloexec_fd_in_cmdline: Option<StyleSpec>,
-  pub added_fd_in_cmdline: Option<StyleSpec>,
-  pub arg0: Option<StyleSpec>,
-  pub cwd: Option<StyleSpec>,
-  pub deleted_env_var: Option<StyleSpec>,
-  pub modified_env_var: Option<StyleSpec>,
-  pub added_env_var: Option<StyleSpec>,
-  pub argv: Option<StyleSpec>,
-  pub search_match: Option<StyleSpec>,
-  pub query_no_match: Option<StyleSpec>,
-  pub query_match_current_no: Option<StyleSpec>,
-  pub query_match_total_cnt: Option<StyleSpec>,
-  pub empty_field: Option<StyleSpec>,
-  pub uid_gid_name: Option<StyleSpec>,
-  pub uid_gid_value: Option<StyleSpec>,
-  pub exec_result_success: Option<StyleSpec>,
-  pub exec_result_failure: Option<StyleSpec>,
-  pub value_unknown: Option<StyleSpec>,
-  pub fd_closed: Option<StyleSpec>,
-  pub plus_sign: Option<StyleSpec>,
-  pub minus_sign: Option<StyleSpec>,
-  pub equal_sign: Option<StyleSpec>,
-  pub added_env_key: Option<StyleSpec>,
-  pub added_env_val: Option<StyleSpec>,
-  pub removed_env_key: Option<StyleSpec>,
-  pub removed_env_val: Option<StyleSpec>,
-  pub unchanged_env_key: Option<StyleSpec>,
-  pub unchanged_env_val: Option<StyleSpec>,
-  pub fd_label: Option<StyleSpec>,
-  pub fd_number_label: Option<StyleSpec>,
-  pub sublabel: Option<StyleSpec>,
-  pub selected_label: Option<StyleSpec>,
-  pub label: Option<StyleSpec>,
-  pub selection_indicator: Option<StyleSpec>,
-  pub open_flag_cloexec: Option<StyleSpec>,
-  pub open_flag_access_mode: Option<StyleSpec>,
-  pub open_flag_creation: Option<StyleSpec>,
-  pub open_flag_status: Option<StyleSpec>,
-  pub open_flag_other: Option<StyleSpec>,
-  pub visual_separator: Option<StyleSpec>,
-  pub error_popup: Option<StyleSpec>,
-  pub info_popup: Option<StyleSpec>,
-  pub active_tab: Option<StyleSpec>,
-  pub status_process_running: Option<StyleSpec>,
-  pub status_process_paused: Option<StyleSpec>,
-  pub status_process_detached: Option<StyleSpec>,
-  pub status_exec_error: Option<StyleSpec>,
-  pub status_process_exited_normally: Option<StyleSpec>,
-  pub status_process_exited_abnormally: Option<StyleSpec>,
-  pub status_process_killed: Option<StyleSpec>,
-  pub status_process_terminated: Option<StyleSpec>,
-  pub status_process_interrupted: Option<StyleSpec>,
-  pub status_process_segfault: Option<StyleSpec>,
-  pub status_process_aborted: Option<StyleSpec>,
-  pub status_process_sigill: Option<StyleSpec>,
-  pub status_process_signaled: Option<StyleSpec>,
-  pub status_internal_failure: Option<StyleSpec>,
-  pub breakpoint_title_selected: Option<StyleSpec>,
-  pub breakpoint_title: Option<StyleSpec>,
-  pub breakpoint_pattern_type_label: Option<StyleSpec>,
-  pub breakpoint_pattern: Option<StyleSpec>,
-  pub breakpoint_info_label: Option<StyleSpec>,
-  pub breakpoint_info_label_active: Option<StyleSpec>,
-  pub breakpoint_info_value: Option<StyleSpec>,
-  pub hit_entry_pid: Option<StyleSpec>,
-  pub hit_entry_plain_text: Option<StyleSpec>,
-  pub hit_entry_breakpoint_stop: Option<StyleSpec>,
-  pub hit_entry_breakpoint_pattern: Option<StyleSpec>,
-  pub hit_entry_no_breakpoint_pattern: Option<StyleSpec>,
-  pub hit_manager_default_command: Option<StyleSpec>,
-  pub hit_manager_no_default_command: Option<StyleSpec>,
-  pub backtrace_parent_spawns: Option<SpanSpec>,
-  pub backtrace_parent_becomes: Option<SpanSpec>,
-  pub backtrace_parent_unknown: Option<SpanSpec>,
-  /// Collects unrecognised top-level theme keys so the caller can warn about them.
-  #[serde(flatten)]
-  pub extra: HashMap<String, toml::Value>,
-}
-
-impl ThemeSpec {
-  /// Emit `tracing::warn!` for every unknown field in this spec and in all
-  /// nested `StyleSpec` / `SpanSpec` values.
-  ///
-  /// `source` is a human-readable description of where the spec came from
-  /// (e.g. a file path or `"inline theme config"`).
-  pub fn warn_unknown_fields(&self, source: &str, section: Option<&str>) {
-    for key in self.extra.keys() {
-      if let Some(section) = section {
-        tracing::warn!("Unknown key '{key}' in [{section}] in {source} will be ignored");
-      } else {
-        tracing::warn!("Unknown key '{key}' in {source} will be ignored");
-      }
-    }
-
-    macro_rules! warn_style {
-      ($($field:ident),* $(,)?) => {
-        $(
-          if let Some(ref spec) = self.$field {
-            let key = kebab_case(stringify!($field));
-            spec.warn_unknown_fields(source, &key, section);
-          }
-        )*
-      };
-    }
-    warn_style!(
+/// Keeping this list in one place prevents theme validation and application
+/// from silently drifting apart when a field is added.
+#[macro_export]
+macro_rules! for_each_tui_theme_style {
+  ($callback:ident) => {
+    $callback!(
       inactive_border,
       active_border,
       popup_border,
@@ -241,6 +110,55 @@ impl ThemeSpec {
       hit_manager_default_command,
       hit_manager_no_default_command,
     );
+  };
+}
+
+macro_rules! define_theme_spec {
+  ($($style_field:ident),* $(,)?) => {
+    /// Partial theme specification loaded from a TOML file or inline config table.
+    /// Only explicitly set fields override the built-in theme.
+    #[derive(Debug, Default, Clone, Deserialize, Serialize)]
+    #[serde(rename_all = "kebab-case")]
+    pub struct ThemeSpec {
+      $(pub $style_field: Option<StyleSpec>,)*
+      pub backtrace_parent_spawns: Option<SpanSpec>,
+      pub backtrace_parent_becomes: Option<SpanSpec>,
+      pub backtrace_parent_unknown: Option<SpanSpec>,
+      /// Collects unrecognised top-level theme keys so the caller can warn about them.
+      #[serde(flatten)]
+      pub extra: HashMap<String, toml::Value>,
+    }
+  };
+}
+
+crate::for_each_tui_theme_style!(define_theme_spec);
+
+impl ThemeSpec {
+  /// Emit `tracing::warn!` for every unknown field in this spec and in all
+  /// nested `StyleSpec` / `SpanSpec` values.
+  ///
+  /// `source` is a human-readable description of where the spec came from
+  /// (e.g. a file path or `"inline theme config"`).
+  pub fn warn_unknown_fields(&self, source: &str, section: Option<&str>) {
+    for key in self.extra.keys() {
+      if let Some(section) = section {
+        tracing::warn!("Unknown key '{key}' in [{section}] in {source} will be ignored");
+      } else {
+        tracing::warn!("Unknown key '{key}' in {source} will be ignored");
+      }
+    }
+
+    macro_rules! warn_style {
+      ($($field:ident),* $(,)?) => {
+        $(
+          if let Some(ref spec) = self.$field {
+            let key = kebab_case(stringify!($field));
+            spec.warn_unknown_fields(source, &key, section);
+          }
+        )*
+      };
+    }
+    crate::for_each_tui_theme_style!(warn_style);
 
     macro_rules! warn_span {
       ($($field:ident),* $(,)?) => {
