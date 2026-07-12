@@ -29,6 +29,7 @@ pub enum CopyTarget {
   CommandlineWithFds(SupportedShell),
   Env,
   Argv,
+  ArgvJoined,
   Filename,
   SyscallResult,
   EnvDiff,
@@ -371,6 +372,10 @@ pub fn text_for_copy<'a>(
       result.into()
     }
     CopyTarget::Argv => TracerEventDetails::argv_to_string(&event.argv).into(),
+    CopyTarget::ArgvJoined => match event.argv.as_ref() {
+      Ok(argv) => argv.iter().map(AsRef::as_ref).join(" ").into(),
+      Err(_) => "[failed to read argv]".into(),
+    },
     CopyTarget::Filename => Cow::Borrowed(event.filename.as_ref()),
     CopyTarget::SyscallResult => event.result.to_string().into(),
     CopyTarget::Line => panic!("CopyTarget::Line requires a presentation formatter"),

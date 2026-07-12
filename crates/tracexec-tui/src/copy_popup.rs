@@ -107,6 +107,12 @@ const COPY_TARGETS: &[CopyTargetConfig] = &[
     help_label: "Argv",
   },
   CopyTargetConfig {
+    target: CopyTarget::ArgvJoined,
+    default_key: 'w',
+    list_label: "Arguments joined by (W)hitespace",
+    help_label: "Whitespace-joined argv",
+  },
+  CopyTargetConfig {
     target: CopyTarget::Filename,
     default_key: 'n',
     list_label: "File(N)ame",
@@ -245,6 +251,7 @@ fn copy_target_binding(
     CopyTarget::Env => &keys.copy_target_env,
     CopyTarget::EnvDiff => &keys.copy_target_env_diff,
     CopyTarget::Argv => &keys.copy_target_argv,
+    CopyTarget::ArgvJoined => &keys.copy_target_argv_joined,
     CopyTarget::Filename => &keys.copy_target_filename,
     CopyTarget::SyscallResult => &keys.copy_target_syscall_result,
     CopyTarget::Line => &keys.copy_target_line,

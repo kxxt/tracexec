@@ -236,6 +236,7 @@ pub struct TuiKeyBindingsConfig {
   pub copy_target_env: Option<KeyList>,
   pub copy_target_env_diff: Option<KeyList>,
   pub copy_target_argv: Option<KeyList>,
+  pub copy_target_argv_joined: Option<KeyList>,
   pub copy_target_filename: Option<KeyList>,
   pub copy_target_syscall_result: Option<KeyList>,
   pub copy_target_line: Option<KeyList>,
@@ -322,6 +323,7 @@ pub struct TuiKeyBindings {
   pub copy_target_env: KeyList,
   pub copy_target_env_diff: KeyList,
   pub copy_target_argv: KeyList,
+  pub copy_target_argv_joined: KeyList,
   pub copy_target_filename: KeyList,
   pub copy_target_syscall_result: KeyList,
   pub copy_target_line: KeyList,
@@ -426,6 +428,7 @@ impl Default for TuiKeyBindings {
       copy_target_env: KeyList(vec![KeyBinding::char('e')]),
       copy_target_env_diff: KeyList(vec![KeyBinding::char('d')]),
       copy_target_argv: KeyList(vec![KeyBinding::char('a')]),
+      copy_target_argv_joined: KeyList(vec![KeyBinding::char('w')]),
       copy_target_filename: KeyList(vec![KeyBinding::char('n')]),
       copy_target_syscall_result: KeyList(vec![KeyBinding::char('r')]),
       copy_target_line: KeyList(vec![KeyBinding::char('l')]),
@@ -548,6 +551,7 @@ impl TuiKeyBindings {
       copy_target_env,
       copy_target_env_diff,
       copy_target_argv,
+      copy_target_argv_joined,
       copy_target_filename,
       copy_target_syscall_result,
       copy_target_line,
@@ -799,5 +803,13 @@ mod tests {
       .unwrap()
       .keys;
     assert_eq!(list.0.len(), 2);
+  }
+
+  #[test]
+  fn test_configure_whitespace_joined_argv_copy_target() {
+    let config: TuiKeyBindingsConfig = toml::from_str(r#"copy_target_argv_joined = "x""#).unwrap();
+    let keys = TuiKeyBindings::from_config(Some(Box::new(config)));
+
+    assert_eq!(keys.copy_target_argv_joined.0, vec![KeyBinding::char('x')]);
   }
 }

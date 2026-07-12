@@ -150,6 +150,7 @@
 # copy_target_env = "e"
 # copy_target_env_diff = "d"
 # copy_target_argv = "a"
+# copy_target_argv_joined = "w"
 # copy_target_filename = "n"
 # copy_target_syscall_result = "r"
 # copy_target_line = "l"
