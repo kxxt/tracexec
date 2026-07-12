@@ -5,6 +5,7 @@
 #[cfg(feature = "ebpf")]
 mod bpf;
 mod log;
+mod run_mode;
 
 use std::{
   process,
@@ -27,18 +28,12 @@ use tracexec_core::{
   cli::{
     Cli,
     CliCommand,
-    args::{
-      LogModeArgs,
-      TracerEventArgs,
-    },
+    args::TracerEventArgs,
     config::{
       Config,
       ConfigLoadError,
     },
-    options::{
-      Color,
-      ExportFormat,
-    },
+    options::Color,
   },
   elevate,
   event::{
@@ -46,27 +41,14 @@ use tracexec_core::{
     TracerEventDetails,
     TracerMessage,
   },
-  export::{
-    Exporter,
-    ExporterMetadata,
-  },
+  export::ExporterMetadata,
   is_current_kernel_ge,
   proc::BaselineInfo,
-  pty::{
-    PtySize,
-    PtySystem,
-    native_pty_system,
-  },
   tracer::{
     TracerBuilder,
     TracerMode,
   },
 };
-use tracexec_exporter_json::{
-  JsonExporter,
-  JsonStreamExporter,
-};
-use tracexec_exporter_perfetto::PerfettoExporter;
 use tracexec_tui::{
   app::{
     App,
@@ -239,51 +221,15 @@ async fn async_main(
       debugger_args,
     } => {
       let executable_path = std::env::current_exe()?;
-      tracexec_tui::theme::initialize(
-        tui_args.theme_file.as_ref().map(|p| p.as_deref()),
-        tui_args.theme.as_deref(),
-        &executable_path,
-        tui_args
-          .theme_file
-          .as_ref()
-          .is_some_and(|f| f.is_from_cli()),
-      )?;
+      run_mode::initialize_tui(&tui_args, &executable_path)?;
       let modifier_args = modifier_args.processed();
-      // Disable owo-colors when running TUI
-      owo_colors::control::set_should_colorize(false);
       log::debug!(
         "should colorize: {}",
         owo_colors::control::should_colorize()
       );
-      let (baseline, tracer_mode, pty_master) = if tui_args.tty {
-        let pty_system = native_pty_system();
-        let pair = pty_system.openpty(PtySize {
-          rows: 24,
-          cols: 80,
-          pixel_width: 0,
-          pixel_height: 0,
-        })?;
-        (
-          BaselineInfo::with_pts_and_env(&pair.slave, tracee_env.as_deref())?,
-          TracerMode::Tui(Some(pair.slave)),
-          Some(pair.master),
-        )
-      } else {
-        (
-          BaselineInfo::new_with_env(tracee_env.as_deref())?,
-          TracerMode::Tui(None),
-          None,
-        )
-      };
-      let tracing_args = LogModeArgs {
-        show_cmdline: false, // We handle cmdline in TUI
-        show_argv: true,
-        show_interpreter: true,
-        more_colors: false,
-        less_colors: false,
-        diff_env: true,
-        ..Default::default()
-      };
+      let (baseline, tracer_mode, pty_master) =
+        run_mode::setup_tui_io(tui_args.tty, tracee_env.as_deref())?;
+      let tracing_args = run_mode::tui_log_args();
       let baseline = Arc::new(baseline);
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
       let (tracer, token) = TracerBuilder::new()
@@ -343,17 +289,7 @@ async fn async_main(
     } => {
       let modifier_args = modifier_args.processed();
       let output = Cli::get_output(output, cli.color)?;
-      let tracing_args = LogModeArgs {
-        show_cmdline: false,
-        show_argv: true,
-        show_interpreter: true,
-        more_colors: false,
-        less_colors: false,
-        diff_env: false,
-        foreground,
-        no_foreground,
-        ..Default::default()
-      };
+      let tracing_args = run_mode::collect_log_args(foreground, no_foreground);
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
       let baseline = Arc::new(BaselineInfo::new_with_env(tracee_env.as_deref())?);
       let (tracer, token) = TracerBuilder::new()
@@ -395,26 +331,9 @@ async fn async_main(
         baseline,
         exporter_args,
       };
-      match format {
-        ExportFormat::Json => {
-          let exporter = JsonExporter::new(output, meta, tracer_rx)?;
-          let exit_code = exporter.run().await?;
-          tracer_thread.await??;
-          process::exit(exit_code);
-        }
-        ExportFormat::JsonStream => {
-          let exporter = JsonStreamExporter::new(output, meta, tracer_rx)?;
-          let exit_code = exporter.run().await?;
-          tracer_thread.await??;
-          process::exit(exit_code);
-        }
-        ExportFormat::Perfetto => {
-          let exporter = PerfettoExporter::new(output, meta, tracer_rx)?;
-          let exit_code = exporter.run().await?;
-          tracer_thread.await??;
-          process::exit(exit_code);
-        }
-      }
+      let exit_code = run_mode::run_exporter(format, output, meta, tracer_rx).await?;
+      tracer_thread.await??;
+      process::exit(exit_code);
     }
     CliCommand::GenerateCompletions { shell } => {
       Cli::generate_completions(shell);
