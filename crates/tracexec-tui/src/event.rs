@@ -27,7 +27,6 @@ use tracexec_core::{
     ExecEvent,
     RuntimeModifier,
     TracerEventDetails,
-    TracerEventMessage,
   },
   proc::BaselineInfo,
   timestamp::Timestamp,
@@ -182,49 +181,28 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
       }
     };
 
+    macro_rules! tracer_message_line {
+      ($message:expr, $label:literal, $style:expr) => {{
+        let msg_ref = $message;
+        let style_val = $style;
+        chain!(
+          extra_prefix,
+          msg_ref.timestamp.and_then(ts_formatter),
+          msg_ref
+            .pid
+            .map(|pid| [pid.to_string().set_style(theme.pid_in_msg)])
+            .unwrap_or_default(),
+          [$label.set_style(style_val)],
+          [": ".into(), msg_ref.msg.clone().set_style(style_val)]
+        )
+        .collect()
+      }};
+    }
+
     let mut line = match self {
-      Self::Info(TracerEventMessage {
-        msg,
-        pid,
-        timestamp,
-      }) => chain!(
-        extra_prefix,
-        timestamp.and_then(ts_formatter),
-        pid
-          .map(|p| [p.to_string().set_style(theme.pid_in_msg)])
-          .unwrap_or_default(),
-        ["[info]".set_style(theme.tracer_info)],
-        [": ".into(), msg.clone().set_style(theme.tracer_info)]
-      )
-      .collect(),
-      Self::Warning(TracerEventMessage {
-        msg,
-        pid,
-        timestamp,
-      }) => chain!(
-        extra_prefix,
-        timestamp.and_then(ts_formatter),
-        pid
-          .map(|p| [p.to_string().set_style(theme.pid_in_msg)])
-          .unwrap_or_default(),
-        ["[warn]".set_style(theme.tracer_warning)],
-        [": ".into(), msg.clone().set_style(theme.tracer_warning)]
-      )
-      .collect(),
-      Self::Error(TracerEventMessage {
-        msg,
-        pid,
-        timestamp,
-      }) => chain!(
-        extra_prefix,
-        timestamp.and_then(ts_formatter),
-        pid
-          .map(|p| [p.to_string().set_style(theme.pid_in_msg)])
-          .unwrap_or_default(),
-        ["error".set_style(theme.tracer_error)],
-        [": ".into(), msg.clone().set_style(theme.tracer_error)]
-      )
-      .collect(),
+      Self::Info(message) => tracer_message_line!(message, "[info]", theme.tracer_info),
+      Self::Warning(message) => tracer_message_line!(message, "[warn]", theme.tracer_warning),
+      Self::Error(message) => tracer_message_line!(message, "error", theme.tracer_error),
       Self::NewChild {
         ppid,
         pcomm,
@@ -384,6 +362,7 @@ mod tests {
     event::{
       ExecSyscall,
       OutputMsg,
+      TracerEventMessage,
     },
     proc::{
       CgroupInfo,
