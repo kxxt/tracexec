@@ -12,10 +12,8 @@ use color_eyre::{
   eyre::eyre,
 };
 use enumflags2::BitFlag;
-use futures::stream::StreamExt;
 use nix::unistd::User;
 use signal_hook::consts::signal::*;
-use signal_hook_tokio::Signals;
 use tokio::{
   sync::mpsc::{
     self,
@@ -31,10 +29,6 @@ use tracexec_core::{
   },
   event::TracerEventDetailsKind,
   export::ExporterMetadata,
-  printer::{
-    Printer,
-    PrinterArgs,
-  },
   proc::BaselineInfo,
   tracer::{
     TracerBuilder,
@@ -67,21 +61,17 @@ pub async fn main(
       let modifier_args = modifier_args.processed();
       let baseline = Arc::new(BaselineInfo::new_with_env(tracee_env.as_deref())?);
       let output = Cli::get_output(output, color)?;
-      let printer = Printer::new(
-        PrinterArgs::from_cli(&log_args, &modifier_args),
-        baseline.clone(),
-      );
       let tracer = TracerBuilder::new()
         .mode(TracerMode::Log {
           foreground: log_args.foreground(),
         })
         .filter(TracerEventDetailsKind::empty())
-        .printer(printer)
         .baseline(baseline)
         .user(user)
-        .tracee_env(tracee_env.clone())
-        .tracexec_override_env(tracexec_override_env.clone())
+        .tracee_env(tracee_env)
+        .tracexec_override_env(tracexec_override_env)
         .modifier(modifier_args)
+        .printer_from_cli(&log_args)
         .build_ebpf();
       let running_tracer = tracer.spawn(&cmd, obj, Some(output))?;
       running_tracer.run_until_exit();
@@ -118,21 +108,17 @@ pub async fn main(
         pty_master,
         current_theme(),
       )?;
-      let printer = Printer::new(
-        PrinterArgs::from_cli(&log_args, &modifier_args),
-        baseline.clone(),
-      );
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();
       // let (req_tx, req_rx) = mpsc::unbounded_channel();
       let tracer = TracerBuilder::new()
         .mode(tracer_mode)
-        .printer(printer)
         .baseline(baseline)
         .modifier(modifier_args)
+        .printer_from_cli(&log_args)
         .filter(tracer_event_args.filter()?)
         .user(user)
-        .tracee_env(tracee_env.clone())
-        .tracexec_override_env(tracexec_override_env.clone())
+        .tracee_env(tracee_env)
+        .tracexec_override_env(tracexec_override_env)
         .tracer_tx(tracer_tx)
         .build_ebpf();
       let running_tracer = tracer.spawn(&cmd, obj, None)?;
@@ -169,22 +155,18 @@ pub async fn main(
       let baseline = Arc::new(BaselineInfo::new_with_env(tracee_env.as_deref())?);
       let output = Cli::get_output(output, color)?;
       let log_args = run_mode::collect_log_args(foreground, no_foreground);
-      let printer = Printer::new(
-        PrinterArgs::from_cli(&log_args, &modifier_args),
-        baseline.clone(),
-      );
       let (tx, rx) = mpsc::unbounded_channel();
       let tracer = TracerBuilder::new()
         .mode(TracerMode::Log {
           foreground: log_args.foreground(),
         })
         .modifier(modifier_args)
-        .printer(printer)
         .baseline(baseline.clone())
+        .printer_from_cli(&log_args)
         .tracer_tx(tx)
         .user(user)
-        .tracee_env(tracee_env.clone())
-        .tracexec_override_env(tracexec_override_env.clone())
+        .tracee_env(tracee_env)
+        .tracexec_override_env(tracexec_override_env)
         .build_ebpf();
       let running_tracer = tracer.spawn(&cmd, obj, None)?;
       let should_exit = running_tracer.should_exit.clone();
@@ -195,18 +177,9 @@ pub async fn main(
         baseline: baseline.clone(),
         exporter_args,
       };
-      let signals = Signals::new([SIGTERM, SIGINT])?;
-      tokio::spawn(async move {
-        let mut signals = signals;
-        while let Some(signal) = signals.next().await {
-          match signal {
-            SIGTERM | SIGINT => {
-              should_exit.store(true, Ordering::Relaxed);
-            }
-            _ => unreachable!(),
-          }
-        }
-      });
+      run_mode::spawn_signal_handler([SIGTERM, SIGINT], move |_| {
+        should_exit.store(true, Ordering::Relaxed);
+      })?;
       let exit_code = run_mode::run_exporter(format, output, meta, rx).await?;
       tracer_thread.await?;
       process::exit(exit_code);
