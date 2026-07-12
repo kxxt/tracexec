@@ -49,10 +49,7 @@ use tui_prompts::{
   TextPrompt,
   TextState,
 };
-use tui_widget_list::{
-  ListBuilder,
-  ListView,
-};
+use tui_widget_list::ListView;
 
 use super::{
   error_popup::InfoPopupState,
@@ -61,6 +58,10 @@ use super::{
     help_key,
   },
   theme::Theme,
+  ui::{
+    paragraph_list_builder,
+    select_first_if_unset,
+  },
 };
 use crate::action::{
   Action,
@@ -837,19 +838,9 @@ impl StatefulWidgetRef for BreakPointManager {
       })
       .collect_vec();
     let theme = state.theme;
-    let builder = ListBuilder::new(move |ctx| {
-      let item = &items[ctx.index];
-      let paragraph = item.paragraph(ctx.is_selected, theme);
-      let line_count = paragraph
-        .line_count(ctx.cross_axis_size)
-        .try_into()
-        .unwrap_or(u16::MAX);
-      (paragraph, line_count)
-    });
+    let builder = paragraph_list_builder(&items, theme, BreakPointEntry::paragraph);
     let list = ListView::new(builder, state.breakpoints.len());
-    if !state.breakpoints.is_empty() && state.list_state.selected.is_none() {
-      state.list_state.select(Some(0));
-    }
+    select_first_if_unset(&mut state.list_state, state.breakpoints.len());
     list.render(inner, buf, &mut state.list_state);
   }
 }
