@@ -27,6 +27,7 @@ use crate::{
     args::{
       LogModeArgs,
       ModifierArgs,
+      PtraceArgs,
     },
     options::SeccompBpf,
   },
@@ -151,6 +152,19 @@ impl TracerBuilder {
     }
     self.ptrace_polling_delay = ptrace_polling_delay;
     self
+  }
+
+  /// Applies the ptrace-specific CLI options to this builder.
+  pub fn ptrace_options(self, args: &PtraceArgs) -> Self {
+    self
+      .seccomp_bpf(args.seccomp_bpf)
+      .ptrace_blocking(args.polling_interval.is_none_or(|value| value < 0))
+      .ptrace_polling_delay(
+        args
+          .polling_interval
+          .filter(|&value| value > 0)
+          .map(|value| value as u64),
+      )
   }
 
   /// Sets seccomp-bpf mode for ptrace tracer
@@ -378,6 +392,28 @@ mod tests {
 
     assert_eq!(builder.ptrace_blocking, Some(false));
     assert_eq!(builder.ptrace_polling_delay, None);
+  }
+
+  #[test]
+  fn tracer_builder_applies_ptrace_cli_options() {
+    let blocking = TracerBuilder::new().ptrace_options(&PtraceArgs::default());
+    assert_eq!(blocking.ptrace_blocking, Some(true));
+    assert_eq!(blocking.ptrace_polling_delay, None);
+
+    let polling = TracerBuilder::new().ptrace_options(&PtraceArgs {
+      seccomp_bpf: SeccompBpf::Off,
+      polling_interval: Some(250),
+    });
+    assert_eq!(polling.seccomp_bpf, SeccompBpf::Off);
+    assert_eq!(polling.ptrace_blocking, Some(false));
+    assert_eq!(polling.ptrace_polling_delay, Some(250));
+
+    let no_delay = TracerBuilder::new().ptrace_options(&PtraceArgs {
+      polling_interval: Some(0),
+      ..Default::default()
+    });
+    assert_eq!(no_delay.ptrace_blocking, Some(false));
+    assert_eq!(no_delay.ptrace_polling_delay, None);
   }
 
   /* ---------------- ExecData ---------------- */

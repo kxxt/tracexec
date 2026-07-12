@@ -1,8 +1,11 @@
 use std::{
   io::Write,
+  os::raw::c_int,
   path::Path,
 };
 
+use futures::StreamExt;
+use signal_hook_tokio::Signals;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tracexec_core::{
   cli::{
@@ -31,6 +34,19 @@ use tracexec_exporter_json::{
   JsonStreamExporter,
 };
 use tracexec_exporter_perfetto::PerfettoExporter;
+
+pub fn spawn_signal_handler(
+  watched_signals: impl IntoIterator<Item = c_int>,
+  mut handler: impl FnMut(c_int) + Send + 'static,
+) -> color_eyre::Result<()> {
+  let mut signals = Signals::new(watched_signals)?;
+  tokio::spawn(async move {
+    while let Some(signal) = signals.next().await {
+      handler(signal);
+    }
+  });
+  Ok(())
+}
 
 pub fn initialize_tui(tui_args: &TuiModeArgs, executable_path: &Path) -> color_eyre::Result<()> {
   tracexec_tui::theme::initialize(

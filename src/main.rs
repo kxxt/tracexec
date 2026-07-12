@@ -17,10 +17,8 @@ use color_eyre::eyre::{
   OptionExt,
   bail,
 };
-use futures::StreamExt;
 use nix::unistd::Uid;
 use signal_hook::consts::signal::*;
-use signal_hook_tokio::Signals;
 use tokio::sync::mpsc;
 use tracexec_backend_ptrace::ptrace::BuildPtraceTracer;
 use tracexec_core::{
@@ -177,18 +175,11 @@ async fn async_main(
         })
         .modifier(modifier_args)
         .user(user)
-        .tracee_env(tracee_env.clone())
+        .tracee_env(tracee_env)
         .tracer_tx(tracer_tx)
         .baseline(Arc::new(baseline))
         .filter(tracer_event_args.filter()?)
-        .seccomp_bpf(ptrace_args.seccomp_bpf)
-        .ptrace_blocking(ptrace_args.polling_interval.is_none_or(|v| v < 0))
-        .ptrace_polling_delay(
-          ptrace_args
-            .polling_interval
-            .filter(|&v| v > 0)
-            .map(|v| v as u64),
-        )
+        .ptrace_options(&ptrace_args)
         .printer_from_cli(&tracing_args)
         .build_ptrace()?;
       let (_tracer, tracer_thread) = tracer.spawn(cmd, Some(output), token)?;
@@ -236,18 +227,11 @@ async fn async_main(
         .mode(tracer_mode)
         .modifier(modifier_args.clone())
         .user(user)
-        .tracee_env(tracee_env.clone())
+        .tracee_env(tracee_env)
         .tracer_tx(tracer_tx)
         .baseline(baseline.clone())
         .filter(tracer_event_args.filter()?)
-        .seccomp_bpf(ptrace_args.seccomp_bpf)
-        .ptrace_blocking(ptrace_args.polling_interval.is_none_or(|v| v < 0))
-        .ptrace_polling_delay(
-          ptrace_args
-            .polling_interval
-            .filter(|&v| v > 0)
-            .map(|v| v as u64),
-        )
+        .ptrace_options(&ptrace_args)
         .printer_from_cli(&tracing_args)
         .build_ptrace()?;
 
@@ -298,35 +282,20 @@ async fn async_main(
         })
         .modifier(modifier_args)
         .user(user)
-        .tracee_env(tracee_env.clone())
+        .tracee_env(tracee_env)
         .tracer_tx(tracer_tx)
         .baseline(baseline.clone())
         .filter(TracerEventArgs::all().filter()?)
-        .seccomp_bpf(ptrace_args.seccomp_bpf)
-        .ptrace_blocking(ptrace_args.polling_interval.is_none_or(|v| v < 0))
-        .ptrace_polling_delay(
-          ptrace_args
-            .polling_interval
-            .filter(|&v| v > 0)
-            .map(|v| v as u64),
-        )
+        .ptrace_options(&ptrace_args)
         .printer_from_cli(&tracing_args)
         .build_ptrace()?;
       let (tracer, tracer_thread) = tracer.spawn(cmd, None, token)?;
-      let signals = Signals::new([SIGTERM, SIGINT, SIGQUIT])?;
-      tokio::spawn(async move {
-        let mut signals = signals;
-        while let Some(signal) = signals.next().await {
-          match signal {
-            SIGTERM | SIGINT => {
-              tracer
-                .request_termination()
-                .expect("Failed to terminate tracer");
-            }
-            _ => unreachable!(),
-          }
-        }
-      });
+      run_mode::spawn_signal_handler([SIGTERM, SIGINT, SIGQUIT], move |signal| match signal {
+        SIGTERM | SIGINT => tracer
+          .request_termination()
+          .expect("Failed to terminate tracer"),
+        _ => unreachable!(),
+      })?;
       let meta = ExporterMetadata {
         baseline,
         exporter_args,
