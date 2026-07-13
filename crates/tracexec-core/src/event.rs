@@ -451,7 +451,7 @@ mod tests {
         path: "/".to_string(),
       },
     };
-    let exec_detail = TracerEventDetails::Exec(Box::new(exec_event.clone()));
+    let exec_detail = TracerEventDetails::Exec(Box::new(exec_event));
     assert_eq!(exec_detail.timestamp(), Some(ts));
   }
 

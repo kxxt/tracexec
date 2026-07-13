@@ -335,7 +335,7 @@ mod tests {
   #[test]
   fn test_from_arcstr() {
     let s: ArcStr = ArcStr::from("hello");
-    let msg: OutputMsg = s.clone().into();
+    let msg: OutputMsg = s.into();
     assert_eq!(msg.as_ref(), "hello");
   }
 

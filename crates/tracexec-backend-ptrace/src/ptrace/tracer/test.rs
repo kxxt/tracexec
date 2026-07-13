@@ -121,6 +121,33 @@ async fn run_exe_and_collect_msgs(
 
 type TracerFixture = (Tracer, UnboundedReceiver<TracerMessage>, SpawnToken);
 
+#[test]
+fn build_ptrace_reports_missing_required_configuration() {
+  let err = TracerBuilder::new()
+    .build_ptrace()
+    .err()
+    .expect("an incomplete builder must fail");
+  assert!(err.to_string().contains("tracer mode is required"));
+
+  let err = TracerBuilder::new()
+    .mode(TracerMode::Log { foreground: false })
+    .build_ptrace()
+    .err()
+    .expect("an incomplete builder must fail");
+  assert!(err.to_string().contains("tracer event sender is required"));
+}
+
+#[test]
+fn spawn_rejects_token_from_another_tracer() {
+  let (subject, _rx, _token) = tracer(ModifierArgs::default(), SeccompBpf::Off);
+  let (_other_tracer, _other_rx, other_token) = tracer(ModifierArgs::default(), SeccompBpf::Off);
+
+  let err = subject
+    .spawn(Vec::new(), None, other_token)
+    .expect_err("a token from another tracer must fail");
+  assert!(err.to_string().contains("does not belong to this tracer"));
+}
+
 #[traced_test]
 #[rstest]
 #[case(true)]

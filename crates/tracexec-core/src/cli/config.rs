@@ -326,9 +326,9 @@ inline_format = "%H:%M:%S"
 "#;
 
     let cfg: ModifierConfig = toml::from_str(toml_str).unwrap();
-    assert_eq!(cfg.successful_only.unwrap(), true);
-    assert_eq!(cfg.stdio_in_cmdline.unwrap(), true);
-    assert_eq!(cfg.timestamp.as_ref().unwrap().enable, true);
+    assert!(cfg.successful_only.unwrap());
+    assert!(cfg.stdio_in_cmdline.unwrap());
+    assert!(cfg.timestamp.as_ref().unwrap().enable);
     assert_eq!(
       cfg
         .timestamp
@@ -357,9 +357,9 @@ color_level = "More"
 foreground = false
 "#;
     let cfg: LogModeConfig = toml::from_str(toml_str).unwrap();
-    assert_eq!(cfg.show_interpreter.unwrap(), true);
+    assert!(cfg.show_interpreter.unwrap());
     assert_eq!(cfg.color_level.unwrap(), ColorLevel::More);
-    assert_eq!(cfg.foreground.unwrap(), false);
+    assert!(!cfg.foreground.unwrap());
   }
 
   #[test]
@@ -372,7 +372,7 @@ theme-file = "nord.toml"
 theme = { app-title = { fg = "cyan", modifiers = ["bold"] } }
 "#;
     let cfg: TuiModeConfig = toml::from_str(toml_str).unwrap();
-    assert_eq!(cfg.follow.unwrap(), true);
+    assert!(cfg.follow.unwrap());
     assert_eq!(cfg.frame_rate.unwrap(), 12.5);
     assert_eq!(cfg.max_events.unwrap(), 100);
     assert_eq!(cfg.theme_file, Some(PathBuf::from("nord.toml")));

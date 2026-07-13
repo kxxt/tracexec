@@ -539,7 +539,7 @@ mod tests {
     );
     assert_eq!(
       format_cgroup_annotation(&CgroupInfo::Error(CgroupError::CgroupIdNotFound)),
-      format!("Error: {}", CgroupError::CgroupIdNotFound.to_string())
+      format!("Error: {}", CgroupError::CgroupIdNotFound)
     );
   }
 

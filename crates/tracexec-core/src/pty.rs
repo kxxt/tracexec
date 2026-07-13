@@ -872,11 +872,11 @@ mod tests {
 
     // give the child a moment to write
     std::thread::sleep(Duration::from_millis(100));
-    reader.read(&mut buf);
+    let bytes_read = reader.read(&mut buf).unwrap();
 
     eprintln!("buf: {}", String::from_utf8_lossy(&buf));
 
-    assert!(buf.windows(5).any(|w| w == b"hello".as_slice()));
+    assert!(buf[..bytes_read].windows(5).any(|w| w == b"hello"));
 
     // reap child
     waitpid(pid, None).unwrap();

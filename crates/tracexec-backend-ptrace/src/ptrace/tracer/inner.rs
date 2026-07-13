@@ -1462,8 +1462,10 @@ mod tests {
 
   #[test]
   fn test_get_filename_for_display_resolves_proc_self_exe() {
-    let mut modifier = ModifierArgs::default();
-    modifier.resolve_proc_self_exe = true;
+    let modifier = ModifierArgs {
+      resolve_proc_self_exe: true,
+      ..Default::default()
+    };
     let (inner, _rx) = build_inner(modifier, BitFlags::empty(), SeccompBpf::Off);
     let pid = getpid();
     let filename = cached_string("/proc/self/exe".to_string());
@@ -1548,8 +1550,10 @@ mod tests {
 
   #[test]
   fn test_timestamp_now_and_seccomp_bpf() {
-    let mut modifier = ModifierArgs::default();
-    modifier.timestamp = true;
+    let modifier = ModifierArgs {
+      timestamp: true,
+      ..Default::default()
+    };
     let (inner, _rx) = build_inner(modifier, BitFlags::empty(), SeccompBpf::On);
     assert!(inner.timestamp_now().is_some());
     assert!(inner.seccomp_bpf());

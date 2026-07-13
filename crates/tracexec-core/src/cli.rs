@@ -514,7 +514,7 @@ mod tests {
     writeln!(out, "Hello world").unwrap();
     drop(out);
 
-    let content = fs::read_to_string(path.clone()).unwrap();
+    let content = fs::read_to_string(path).unwrap();
     assert!(content.contains("Hello world"));
   }
 

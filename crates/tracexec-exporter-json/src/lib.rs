@@ -386,8 +386,7 @@ mod tests {
   fn test_json_result_from_result() {
     let ok: JsonResult<u32> = JsonResult::from_result(Ok::<u32, io::Error>(7u32));
     assert!(matches!(ok, JsonResult::Success(7)));
-    let err: JsonResult<u32> =
-      JsonResult::from_result(Err(io::Error::new(io::ErrorKind::Other, "boom")));
+    let err: JsonResult<u32> = JsonResult::from_result(Err(io::Error::other("boom")));
     assert!(matches!(err, JsonResult::Error(msg) if msg.contains("boom")));
   }
 
