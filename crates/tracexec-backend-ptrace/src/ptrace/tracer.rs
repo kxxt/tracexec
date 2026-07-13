@@ -11,6 +11,10 @@ use std::{
   time::Duration,
 };
 
+use color_eyre::eyre::{
+  bail,
+  eyre,
+};
 use enumflags2::BitFlags;
 use nix::{
   errno::Errno,
@@ -118,6 +122,14 @@ pub trait BuildPtraceTracer: Sealed {
 
 impl BuildPtraceTracer for TracerBuilder {
   fn build_ptrace(self) -> color_eyre::Result<(Tracer, SpawnToken)> {
+    let mode = self.mode.ok_or_else(|| eyre!("tracer mode is required"))?;
+    let msg_tx = self
+      .tx
+      .ok_or_else(|| eyre!("tracer event sender is required"))?;
+    let printer = self.printer.ok_or_else(|| eyre!("printer is required"))?;
+    let baseline = self
+      .baseline
+      .ok_or_else(|| eyre!("baseline process information is required"))?;
     let seccomp_bpf = if self.seccomp_bpf == SeccompBpf::Auto {
       // TODO: check if the kernel supports seccomp-bpf
       // Let's just enable it for now and see if anyone complains
@@ -131,7 +143,7 @@ impl BuildPtraceTracer for TracerBuilder {
     } else {
       self.seccomp_bpf
     };
-    let with_tty = match self.mode.as_ref().unwrap() {
+    let with_tty = match &mode {
       TracerMode::Tui(tty) => tty.is_some(),
       TracerMode::Log { .. } => true,
     };
@@ -140,16 +152,16 @@ impl BuildPtraceTracer for TracerBuilder {
       Tracer {
         with_tty,
         seccomp_bpf,
-        msg_tx: self.tx.expect("tracer_tx is required for ptrace tracer"),
+        msg_tx,
         user: self.user,
-        printer: self.printer.unwrap(),
+        printer,
         modifier_args: self.modifier,
         filter: {
           let mut filter = self
             .filter
             .unwrap_or_else(BitFlags::<TracerEventDetailsKind>::all);
           trace!("Event filter: {:?}", filter);
-          if let TracerMode::Log { .. } = self.mode.as_ref().unwrap() {
+          if let TracerMode::Log { .. } = &mode {
             // FIXME: In logging mode, we rely on root child exit event to exit the process
             //        with the same exit code as the root child. It is not printed in logging mode.
             //        Ideally we should use another channel to send the exit code to the main thread.
@@ -157,7 +169,7 @@ impl BuildPtraceTracer for TracerBuilder {
           }
           filter
         },
-        baseline: self.baseline.unwrap(),
+        baseline,
         req_tx: req_tx.clone(),
         polling_interval: {
           if self.ptrace_blocking == Some(true) {
@@ -177,7 +189,7 @@ impl BuildPtraceTracer for TracerBuilder {
           }
         },
         tracee_env: self.tracee_env,
-        mode: self.mode.unwrap(),
+        mode,
       },
       SpawnToken { req_rx, req_tx },
     ))
@@ -208,7 +220,7 @@ impl Tracer {
     tokio::task::JoinHandle<color_eyre::Result<()>>,
   )> {
     if !self.req_tx.same_channel(&token.req_tx) {
-      panic!("The spawn token used does not match the tracer")
+      bail!("the spawn token does not belong to this tracer");
     }
     drop(token.req_tx);
     let breakpoints = Arc::new(RwLock::new(BTreeMap::new()));
@@ -243,7 +255,8 @@ impl Tracer {
         let result = tokio::runtime::Handle::current()
           .block_on(async move { inner.run(args, token.req_rx).await });
         if let Err(e) = &result {
-          tx.send(TracerMessage::FatalError(e.to_string())).unwrap();
+          // The receiver may have been dropped while the tracer was shutting down.
+          let _ = tx.send(TracerMessage::FatalError(e.to_string()));
         }
         result
       }
