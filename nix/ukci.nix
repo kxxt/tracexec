@@ -164,11 +164,11 @@ localFlake:
 
               {
                 name = "7.2";
-                tag = "v7.2-rc2";
-                version = "7.2.0-rc2";
+                tag = "v7.2-rc3";
+                version = "7.2.0-rc3";
                 source = "torvalds";
                 test_exe = "tracexec";
-                sha256 = "sha256-HsfZTdYNxjJczbeZfzFz6rSeFNJiokhrmAKKociSbOY=";
+                sha256 = "sha256-PyOZblLbx6jYqHKcYGd1p72OH1GUZyCGtvOBEhdC4L0=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
