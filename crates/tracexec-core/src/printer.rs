@@ -744,7 +744,7 @@ impl Printer {
                 write!(
                   out,
                   " -C {}",
-                  &exec_data.cwd.cli_bash_escaped_with_style(THEME.cwd)
+                  exec_data.cwd.cli_bash_escaped_with_style(THEME.cwd)
                 )?;
               } else {
                 write!(out, " -C {}", exec_data.cwd.bash_escaped())?;

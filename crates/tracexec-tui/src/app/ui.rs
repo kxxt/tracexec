@@ -193,14 +193,17 @@ impl App {
     }
 
     let mut items = Vec::from_iter(
-      Some(help_item!(
-        self.key_bindings.switch_pane.display(),
-        "Switch\u{00a0}Pane",
-        self.theme
-      ))
-      .filter(|_| self.term.is_some())
-      .into_iter()
-      .flatten(),
+      self
+        .term
+        .is_some()
+        .then_some(help_item!(
+          self.key_bindings.switch_pane.display(),
+          "Switch\u{00a0}Pane",
+          self.theme
+        ))
+        .filter(|_| self.term.is_some())
+        .into_iter()
+        .flatten(),
     );
 
     if let Some(popup) = &self.popup.last() {
