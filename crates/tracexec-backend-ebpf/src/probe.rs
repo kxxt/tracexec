@@ -15,6 +15,16 @@ pub fn kernel_supports_sleepable_no_prealloc_hash_maps() -> bool {
   tracexec_core::is_current_kernel_ge(MIN_SLEEPABLE_NO_PREALLOC_HASH_MAPS).unwrap_or_default()
 }
 
+/// Returns whether compat syscall hooks should be loaded.
+///
+/// When the kernel configuration cannot be read, assume that legacy 32-bit x86
+/// programs are supported and keep the corresponding eBPF programs enabled.
+pub fn should_load_compat_syscall_hooks(kconfig: Option<&HashMap<String, ConfigSetting>>) -> bool {
+  // procfs omits `# CONFIG_IA32_EMULATION is not set`, so the option is absent
+  // from a successfully read configuration when support is disabled.
+  kconfig.is_none_or(|configs| configs.contains_key("CONFIG_IA32_EMULATION"))
+}
+
 pub fn kernel_have_syscall_wrappers(
   #[allow(unused)] kconfig: Option<&HashMap<String, ConfigSetting>>,
 ) -> bool {
@@ -120,7 +130,26 @@ mod tests {
     kernel_have_ftrace_with_direct_calls,
     kernel_have_syscall_wrappers,
     kernel_rejects_syscall_wrapper_kprobes,
+    should_load_compat_syscall_hooks,
   };
+
+  #[test]
+  fn test_loads_compat_syscall_hooks_when_ia32_emulation_enabled() {
+    let mut configs = HashMap::new();
+    configs.insert("CONFIG_IA32_EMULATION".to_string(), ConfigSetting::Yes);
+
+    assert!(should_load_compat_syscall_hooks(Some(&configs)));
+  }
+
+  #[test]
+  fn test_skips_compat_syscall_hooks_when_ia32_emulation_disabled() {
+    assert!(!should_load_compat_syscall_hooks(Some(&HashMap::new())));
+  }
+
+  #[test]
+  fn test_loads_compat_syscall_hooks_when_ia32_emulation_unknown() {
+    assert!(should_load_compat_syscall_hooks(None));
+  }
 
   rusty_fork_test! {
     #[test]
