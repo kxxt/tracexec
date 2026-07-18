@@ -3,7 +3,16 @@ use std::{
   ffi::CString,
   os::unix::ffi::OsStrExt,
   path::PathBuf,
+  process::{
+    Command,
+    Stdio,
+  },
   sync::Arc,
+  time::{
+    Duration,
+    SystemTime,
+    UNIX_EPOCH,
+  },
 };
 
 use nix::sys::signal::Signal as NixSignal;
@@ -346,6 +355,71 @@ async fn tracer_reports_root_tracee_signaled(
   assert!(saw_tracee_exit, "TraceeExit event not found");
 }
 
+// Regression test: ensures that tracer do not panic on duplicated syscall exit stops
+//                  caused by restarted syscalls
+#[traced_test]
+#[rstest]
+#[file_serial]
+#[tokio::test]
+async fn tracer_handles_first_exit_stop_after_attach(
+  #[with(Default::default(), SeccompBpf::Off)] tracer: TracerFixture,
+) {
+  let (tracer, mut rx, token) = tracer;
+  let nonce = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .unwrap()
+    .as_nanos();
+  let ready_path = env::temp_dir().join(format!("tracexec-ptrace-restart-{nonce}"));
+  let ready_path_arg = ready_path.to_string_lossy().into_owned();
+  let mut tracee = Command::new("/proc/self/exe")
+    .args([
+      "--ignored",
+      "ptrace_attach_nanosleep_helper",
+      &ready_path_arg,
+    ])
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .spawn()
+    .unwrap();
+  drop(token);
+
+  let tracee_tid = tokio::time::timeout(Duration::from_secs(5), async {
+    loop {
+      if let Ok(contents) = std::fs::read_to_string(&ready_path) {
+        break contents.parse::<i32>().unwrap();
+      }
+      tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+  })
+  .await
+  .expect("helper did not enter nanosleep");
+  std::fs::remove_file(&ready_path).unwrap();
+
+  let tracer_thread = tracer.attach_for_test(nix::unistd::Pid::from_raw(tracee_tid));
+  tracer_thread.await.unwrap().unwrap();
+  assert!(tracee.wait().unwrap().success());
+
+  let mut events = vec![];
+  while let Some(event) = rx.recv().await {
+    events.push(event);
+  }
+
+  assert!(events.iter().any(|event| {
+    matches!(
+      event,
+      TracerMessage::Event(TracerEvent {
+        details: TracerEventDetails::TraceeExit {
+          signal: None,
+          exit_code: 0,
+          ..
+        },
+        ..
+      })
+    )
+  }));
+}
+
 #[traced_test]
 #[rstest]
 #[file_serial]
@@ -511,4 +585,35 @@ fn ptrace_execveat_non_main_thread_helper() {
 
   let _ = join.join();
   panic!("execveat from non-main thread did not replace process image");
+}
+
+#[test]
+#[ignore]
+fn ptrace_attach_nanosleep_helper() {
+  let ready_path = env::args().nth(3).unwrap();
+  let tracee_tid = nix::unistd::gettid();
+  assert_eq!(
+    unsafe {
+      nix::libc::prctl(
+        nix::libc::PR_SET_PTRACER,
+        nix::libc::PR_SET_PTRACER_ANY,
+        0,
+        0,
+        0,
+      )
+    },
+    0
+  );
+  let ready_thread = std::thread::spawn(move || {
+    std::thread::sleep(Duration::from_millis(20));
+    std::fs::write(ready_path, tracee_tid.as_raw().to_string()).unwrap();
+  });
+
+  let request = nix::libc::timespec {
+    tv_sec: 0,
+    tv_nsec: 500_000_000,
+  };
+  let result = unsafe { nix::libc::nanosleep(&request, std::ptr::null_mut()) };
+  assert_eq!(result, 0, "nanosleep should complete after ptrace restart");
+  ready_thread.join().unwrap();
 }
