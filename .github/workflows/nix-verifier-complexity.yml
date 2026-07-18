@@ -1,0 +1,111 @@
+name: Nix verifier complexity
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'crates/tracexec-backend-ebpf/src/**/*.bpf.c'
+      - 'crates/tracexec-backend-ebpf/src/**/*.h'
+      - 'crates/tracexec-backend-ebpf/include/vmlinux.h'
+      - 'crates/tracexec-backend-ebpf/include/x86/**/*.h'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  bpf-verifier-complexity:
+    name: eBPF verifier complexity (x86_64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31
+        with:
+          extra_nix_config: |
+            keep-env-derivations = true
+            keep-outputs = true
+            http2 = false
+
+      - name: Setup Attic cache (Writable)
+        uses: ryanccn/attic-action@5635a15ef0c5462194ffbd05d1daeddc74625c3a # v0.5.0
+        if: github.event.pull_request.head.repo.fork != true
+        with:
+          endpoint: https://nix.kxxt.dev
+          cache: tracexec
+          token: ${{ secrets.NIX_CACHE_JWT }}
+
+      - name: Setup Attic cache (ReadOnly)
+        uses: ryanccn/attic-action@5635a15ef0c5462194ffbd05d1daeddc74625c3a # v0.5.0
+        if: github.event.pull_request.head.repo.fork == true
+        with:
+          endpoint: https://nix.kxxt.dev
+          cache: tracexec
+          skip-push: true
+
+      - name: Collect verifier complexity
+        id: collect
+        env:
+          UKCI_COMPLEXITY_OUT_DIR: verifier-complexity
+          UKCI_MAX_PARALLEL: 2
+          UKCI_SUMMARY_TITLE: eBPF verifier complexity (x86_64)
+        run: nix run .#ukci-complexity-x86_64
+
+      - name: Render verifier complexity plots
+        id: plot
+        if: always() && hashFiles('verifier-complexity/*.json') != ''
+        run: nix run .#plot-verifier-complexity -- verifier-complexity --log-scale
+
+      - name: Upload raw verifier data
+        if: always() && hashFiles('verifier-complexity/*.json') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: bpf-verifier-complexity-raw
+          path: verifier-complexity/*.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload verifier plots and summary
+        if: always() && hashFiles('verifier-complexity-plots/**') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: bpf-verifier-complexity-plots
+          path: verifier-complexity-plots/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Prepare report metadata
+        if: always()
+        env:
+          COLLECT_OUTCOME: ${{ steps.collect.outcome }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PLOT_OUTCOME: ${{ steps.plot.outcome }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          mkdir -p verifier-complexity-report
+          jq -n \
+            --argjson pr_number "$PR_NUMBER" \
+            --arg head_sha "$HEAD_SHA" \
+            --arg collect_outcome "$COLLECT_OUTCOME" \
+            --arg plot_outcome "$PLOT_OUTCOME" \
+            '{
+              pr_number: $pr_number,
+              head_sha: $head_sha,
+              collect_outcome: $collect_outcome,
+              plot_outcome: $plot_outcome
+            }' > verifier-complexity-report/metadata.json
+
+      - name: Upload report metadata
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bpf-verifier-complexity-report
+          path: verifier-complexity-report/metadata.json
+          if-no-files-found: error
+          retention-days: 7

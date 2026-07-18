@@ -15,6 +15,7 @@ const u32 READ_ENV_STRINGS = 1;
 static const struct exec_event empty_event = {};
 static u64 event_counter = 0;
 static u32 drop_counter = 0;
+
 // The tgid of the root tracee in global namespace.
 // This field is used to check whether we should signal
 // userspace tracexec to exit.
