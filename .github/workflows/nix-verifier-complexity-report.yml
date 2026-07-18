@@ -19,6 +19,7 @@ jobs:
       - name: Download results and update comment
         env:
           GH_TOKEN: ${{ github.token }}
+          IMGBB_API_KEY: ${{ secrets.IMGBB_API_KEY }}
           REPOSITORY: ${{ github.repository }}
           RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           RUN_ID: ${{ github.event.workflow_run.id }}
@@ -149,6 +150,86 @@ jobs:
             fi
           fi
 
+          plot_links_json='[]'
+          if [ -n "$plots_id" ]; then
+            plots_size="$(jq -r \
+              --argjson id "$plots_id" \
+              '.artifacts[] | select(.id == $id) | .size_in_bytes' \
+              <<< "$artifacts_json")"
+            if [ -z "$plots_size" ] || [ "$plots_size" -gt 104857600 ]; then
+              echo "Verifier plots artifact is unexpectedly large." >&2
+              exit 1
+            fi
+
+            mkdir -p downloaded-plots
+            gh api "/repos/$REPOSITORY/actions/artifacts/$plots_id/zip" > plots.zip
+            unzip -q plots.zip -d downloaded-plots
+            mapfile -d '' plot_files < <(
+              find downloaded-plots -type f -name '*.png' -print0 | sort -z
+            )
+            if [ "${#plot_files[@]}" -gt 16 ]; then
+              echo "Verifier plots artifact contains too many PNG files." >&2
+              exit 1
+            fi
+
+            if [ "${#plot_files[@]}" -gt 0 ]; then
+              if [ -z "$IMGBB_API_KEY" ]; then
+                echo "The IMGBB_API_KEY repository secret is not configured." >&2
+                exit 1
+              fi
+
+              declare -A seen_plot_names=()
+              for plot_file in "${plot_files[@]}"; do
+                plot_name="$(basename "$plot_file")"
+                if [[ ! "$plot_name" =~ ^[a-z0-9][a-z0-9.-]*\.png$ ]]; then
+                  echo "Invalid verifier plot filename: $plot_name" >&2
+                  exit 1
+                fi
+                if [ -n "${seen_plot_names[$plot_name]+x}" ]; then
+                  echo "Duplicate verifier plot filename: $plot_name" >&2
+                  exit 1
+                fi
+                seen_plot_names[$plot_name]=1
+
+                plot_size="$(stat -c '%s' "$plot_file")"
+                if [ "$plot_size" -eq 0 ] || [ "$plot_size" -gt 10485760 ]; then
+                  echo "Invalid verifier plot size for $plot_name: $plot_size" >&2
+                  exit 1
+                fi
+                signature="$(od -An -tx1 -N8 "$plot_file" | tr -d ' \n')"
+                if [ "$signature" != 89504e470d0a1a0a ]; then
+                  echo "Verifier plot is not a PNG: $plot_name" >&2
+                  exit 1
+                fi
+
+                image_name="tracexec-pr-$pr_number-${head_sha:0:12}-${plot_name%.png}"
+                upload_response="$(curl \
+                  --fail-with-body \
+                  --silent \
+                  --show-error \
+                  --request POST \
+                  --form-string "key=$IMGBB_API_KEY" \
+                  --form-string "name=$image_name" \
+                  --form "image=@$plot_file;type=image/png" \
+                  https://api.imgbb.com/1/upload)"
+                if ! jq -e '
+                  .success == true and
+                  .status == 200 and
+                  (.data.url | type == "string" and startswith("https://i.ibb.co/"))
+                ' <<< "$upload_response" >/dev/null; then
+                  echo "ImgBB returned an invalid response for $plot_name." >&2
+                  exit 1
+                fi
+                upload_url="$(jq -r '.data.url' <<< "$upload_response")"
+                plot_links_json="$(jq -c \
+                  --arg name "$plot_name" \
+                  --arg url "$upload_url" \
+                  '. + [{name: $name, url: $url}]' \
+                  <<< "$plot_links_json")"
+              done
+            fi
+          fi
+
           if [ "$collect_outcome" = success ] && [ "$plot_outcome" = success ]; then
             status_icon="✅"
             status_text="Collection and plotting succeeded"
@@ -184,12 +265,21 @@ jobs:
             echo '<details>'
             echo '<summary><strong>Plots</strong></summary>'
             echo
+            if [ "$(jq 'length' <<< "$plot_links_json")" -gt 0 ]; then
+              while IFS=$'\t' read -r plot_name plot_url; do
+                plot_title="${plot_name%.png}"
+                plot_title="${plot_title//-/ }"
+                echo "#### $plot_title"
+                echo
+                echo "![$plot_title]($plot_url)"
+                echo
+              done < <(jq -r '.[] | [.name, .url] | @tsv' <<< "$plot_links_json")
+            else
+              echo 'No plots were produced.'
+              echo
+            fi
             if [ -n "$plots_url" ]; then
               echo "[Download the heatmaps, per-build charts, CSV, and Markdown summary]($plots_url)."
-              echo
-              echo 'The artifact contains instruction-count, verifier-time, peak-state, and stack-depth plots.'
-            else
-              echo 'No plot artifact was produced.'
             fi
             echo
             echo '</details>'

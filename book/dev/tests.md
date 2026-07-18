@@ -42,7 +42,10 @@ required UKCI test pass.
 For pull requests, a dedicated Nix workflow runs this collector on x86_64 when
 the compiled kernel-space eBPF sources or x86 BTF headers change. It uploads the
 raw JSON and rendered plots as Actions artifacts and updates a folded summary
-comment as soon as the complexity run finishes.
+comment as soon as the complexity run finishes. The reporter also stores the
+PNG plots on ImgBB without an expiration and embeds them in the comment so they
+remain available after the artifacts expire. Configure the reporter with an
+`IMGBB_API_KEY` repository secret.
 
 To plot the collected results from the repository root:
 
