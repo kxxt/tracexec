@@ -272,6 +272,19 @@ impl Tracer {
     };
     Ok((running_tracer, tracer_thread))
   }
+
+  #[cfg(test)]
+  fn attach_for_test(self, pid: Pid) -> tokio::task::JoinHandle<color_eyre::Result<()>> {
+    let tx = self.msg_tx.clone();
+    tokio::task::spawn_blocking(move || {
+      let inner = TracerInner::new(self, Arc::new(RwLock::new(BTreeMap::new())), None)?;
+      let result = inner.run_attached(pid);
+      if let Err(e) = &result {
+        let _ = tx.send(TracerMessage::FatalError(e.to_string()));
+      }
+      result
+    })
+  }
 }
 
 static BREAKPOINT_ID: AtomicU32 = AtomicU32::new(0);

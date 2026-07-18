@@ -160,6 +160,7 @@ use crate::{
       read_env,
       read_string,
     },
+    syscall::SyscallInfo,
     tracer::{
       PendingRequest,
       state::{
@@ -447,6 +448,39 @@ impl TracerInner {
       }
     }
   }
+
+  #[cfg(test)]
+  pub(super) fn run_attached(self, root_child: Pid) -> color_eyre::Result<()> {
+    use nix::sys::ptrace::Options;
+
+    let mut engine = RecursivePtraceEngine::new(self.seccomp_bpf());
+    engine.seize_children_recursive(
+      root_child,
+      Options::PTRACE_O_TRACEEXEC | Options::PTRACE_O_EXITKILL | Options::PTRACE_O_TRACESYSGOOD,
+    )?;
+    // Consume the real restart entry produced by attaching to a blocked
+    // syscall.  The regular event loop then starts with that syscall already
+    // in flight, so its first syscall stop must be dispatched as an exit.
+    let guard = match engine.next_event(None)? {
+      PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Syscall(guard)) => guard,
+      event => panic!("expected syscall entry stop after attach, got {event:?}"),
+    };
+    assert!(guard.syscall_info()?.is_entry());
+    guard.cont_syscall(false)?;
+
+    let mut root_child_state = ProcessState::new(root_child)?;
+    root_child_state.ppid = Some(getpid());
+    self.store.borrow_mut().insert(root_child_state);
+
+    let mut pending_guards = HashMap::new();
+    loop {
+      match self.handle_waitpid_events(&engine, root_child, &mut pending_guards, true) {
+        Ok(ControlFlow::Break(_)) => return Ok(()),
+        Ok(ControlFlow::Continue(_)) | Err(WaitpidHandlerError::Interrupted) => {}
+        Err(e) => return Err(e.into()),
+      }
+    }
+  }
 }
 
 // Core loop
@@ -480,25 +514,27 @@ impl TracerInner {
       // trace!("waitpid: {:?}", status);
       match status {
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Syscall(guard)) => {
-          let presyscall = self
-            .store
-            .borrow_mut()
-            .get_current_mut(guard.pid())
-            .unwrap()
-            .presyscall;
-          if presyscall {
+          // A restarted syscall can produce consecutive exit stops, so the
+          // kernel-reported stop kind is authoritative over `presyscall`.
+          let Some(info) = self.read_syscall_info(&guard).context(OtherSnafu)? else {
+            continue;
+          };
+          if info.is_entry() {
             self
-              .on_syscall_enter(Either::Left(guard), pending_guards, timestamp)
+              .on_syscall_enter(Either::Left(guard), info, pending_guards, timestamp)
               .context(OtherSnafu)?;
           } else {
             self
-              .on_syscall_exit(guard, pending_guards, timestamp)
+              .on_syscall_exit(guard, info, pending_guards, timestamp)
               .context(OtherSnafu)?;
           }
         }
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::Seccomp(guard)) => {
+          let Some(info) = self.read_syscall_info(&guard).context(OtherSnafu)? else {
+            continue;
+          };
           self
-            .on_syscall_enter(Either::Right(guard), pending_guards, timestamp)
+            .on_syscall_enter(Either::Right(guard), info, pending_guards, timestamp)
             .context(OtherSnafu)?;
         }
         PtraceWaitPidEvent::Ptrace(PtraceStopGuard::SignalDelivery(guard)) => {
@@ -785,20 +821,14 @@ impl TracerInner {
     Ok(ControlFlow::Continue(()))
   }
 
-  fn on_syscall_enter<'a>(
+  fn read_syscall_info(
     &self,
-    guard: Either<PtraceSyscallStopGuard<'a>, PtraceSeccompStopGuard<'a>>,
-    pending_guards: &mut HashMap<Pid, PtraceStopGuard<'a>>,
-    timestamp: DateTime<Local>,
-  ) -> color_eyre::Result<()> {
-    let pid = guard.pid();
-    let mut store = self.store.borrow_mut();
-    let p = store.get_current_mut(pid).unwrap();
-    p.presyscall = !p.presyscall;
-    // SYSCALL ENTRY
-    let info = match guard.syscall_info() {
-      Ok(info) => info,
+    guard: &impl PtraceSyscallLikeStop,
+  ) -> color_eyre::Result<Option<SyscallInfo>> {
+    match guard.syscall_info() {
+      Ok(info) => Ok(Some(info)),
       Err(Errno::ESRCH) => {
+        let pid = guard.pid();
         filterable_event!(Info(TracerEventMessage {
           timestamp: self.timestamp_now(),
           msg: "Failed to get syscall info: ESRCH (child probably gone!)".to_string(),
@@ -806,10 +836,25 @@ impl TracerInner {
         }))
         .send_if_match(&self.msg_tx, self.filter)?;
         info!("ptrace get_syscall_info failed: {pid}, ESRCH, child probably gone!");
-        return Ok(());
+        Ok(None)
       }
-      e => e?,
-    };
+      Err(error) => Err(error.into()),
+    }
+  }
+
+  fn on_syscall_enter<'a>(
+    &self,
+    guard: Either<PtraceSyscallStopGuard<'a>, PtraceSeccompStopGuard<'a>>,
+    info: SyscallInfo,
+    pending_guards: &mut HashMap<Pid, PtraceStopGuard<'a>>,
+    timestamp: DateTime<Local>,
+  ) -> color_eyre::Result<()> {
+    let pid = guard.pid();
+    let mut store = self.store.borrow_mut();
+    let p = store.get_current_mut(pid).unwrap();
+    p.presyscall = false;
+    // SYSCALL ENTRY
+    debug_assert!(info.is_entry());
     let regs = match guard.get_general_registers() {
       Ok(regs) => regs,
       Err(Errno::ESRCH) => {
@@ -986,6 +1031,7 @@ impl TracerInner {
   fn on_syscall_exit<'a>(
     &self,
     guard: PtraceSyscallStopGuard<'a>,
+    info: SyscallInfo,
     pending_guards: &mut HashMap<Pid, PtraceStopGuard<'a>>,
     timestamp: DateTime<Local>,
   ) -> color_eyre::Result<()> {
@@ -994,18 +1040,12 @@ impl TracerInner {
     let pid = guard.pid();
     let mut store = self.store.borrow_mut();
     let p = store.get_current_mut(pid).unwrap();
-    p.presyscall = !p.presyscall;
-    let result = match guard.syscall_info() {
-      Ok(r) => r.syscall_result().unwrap(),
-      Err(Errno::ESRCH) => {
-        info!("ptrace get_syscall_info failed: {pid}, ESRCH, child probably gone!");
-        return Ok(());
-      }
-      Err(e) => return Err(e.into()),
-    };
+    p.presyscall = true;
+    debug_assert!(!info.is_entry());
+    let result = info.syscall_result().unwrap();
     // If exec is successful, the register value might be clobbered.
     // TODO: would the value in ptrace_syscall_info be clobbered?
-    let exec_result = if p.is_exec_successful { 0 } else { result } as i64;
+    let exec_result = if p.is_exec_successful { 0 } else { result };
     match p.syscall {
       Syscall::Execve | Syscall::Execveat => {
         trace!("post execve(at) in exec");

@@ -43,6 +43,13 @@ pub struct SyscallInfo {
 }
 
 impl SyscallInfo {
+  pub fn is_entry(&self) -> bool {
+    matches!(
+      self.data,
+      SyscallInfoData::Entry { .. } | SyscallInfoData::Seccomp { .. }
+    )
+  }
+
   pub fn arch(&self) -> AuditArch {
     self.arch
   }
