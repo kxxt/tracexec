@@ -39,6 +39,11 @@ Set `UKCI_COMPLEXITY_OUT_DIR` to use a different output directory.
 This runner is intentionally separate from `ukci` and is not part of the
 required UKCI test pass.
 
+For pull requests, the Nix workflow runs this collector on x86_64 when the
+compiled kernel-space eBPF sources or x86 BTF headers change. It uploads the raw
+JSON and rendered plots as Actions artifacts and updates a folded summary
+comment on the pull request.
+
 To plot the collected results from the repository root:
 
 ```bash

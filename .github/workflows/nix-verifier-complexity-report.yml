@@ -1,0 +1,224 @@
+name: Nix verifier complexity report
+
+on:
+  workflow_run:
+    workflows: [UKCI]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: write
+
+jobs:
+  comment:
+    name: Update verifier complexity PR comment
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download results and update comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+
+          artifacts_json="$(gh api "/repos/$REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100")"
+          metadata_id="$(jq -r \
+            '[.artifacts[] | select(.name == "bpf-verifier-complexity-report")][0].id // empty' \
+            <<< "$artifacts_json")"
+
+          # A missing metadata artifact means the complexity job was skipped.
+          if [ -z "$metadata_id" ]; then
+            echo "No verifier complexity report artifact; nothing to comment on."
+            exit 0
+          fi
+
+          metadata_size="$(jq -r \
+            --argjson id "$metadata_id" \
+            '.artifacts[] | select(.id == $id) | .size_in_bytes' \
+            <<< "$artifacts_json")"
+          if [ -z "$metadata_size" ] || [ "$metadata_size" -gt 65536 ]; then
+            echo "Verifier report metadata is unexpectedly large." >&2
+            exit 1
+          fi
+
+          mkdir -p downloaded-metadata
+          gh api "/repos/$REPOSITORY/actions/artifacts/$metadata_id/zip" > metadata.zip
+          unzip -q metadata.zip -d downloaded-metadata
+          metadata=downloaded-metadata/metadata.json
+          jq -e '
+            (.pr_number | type == "number" and . > 0) and
+            (.head_sha | type == "string" and test("^[0-9a-f]{40}$")) and
+            (.collect_outcome | IN("success", "failure", "cancelled", "skipped")) and
+            (.plot_outcome | IN("success", "failure", "cancelled", "skipped"))
+          ' "$metadata" >/dev/null
+
+          pr_number="$(jq -r '.pr_number' "$metadata")"
+          head_sha="$(jq -r '.head_sha' "$metadata")"
+          collect_outcome="$(jq -r '.collect_outcome' "$metadata")"
+          plot_outcome="$(jq -r '.plot_outcome' "$metadata")"
+
+          if [ "$head_sha" != "$RUN_HEAD_SHA" ]; then
+            echo "Report SHA does not match its workflow run." >&2
+            exit 1
+          fi
+
+          pr_json="$(gh api "/repos/$REPOSITORY/pulls/$pr_number")"
+          current_head_sha="$(jq -r '.head.sha' <<< "$pr_json")"
+          base_repository="$(jq -r '.base.repo.full_name' <<< "$pr_json")"
+          if [ "$base_repository" != "$REPOSITORY" ]; then
+            echo "Report points to a pull request in another repository." >&2
+            exit 1
+          fi
+          if [ "$current_head_sha" != "$head_sha" ]; then
+            echo "Pull request advanced past this run; skipping stale report."
+            exit 0
+          fi
+
+          raw_id="$(jq -r \
+            '[.artifacts[] | select(.name == "bpf-verifier-complexity-raw")][0].id // empty' \
+            <<< "$artifacts_json")"
+          plots_id="$(jq -r \
+            '[.artifacts[] | select(.name == "bpf-verifier-complexity-plots")][0].id // empty' \
+            <<< "$artifacts_json")"
+          run_url="$SERVER_URL/$REPOSITORY/actions/runs/$RUN_ID"
+          raw_url=""
+          plots_url=""
+          if [ -n "$raw_id" ]; then
+            raw_url="$run_url/artifacts/$raw_id"
+          fi
+          if [ -n "$plots_id" ]; then
+            plots_url="$run_url/artifacts/$plots_id"
+          fi
+
+          records=0
+          builds=0
+          metrics_json='[]'
+          if [ -n "$raw_id" ]; then
+            raw_size="$(jq -r \
+              --argjson id "$raw_id" \
+              '.artifacts[] | select(.id == $id) | .size_in_bytes' \
+              <<< "$artifacts_json")"
+            if [ -z "$raw_size" ] || [ "$raw_size" -gt 52428800 ]; then
+              echo "Raw verifier artifact is unexpectedly large." >&2
+              exit 1
+            fi
+
+            mkdir -p downloaded-raw
+            gh api "/repos/$REPOSITORY/actions/artifacts/$raw_id/zip" > raw.zip
+            unzip -q raw.zip -d downloaded-raw
+            mapfile -d '' json_files < <(find downloaded-raw -type f -name '*.json' -print0)
+            if [ "${#json_files[@]}" -gt 0 ]; then
+              jq -s '
+                def clean:
+                  tostring
+                  | gsub("[^A-Za-z0-9_.+:/-]"; "_")
+                  | .[:100];
+                def top($field; $label):
+                  ([.[] | select(.[$field] | type == "number")] | max_by(.[$field])) as $row
+                  | if $row == null then empty else {
+                      label: $label,
+                      value: $row[$field],
+                      build: ($row.build // "unknown" | clean),
+                      load_program: (
+                        (($row.load // "unknown") | clean) + "/" +
+                        (($row.program // "unknown") | clean)
+                      )
+                    } end;
+                [ .[] | if type == "array" then . else (.records // []) end ]
+                | add
+                | map(select(.arch == "x86_64"))
+                | {
+                    records: length,
+                    builds: (map(.build // "unknown") | unique | length),
+                    metrics: [
+                      top("insns_processed"; "Instructions processed"),
+                      top("verification_time_microseconds"; "Verification time (µs)"),
+                      top("peak_states"; "Peak states"),
+                      top("stack_depth"; "Stack depth")
+                    ]
+                  }
+              ' "${json_files[@]}" > result-summary.json
+              records="$(jq -r '.records' result-summary.json)"
+              builds="$(jq -r '.builds' result-summary.json)"
+              metrics_json="$(jq -c '.metrics' result-summary.json)"
+            fi
+          fi
+
+          if [ "$collect_outcome" = success ] && [ "$plot_outcome" = success ]; then
+            status_icon="✅"
+            status_text="Collection and plotting succeeded"
+          elif [ "$collect_outcome" = success ]; then
+            status_icon="⚠️"
+            status_text="Collection succeeded, but plotting did not"
+          else
+            status_icon="❌"
+            status_text="Collection did not complete successfully"
+          fi
+
+          marker='<!-- tracexec-bpf-verifier-complexity -->'
+          {
+            echo "$marker"
+            echo "## eBPF verifier complexity · x86_64"
+            echo
+            echo "$status_icon **$status_text.** $records records across $builds kernel/Clang builds."
+            echo
+            echo '<details>'
+            echo '<summary><strong>Result maxima</strong></summary>'
+            echo
+            if [ "$(jq 'length' <<< "$metrics_json")" -gt 0 ]; then
+              echo '| Metric | Maximum | Build | Load/program |'
+              echo '| --- | ---: | --- | --- |'
+              jq -r '.[] | "| \(.label) | \(.value) | `\(.build)` | `\(.load_program)` |"' \
+                <<< "$metrics_json"
+            else
+              echo 'No valid x86_64 verifier records were produced.'
+            fi
+            echo
+            echo '</details>'
+            echo
+            echo '<details>'
+            echo '<summary><strong>Plots</strong></summary>'
+            echo
+            if [ -n "$plots_url" ]; then
+              echo "[Download the heatmaps, per-build charts, CSV, and Markdown summary]($plots_url)."
+              echo
+              echo 'The artifact contains instruction-count, verifier-time, peak-state, and stack-depth plots.'
+            else
+              echo 'No plot artifact was produced.'
+            fi
+            echo
+            echo '</details>'
+            echo
+            echo '<details>'
+            echo '<summary><strong>Raw data and run details</strong></summary>'
+            echo
+            if [ -n "$raw_url" ]; then
+              echo "- [Download raw verifier JSON (Actions artifact)]($raw_url)"
+            else
+              echo '- Raw verifier JSON was not produced.'
+            fi
+            echo "- [View the workflow run]($run_url)"
+            echo "- Collector: \`$collect_outcome\`; plotter: \`$plot_outcome\`"
+            echo
+            echo '</details>'
+          } > comment.md
+
+          jq -n --rawfile body comment.md '{body: $body}' > comment-request.json
+          comment_ids="$(gh api --paginate \
+            "/repos/$REPOSITORY/issues/$pr_number/comments?per_page=100" \
+            --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | startswith("<!-- tracexec-bpf-verifier-complexity -->")) | .id')"
+          comment_id="${comment_ids%%$'\n'*}"
+          if [ -n "$comment_id" ]; then
+            gh api --method PATCH \
+              "/repos/$REPOSITORY/issues/comments/$comment_id" \
+              --input comment-request.json >/dev/null
+          else
+            gh api --method POST \
+              "/repos/$REPOSITORY/issues/$pr_number/comments" \
+              --input comment-request.json >/dev/null
+          fi
