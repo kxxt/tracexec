@@ -58,6 +58,7 @@ pub enum ProcessStatus {
   Running,
   Exited(ProcessExit),
   BreakPointHit,
+  JobControlQueued,
   Detached,
 }
 

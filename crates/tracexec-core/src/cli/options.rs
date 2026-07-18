@@ -34,6 +34,12 @@ pub enum SeccompBpf {
   Off,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq, Eq, Display, Deserialize, Serialize)]
+#[strum(serialize_all = "kebab-case")]
+pub enum JobControl {
+  Auto,
+}
+
 #[derive(
   Debug, Clone, Copy, ValueEnum, PartialEq, Eq, Display, Default, Deserialize, Serialize,
 )]

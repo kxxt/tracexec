@@ -24,6 +24,37 @@ we avoid incurring overhead on other syscalls the tracee makes.
 In case you want to learn more about this optimization, read the
 [well-written blog post from strace developer](https://pchaigno.github.io/strace/2019/10/02/introducing-strace-seccomp-bpf.html).
 
+## Subprocess Job Control
+
+The ptrace backend can control subprocess parallelism without cooperating with
+the build system. Pass `--job-control auto` to a ptrace frontend and allow the
+build system to create jobs without its own limit. For example:
+
+```console
+tracexec log --job-control auto -- make -j
+```
+
+Automatic job control has no fixed job-count or core-count limit. On kernels
+with Pressure Stall Information (PSI), it measures CPU contention and full
+memory stalls instead of treating fully utilized CPUs or a fixed percentage of
+reclaimable memory as unavailable. CPU utilization and available memory are
+used as fallbacks when PSI is unavailable.
+
+Additional subprocesses are paused at successful exec syscall-exit stops only
+while resources are constrained. A completed process tree is replaced
+immediately; when pressure drops, additional paused jobs are resumed gradually
+in FIFO order to avoid a thundering herd. Descendants inherit their parent's
+admission, so a job can run and wait for helper processes such as a compiler
+waiting for its assembler without deadlocking. The traced root command is not
+counted as a job, and one process tree is always allowed to run to guarantee
+forward progress.
+
+By default, job control uses blocking `waitpid` so ptrace events are handled as
+soon as they arrive. A lightweight timer thread interrupts the blocked tracer
+only for periodic resource reevaluation; it does not poll for ptrace events.
+The timer thread remains parked while no subprocesses are waiting. An
+explicitly configured positive `--polling-interval` still selects polling mode.
+
 ## Strengths
 
 - Works out of the box.

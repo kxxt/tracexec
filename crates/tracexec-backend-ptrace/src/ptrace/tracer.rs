@@ -4,6 +4,7 @@ use std::{
     Arc,
     RwLock,
     atomic::{
+      AtomicBool,
       AtomicU32,
       Ordering,
     },
@@ -48,7 +49,10 @@ use tracexec_core::{
   },
   cli::{
     args::ModifierArgs,
-    options::SeccompBpf,
+    options::{
+      JobControl,
+      SeccompBpf,
+    },
   },
   event::{
     TracerEventDetailsKind,
@@ -65,11 +69,21 @@ use tracexec_core::{
     TracerMode,
   },
 };
-use tracing::trace;
+use tracing::{
+  debug,
+  trace,
+  warn,
+};
 
-use crate::ptrace::tracer::{
-  inner::TracerInner,
-  private::Sealed,
+use crate::ptrace::{
+  job_control::{
+    JobControlWakeupState,
+    RESOURCE_SAMPLE_INTERVAL,
+  },
+  tracer::{
+    inner::TracerInner,
+    private::Sealed,
+  },
 };
 
 mod inner;
@@ -85,6 +99,7 @@ pub struct Tracer {
   filter: BitFlags<TracerEventDetailsKind>,
   baseline: Arc<BaselineInfo>,
   seccomp_bpf: SeccompBpf,
+  job_control: Option<JobControl>,
   msg_tx: UnboundedSender<TracerMessage>,
   user: Option<User>,
   req_tx: UnboundedSender<PendingRequest>,
@@ -147,11 +162,13 @@ impl BuildPtraceTracer for TracerBuilder {
       TracerMode::Tui(tty) => tty.is_some(),
       TracerMode::Log { .. } => true,
     };
+    let job_control_enabled = self.job_control.is_some();
     let (req_tx, req_rx) = unbounded_channel();
     Ok((
       Tracer {
         with_tty,
         seccomp_bpf,
+        job_control: self.job_control,
         msg_tx,
         user: self.user,
         printer,
@@ -172,7 +189,9 @@ impl BuildPtraceTracer for TracerBuilder {
         baseline,
         req_tx: req_tx.clone(),
         polling_interval: {
-          if self.ptrace_blocking == Some(true) {
+          if self.ptrace_blocking == Some(true)
+            || (job_control_enabled && self.ptrace_blocking.is_none())
+          {
             None
           } else {
             let default = if seccomp_bpf == SeccompBpf::On {
@@ -209,6 +228,72 @@ pub enum PendingRequest {
 
 extern "C" fn empty_sighandler(_arg: c_int) {}
 
+fn notify_tracer_thread(tid: pthread_t) -> Result<(), Errno> {
+  let result = unsafe { pthread_kill(tid, nix::sys::signal::SIGUSR1 as c_int) };
+  if result == 0 {
+    Ok(())
+  } else {
+    Err(Errno::from_raw(result))
+  }
+}
+
+struct JobControlWakeup {
+  stop: Arc<AtomicBool>,
+  thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl JobControlWakeup {
+  fn spawn(
+    tracer_tid: pthread_t,
+    wakeup_state: Arc<JobControlWakeupState>,
+    blocking_waitpid: Arc<AtomicBool>,
+  ) -> std::io::Result<Self> {
+    let stop = Arc::new(AtomicBool::new(false));
+    let thread_stop = stop.clone();
+    let thread_wakeup_state = wakeup_state.clone();
+    let thread = std::thread::Builder::new()
+      .name("jc-wakeup".to_string())
+      .spawn(move || {
+        loop {
+          while !thread_wakeup_state.has_waiting_jobs() {
+            std::thread::park();
+            if thread_stop.load(Ordering::Acquire) {
+              return;
+            }
+          }
+          std::thread::park_timeout(RESOURCE_SAMPLE_INTERVAL);
+          if thread_stop.load(Ordering::Acquire) {
+            break;
+          }
+          if !thread_wakeup_state.has_waiting_jobs() || !blocking_waitpid.load(Ordering::Acquire) {
+            continue;
+          }
+          if let Err(error) = notify_tracer_thread(tracer_tid) {
+            debug!(%error, "job-control resource wakeup thread is stopping");
+            break;
+          }
+        }
+      })?;
+    wakeup_state.register_worker(thread.thread().clone());
+    Ok(Self {
+      stop,
+      thread: Some(thread),
+    })
+  }
+}
+
+impl Drop for JobControlWakeup {
+  fn drop(&mut self) {
+    self.stop.store(true, Ordering::Release);
+    if let Some(thread) = self.thread.take() {
+      thread.thread().unpark();
+      if thread.join().is_err() {
+        warn!("job-control resource wakeup thread panicked");
+      }
+    }
+  }
+}
+
 impl Tracer {
   pub fn spawn(
     self,
@@ -228,7 +313,10 @@ impl Tracer {
     let seccomp_bpf = self.seccomp_bpf;
     let req_tx = self.req_tx.clone();
     let blocking = self.blocking();
+    let job_control_enabled = self.job_control.is_some();
     let tx = self.msg_tx.clone();
+    let wakeup_state = Arc::new(JobControlWakeupState::default());
+    let blocking_waitpid = Arc::new(AtomicBool::new(false));
     let (tid_tx, tid_rx) = std::sync::mpsc::sync_channel(1);
     let tracer_thread = tokio::task::spawn_blocking({
       move || {
@@ -245,13 +333,22 @@ impl Tracer {
               nix::sys::signal::SIGUSR1,
               &SigAction::new(
                 nix::sys::signal::SigHandler::Handler(empty_sighandler),
-                SaFlags::SA_SIGINFO,
+                SaFlags::empty(),
                 SigSet::empty(),
               ),
             )?;
           }
         }
-        let inner = TracerInner::new(self, breakpoints, output)?;
+        let _job_control_wakeup = (blocking && job_control_enabled)
+          .then(|| {
+            JobControlWakeup::spawn(
+              current_thread,
+              wakeup_state.clone(),
+              blocking_waitpid.clone(),
+            )
+          })
+          .transpose()?;
+        let inner = TracerInner::new(self, breakpoints, output, wakeup_state, blocking_waitpid)?;
         let result = tokio::runtime::Handle::current()
           .block_on(async move { inner.run(args, token.req_rx).await });
         if let Err(e) = &result {
@@ -277,7 +374,13 @@ impl Tracer {
   fn attach_for_test(self, pid: Pid) -> tokio::task::JoinHandle<color_eyre::Result<()>> {
     let tx = self.msg_tx.clone();
     tokio::task::spawn_blocking(move || {
-      let inner = TracerInner::new(self, Arc::new(RwLock::new(BTreeMap::new())), None)?;
+      let inner = TracerInner::new(
+        self,
+        Arc::new(RwLock::new(BTreeMap::new())),
+        None,
+        Arc::new(JobControlWakeupState::default()),
+        Arc::new(AtomicBool::new(false)),
+      )?;
       let result = inner.run_attached(pid);
       if let Err(e) = &result {
         let _ = tx.send(TracerMessage::FatalError(e.to_string()));
@@ -342,11 +445,7 @@ impl RunningTracer {
   }
 
   fn blocking_mode_notify_tracer(&self) -> Result<(), Errno> {
-    let r = unsafe { pthread_kill(self.tid, nix::sys::signal::SIGUSR1 as c_int) };
-    if r != 0 {
-      return Err(nix::errno::Errno::from_raw(r));
-    }
-    Ok(())
+    notify_tracer_thread(self.tid)
   }
 
   pub fn request_process_detach(

@@ -28,7 +28,10 @@ use tracexec_core::{
       LogModeArgs,
       ModifierArgs,
     },
-    options::SeccompBpf,
+    options::{
+      JobControl,
+      SeccompBpf,
+    },
   },
   event::{
     ExecSyscall,
@@ -157,6 +160,43 @@ fn spawn_rejects_token_from_another_tracer() {
   assert!(err.to_string().contains("does not belong to this tracer"));
 }
 
+#[test]
+fn auto_job_control_uses_blocking_waitpid() {
+  let (msg_tx, _msg_rx) = tokio::sync::mpsc::unbounded_channel();
+  let tracing_args = LogModeArgs::default();
+  let (tracer, _token) = TracerBuilder::new()
+    .mode(TracerMode::Log { foreground: false })
+    .tracer_tx(msg_tx)
+    .baseline(Arc::new(BaselineInfo::new().unwrap()))
+    .printer_from_cli(&tracing_args)
+    .seccomp_bpf(SeccompBpf::On)
+    .ptrace_blocking(true)
+    .job_control(Some(JobControl::Auto))
+    .build_ptrace()
+    .unwrap();
+
+  assert!(tracer.polling_interval.is_none());
+}
+
+#[test]
+fn auto_job_control_respects_explicit_polling() {
+  let (msg_tx, _msg_rx) = tokio::sync::mpsc::unbounded_channel();
+  let tracing_args = LogModeArgs::default();
+  let (tracer, _token) = TracerBuilder::new()
+    .mode(TracerMode::Log { foreground: false })
+    .tracer_tx(msg_tx)
+    .baseline(Arc::new(BaselineInfo::new().unwrap()))
+    .printer_from_cli(&tracing_args)
+    .seccomp_bpf(SeccompBpf::On)
+    .ptrace_blocking(false)
+    .ptrace_polling_delay(Some(25))
+    .job_control(Some(JobControl::Auto))
+    .build_ptrace()
+    .unwrap();
+
+  assert_eq!(tracer.polling_interval, Some(Duration::from_micros(25)));
+}
+
 #[traced_test]
 #[rstest]
 #[case(true)]
@@ -273,6 +313,64 @@ async fn tracer_emits_exec_event(
     }
   }
   panic!("Corresponding exec event not found")
+}
+
+#[traced_test]
+#[rstest]
+#[file_serial]
+#[tokio::test]
+async fn tracer_auto_job_control_runs_subprocesses(sh_executable: PathBuf) {
+  let tracer_mode = TracerMode::Log { foreground: false };
+  let tracing_args = LogModeArgs::default();
+  let (msg_tx, msg_rx) = tokio::sync::mpsc::unbounded_channel();
+  let baseline = BaselineInfo::new().unwrap();
+  let (tracer, token) = TracerBuilder::new()
+    .mode(tracer_mode)
+    .modifier(Default::default())
+    .tracer_tx(msg_tx)
+    .baseline(Arc::new(baseline))
+    .printer_from_cli(&tracing_args)
+    .seccomp_bpf(SeccompBpf::Auto)
+    .job_control(Some(JobControl::Auto))
+    .build_ptrace()
+    .unwrap();
+
+  let sleep_executable = find_executable("sleep");
+  let sleep_executable = sleep_executable.to_string_lossy();
+  let subprocesses = std::thread::available_parallelism()
+    .map(usize::from)
+    .unwrap_or(1)
+    .saturating_mul(2)
+    .clamp(2, 32);
+  let script = std::iter::repeat_n(format!("{sleep_executable} 0.2 &"), subprocesses)
+    .chain(["wait".to_string()])
+    .collect::<Vec<_>>()
+    .join(" ");
+  let events = run_exe_and_collect_msgs(
+    tracer,
+    msg_rx,
+    token,
+    vec![
+      sh_executable.to_string_lossy().into_owned(),
+      "-c".to_string(),
+      script,
+    ],
+  )
+  .await;
+
+  assert!(events.iter().any(|event| {
+    matches!(
+      event,
+      TracerMessage::Event(TracerEvent {
+        details: TracerEventDetails::TraceeExit {
+          signal: None,
+          exit_code: 0,
+          ..
+        },
+        ..
+      })
+    )
+  }));
 }
 
 #[traced_test]
