@@ -2,7 +2,7 @@ name: Nix verifier complexity report
 
 on:
   workflow_run:
-    workflows: [UKCI]
+    workflows: [Nix verifier complexity]
     types: [completed]
 
 permissions:
