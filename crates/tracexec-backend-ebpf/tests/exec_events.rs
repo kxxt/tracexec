@@ -33,6 +33,8 @@ use rstest::{
   rstest,
 };
 use serial_test::file_serial;
+#[cfg(target_arch = "x86_64")]
+use tracexec_backend_ebpf::probe::should_load_compat_syscall_hooks;
 use tracexec_backend_ebpf::{
   bpf::{
     interface::BpfEventFlags,
@@ -695,6 +697,9 @@ fn test_execveat_from_non_main_thread_emits_non_main_exec_pid(
 #[file_serial(bpf)]
 #[ignore = "root"]
 fn test_compat_exec_emits_exec_event(#[case] probe: CompatExecProbe) -> color_eyre::Result<()> {
+  if !should_load_compat_syscall_hooks(KCONFIG.as_ref()) {
+    return Ok(());
+  }
   let bin = PathBuf::from(env!("CARGO_BIN_EXE_compat-exec"));
   let test_name = format!("{}_{}", function_name!(), probe.test_suffix());
   with_optional_sleepable_skel(&test_name, probe.prepare(), |skel| {

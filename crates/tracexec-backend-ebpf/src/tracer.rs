@@ -120,6 +120,8 @@ use tracing::{
 };
 
 use self::private::Sealed;
+#[cfg(target_arch = "x86_64")]
+use crate::probe::should_load_compat_syscall_hooks;
 use crate::{
   bpf::{
     BpfError,
@@ -771,6 +773,13 @@ impl EbpfTracer {
     let kconfig = procfs::kernel_config()
       .inspect_err(|e| warn!("Failed to get kernel config: {e}"))
       .ok();
+    #[cfg(target_arch = "x86_64")]
+    if !should_load_compat_syscall_hooks(kconfig.as_ref()) {
+      open_skel.progs.compat_sys_execve.set_autoload(false);
+      open_skel.progs.compat_sys_execveat.set_autoload(false);
+      open_skel.progs.compat_sys_exit_execve.set_autoload(false);
+      open_skel.progs.compat_sys_exit_execveat.set_autoload(false);
+    }
     if kernel_supports_sleepable_no_prealloc_hash_maps() {
       open_skel
         .maps

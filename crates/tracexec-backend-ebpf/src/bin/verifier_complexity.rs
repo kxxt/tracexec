@@ -26,6 +26,8 @@ use libbpf_sys::{
   BPF_F_SLEEPABLE,
 };
 use serde::Serialize;
+#[cfg(target_arch = "x86_64")]
+use tracexec_backend_ebpf::probe::should_load_compat_syscall_hooks;
 use tracexec_backend_ebpf::{
   bpf::skel::{
     OpenTracexecSystemSkel,
@@ -203,13 +205,13 @@ fn load_cases() -> Vec<LoadCase> {
       LoadCase {
         name: "compat-execve-fentry",
         prepare: prepare_compat_execve_fentry,
-        skip: skip_fentry,
+        skip: skip_compat_fentry,
         skip_invalid_argument: true,
       },
       LoadCase {
         name: "compat-execveat-fentry",
         prepare: prepare_compat_execveat_fentry,
-        skip: skip_fentry,
+        skip: skip_compat_fentry,
         skip_invalid_argument: true,
       },
     ]);
@@ -225,6 +227,15 @@ fn never_skip() -> Option<&'static str> {
 fn skip_fentry() -> Option<&'static str> {
   (!kernel_have_ftrace_with_direct_calls(KCONFIG.as_ref(), None))
     .then_some("missing CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS")
+}
+
+#[cfg(target_arch = "x86_64")]
+fn skip_compat_fentry() -> Option<&'static str> {
+  if !should_load_compat_syscall_hooks(KCONFIG.as_ref()) {
+    Some("missing CONFIG_IA32_EMULATION")
+  } else {
+    skip_fentry()
+  }
 }
 
 fn skip_syscall_wrapper_kprobe() -> Option<&'static str> {
@@ -451,6 +462,14 @@ fn prepare_production(open_skel: &mut OpenTracexecSystemSkel<'_>) -> Result<()> 
   rodata.tracexec_config.follow_fork = MaybeUninit::new(false);
   rodata.tracexec_config.tracee_pid = 0;
   rodata.tracexec_config.tracee_pidns_inum = std::fs::metadata("/proc/self/ns/pid")?.ino() as u32;
+
+  #[cfg(target_arch = "x86_64")]
+  if !should_load_compat_syscall_hooks(KCONFIG.as_ref()) {
+    open_skel.progs.compat_sys_execve.set_autoload(false);
+    open_skel.progs.compat_sys_execveat.set_autoload(false);
+    open_skel.progs.compat_sys_exit_execve.set_autoload(false);
+    open_skel.progs.compat_sys_exit_execveat.set_autoload(false);
+  }
 
   if !kernel_have_ftrace_with_direct_calls(KCONFIG.as_ref(), None) {
     open_skel.progs.sys_execve_fentry.set_autoload(false);
