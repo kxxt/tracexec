@@ -181,7 +181,7 @@ jobs:
               declare -A seen_plot_names=()
               for plot_file in "${plot_files[@]}"; do
                 plot_name="$(basename "$plot_file")"
-                if [[ ! "$plot_name" =~ ^[a-z0-9][a-z0-9.-]*\.png$ ]]; then
+                if [[ ! "$plot_name" =~ ^[a-z0-9][a-z0-9_.-]*\.png$ ]]; then
                   echo "Invalid verifier plot filename: $plot_name" >&2
                   exit 1
                 fi
@@ -268,7 +268,7 @@ jobs:
             if [ "$(jq 'length' <<< "$plot_links_json")" -gt 0 ]; then
               while IFS=$'\t' read -r plot_name plot_url; do
                 plot_title="${plot_name%.png}"
-                plot_title="${plot_title//-/ }"
+                plot_title="${plot_title//[-_]/ }"
                 echo "#### $plot_title"
                 echo
                 echo "![$plot_title]($plot_url)"
