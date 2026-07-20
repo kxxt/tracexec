@@ -133,19 +133,19 @@ localFlake:
               }
               {
                 name = "6.12lts";
-                tag = "6.12.95";
+                tag = "6.12.96";
                 source = "mirror";
                 test_exe = "tracexec";
-                sha256 = "sha256-qejFH8seaV0dNd3liGy6V5y28pyWRsWInznWOEHUufY=";
+                sha256 = "sha256-fS4bXVqzazoBhW5xeC2tKlTmNPsrN8CkKZje87v5V8E=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
               {
                 name = "6.18lts";
-                tag = "6.18.38";
+                tag = "6.18.39";
                 source = "mirror";
                 test_exe = "tracexec";
-                sha256 = "sha256-rCblCKvVbp+LiYcrbhDEn8gjvMcNgGil2FBMGnxP8EU=";
+                sha256 = "sha256-p6fj0q6dledBlyI6jU619r56rCG25t4n6WhdABwfjLA=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
@@ -153,22 +153,22 @@ localFlake:
             ++ (lib.optionals (!isTargetRiscv64) [
               {
                 name = "7.1";
-                tag = "7.1.3";
-                version = "7.1.3";
+                tag = "7.1.4";
+                version = "7.1.4";
                 source = "kernel-org";
                 test_exe = "tracexec";
-                sha256 = "sha256-vkHAaOiPUkKhm8zb/74HexjEe0X2J+IyVQS0+red0dw=";
+                sha256 = "sha256-HGOSKhGWddOOOuD49u4H8VxBp4arntZlY3SbuMmgji4=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
 
               {
                 name = "7.2";
-                tag = "v7.2-rc3";
-                version = "7.2.0-rc3";
+                tag = "v7.2-rc4";
+                version = "7.2.0-rc4";
                 source = "torvalds";
                 test_exe = "tracexec";
-                sha256 = "sha256-PyOZblLbx6jYqHKcYGd1p72OH1GUZyCGtvOBEhdC4L0=";
+                sha256 = "sha256-C5dEJzjOVIVpT32XNMrJS+4Bg5/g1WNcvxjfMBROvPw=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
