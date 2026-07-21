@@ -10,6 +10,8 @@
 [ptrace]
 # Enable seccomp_bpf to optimize performance, values: Auto, On or Off
 # seccomp_bpf = "Auto"
+# Dynamically control subprocess parallelism, values: Auto
+# job_control = "Auto"
 
 #
 # Debugger config

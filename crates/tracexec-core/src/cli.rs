@@ -379,6 +379,7 @@ mod tests {
     options::{
       Color,
       ExportFormat,
+      JobControl,
       SeccompBpf,
     },
   };
@@ -547,6 +548,7 @@ mod tests {
     let config = Config {
       ptrace: Some(PtraceConfig {
         seccomp_bpf: Some(SeccompBpf::On),
+        job_control: Some(JobControl::Auto),
       }),
       modifier: Some(ModifierConfig {
         successful_only: Some(true),
@@ -572,6 +574,7 @@ mod tests {
       assert!(tracing_args.show_interpreter);
       assert!(modifier_args.successful_only);
       assert_eq!(ptrace_args.seccomp_bpf, SeccompBpf::On);
+      assert_eq!(ptrace_args.job_control, Some(JobControl::Auto));
     } else {
       panic!("Expected Log command");
     }
@@ -603,6 +606,7 @@ mod tests {
     let config = Config {
       ptrace: Some(PtraceConfig {
         seccomp_bpf: Some(SeccompBpf::Off),
+        job_control: None,
       }),
       modifier: Some(ModifierConfig {
         successful_only: Some(true),

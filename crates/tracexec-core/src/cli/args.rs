@@ -32,6 +32,7 @@ use super::{
   options::{
     ActivePane,
     AppLayout,
+    JobControl,
     SeccompBpf,
   },
 };
@@ -55,6 +56,12 @@ pub struct PtraceArgs {
     help = "Polling interval, in microseconds. -1(default) disables polling."
   )]
   pub polling_interval: Option<i64>,
+  #[clap(
+    long,
+    value_name = "MODE",
+    help = "Dynamically control subprocess parallelism according to system CPU and memory load"
+  )]
+  pub job_control: Option<JobControl>,
 }
 
 #[derive(Args, Debug, Default, Clone)]
@@ -123,6 +130,9 @@ impl PtraceArgs {
       && self.seccomp_bpf == SeccompBpf::Auto
     {
       self.seccomp_bpf = setting;
+    }
+    if self.job_control.is_none() {
+      self.job_control = config.job_control;
     }
   }
 }
@@ -670,20 +680,36 @@ mod tests {
     let mut args = PtraceArgs {
       seccomp_bpf: SeccompBpf::Auto,
       polling_interval: None,
+      job_control: None,
     };
 
     let cfg = PtraceConfig {
       seccomp_bpf: Some(SeccompBpf::On),
+      job_control: Some(JobControl::Auto),
     };
 
     args.merge_config(cfg);
     assert_eq!(args.seccomp_bpf, SeccompBpf::On);
+    assert_eq!(args.job_control, Some(JobControl::Auto));
   }
 
   #[test]
   fn test_ptrace_args_cli_parse() {
-    let cli = TestCli::<PtraceArgs>::parse_from(["test", "--polling-interval", "100"]);
+    let cli = TestCli::<PtraceArgs>::parse_from([
+      "test",
+      "--polling-interval",
+      "100",
+      "--job-control",
+      "auto",
+    ]);
     assert_eq!(cli.args.polling_interval, Some(100));
+    assert_eq!(cli.args.job_control, Some(JobControl::Auto));
+  }
+
+  #[test]
+  fn test_ptrace_args_rejects_unknown_job_control_mode() {
+    let result = TestCli::<PtraceArgs>::try_parse_from(["test", "--job-control", "fixed"]);
+    assert!(result.is_err());
   }
 
   /* ---------------------------- ModifierArgs ----------------------------- */

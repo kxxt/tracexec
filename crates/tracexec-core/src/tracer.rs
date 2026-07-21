@@ -29,7 +29,10 @@ use crate::{
       ModifierArgs,
       PtraceArgs,
     },
-    options::SeccompBpf,
+    options::{
+      JobControl,
+      SeccompBpf,
+    },
   },
   elevate::EnvVars,
   event::{
@@ -116,6 +119,7 @@ pub struct TracerBuilder {
   pub baseline: Option<Arc<BaselineInfo>>,
   // --- ptrace specific ---
   pub seccomp_bpf: SeccompBpf,
+  pub job_control: Option<JobControl>,
   pub ptrace_polling_delay: Option<u64>,
   pub ptrace_blocking: Option<bool>,
   pub tracee_env: Option<EnvVars>,
@@ -158,6 +162,7 @@ impl TracerBuilder {
   pub fn ptrace_options(self, args: &PtraceArgs) -> Self {
     self
       .seccomp_bpf(args.seccomp_bpf)
+      .job_control(args.job_control)
       .ptrace_blocking(args.polling_interval.is_none_or(|value| value < 0))
       .ptrace_polling_delay(
         args
@@ -173,6 +178,14 @@ impl TracerBuilder {
   /// This option is not used in eBPF tracer.
   pub fn seccomp_bpf(mut self, seccomp_bpf: SeccompBpf) -> Self {
     self.seccomp_bpf = seccomp_bpf;
+    self
+  }
+
+  /// Enables ptrace subprocess job control.
+  ///
+  /// This option is not used in the eBPF tracer.
+  pub fn job_control(mut self, job_control: Option<JobControl>) -> Self {
+    self.job_control = job_control;
     self
   }
 
@@ -403,10 +416,12 @@ mod tests {
     let polling = TracerBuilder::new().ptrace_options(&PtraceArgs {
       seccomp_bpf: SeccompBpf::Off,
       polling_interval: Some(250),
+      job_control: Some(JobControl::Auto),
     });
     assert_eq!(polling.seccomp_bpf, SeccompBpf::Off);
     assert_eq!(polling.ptrace_blocking, Some(false));
     assert_eq!(polling.ptrace_polling_delay, Some(250));
+    assert_eq!(polling.job_control, Some(JobControl::Auto));
 
     let no_delay = TracerBuilder::new().ptrace_options(&PtraceArgs {
       polling_interval: Some(0),

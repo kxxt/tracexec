@@ -1,6 +1,7 @@
 mod engine;
 mod guards;
 mod inspect;
+mod job_control;
 mod syscall;
 mod tracer;
 mod waitpid;

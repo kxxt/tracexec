@@ -22,6 +22,10 @@ use std::{
   sync::{
     Arc,
     RwLock,
+    atomic::{
+      AtomicBool,
+      Ordering,
+    },
   },
   time::Duration,
 };
@@ -160,6 +164,11 @@ use crate::{
       read_env,
       read_string,
     },
+    job_control::{
+      Admission,
+      AutoJobController,
+      JobControlWakeupState,
+    },
     syscall::SyscallInfo,
     tracer::{
       PendingRequest,
@@ -182,6 +191,9 @@ pub struct TracerInner {
   filter: BitFlags<TracerEventDetailsKind>,
   baseline: Arc<BaselineInfo>,
   seccomp_bpf: SeccompBpf,
+  job_control: RefCell<Option<AutoJobController>>,
+  wakeup_state: Arc<JobControlWakeupState>,
+  blocking_waitpid: Arc<AtomicBool>,
   msg_tx: UnboundedSender<TracerMessage>,
   user: Option<User>,
   polling_interval: Option<Duration>,
@@ -211,6 +223,8 @@ impl TracerInner {
     tracer: Tracer,
     breakpoints: Arc<RwLock<BTreeMap<u32, BreakPoint>>>,
     output: Option<Box<PrinterOut>>,
+    wakeup_state: Arc<JobControlWakeupState>,
+    blocking_waitpid: Arc<AtomicBool>,
   ) -> color_eyre::Result<Self> {
     let Tracer {
       with_tty,
@@ -220,6 +234,7 @@ impl TracerInner {
       filter,
       baseline,
       seccomp_bpf,
+      job_control,
       msg_tx,
       user,
       req_tx: _,
@@ -237,6 +252,9 @@ impl TracerInner {
       filter,
       baseline,
       seccomp_bpf,
+      job_control: RefCell::new(job_control.map(|_| AutoJobController::new(wakeup_state.clone()))),
+      wakeup_state,
+      blocking_waitpid,
       msg_tx,
       user,
       polling_interval,
@@ -440,6 +458,9 @@ impl TracerInner {
             while let Ok(req) = req_rx.try_recv() {
               request_handler!(req, pending_guards);
             }
+            // In job-control mode a lightweight timer interrupts blocking
+            // waitpid so queued jobs can be reconsidered as pressure changes.
+            self.resume_job_controlled_processes(&mut pending_guards)?;
           }
           Err(e) => {
             return Err(e.into());
@@ -498,7 +519,13 @@ impl TracerInner {
       waitpid_flags |= WaitPidFlag::WNOHANG;
     }
     loop {
+      if blocking {
+        self.blocking_waitpid.store(true, Ordering::Release);
+      }
       let status = engine.next_event(Some(waitpid_flags));
+      if blocking {
+        self.blocking_waitpid.store(false, Ordering::Release);
+      }
       if matches!(status, Err(Errno::EINTR)) {
         if blocking {
           return Err(WaitpidHandlerError::Interrupted);
@@ -525,7 +552,7 @@ impl TracerInner {
               .context(OtherSnafu)?;
           } else {
             self
-              .on_syscall_exit(guard, info, pending_guards, timestamp)
+              .on_syscall_exit(guard, info, pending_guards, timestamp, root_child)
               .context(OtherSnafu)?;
           }
         }
@@ -572,6 +599,9 @@ impl TracerInner {
           let pid = guard.pid(); // The TGID for the new process after exec
           // The (former) thread id that called exec
           let former_tid = guard.former_tid.context(OSSnafu)?;
+          if let Some(job_control) = self.job_control.borrow_mut().as_mut() {
+            job_control.process_execed(former_tid, pid);
+          }
           let mut store = self.store.borrow_mut();
           let p = if former_tid == pid {
             let p = store.get_current_mut(pid).unwrap();
@@ -665,6 +695,9 @@ impl TracerInner {
           let new_child = guard.child().context(OSSnafu)?;
           let pid = guard.pid();
           trace!("ptrace fork/clone event, pid: {pid}, child: {new_child}");
+          if let Some(job_control) = self.job_control.borrow_mut().as_mut() {
+            job_control.process_spawned(pid, new_child);
+          }
           if self.filter.intersects(TracerEventDetailsKind::NewChild) {
             let store = self.store.borrow();
             let parent = store.get_current(pid).unwrap();
@@ -737,6 +770,7 @@ impl TracerInner {
         }
         PtraceWaitPidEvent::Signaled { pid, signal: sig } => {
           debug!("signaled: {pid}, {:?}", sig);
+          self.job_control_process_exited(pid, pending_guards);
           let mut store = self.store.borrow_mut();
           if let Some(state) = store.get_current_mut(pid) {
             state.status = ProcessStatus::Exited(ProcessExit::Signal(sig));
@@ -772,6 +806,7 @@ impl TracerInner {
         PtraceWaitPidEvent::Exited { pid, code } => {
           // pid could also be a not traced subprocess.
           trace!("exited: pid {}, code {:?}", pid, code);
+          self.job_control_process_exited(pid, pending_guards);
           let mut store = self.store.borrow_mut();
           if let Some(state) = store.get_current_mut(pid) {
             state.status = ProcessStatus::Exited(ProcessExit::Code(code));
@@ -812,13 +847,61 @@ impl TracerInner {
         PtraceWaitPidEvent::Continued(_) => unreachable!(),
         PtraceWaitPidEvent::StillAlive => break,
       }
+      if blocking && self.wakeup_state.has_waiting_jobs() {
+        // Child events, especially job completion, are the fastest signal that
+        // capacity is available. Do not wait for the resource timer before
+        // replacing a finished job.
+        self
+          .resume_job_controlled_processes(pending_guards)
+          .context(OtherSnafu)?;
+      }
       if !blocking && counter > 100 {
         // Give up if we have handled 100 events, so that we have a chance to handle other events
         debug!("yielding after 100 events");
         break;
       }
     }
+    self
+      .resume_job_controlled_processes(pending_guards)
+      .context(OtherSnafu)?;
     Ok(ControlFlow::Continue(()))
+  }
+
+  fn job_control_process_exited<'a>(
+    &self,
+    pid: Pid,
+    pending_guards: &mut HashMap<Pid, PtraceStopGuard<'a>>,
+  ) {
+    let was_waiting = self
+      .job_control
+      .borrow_mut()
+      .as_mut()
+      .is_some_and(|job_control| job_control.process_exited(pid));
+    if was_waiting {
+      pending_guards.remove(&pid);
+    }
+  }
+
+  fn resume_job_controlled_processes<'a>(
+    &self,
+    pending_guards: &mut HashMap<Pid, PtraceStopGuard<'a>>,
+  ) -> color_eyre::Result<()> {
+    let ready = self
+      .job_control
+      .borrow_mut()
+      .as_mut()
+      .map(AutoJobController::jobs_ready_to_run)
+      .unwrap_or_default();
+    for pid in ready {
+      let guard = pending_guards
+        .remove(&pid)
+        .ok_or_else(|| color_eyre::eyre::eyre!("missing job-control stop guard for {pid}"))?;
+      if let Some(state) = self.store.borrow_mut().get_current_mut(pid) {
+        state.status = ProcessStatus::Running;
+      }
+      guard.seccomp_aware_cont_syscall(true)?;
+    }
+    Ok(())
   }
 
   fn read_syscall_info(
@@ -1034,6 +1117,7 @@ impl TracerInner {
     info: SyscallInfo,
     pending_guards: &mut HashMap<Pid, PtraceStopGuard<'a>>,
     timestamp: DateTime<Local>,
+    root_child: Pid,
   ) -> color_eyre::Result<()> {
     // SYSCALL EXIT
     // trace!("post syscall {}", p.syscall);
@@ -1123,6 +1207,19 @@ impl TracerInner {
         p.exec_data = None;
         // update comm
         p.comm = read_comm(pid)?;
+
+        if exec_result == 0
+          && pid != root_child
+          && self
+            .job_control
+            .borrow_mut()
+            .as_mut()
+            .is_some_and(|job_control| job_control.admit(pid) == Admission::Wait)
+        {
+          p.status = ProcessStatus::JobControlQueued;
+          pending_guards.insert(pid, guard.into());
+          return Ok(());
+        }
       }
       _ => (),
     }
@@ -1429,7 +1526,10 @@ impl TracerInner {
 mod tests {
   use std::{
     collections::BTreeMap,
-    sync::Arc,
+    sync::{
+      Arc,
+      atomic::AtomicBool,
+    },
   };
 
   use enumflags2::BitFlags;
@@ -1468,7 +1568,10 @@ mod tests {
   };
 
   use super::TracerInner;
-  use crate::ptrace::BuildPtraceTracer;
+  use crate::ptrace::{
+    BuildPtraceTracer,
+    job_control::JobControlWakeupState,
+  };
 
   fn build_inner(
     mut modifier_args: ModifierArgs,
@@ -1495,6 +1598,8 @@ mod tests {
       tracer,
       Arc::new(std::sync::RwLock::new(BTreeMap::new())),
       None,
+      Arc::new(JobControlWakeupState::default()),
+      Arc::new(AtomicBool::new(false)),
     )
     .unwrap();
     (inner, msg_rx)

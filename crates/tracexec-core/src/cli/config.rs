@@ -22,6 +22,7 @@ use tracing::warn;
 use super::options::{
   ActivePane,
   AppLayout,
+  JobControl,
   SeccompBpf,
 };
 use crate::{
@@ -147,6 +148,7 @@ pub struct TimestampConfig {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct PtraceConfig {
   pub seccomp_bpf: Option<SeccompBpf>,
+  pub job_control: Option<JobControl>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
@@ -344,9 +346,13 @@ inline_format = "%H:%M:%S"
 
   #[test]
   fn test_ptrace_config_roundtrip() {
-    let toml_str = r#"seccomp_bpf = "Auto""#;
+    let toml_str = r#"
+seccomp_bpf = "Auto"
+job_control = "Auto"
+"#;
     let cfg: PtraceConfig = toml::from_str(toml_str).unwrap();
     assert_eq!(cfg.seccomp_bpf.unwrap(), SeccompBpf::Auto);
+    assert_eq!(cfg.job_control.unwrap(), JobControl::Auto);
   }
 
   #[test]
