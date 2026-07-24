@@ -1,7 +1,4 @@
-use std::{
-  borrow::Cow,
-  error::Error,
-};
+use std::borrow::Cow;
 
 use nix::unistd::Pid;
 use regex_cursor::engines::pikevm::{
@@ -160,7 +157,7 @@ impl TryFrom<&str> for BreakPoint {
     };
     let pattern = match pattern_kind {
       "argv-regex" => BreakPointPattern::ArgvRegex(BreakPointRegex {
-        regex: PikeVM::new(pattern).map_err(|e| format!("\n{}", e.source().unwrap()))?,
+        regex: PikeVM::new(pattern).map_err(|e| format!("\n{e}"))?,
         editable: pattern.to_string(),
       }),
       "exact-filename" => BreakPointPattern::ExactFilename(pattern.to_string()),
