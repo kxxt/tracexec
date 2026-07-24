@@ -837,6 +837,28 @@ impl EnvDiff {
     self.modified.contains_key(key) || self.removed.contains(key)
   }
 
+  #[allow(clippy::unwrap_used)]
+  pub fn removed_with_values<'a>(
+    &'a self,
+    original: &'a BTreeMap<OutputMsg, OutputMsg>,
+  ) -> impl Iterator<Item = (&'a OutputMsg, &'a OutputMsg)> {
+    self
+      .removed
+      .iter()
+      .map(|key| original.get_key_value(key).unwrap())
+  }
+
+  #[allow(clippy::unwrap_used)]
+  pub fn modified_with_values<'a>(
+    &'a self,
+    original: &'a BTreeMap<OutputMsg, OutputMsg>,
+  ) -> impl Iterator<Item = (&'a OutputMsg, &'a OutputMsg, &'a OutputMsg)> {
+    self
+      .modified
+      .iter()
+      .map(|(key, value)| (key, original.get(key).unwrap(), value))
+  }
+
   /// Whether we need to use `--` to prevent argument injection
   pub fn need_env_argument_separator(&self) -> bool {
     self.has_added_or_modified_keys_starting_with_dash

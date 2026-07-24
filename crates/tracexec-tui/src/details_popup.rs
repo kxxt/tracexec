@@ -422,10 +422,8 @@ impl DetailsPopupState {
             .collect_vec();
           env.extend(
             env_diff
-              .removed
-              .iter()
-              .map(|key| {
-                let value = list.baseline.env.get(key).unwrap();
+              .removed_with_values(&list.baseline.env)
+              .map(|(key, value)| {
                 let spans = vec![
                   "-".set_style(theme.minus_sign),
                   key.to_string().set_style(theme.removed_env_key),
@@ -438,10 +436,8 @@ impl DetailsPopupState {
           );
           env.extend(
             env_diff
-              .modified
-              .iter()
-              .flat_map(|(key, new)| {
-                let old = list.baseline.env.get(key).unwrap();
+              .modified_with_values(&list.baseline.env)
+              .flat_map(|(key, old, new)| {
                 let spans_old = vec![
                   "-".set_style(theme.minus_sign),
                   key.to_string().set_style(theme.removed_env_key),
