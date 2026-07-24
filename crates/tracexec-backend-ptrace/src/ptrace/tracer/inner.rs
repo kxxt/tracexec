@@ -868,9 +868,7 @@ impl TracerInner {
     };
     let syscallno = info.syscall_number().unwrap();
     let is_32bit = info.arch().is_32bit();
-    // trace!("pre syscall: {syscallno}");
-    if info.is_execveat().unwrap() {
-      p.syscall = Syscall::Execveat;
+    let (syscall, filename, argv_address, envp_address) = if info.is_execveat() {
       trace!("pre execveat {syscallno}");
       // int execveat(int dirfd, const char *pathname,
       //              char *const _Nullable argv[],
@@ -905,82 +903,64 @@ impl TracerInner {
         }
         Err(e) => Err(e),
       };
-      let filename = self.get_filename_for_display(pid, filename)?;
-      self.warn_for_filename(&filename, pid)?;
-      let argv = read_output_msg_array(pid, regs.syscall_arg(2, is_32bit) as AddressType, is_32bit);
-      self.warn_for_argv(&argv, pid)?;
-      let envp = read_env(pid, regs.syscall_arg(3, is_32bit) as AddressType, is_32bit);
-      self.warn_for_envp(&envp, pid)?;
-
-      let interpreters = if self.printer.args.trace_interpreter && filename.is_ok() {
-        read_interpreter_recursive(filename.as_deref().unwrap())
-      } else {
-        vec![]
-      };
-      let filename = match filename {
-        Ok(s) => OutputMsg::Ok(s),
-        Err(e) => OutputMsg::Err(tracexec_core::event::FriendlyError::InspectError(e)),
-      };
-      let has_dash_env = envp.as_ref().map(|v| v.0).unwrap_or_default();
-      let cgroup = if self.modifier_args.collect_cgroup {
-        read_cgroup(pid)
-      } else {
-        CgroupInfo::NotCollected
-      };
-      p.exec_data = Some(ExecData::new(
-        pid,
+      (
+        Syscall::Execveat,
         filename,
-        argv,
-        envp.map(|v| v.1),
-        has_dash_env,
-        Err(CredInspectError::Inspect),
-        OutputMsg::Ok(read_cwd(pid)?),
-        Some(interpreters),
-        read_fds(pid)?,
-        timestamp,
-        cgroup,
-      ));
-    } else if info.is_execve().unwrap() {
-      p.syscall = Syscall::Execve;
+        regs.syscall_arg(2, is_32bit) as AddressType,
+        regs.syscall_arg(3, is_32bit) as AddressType,
+      )
+    } else if info.is_execve() {
       trace!("pre execve {syscallno}",);
-      let filename = read_arcstr(pid, regs.syscall_arg(0, is_32bit) as AddressType);
-      let filename = self.get_filename_for_display(pid, filename)?;
-      self.warn_for_filename(&filename, pid)?;
-      let argv = read_output_msg_array(pid, regs.syscall_arg(1, is_32bit) as AddressType, is_32bit);
-      self.warn_for_argv(&argv, pid)?;
-      let envp = read_env(pid, regs.syscall_arg(2, is_32bit) as AddressType, is_32bit);
-      self.warn_for_envp(&envp, pid)?;
-      let interpreters = if self.printer.args.trace_interpreter && filename.is_ok() {
-        read_interpreter_recursive(filename.as_deref().unwrap())
-      } else {
-        vec![]
-      };
-      let filename = match filename {
-        Ok(s) => OutputMsg::Ok(s),
-        Err(e) => OutputMsg::Err(tracexec_core::event::FriendlyError::InspectError(e)),
-      };
-      let has_dash_env = envp.as_ref().map(|v| v.0).unwrap_or_default();
-      let cgroup = if self.modifier_args.collect_cgroup {
-        read_cgroup(pid)
-      } else {
-        CgroupInfo::NotCollected
-      };
-      p.exec_data = Some(ExecData::new(
-        pid,
-        filename,
-        argv,
-        envp.map(|v| v.1),
-        has_dash_env,
-        Err(CredInspectError::Inspect),
-        OutputMsg::Ok(read_cwd(pid)?),
-        Some(interpreters),
-        read_fds(pid)?,
-        timestamp,
-        cgroup,
-      ));
+      (
+        Syscall::Execve,
+        read_arcstr(pid, regs.syscall_arg(0, is_32bit) as AddressType),
+        regs.syscall_arg(1, is_32bit) as AddressType,
+        regs.syscall_arg(2, is_32bit) as AddressType,
+      )
     } else {
       p.syscall = Syscall::Other;
-    }
+      guard.cont_syscall(true)?;
+      return Ok(());
+    };
+    p.syscall = syscall;
+
+      let filename = self.get_filename_for_display(pid, filename)?;
+      self.warn_for_filename(&filename, pid)?;
+    let argv = read_output_msg_array(pid, argv_address, is_32bit);
+      self.warn_for_argv(&argv, pid)?;
+    let envp = read_env(pid, envp_address, is_32bit);
+      self.warn_for_envp(&envp, pid)?;
+    let interpreters = if self.printer.args.trace_interpreter {
+      filename
+        .as_deref()
+        .map_or_else(|_| Vec::new(), read_interpreter_recursive)
+      } else {
+        vec![]
+      };
+      let filename = match filename {
+      Ok(filename) => OutputMsg::Ok(filename),
+      Err(error) => OutputMsg::Err(tracexec_core::event::FriendlyError::InspectError(error)),
+      };
+      let has_dash_env = envp.as_ref().map(|v| v.0).unwrap_or_default();
+      let cgroup = if self.modifier_args.collect_cgroup {
+        read_cgroup(pid)
+      } else {
+        CgroupInfo::NotCollected
+      };
+      p.exec_data = Some(ExecData::new(
+        pid,
+        filename,
+        argv,
+        envp.map(|v| v.1),
+        has_dash_env,
+        Err(CredInspectError::Inspect),
+        OutputMsg::Ok(read_cwd(pid)?),
+        Some(interpreters),
+        read_fds(pid)?,
+        timestamp,
+        cgroup,
+      ));
+
     if let Some(exec_data) = &p.exec_data {
       let mut hit = None;
       for (&idx, brk) in self
