@@ -178,14 +178,8 @@ impl EventList {
 
   pub fn toggle_env_display(&mut self) {
     self.rt_modifier.show_env = !self.rt_modifier.show_env;
-    for event in &self.events {
-      self
-        .event_map
-        .get_mut(&event.borrow().id)
-        .unwrap()
-        .0
-        .line
-        .toggle_env_mask();
+    for (storage, _) in self.event_map.values_mut() {
+      storage.line.toggle_env_mask();
     }
     self.should_refresh_list_cache = true;
     self.search();
@@ -193,14 +187,8 @@ impl EventList {
 
   pub fn toggle_cwd_display(&mut self) {
     self.rt_modifier.show_cwd = !self.rt_modifier.show_cwd;
-    for event in &mut self.events {
-      self
-        .event_map
-        .get_mut(&event.borrow().id)
-        .unwrap()
-        .0
-        .line
-        .toggle_cwd_mask();
+    for (storage, _) in self.event_map.values_mut() {
+      storage.line.toggle_cwd_mask();
     }
     self.should_refresh_list_cache = true;
     self.search();
