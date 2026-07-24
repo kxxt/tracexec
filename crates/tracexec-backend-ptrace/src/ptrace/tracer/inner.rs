@@ -1440,6 +1440,7 @@ mod tests {
       getpid,
     },
   };
+  use test_that::prelude::*;
   use tokio::sync::mpsc::UnboundedReceiver;
   use tracexec_core::{
     cli::{
@@ -1545,7 +1546,7 @@ mod tests {
     else {
       panic!("unexpected message: {received:?}");
     };
-    assert!(msg.contains("Empty argv"));
+    assert_that!(msg, contains_substring("Empty argv"));
 
     inner
       .warn_for_envp::<Vec<i32>>(&Err(Errno::EPERM), Pid::from_raw(1))
@@ -1558,7 +1559,7 @@ mod tests {
     else {
       panic!("unexpected message: {received:?}");
     };
-    assert!(msg.contains("Failed to read envp"));
+    assert_that!(msg, contains_substring("Failed to read envp"));
   }
 
   #[test]
@@ -1576,7 +1577,7 @@ mod tests {
     else {
       panic!("unexpected message: {received:?}");
     };
-    assert!(msg.contains("Failed to read filename"));
+    assert_that!(msg, contains_substring("Failed to read filename"));
   }
 
   #[test]
@@ -1585,7 +1586,7 @@ mod tests {
     inner
       .warn_for_argv::<i32>(&Err(Errno::EPERM), Pid::from_raw(1))
       .unwrap();
-    assert!(rx.try_recv().is_err());
+    assert_that!(rx.try_recv(), err(anything()));
   }
 
   #[test]
@@ -1595,11 +1596,11 @@ mod tests {
       ..Default::default()
     };
     let (inner, _rx) = build_inner(modifier, BitFlags::empty(), SeccompBpf::On);
-    assert!(inner.timestamp_now().is_some());
+    assert_that!(inner.timestamp_now(), some(anything()));
     assert!(inner.seccomp_bpf());
 
     let (inner, _rx) = build_inner(ModifierArgs::default(), BitFlags::empty(), SeccompBpf::Off);
-    assert!(inner.timestamp_now().is_none());
+    assert_that!(inner.timestamp_now(), none());
     assert!(!inner.seccomp_bpf());
   }
 }

@@ -358,6 +358,8 @@ mod tests {
     path::PathBuf,
   };
 
+  use test_that::prelude::*;
+
   use super::*;
   use crate::cli::{
     args::{
@@ -430,7 +432,7 @@ mod tests {
     let args = vec!["tracexec", "--elevate", "tui", "-t", "--", "sudo", "ls"];
     let cli = Cli::parse_from(args);
     assert!(cli.elevate);
-    assert!(cli.user.is_none());
+    assert_that!(cli.user, none());
     if let CliCommand::Tui { cmd, .. } = cli.cmd {
       assert_eq!(cmd, vec!["sudo", "ls"]);
     } else {
@@ -454,7 +456,7 @@ mod tests {
   fn test_cli_parse_elevate_conflicts_with_user() {
     let args = vec!["tracexec", "--elevate", "--user", "root", "log", "--", "ls"];
     let result = Cli::try_parse_from(args);
-    assert!(result.is_err());
+    assert_that!(result, err(anything()));
   }
 
   #[test]
@@ -468,7 +470,7 @@ mod tests {
       "ls",
     ];
     let result = Cli::try_parse_from(args);
-    assert!(result.is_err());
+    assert_that!(result, err(anything()));
   }
 
   #[test]
@@ -515,7 +517,7 @@ mod tests {
     drop(out);
 
     let content = fs::read_to_string(path).unwrap();
-    assert!(content.contains("Hello world"));
+    assert_that!(content, contains_substring("Hello world"));
   }
 
   #[test]

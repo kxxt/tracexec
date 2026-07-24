@@ -21,6 +21,7 @@ use rstest::{
   rstest,
 };
 use serial_test::file_serial;
+use test_that::prelude::*;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tracexec_core::{
   cli::{
@@ -136,14 +137,20 @@ fn build_ptrace_reports_missing_required_configuration() {
     .build_ptrace()
     .err()
     .expect("an incomplete builder must fail");
-  assert!(err.to_string().contains("tracer mode is required"));
+  assert_that!(
+    err.to_string(),
+    contains_substring("tracer mode is required")
+  );
 
   let err = TracerBuilder::new()
     .mode(TracerMode::Log { foreground: false })
     .build_ptrace()
     .err()
     .expect("an incomplete builder must fail");
-  assert!(err.to_string().contains("tracer event sender is required"));
+  assert_that!(
+    err.to_string(),
+    contains_substring("tracer event sender is required")
+  );
 }
 
 #[test]
@@ -154,7 +161,10 @@ fn spawn_rejects_token_from_another_tracer() {
   let err = subject
     .spawn(Vec::new(), None, other_token)
     .expect_err("a token from another tracer must fail");
-  assert!(err.to_string().contains("does not belong to this tracer"));
+  assert_that!(
+    err.to_string(),
+    contains_substring("does not belong to this tracer")
+  );
 }
 
 #[traced_test]
@@ -243,14 +253,16 @@ async fn tracer_emits_exec_event(
       assert_eq!(filename, true_executable);
       // The environment is not modified
       let env_diff = exec.env_diff.as_ref().unwrap();
-      assert!(env_diff.added.is_empty(), "added env: {:?}", env_diff.added);
-      assert!(
-        env_diff.removed.is_empty(),
+      assert_that!(env_diff.added, empty(), "added env: {:?}", env_diff.added);
+      assert_that!(
+        env_diff.removed,
+        empty(),
         "removed env: {:?}",
         env_diff.removed
       );
-      assert!(
-        env_diff.modified.is_empty(),
+      assert_that!(
+        env_diff.modified,
+        empty(),
         "modified env: {:?}",
         env_diff.modified
       );

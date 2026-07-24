@@ -58,6 +58,8 @@ impl<W: std::io::Write> Drop for PerfettoTraceRecorder<W> {
 
 #[cfg(test)]
 mod tests {
+  use test_that::prelude::*;
+
   use super::PerfettoTraceRecorder;
   use crate::proto::TracePacket;
 
@@ -66,9 +68,9 @@ mod tests {
     let mut recorder = PerfettoTraceRecorder::new(Vec::new());
     recorder.record(TracePacket::default()).unwrap();
     recorder.record(TracePacket::default()).unwrap();
-    assert!(!recorder.buf.is_empty());
+    assert_that!(recorder.buf, not(empty()));
     recorder.flush().unwrap();
-    assert!(recorder.buf.is_empty());
-    assert!(!recorder.writer.is_empty());
+    assert_that!(recorder.buf, empty());
+    assert_that!(recorder.writer, not(empty()));
   }
 }

@@ -44,6 +44,8 @@ impl<T> LocalUnboundedReceiver<T> {
 
 #[cfg(test)]
 mod tests {
+  use test_that::prelude::*;
+
   use super::*;
 
   #[test]
@@ -53,16 +55,16 @@ mod tests {
     sender.send(42);
     sender.send(100);
 
-    assert_eq!(receiver.receive(), Some(42));
-    assert_eq!(receiver.receive(), Some(100));
+    assert_that!(receiver.receive(), some(eq(42)));
+    assert_that!(receiver.receive(), some(eq(100)));
     // Queue is now empty
-    assert_eq!(receiver.receive(), None);
+    assert_that!(receiver.receive(), none());
   }
 
   #[test]
   fn test_receive_empty_channel() {
     let (_sender, receiver): (LocalUnboundedSender<i32>, _) = unbounded();
-    assert_eq!(receiver.receive(), None);
+    assert_that!(receiver.receive(), none());
   }
 
   #[test]
@@ -75,12 +77,12 @@ mod tests {
     sender2.send(2);
 
     // Order is preserved
-    assert_eq!(receiver1.receive(), Some(1));
-    assert_eq!(receiver2.receive(), Some(2));
+    assert_that!(receiver1.receive(), some(eq(1)));
+    assert_that!(receiver2.receive(), some(eq(2)));
 
     // Channel empty now
-    assert_eq!(receiver1.receive(), None);
-    assert_eq!(receiver2.receive(), None);
+    assert_that!(receiver1.receive(), none());
+    assert_that!(receiver2.receive(), none());
   }
 
   #[test]
@@ -92,10 +94,10 @@ mod tests {
     }
 
     for i in 0..10 {
-      assert_eq!(receiver.receive(), Some(i));
+      assert_that!(receiver.receive(), some(eq(i)));
     }
 
-    assert_eq!(receiver.receive(), None);
+    assert_that!(receiver.receive(), none());
   }
 
   #[test]
@@ -107,8 +109,8 @@ mod tests {
     sender.send(1);
     sender2.send(2);
 
-    assert_eq!(receiver2.receive(), Some(1));
-    assert_eq!(receiver.receive(), Some(2));
-    assert_eq!(receiver2.receive(), None);
+    assert_that!(receiver2.receive(), some(eq(1)));
+    assert_that!(receiver.receive(), some(eq(2)));
+    assert_that!(receiver2.receive(), none());
   }
 }

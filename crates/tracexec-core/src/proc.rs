@@ -944,6 +944,7 @@ static CACHE: StringCache = StringCache;
 
 #[cfg(test)]
 mod proc_status_tests {
+
   use super::*;
 
   #[test]
@@ -1015,6 +1016,7 @@ Groups:\t0
 
 #[cfg(test)]
 mod env_tests {
+
   use super::*;
   use crate::event::FriendlyError;
 
@@ -1132,6 +1134,7 @@ mod env_diff_tests {
 
 #[cfg(test)]
 mod fdinfo_tests {
+
   use crate::proc::FileDescriptorInfo;
 
   #[test]
@@ -1182,6 +1185,7 @@ mod interpreter_test {
   };
 
   use tempfile::tempdir;
+  use test_that::prelude::*;
 
   use crate::proc::{
     Interpreter,
@@ -1193,10 +1197,10 @@ mod interpreter_test {
   #[test]
   fn test_interpreter_display() {
     let none = Interpreter::None;
-    assert!(none.to_string().contains("none"));
+    assert_that!(none.to_string(), contains_substring("none"));
 
     let err = Interpreter::Error(cached_str("boom"));
-    assert!(err.to_string().contains("err"));
+    assert_that!(err.to_string(), contains_substring("err"));
   }
 
   #[test]
@@ -1224,7 +1228,7 @@ mod interpreter_test {
 
     let result = read_interpreter(&script);
     match result {
-      Interpreter::Shebang(s) => assert!(s.as_ref().ends_with("target")),
+      Interpreter::Shebang(s) => assert_that!(s.as_ref(), ends_with("target")),
       other => panic!("unexpected result: {other:?}"),
     }
     dir.close().unwrap();
@@ -1299,14 +1303,14 @@ mod interpreter_test {
 
     match &result[0] {
       Interpreter::Shebang(s) => {
-        assert!(s.as_ref().ends_with("interp1"));
+        assert_that!(s.as_ref(), ends_with("interp1"));
       }
       other => panic!("unexpected interpreter: {other:?}"),
     }
 
     match &result[1] {
       Interpreter::Shebang(s) => {
-        assert!(s.as_ref().ends_with("interp2"));
+        assert_that!(s.as_ref(), ends_with("interp2"));
       }
       other => panic!("unexpected interpreter: {other:?}"),
     }
@@ -1325,7 +1329,7 @@ mod interpreter_test {
     File::create(&exe).unwrap();
 
     let result = read_interpreter_recursive(&exe);
-    assert!(result.is_empty());
+    assert_that!(result, empty());
     dir.close().unwrap();
   }
 }

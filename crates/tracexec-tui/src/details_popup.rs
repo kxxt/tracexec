@@ -895,6 +895,7 @@ mod tests {
     fcntl::OFlag,
     unistd::Pid,
   };
+  use test_that::prelude::*;
   use tracexec_core::{
     cache::ArcStr,
     cli::{
@@ -1149,9 +1150,9 @@ mod tests {
       test_area_full(100, 20),
       &mut state,
     );
-    assert!(env_rendered.contains("ADD"));
-    assert!(env_rendered.contains("OLD"));
-    assert!(env_rendered.contains("MOD"));
+    assert_that!(env_rendered, contains_substring("ADD"));
+    assert_that!(env_rendered, contains_substring("OLD"));
+    assert_that!(env_rendered, contains_substring("MOD"));
 
     state.next_tab();
     assert_eq!(state.active_tab(), "FdInfo");
@@ -1160,8 +1161,8 @@ mod tests {
       test_area_full(100, 24),
       &mut state,
     );
-    assert!(fd_rendered.contains("/tmp/stdin"));
-    assert!(fd_rendered.contains("eventfd-count"));
+    assert_that!(fd_rendered, contains_substring("/tmp/stdin"));
+    assert_that!(fd_rendered, contains_substring("eventfd-count"));
 
     state.prev_tab();
     state.circle_tab();

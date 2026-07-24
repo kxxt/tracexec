@@ -33,6 +33,7 @@ use std::{
     CString,
     OsStr,
   },
+  fmt::Debug,
   fs::File,
   io,
   io::{
@@ -781,6 +782,7 @@ mod tests {
   };
 
   use nix::sys::wait::waitpid;
+  use test_that::prelude::*;
 
   use super::*;
 
@@ -834,8 +836,11 @@ mod tests {
     let mut buf = [0u8; 64];
     let n = reader.read(&mut buf).unwrap();
 
-    assert!(n > 0);
-    assert!(std::str::from_utf8(&buf[..n]).unwrap().contains("hello"));
+    assert_that!(n, gt(0));
+    assert_that!(
+      std::str::from_utf8(&buf[..n]).unwrap(),
+      contains_substring("hello")
+    );
   }
 
   #[test]
@@ -887,7 +892,7 @@ mod tests {
     let ok = ExitStatus::with_exit_code(0);
     assert!(ok.success());
     assert_eq!(ok.exit_code(), 0);
-    assert!(ok.signal().is_none());
+    assert_that!(ok.signal(), none());
 
     let sig = ExitStatus::with_signal("SIGTERM");
     assert!(!sig.success());

@@ -386,6 +386,7 @@ mod tests {
 
   use chrono::Local;
   use nix::unistd::Pid;
+  use test_that::prelude::*;
 
   use super::*;
   use crate::{
@@ -415,7 +416,7 @@ mod tests {
   fn test_tracer_event_allocate_id_increments() {
     let id1 = TracerEvent::allocate_id();
     let id2 = TracerEvent::allocate_id();
-    assert!(id2.into_inner() > id1.into_inner());
+    assert_that!(id2.into_inner(), gt(id1.into_inner()));
   }
 
   #[test]
@@ -464,7 +465,8 @@ mod tests {
     let argv_err: Result<Vec<OutputMsg>, InspectError> = Err(InspectError::EPERM);
 
     let s = TracerEventDetails::argv_to_string(&argv_ok);
-    assert!(s.contains("arg1") && s.contains("arg2"));
+    assert_that!(s, contains_substring("arg1"));
+    assert_that!(s, contains_substring("arg2"));
 
     let s_err = TracerEventDetails::argv_to_string(&argv_err);
     assert_eq!(s_err, "[failed to read argv]");
@@ -485,7 +487,8 @@ mod tests {
     assert_eq!(s_one, "none");
 
     let s_many = TracerEventDetails::interpreters_to_string(&many);
-    assert!(s_many.contains("none") && s_many.contains(","));
+    assert_that!(s_many, contains_substring("none"));
+    assert_that!(s_many, contains_substring(","));
   }
 
   #[test]

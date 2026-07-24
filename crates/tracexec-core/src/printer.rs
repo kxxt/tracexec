@@ -852,6 +852,7 @@ mod tests {
     fcntl::OFlag,
     unistd::Pid,
   };
+  use test_that::prelude::*;
 
   use super::*;
   use crate::{
@@ -1008,11 +1009,14 @@ mod tests {
     printer.print_fd(&mut out, &fds).unwrap();
     let rendered = String::from_utf8(out).unwrap();
     dbg!(&rendered);
-    assert!(rendered.contains("closed: stdin"));
-    assert!(rendered.contains("stdout=\"/tmp/stdout.log\""));
-    assert!(rendered.contains("cloexec: stderr"));
-    assert!(rendered.contains("3=\"/tmp/extra\""));
-    assert!(rendered.contains("cloexec: 4=\"/tmp/closed-on-exec\""));
+    assert_that!(rendered, contains_substring("closed: stdin"));
+    assert_that!(rendered, contains_substring("stdout=\"/tmp/stdout.log\""));
+    assert_that!(rendered, contains_substring("cloexec: stderr"));
+    assert_that!(rendered, contains_substring("3=\"/tmp/extra\""));
+    assert_that!(
+      rendered,
+      contains_substring("cloexec: 4=\"/tmp/closed-on-exec\"")
+    );
 
     args.trace_fd = FdPrintFormat::Raw;
     args.hide_cloexec_fds = true;
@@ -1020,14 +1024,14 @@ mod tests {
     let mut out = Vec::new();
     printer.print_fd(&mut out, &fds).unwrap();
     let rendered = String::from_utf8(out).unwrap();
-    assert!(rendered.contains("1=\"/tmp/stdout.log\""));
-    assert!(!rendered.contains("closed-on-exec"));
+    assert_that!(rendered, contains_substring("1=\"/tmp/stdout.log\""));
+    assert_that!(rendered, not(contains_substring("closed-on-exec")));
 
     args.trace_fd = FdPrintFormat::None;
     let printer = Printer::new(args, baseline);
     let mut out = Vec::new();
     printer.print_fd(&mut out, &fds).unwrap();
-    assert!(out.is_empty());
+    assert_that!(out, empty());
   }
 
   #[test]
@@ -1065,13 +1069,16 @@ mod tests {
 
     dbg!(&rendered);
 
-    assert!(rendered.contains("123<echo>: \"/bin/echo\""));
-    assert!(rendered.contains("[\"/bin/echo\", \"hello world\"]"));
-    assert!(rendered.contains("at \"/exec-cwd\""));
-    assert!(rendered.contains("interpreter"));
-    assert!(rendered.contains("+\"ADDED\"=\"value\""));
-    assert!(rendered.contains("M\"MODIFIED\"=\"new\""));
-    assert!(rendered.contains("-\"REMOVED\"=\"gone\""));
+    assert_that!(rendered, contains_substring("123<echo>: \"/bin/echo\""));
+    assert_that!(
+      rendered,
+      contains_substring("[\"/bin/echo\", \"hello world\"]")
+    );
+    assert_that!(rendered, contains_substring("at \"/exec-cwd\""));
+    assert_that!(rendered, contains_substring("interpreter"));
+    assert_that!(rendered, contains_substring("+\"ADDED\"=\"value\""));
+    assert_that!(rendered, contains_substring("M\"MODIFIED\"=\"new\""));
+    assert_that!(rendered, contains_substring("-\"REMOVED\"=\"gone\""));
   }
 
   #[test]
@@ -1100,9 +1107,9 @@ mod tests {
       )
     });
 
-    assert!(rendered.contains("Failed to read envp"));
-    assert!(rendered.contains("Failed to read argv"));
-    assert!(rendered.contains("warning"));
+    assert_that!(rendered, contains_substring("Failed to read envp"));
+    assert_that!(rendered, contains_substring("Failed to read argv"));
+    assert_that!(rendered, contains_substring("warning"));
   }
 
   #[test]
@@ -1146,17 +1153,17 @@ mod tests {
       )
     });
 
-    assert!(rendered.contains("cmdline env"));
-    assert!(rendered.contains("</tmp/stdin"));
-    assert!(rendered.contains(">/tmp/stdout"));
-    assert!(rendered.contains("2>&-"));
-    assert!(rendered.contains("5<>/tmp/fd5"));
-    assert!(rendered.contains("-a custom-argv0"));
-    assert!(rendered.contains("-C /exec-cwd"));
-    assert!(rendered.contains("-u REMOVED"));
-    assert!(rendered.contains("ADDED=value"));
-    assert!(rendered.contains("MODIFIED=$'new value'"));
-    assert!(rendered.contains("/bin/echo $'hello world'"));
+    assert_that!(rendered, contains_substring("cmdline env"));
+    assert_that!(rendered, contains_substring("</tmp/stdin"));
+    assert_that!(rendered, contains_substring(">/tmp/stdout"));
+    assert_that!(rendered, contains_substring("2>&-"));
+    assert_that!(rendered, contains_substring("5<>/tmp/fd5"));
+    assert_that!(rendered, contains_substring("-a custom-argv0"));
+    assert_that!(rendered, contains_substring("-C /exec-cwd"));
+    assert_that!(rendered, contains_substring("-u REMOVED"));
+    assert_that!(rendered, contains_substring("ADDED=value"));
+    assert_that!(rendered, contains_substring("MODIFIED=$'new value'"));
+    assert_that!(rendered, contains_substring("/bin/echo $'hello world'"));
   }
 
   #[test]

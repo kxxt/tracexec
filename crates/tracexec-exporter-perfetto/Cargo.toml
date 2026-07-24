@@ -35,3 +35,6 @@ prost = { workspace = true }
 bytes = { workspace = true }
 tokio = { workspace = true }
 nix = { workspace = true }
+
+[dev-dependencies]
+test-that = { workspace = true }

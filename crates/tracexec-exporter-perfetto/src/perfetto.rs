@@ -86,6 +86,7 @@ mod tests {
     errno::Errno,
     unistd::Pid,
   };
+  use test_that::prelude::*;
   use tokio::sync::mpsc::unbounded_channel;
   use tracexec_core::{
     cli::args::ExporterArgs,
@@ -179,6 +180,6 @@ mod tests {
     drop(tx);
     let code = exporter.run().await.unwrap();
     assert_eq!(code, 7);
-    assert!(!output.lock().unwrap().is_empty());
+    assert_that!(output.lock().unwrap().len(), gt(0));
   }
 }

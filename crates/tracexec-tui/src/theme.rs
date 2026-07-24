@@ -578,6 +578,7 @@ mod tests {
     Color,
     Modifier,
   };
+  use test_that::prelude::*;
 
   use super::*;
 
@@ -722,10 +723,9 @@ mod tests {
     )
     .unwrap_err();
 
-    assert!(
-      err
-        .to_string()
-        .contains("cannot specify both 'theme-file' and 'theme'")
+    assert_that!(
+      err.to_string(),
+      contains_substring("cannot specify both 'theme-file' and 'theme'")
     );
   }
 

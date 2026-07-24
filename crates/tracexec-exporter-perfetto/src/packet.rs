@@ -469,6 +469,7 @@ mod tests {
     errno::Errno,
     unistd::Pid,
   };
+  use test_that::prelude::*;
   use tracexec_core::{
     event::{
       ExecEvent,
@@ -575,7 +576,7 @@ mod tests {
       panic!("expected interned string value for cgroup annotation");
     };
 
-    assert_eq!(
+    assert_that!(
       packet.interned_data.as_ref().and_then(|data| {
         data
           .debug_annotation_string_values
@@ -584,9 +585,9 @@ mod tests {
           .and_then(|s| s.str.as_deref())
           .and_then(|s| String::from_utf8(s.to_vec()).ok())
       }),
-      Some(format_cgroup_annotation(&CgroupInfo::V2 {
+      some(eq(format_cgroup_annotation(&CgroupInfo::V2 {
         path: "/user.slice/test.scope".to_string(),
-      }))
+      }))),
     );
   }
 }

@@ -6,6 +6,13 @@ use assert_cmd::{
 };
 use predicates::prelude::*;
 use serial_test::file_serial;
+use test_that::{
+  assert_that,
+  matchers::{
+    contains_substring,
+    gt,
+  },
+};
 
 #[test]
 #[file_serial]
@@ -162,12 +169,14 @@ fn restore_env_socket_passes_full_env_to_tracee() -> Result<(), Box<dyn std::err
   server.join().expect("env server panicked")?;
   let stdout = String::from_utf8_lossy(&output.stdout);
 
-  assert!(
-    stdout.contains("MARKER=preserved_value"),
+  assert_that!(
+    stdout,
+    contains_substring("MARKER=preserved_value"),
     "Custom env var should be preserved, got stdout: {stdout}"
   );
-  assert!(
-    stdout.contains("SUDO=from_socket\n"),
+  assert_that!(
+    stdout,
+    contains_substring("SUDO=from_socket\n"),
     "SUDO_USER should come from the transferred original env, got stdout: {stdout}"
   );
   Ok(())
@@ -272,7 +281,7 @@ fn ebpf_collect_perfetto_runs_tracee() -> Result<(), Box<dyn std::error::Error>>
     .arg("-c")
     .arg("true");
   cmd.assert().success();
-  assert!(std::fs::metadata(&output)?.len() > 0);
+  assert_that!(std::fs::metadata(&output)?.len(), gt(0));
   Ok(())
 }
 

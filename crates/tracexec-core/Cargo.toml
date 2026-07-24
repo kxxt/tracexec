@@ -50,3 +50,4 @@ rand = "0.10"
 [dev-dependencies]
 serde_json = { workspace = true }
 rusty-fork = { workspace = true }
+test-that = { workspace = true }

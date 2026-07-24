@@ -806,6 +806,7 @@ mod tests {
     backend::TestBackend,
     text::Line,
   };
+  use test_that::prelude::*;
   use tracexec_core::{
     cli::{
       args::{
@@ -874,12 +875,12 @@ mod tests {
     app.activate_experiment("test-experiment");
     assert_eq!(app.active_experiments, vec!["test-experiment"]);
 
-    assert!(app.signal_root_process(Signal::SIGTERM).is_ok());
-    assert!(app.exit().is_ok());
+    assert_that!(app.signal_root_process(Signal::SIGTERM), ok(anything()));
+    assert_that!(app.exit(), ok(anything()));
 
-    assert_eq!(app.active_event_list().is_following(), false);
+    assert!(!(app.active_event_list().is_following()));
     app.inspect_all_event_list_mut(|list| list.toggle_follow());
-    assert_eq!(app.event_list.is_following(), true);
+    assert!(app.event_list.is_following());
 
     Ok(())
   }
@@ -1085,14 +1086,14 @@ mod tests {
     app.event_list.push(EventId::new(0), event.clone());
 
     let narrow = render_app_to_string(&mut app, 3, 12);
-    assert!(narrow.contains("too"));
+    assert_that!(narrow, contains_substring("too"));
     app.should_handle_internal_resize = true;
     let short = render_app_to_string(&mut app, 80, 5);
-    assert!(short.contains("too small"));
+    assert_that!(short, contains_substring("too small"));
 
     app.popup.push(ActivePopup::Help);
     let help = render_app_to_string(&mut app, 100, 28);
-    assert!(help.contains("Help"));
+    assert_that!(help, contains_substring("Help"));
     app.popup.pop();
 
     app.popup.push(ActivePopup::InfoPopup(InfoPopupState::info(
@@ -1101,7 +1102,7 @@ mod tests {
       app.theme,
     )));
     let info = render_app_to_string(&mut app, 100, 28);
-    assert!(info.contains("render info popup"));
+    assert_that!(info, contains_substring("render info popup"));
     app.popup.pop();
 
     app
@@ -1112,7 +1113,13 @@ mod tests {
         app.theme,
       )));
     let copy = render_app_to_string(&mut app, 100, 28);
-    assert!(copy.contains("Commandline") || copy.contains("Line"));
+    assert_that!(
+      copy,
+      any!(
+        contains_substring("Commandline"),
+        contains_substring("Line")
+      )
+    );
     app.popup.pop();
 
     let selected = app.event_list.get_for_test(EventId::new(0)).unwrap();
@@ -1123,14 +1130,17 @@ mod tests {
         &app.event_list,
       )));
     let details = render_app_to_string(&mut app, 100, 28);
-    assert!(details.contains("render target"));
+    assert_that!(details, contains_substring("render target"));
     app.popup.pop();
 
     let mut query_builder = QueryBuilder::new(QueryKind::Search);
     query_builder.edit();
     app.query_builder = Some(query_builder);
     let search = render_app_to_string(&mut app, 100, 28);
-    assert!(search.contains("Execute") || search.contains("Search"));
+    assert_that!(
+      search,
+      any!(contains_substring("Execute"), contains_substring("Search"))
+    );
 
     Ok(())
   }
@@ -1167,16 +1177,16 @@ mod tests {
     assert_eq!(app.split_percentage, 50);
 
     let rendered = render_app_to_string(&mut app, 100, 32);
-    assert!(rendered.contains("Terminal"));
-    assert!(rendered.contains("Events"));
+    assert_that!(rendered, contains_substring("Terminal"));
+    assert_that!(rendered, contains_substring("Events"));
     assert!(!app.should_handle_internal_resize);
 
     app.active_pane = ActivePane::Events;
     app.layout = AppLayout::Horizontal;
     app.should_handle_internal_resize = true;
     let rendered = render_app_to_string(&mut app, 100, 32);
-    assert!(rendered.contains("Layout"));
-    assert!(rendered.contains("Grow/Shrink"));
+    assert_that!(rendered, contains_substring("Layout"));
+    assert_that!(rendered, contains_substring("Grow/Shrink"));
 
     Ok(())
   }

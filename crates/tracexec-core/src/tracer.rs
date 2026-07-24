@@ -325,6 +325,7 @@ mod tests {
 
   use chrono::Local;
   use nix::sys::signal::Signal as NixSignal;
+  use test_that::prelude::*;
 
   use super::*;
   use crate::event::OutputMsg;
@@ -453,13 +454,13 @@ mod tests {
     assert_eq!(exec.exec_pid, Pid::from_raw(1234));
     assert_eq!(exec.filename, filename);
     assert_eq!(exec.cwd, cwd);
-    assert!(exec.argv.is_ok());
-    assert!(exec.envp.is_ok());
+    assert_that!(exec.argv, points_to(ok(anything())));
+    assert_that!(exec.envp, points_to(ok(anything())));
     assert!(!exec.has_dash_env);
-    assert!(exec.interpreters.is_none());
-    assert!(Arc::strong_count(&exec.argv) >= 1);
-    assert!(Arc::strong_count(&exec.envp) >= 1);
-    assert!(Arc::strong_count(&exec.fdinfo) >= 1);
+    assert_that!(exec.interpreters, none());
+    assert_that!(Arc::strong_count(&exec.argv), ge(1));
+    assert_that!(Arc::strong_count(&exec.envp), ge(1));
+    assert_that!(Arc::strong_count(&exec.fdinfo), ge(1));
   }
 
   /* ---------------- ProcessExit ---------------- */
