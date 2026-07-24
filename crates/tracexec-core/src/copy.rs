@@ -355,18 +355,12 @@ pub fn text_for_copy<'a>(
         result.push_str(&format!("{k}={v}\n"));
       }
       result.push_str("# Modified: (original first)\n");
-      for (k, v) in env_diff.modified.iter() {
-        result.push_str(&format!(
-          "{}={}\n{}={}\n",
-          k,
-          baseline.env.get(k).unwrap(),
-          k,
-          v
-        ));
+      for (k, original, current) in env_diff.modified_with_values(&baseline.env) {
+        result.push_str(&format!("{}={}\n{}={}\n", k, original, k, current));
       }
       result.push_str("# Removed:\n");
-      for k in env_diff.removed.iter() {
-        result.push_str(&format!("{}={}\n", k, baseline.env.get(k).unwrap()));
+      for (k, value) in env_diff.removed_with_values(&baseline.env) {
+        result.push_str(&format!("{k}={value}\n"));
       }
       result.into()
     }

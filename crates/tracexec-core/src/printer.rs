@@ -569,7 +569,7 @@ impl Printer {
               };
 
               let diff = diff_env(&env, envp);
-              for (k, v) in diff.added.into_iter() {
+              for (k, v) in &diff.added {
                 write_separator(out)?;
                 write!(
                   out,
@@ -580,7 +580,7 @@ impl Printer {
                   v.cli_escaped_styled(THEME.added_env_var)
                 )?;
               }
-              for (k, v) in diff.modified.into_iter() {
+              for (k, _, v) in diff.modified_with_values(&env) {
                 write_separator(out)?;
                 write!(
                   out,
@@ -592,7 +592,7 @@ impl Printer {
                 )?;
               }
               // Now we have the tracee removed entries in env
-              for k in diff.removed.into_iter() {
+              for (k, value) in diff.removed_with_values(&env) {
                 write_separator(out)?;
                 write!(
                   out,
@@ -600,10 +600,7 @@ impl Printer {
                   "-".bright_red().bold(),
                   k.cli_escaped_styled(THEME.removed_env_var),
                   "=".bright_red().strikethrough(),
-                  env
-                    .get(&k)
-                    .unwrap()
-                    .cli_escaped_styled(THEME.removed_env_var)
+                  value.cli_escaped_styled(THEME.removed_env_var)
                 )?;
               }
               list_printer.end(out)?;
