@@ -28,10 +28,7 @@ use std::{
     Write,
   },
   ops::Deref,
-  sync::{
-    Arc,
-    RwLock,
-  },
+  sync::Arc,
 };
 
 use bytes::Bytes;
@@ -40,6 +37,7 @@ use crossterm::event::{
   KeyEvent,
   KeyModifiers,
 };
+use parking_lot::RwLock;
 use ratatui::{
   prelude::{
     Buffer,
@@ -67,10 +65,12 @@ use tui_term::widget::{
 };
 use vt100::Parser;
 
+type SharedParser = Arc<RwLock<Parser>>;
+
 pub struct PseudoTerminalPane {
   // cannot move out of `parser` because it is borrowed
   // term: PseudoTerminal<'a, Screen>,
-  pub parser: Arc<RwLock<vt100::Parser>>,
+  parser: SharedParser,
   pty_master: UnixMasterPty,
   #[allow(unused)]
   reader_task: tokio::task::JoinHandle<color_eyre::Result<()>>,
@@ -174,8 +174,11 @@ impl PseudoTerminalPane {
     pty_master: UnixMasterPty,
     scrollback_lines: usize,
   ) -> color_eyre::Result<Self> {
-    let parser = vt100::Parser::new(size.rows, size.cols, scrollback_lines);
-    let parser = Arc::new(RwLock::new(parser));
+    let parser = Arc::new(RwLock::new(vt100::Parser::new(
+      size.rows,
+      size.cols,
+      scrollback_lines,
+    )));
 
     let reader_task = {
       let mut reader = pty_master.try_clone_reader()?;
@@ -191,7 +194,7 @@ impl PseudoTerminalPane {
           }
           if size > 0 {
             processed_buf.extend_from_slice(&buf[..size]);
-            parser.write().unwrap().process(&processed_buf);
+            parser.write().process(&processed_buf);
 
             // Clear the processed portion of the buffer
             processed_buf.clear();
@@ -241,7 +244,7 @@ impl PseudoTerminalPane {
   pub async fn handle_key_event(&self, key: &KeyEvent, keys: &TuiKeyBindings) -> bool {
     if keys.terminal_toggle_scrollback.matches(*key) {
       self.scrollback_mode.set(!self.scrollback_mode.get());
-      let mut parser = self.parser.write().unwrap();
+      let mut parser = self.parser.write();
       let screen = parser.screen_mut();
       screen.set_scrollback(0);
       return true;
@@ -249,7 +252,7 @@ impl PseudoTerminalPane {
 
     // Handle scrollback navigation when in scrollback mode
     if self.scrollback_mode.get() {
-      let mut parser = self.parser.write().unwrap();
+      let mut parser = self.parser.write();
       let screen = parser.screen_mut();
       let viewport_height = self.size.rows as usize;
       let max_offset = self.scrollback_lines;
@@ -298,7 +301,7 @@ impl PseudoTerminalPane {
       return true;
     }
 
-    let application_cursor = self.parser.read().unwrap().screen().application_cursor();
+    let application_cursor = self.parser.read().screen().application_cursor();
     let Some(input_bytes) = encode_key_event(key, application_cursor) else {
       return true;
     };
@@ -315,7 +318,6 @@ impl PseudoTerminalPane {
     self
       .parser
       .write()
-      .unwrap()
       .screen_mut()
       .set_size(size.rows, size.cols);
     self.pty_master.resize(size)?;
@@ -331,11 +333,11 @@ impl PseudoTerminalPane {
   }
 
   pub fn scrollback(&self) -> usize {
-    self.parser.read().unwrap().screen().scrollback()
+    self.parser.read().screen().scrollback()
   }
 
   pub fn parser(&self) -> impl Deref<Target = Parser> {
-    self.parser.read().unwrap()
+    self.parser.read()
   }
 
   /// Closes pty master
@@ -349,7 +351,7 @@ impl Widget for &PseudoTerminalPane {
   where
     Self: Sized,
   {
-    let parser = self.parser.read().unwrap();
+    let parser = self.parser.read();
     let mut cursor = Cursor::default();
     if !self.focus {
       cursor.hide();
