@@ -1,7 +1,6 @@
 use std::{
   collections::BTreeMap,
   fmt::Debug,
-  io::Write,
   sync::{
     Arc,
     atomic::AtomicU64,
@@ -16,6 +15,7 @@ use clap::ValueEnum;
 use crossterm::event::KeyEvent;
 use enumflags2::BitFlags;
 use filterable_enum::FilterableEnum;
+use itertools::Itertools;
 use nix::{
   errno::Errno,
   libc::c_int,
@@ -27,7 +27,6 @@ use tokio::sync::mpsc;
 use crate::{
   breakpoint::BreakPointHit,
   cache::ArcStr,
-  printer::ListPrinter,
   proc::{
     CgroupInfo,
     Cred,
@@ -210,37 +209,15 @@ impl TracerEventDetails {
     let Ok(argv) = argv else {
       return "[failed to read argv]".into();
     };
-    let mut result =
-      Vec::with_capacity(argv.iter().map(|s| s.as_ref().len() + 3).sum::<usize>() + 2);
-    let list_printer = ListPrinter::new(crate::printer::ColorLevel::Less);
-    list_printer.print_string_list(&mut result, argv).unwrap();
-    // SAFETY: argv is printed in debug format, which is always UTF-8
-    unsafe { String::from_utf8_unchecked(result) }
+    format!("[{}]", argv.iter().format(", "))
   }
 
   pub fn interpreters_to_string(interpreters: &[Interpreter]) -> String {
-    let mut result = Vec::new();
-    let list_printer = ListPrinter::new(crate::printer::ColorLevel::Less);
-    match interpreters.len() {
-      0 => {
-        write!(result, "{}", Interpreter::None).unwrap();
-      }
-      1 => {
-        write!(result, "{}", interpreters[0]).unwrap();
-      }
-      _ => {
-        list_printer.begin(&mut result).unwrap();
-        for (idx, interpreter) in interpreters.iter().enumerate() {
-          if idx != 0 {
-            list_printer.comma(&mut result).unwrap();
-          }
-          write!(result, "{interpreter}").unwrap();
-        }
-        list_printer.end(&mut result).unwrap();
-      }
+    match interpreters {
+      [] => Interpreter::None.to_string(),
+      [interpreter] => interpreter.to_string(),
+      interpreters => format!("[{}]", interpreters.iter().format(", ")),
     }
-    // SAFETY: interpreters is printed in debug format, which is always UTF-8
-    unsafe { String::from_utf8_unchecked(result) }
   }
 }
 
