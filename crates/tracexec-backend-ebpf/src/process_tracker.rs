@@ -104,11 +104,6 @@ impl ProcessTracker {
       .extend(ids);
   }
 
-  #[allow(unused)]
-  pub fn associated_events(&self, pid: Pid) -> &[EventId] {
-    &self.processes.get(&pid).unwrap().associated_events
-  }
-
   pub fn maybe_associated_events(&self, pid: Pid) -> Option<&[EventId]> {
     self
       .processes
