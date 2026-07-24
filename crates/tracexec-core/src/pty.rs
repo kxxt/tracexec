@@ -33,7 +33,10 @@ use std::{
     CString,
     OsStr,
   },
-  fmt::Debug,
+  fmt::{
+    Debug,
+    Display,
+  },
   fs::File,
   io,
   io::{
@@ -520,6 +523,11 @@ fn close_random_fds() {
   }
 }
 
+fn child_error(error: impl Display) -> ! {
+  eprintln!("failed to spawn child process: {error}");
+  unsafe { libc::_exit(127) }
+}
+
 impl PtyFd {
   fn resize(&self, size: PtySize) -> Result<(), Error> {
     let ws_size = winsize {
@@ -603,15 +611,19 @@ fn spawn_command_from_pty_fd(
     nix::unistd::ForkResult::Parent { child } => Ok(child),
     nix::unistd::ForkResult::Child => {
       if let Some(pty) = pty {
-        let mut stdin = unsafe { OwnedFd::from_raw_fd(0) };
-        let mut stdout = unsafe { OwnedFd::from_raw_fd(1) };
-        let mut stderr = unsafe { OwnedFd::from_raw_fd(2) };
-        dup2(pty.as_fd(), &mut stdin).unwrap();
-        dup2(pty.as_fd(), &mut stdout).unwrap();
-        dup2(pty.as_fd(), &mut stderr).unwrap();
-        std::mem::forget(stdin);
-        std::mem::forget(stdout);
-        std::mem::forget(stderr);
+        let mut stdio = unsafe {
+          [
+            OwnedFd::from_raw_fd(0),
+            OwnedFd::from_raw_fd(1),
+            OwnedFd::from_raw_fd(2),
+          ]
+        };
+        for fd in &mut stdio {
+          dup2(pty.as_fd(), fd).unwrap_or_else(|error| child_error(error));
+        }
+        for fd in stdio {
+          std::mem::forget(fd);
+        }
       }
 
       // Clean up a few things before we exec the program
@@ -635,7 +647,7 @@ fn spawn_command_from_pty_fd(
         _ = libc::sigprocmask(libc::SIG_SETMASK, &empty_set, std::ptr::null_mut());
       }
 
-      pre_exec(&cmd.program).unwrap();
+      pre_exec(&cmd.program).unwrap_or_else(|error| child_error(error));
 
       close_random_fds();
 
@@ -644,12 +656,15 @@ fn spawn_command_from_pty_fd(
       }
 
       let program = CString::new(cmd.program.into_os_string().into_vec()).unwrap();
-      if let Some(env) = &cmd.env {
-        execve(&program, &cmd.args, env).unwrap();
+      let result = if let Some(env) = &cmd.env {
+        execve(&program, &cmd.args, env)
       } else {
-        execv(&program, &cmd.args).unwrap();
+        execv(&program, &cmd.args)
+      };
+      match result {
+        Ok(never) => match never {},
+        Err(error) => child_error(error),
       }
-      unreachable!()
     }
   }
 }
