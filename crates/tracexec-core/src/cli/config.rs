@@ -181,9 +181,9 @@ where
   D: Deserializer<'de>,
 {
   let value = Option::<f64>::deserialize(deserializer)?;
-  if value.is_some_and(is_frame_rate_invalid) {
+  if let Some(value) = value.filter(|value| is_frame_rate_invalid(*value)) {
     return Err(serde::de::Error::invalid_value(
-      serde::de::Unexpected::Float(value.unwrap()),
+      serde::de::Unexpected::Float(value),
       &"a positive floating-point number",
     ));
   }
