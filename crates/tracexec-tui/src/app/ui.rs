@@ -106,15 +106,15 @@ impl Widget for &mut App {
         self.event_list.get_window().0,
         self.event_list.get_window().0 + self.event_list.max_window_len,
       ));
-      if let Some(term) = self.term.as_mut() {
-        term
-          .resize(PtySize {
+      if let Some(term) = self.term.as_mut()
+        && let Err(error) = term.resize(PtySize {
             rows: term_area.height - 2,
             cols: term_area.width - 2,
             pixel_width: 0,
             pixel_height: 0,
           })
-          .unwrap();
+      {
+        tracing::error!("failed to resize pseudo-terminal: {error}");
       }
     }
 
