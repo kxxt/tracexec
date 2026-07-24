@@ -278,8 +278,10 @@ impl DetailsPopupState {
           },
         ),
         (" Process Status ", {
-          let formatted = event.status.unwrap().to_string();
-          match event.status.unwrap() {
+          #[allow(clippy::unwrap_used)]
+          let status = event.status.unwrap();
+          let formatted = status.to_string();
+          match status {
             EventStatus::ExecENOENT | EventStatus::ExecFailure => {
               formatted.set_style(theme.status_exec_error).into()
             }
