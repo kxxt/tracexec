@@ -108,11 +108,11 @@ impl Widget for &mut App {
       ));
       if let Some(term) = self.term.as_mut()
         && let Err(error) = term.resize(PtySize {
-            rows: term_area.height - 2,
-            cols: term_area.width - 2,
-            pixel_width: 0,
-            pixel_height: 0,
-          })
+          rows: term_area.height - 2,
+          cols: term_area.width - 2,
+          pixel_width: 0,
+          pixel_height: 0,
+        })
       {
         tracing::error!("failed to resize pseudo-terminal: {error}");
       }
@@ -231,14 +231,12 @@ impl App {
       }
     } else if let Some(breakpoint_manager) = self.breakpoint_manager.as_ref() {
       items.extend(breakpoint_manager.help(&self.key_bindings, self.theme));
-    } else if self.hit_manager_state.as_ref().is_some_and(|x| x.visible) {
-      items.extend(
-        self
-          .hit_manager_state
-          .as_ref()
-          .unwrap()
-          .help(&self.key_bindings),
-      );
+    } else if let Some(hit_manager) = self
+      .hit_manager_state
+      .as_ref()
+      .filter(|state| state.visible)
+    {
+      items.extend(hit_manager.help(&self.key_bindings));
     } else if let Some(query_builder) = self.query_builder.as_ref().filter(|q| q.editing()) {
       items.extend(query_builder.help(&self.key_bindings, self.theme));
     } else if self.active_pane == ActivePane::Events {
