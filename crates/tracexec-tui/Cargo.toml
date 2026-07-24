@@ -21,6 +21,7 @@ color-eyre = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 hashbrown = { workspace = true }
+parking_lot = { workspace = true }
 itertools = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
