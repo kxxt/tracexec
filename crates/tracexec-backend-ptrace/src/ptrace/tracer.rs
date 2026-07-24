@@ -2,7 +2,6 @@ use std::{
   collections::BTreeMap,
   sync::{
     Arc,
-    RwLock,
     atomic::{
       AtomicU32,
       Ordering,
@@ -36,6 +35,7 @@ use nix::{
     User,
   },
 };
+use parking_lot::RwLock;
 use tokio::sync::mpsc::{
   UnboundedReceiver,
   UnboundedSender,
@@ -95,7 +95,7 @@ pub struct Tracer {
 #[derive(Debug, Clone)]
 pub struct RunningTracer {
   tid: pthread_t,
-  breakpoints: Arc<RwLock<BTreeMap<u32, BreakPoint>>>,
+  breakpoints: Arc<Breakpoints>,
   req_tx: UnboundedSender<PendingRequest>,
   seccomp_bpf: SeccompBpf,
   blocking: bool,
@@ -107,6 +107,8 @@ pub struct SpawnToken {
   /// to the same [`Tracer`] where it comes from.
   req_tx: UnboundedSender<PendingRequest>,
 }
+
+pub(super) type Breakpoints = RwLock<BTreeMap<u32, BreakPoint>>;
 
 mod private {
   use tracexec_core::tracer::TracerBuilder;
@@ -223,7 +225,7 @@ impl Tracer {
       bail!("the spawn token does not belong to this tracer");
     }
     drop(token.req_tx);
-    let breakpoints = Arc::new(RwLock::new(BTreeMap::new()));
+    let breakpoints = Arc::new(Breakpoints::default());
     let breakpoints_clone = breakpoints.clone();
     let seccomp_bpf = self.seccomp_bpf;
     let req_tx = self.req_tx.clone();
@@ -277,7 +279,7 @@ impl Tracer {
   fn attach_for_test(self, pid: Pid) -> tokio::task::JoinHandle<color_eyre::Result<()>> {
     let tx = self.msg_tx.clone();
     tokio::task::spawn_blocking(move || {
-      let inner = TracerInner::new(self, Arc::new(RwLock::new(BTreeMap::new())), None)?;
+      let inner = TracerInner::new(self, Arc::new(Breakpoints::default()), None)?;
       let result = inner.run_attached(pid);
       if let Err(e) = &result {
         let _ = tx.send(TracerMessage::FatalError(e.to_string()));
@@ -300,13 +302,13 @@ pub fn clear_breakpoint_id_counter() {
 impl RunningTracer {
   pub fn add_breakpoint(&self, breakpoint: BreakPoint) -> u32 {
     let id = BREAKPOINT_ID.fetch_add(1, Ordering::SeqCst);
-    let mut bs = self.breakpoints.write().unwrap();
+    let mut bs = self.breakpoints.write();
     bs.insert(id, breakpoint);
     id
   }
 
   pub fn replace_breakpoint(&self, id: u32, new: BreakPoint) {
-    let mut bs = self.breakpoints.write().unwrap();
+    let mut bs = self.breakpoints.write();
     if !bs.contains_key(&id) {
       panic!("Breakpoint #{id} does not exist");
     }
@@ -314,31 +316,30 @@ impl RunningTracer {
   }
 
   pub fn set_breakpoint(&self, id: u32, activated: bool) {
-    let mut bs = self.breakpoints.write().unwrap();
+    let mut bs = self.breakpoints.write();
     if let Some(b) = bs.get_mut(&id) {
       b.activated = activated;
     }
   }
 
   pub fn get_breakpoints(&self) -> BTreeMap<u32, BreakPoint> {
-    self.breakpoints.read().unwrap().clone()
+    self.breakpoints.read().clone()
   }
 
   pub fn get_breakpoint_pattern_string(&self, id: u32) -> Option<String> {
     self
       .breakpoints
       .read()
-      .unwrap()
       .get(&id)
       .map(|b| b.pattern.to_editable())
   }
 
   pub fn remove_breakpoint(&self, index: u32) {
-    self.breakpoints.write().unwrap().remove(&index);
+    self.breakpoints.write().remove(&index);
   }
 
   pub fn clear_breakpoints(&self) {
-    self.breakpoints.write().unwrap().clear();
+    self.breakpoints.write().clear();
   }
 
   fn blocking_mode_notify_tracer(&self) -> Result<(), Errno> {
@@ -401,7 +402,7 @@ impl RunningTracer {
     std::mem::forget(req_rx);
     Self {
       tid: unsafe { pthread_self() },
-      breakpoints: Arc::new(RwLock::new(BTreeMap::new())),
+      breakpoints: Arc::new(Breakpoints::default()),
       req_tx,
       seccomp_bpf: SeccompBpf::Off,
       blocking: false,

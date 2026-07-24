@@ -19,10 +19,7 @@ use std::{
     FromRawFd,
     OwnedFd,
   },
-  sync::{
-    Arc,
-    RwLock,
-  },
+  sync::Arc,
   time::Duration,
 };
 
@@ -73,7 +70,6 @@ use tokio::{
 };
 use tracexec_core::{
   breakpoint::{
-    BreakPoint,
     BreakPointHit,
     BreakPointStop,
   },
@@ -162,6 +158,7 @@ use crate::{
     },
     syscall::SyscallInfo,
     tracer::{
+      Breakpoints,
       PendingRequest,
       state::{
         ProcessState,
@@ -186,7 +183,7 @@ pub struct TracerInner {
   user: Option<User>,
   polling_interval: Option<Duration>,
   tracee_env: Option<tracexec_core::elevate::EnvVars>,
-  breakpoints: Arc<RwLock<BTreeMap<u32, BreakPoint>>>,
+  breakpoints: Arc<Breakpoints>,
   _unsend_marker: PhantomUnsend,
   _unsync_marker: PhantomUnsync,
 }
@@ -209,7 +206,7 @@ const SENTINEL_SIGNAL: Signal = Signal::Standard(nix::sys::signal::SIGSTOP);
 impl TracerInner {
   pub fn new(
     tracer: Tracer,
-    breakpoints: Arc<RwLock<BTreeMap<u32, BreakPoint>>>,
+    breakpoints: Arc<Breakpoints>,
     output: Option<Box<PrinterOut>>,
   ) -> color_eyre::Result<Self> {
     let Tracer {
@@ -989,7 +986,6 @@ impl TracerInner {
       for (&idx, brk) in self
         .breakpoints
         .read()
-        .unwrap()
         .iter()
         .filter(|(_, brk)| brk.activated && brk.stop == BreakPointStop::SyscallEnter)
       {
@@ -1090,7 +1086,6 @@ impl TracerInner {
           for (&idx, brk) in self
             .breakpoints
             .read()
-            .unwrap()
             .iter()
             .filter(|(_, brk)| brk.activated && brk.stop == BreakPointStop::SyscallExit)
           {
@@ -1427,10 +1422,7 @@ impl TracerInner {
 
 #[cfg(test)]
 mod tests {
-  use std::{
-    collections::BTreeMap,
-    sync::Arc,
-  };
+  use std::sync::Arc;
 
   use enumflags2::BitFlags;
   use nix::{
@@ -1469,7 +1461,10 @@ mod tests {
   };
 
   use super::TracerInner;
-  use crate::ptrace::BuildPtraceTracer;
+  use crate::ptrace::{
+    BuildPtraceTracer,
+    tracer::Breakpoints,
+  };
 
   fn build_inner(
     mut modifier_args: ModifierArgs,
@@ -1492,12 +1487,7 @@ mod tests {
       .seccomp_bpf(seccomp_bpf)
       .build_ptrace()
       .unwrap();
-    let inner = TracerInner::new(
-      tracer,
-      Arc::new(std::sync::RwLock::new(BTreeMap::new())),
-      None,
-    )
-    .unwrap();
+    let inner = TracerInner::new(tracer, Arc::new(Breakpoints::default()), None).unwrap();
     (inner, msg_rx)
   }
 
