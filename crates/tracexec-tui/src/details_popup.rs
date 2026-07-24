@@ -52,6 +52,7 @@ use tracexec_core::{
   proc::{
     CgroupInfo,
     Fallible,
+    FdFlags,
   },
 };
 use tui_scrollview::{
@@ -544,8 +545,7 @@ impl DetailsPopupState {
                 }
                 _ => theme.open_flag_other, // Other flags
               };
-              let mut flag_display = String::new();
-              bitflags::parser::to_writer(&f, &mut flag_display).unwrap();
+              let mut flag_display = FdFlags::from(f).to_string();
               flag_display.push(' ');
               flag_display.set_style(style)
             });
