@@ -1,7 +1,4 @@
-use std::{
-  collections::BTreeMap,
-  ffi::CString,
-};
+use std::collections::BTreeMap;
 
 use nix::{
   sys::ptrace::{
@@ -49,11 +46,6 @@ pub fn read_generic_string<TString>(
   }
 }
 
-#[allow(unused)]
-pub fn read_cstring(pid: Pid, address: AddressType) -> Result<CString, InspectError> {
-  read_generic_string(pid, address, |x| CString::new(x).unwrap())
-}
-
 pub fn read_arcstr(pid: Pid, address: AddressType) -> Result<ArcStr, InspectError> {
   read_generic_string(pid, address, |x| cached_str(&String::from_utf8_lossy(&x)))
 }
@@ -93,15 +85,6 @@ pub fn read_null_ended_array<TItem>(
     }
     address = unsafe { address.add(word_size) };
   }
-}
-
-#[allow(unused)]
-pub fn read_cstring_array(
-  pid: Pid,
-  address: AddressType,
-  is_32bit: bool,
-) -> Result<Vec<CString>, InspectError> {
-  read_null_ended_array(pid, address, is_32bit, read_cstring)
 }
 
 #[allow(unused)]
