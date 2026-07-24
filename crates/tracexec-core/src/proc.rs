@@ -560,7 +560,7 @@ where
   let mut flag_display = String::with_capacity(16);
   for f in oflag.iter() {
     flag_display.clear();
-    bitflags::parser::to_writer(&f, &mut flag_display).unwrap();
+    bitflags::parser::to_writer(&f, &mut flag_display).map_err(serde::ser::Error::custom)?;
     seq.serialize_element(&flag_display)?;
   }
   seq.end()
