@@ -150,9 +150,9 @@ impl ModifierArgs {
       (false, true) => false,
       _ => false, // default
     };
-    self.inline_timestamp_format = self
+    self
       .inline_timestamp_format
-      .or_else(|| Some(TimestampFormat::try_new("%H:%M:%S").unwrap()));
+      .get_or_insert_with(TimestampFormat::default);
     self
   }
 
