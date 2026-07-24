@@ -32,6 +32,8 @@ impl EventId {
 
 #[cfg(test)]
 mod tests {
+  use test_that::prelude::*;
+
   use super::EventId;
 
   #[test]
@@ -71,12 +73,13 @@ mod tests {
   fn test_equality_and_ordering() {
     let a = EventId::new(1);
     let b = EventId::new(2);
-    assert!(a < b);
-    assert!(b > a);
+    assert_that!(a, lt(b));
+    assert_that!(b, gt(a));
     assert_eq!(a, EventId::new(1));
   }
 
   #[test]
+  #[allow(clippy::clone_on_copy)]
   fn test_clone_copy() {
     let id = EventId::new(42);
     let c1 = id;

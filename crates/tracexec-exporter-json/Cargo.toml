@@ -21,3 +21,6 @@ color-eyre = { workspace = true }
 nix = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+test-that = { workspace = true }

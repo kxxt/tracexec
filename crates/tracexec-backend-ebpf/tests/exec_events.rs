@@ -33,6 +33,7 @@ use rstest::{
   rstest,
 };
 use serial_test::file_serial;
+use test_that::prelude::*;
 #[cfg(target_arch = "x86_64")]
 use tracexec_backend_ebpf::probe::should_load_compat_syscall_hooks;
 use tracexec_backend_ebpf::{
@@ -723,7 +724,7 @@ fn test_exec_emits_auxiliary_events(sh_executable: PathBuf) -> color_eyre::Resul
       assert_eq!(capture.exec.header.r#type, event_type::SYSEXIT_EVENT);
       assert_eq!(capture.exec.header.pid, capture.pid);
       assert_eq!(capture.exec.ret, 0);
-      assert!(!capture.strings.is_empty(), "expected STRING_EVENTs");
+      assert_that!(capture.strings, not(empty()), "expected STRING_EVENTs");
       assert!(
         capture.strings.iter().any(|s| s == "true"),
         "expected STRING_EVENT containing argv 'true'"
@@ -732,16 +733,17 @@ fn test_exec_emits_auxiliary_events(sh_executable: PathBuf) -> color_eyre::Resul
         capture.strings.iter().any(|s| s.starts_with("PATH=")),
         "expected STRING_EVENT containing PATH env"
       );
-      assert!(!capture.path_events.is_empty(), "expected PATH_EVENTs");
-      assert!(
-        !capture.path_segments.is_empty(),
+      assert_that!(capture.path_events, not(empty()), "expected PATH_EVENTs");
+      assert_that!(
+        capture.path_segments,
+        not(empty()),
         "expected PATH_SEGMENT_EVENTs"
       );
       assert!(
         capture.path_segments.iter().any(|s| !s.is_empty()),
         "expected non-empty path segments"
       );
-      assert!(!capture.fd_events.is_empty(), "expected FD_EVENTs");
+      assert_that!(capture.fd_events, not(empty()), "expected FD_EVENTs");
       assert!(
         capture
           .fd_events
@@ -751,7 +753,7 @@ fn test_exec_emits_auxiliary_events(sh_executable: PathBuf) -> color_eyre::Resul
       );
       let cred_err = (capture.exec.header.flags & (BpfEventFlags::CRED_READ_ERR as u32)) != 0;
       if !cred_err {
-        assert!(!capture.groups_sizes.is_empty(), "expected GROUPS_EVENTs");
+        assert_that!(capture.groups_sizes, not(empty()), "expected GROUPS_EVENTs");
         assert!(
           capture.groups_sizes.iter().any(|s| *s > 0),
           "expected non-empty GROUPS_EVENT payload"
@@ -772,8 +774,9 @@ fn test_exec_reports_pseudo_filesystem_fds_across_exec() -> color_eyre::Result<(
     prepare_execve_kprobe_kretprobe,
     |skel| {
       let capture = run_binary_and_collect_aux(skel, &bin, &[], Duration::from_secs(4))?;
-      assert!(
-        capture.exec_events.len() >= 2,
+      assert_that!(
+        capture.exec_events.len(),
+        ge(2),
         "fixture should exec once after opening special fds"
       );
 
@@ -788,14 +791,15 @@ fn test_exec_reports_pseudo_filesystem_fds_across_exec() -> color_eyre::Result<(
         .iter()
         .filter(|event| event.header.eid == reexec_eid)
         .collect::<Vec<_>>();
-      assert!(!reexec_fds.is_empty(), "missing fd events for re-exec");
+      assert_that!(reexec_fds, not(empty()), "missing fd events for re-exec");
 
       let pipe_fds = reexec_fds
         .iter()
         .filter(|event| fd_fstype(event) == "pipefs" && event.uses_d_dname != 0)
         .collect::<Vec<_>>();
-      assert!(
-        pipe_fds.len() >= 2,
+      assert_that!(
+        pipe_fds.len(),
+        ge(2),
         "expected both inherited pipe fds, got {}",
         pipe_fds.len()
       );
@@ -812,8 +816,9 @@ fn test_exec_reports_pseudo_filesystem_fds_across_exec() -> color_eyre::Result<(
         .iter()
         .filter(|event| fd_fstype(event) == "sockfs" && event.uses_d_dname != 0)
         .collect::<Vec<_>>();
-      assert!(
-        socket_fds.len() >= 2,
+      assert_that!(
+        socket_fds.len(),
+        ge(2),
         "expected both inherited socketpair fds, got {}",
         socket_fds.len()
       );
@@ -844,10 +849,9 @@ fn test_exec_reports_pseudo_filesystem_fds_across_exec() -> color_eyre::Result<(
         .expect("expected inherited namespace fd");
       assert_eq!(ns_fd.uses_d_dname, 1);
       assert_eq!(fd_pseudo_name(ns_fd), "mnt");
-      assert!(
-        rendered_fd_path(&capture, ns_fd)
-          .as_ref()
-          .starts_with("mnt:["),
+      assert_that!(
+        rendered_fd_path(&capture, ns_fd).as_ref(),
+        starts_with("mnt:["),
         "namespace fd should render as mnt:[ino]"
       );
 

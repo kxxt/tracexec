@@ -253,6 +253,7 @@ pub fn project_directory() -> Option<TracexecProjectDirs> {
 mod tests {
   use std::path::PathBuf;
 
+  use test_that::prelude::*;
   use toml;
 
   use super::*;
@@ -291,13 +292,13 @@ mod tests {
   #[test]
   fn test_deserialize_frame_rate_invalid() {
     let value: Result<FrameRate, _> = toml::from_str("frame_rate = -1");
-    assert!(value.is_err());
+    assert_that!(value.err(), some(anything()));
 
     let value: Result<FrameRate, _> = toml::from_str("frame_rate = NaN");
-    assert!(value.is_err());
+    assert_that!(value.err(), some(anything()));
 
     let value: Result<FrameRate, _> = toml::from_str("frame_rate = 0");
-    assert!(value.is_err());
+    assert_that!(value.err(), some(anything()));
   }
 
   #[test]
@@ -377,7 +378,7 @@ theme = { app-title = { fg = "cyan", modifiers = ["bold"] } }
     assert_eq!(cfg.max_events.unwrap(), 100);
     assert_eq!(cfg.theme_file, Some(PathBuf::from("nord.toml")));
     let theme = cfg.theme.unwrap();
-    assert!(theme.app_title.is_some());
+    assert_that!(theme.app_title, some(anything()));
     let app_title = theme.app_title.unwrap();
     assert!(
       matches!(app_title.fg, Some(crate::cli::tui_theme::ThemeColor::Named(ref s)) if s == "cyan")

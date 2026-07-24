@@ -653,6 +653,7 @@ pub struct ExporterArgs {
 #[cfg(test)]
 mod tests {
   use clap::Parser;
+  use test_that::prelude::*;
 
   use super::*;
 
@@ -805,7 +806,7 @@ mod tests {
   #[test]
   fn test_tracer_event_filter_duplicate() {
     let err = tracer_event_filter_parser("warning,warning").unwrap_err();
-    assert!(err.contains("already included"));
+    assert_that!(err, contains_substring("already included"));
   }
 
   #[test]
@@ -824,7 +825,7 @@ mod tests {
       filter_exclude: TracerEventDetailsKind::Error.into(),
     };
 
-    assert!(args.filter().is_err());
+    assert_that!(args.filter(), err(anything()));
   }
 
   /* ---------------------------- LogModeArgs ------------------------------ */
@@ -1102,13 +1103,13 @@ mod tests {
   fn test_frame_rate_parser_too_low() {
     let err = frame_rate_parser("1").unwrap_err();
     let msg = err.to_string();
-    assert!(msg.contains("too low"));
+    assert_that!(msg, contains_substring("too low"));
   }
 
   #[test]
   fn test_frame_rate_parser_invalid() {
     let err = frame_rate_parser("-1").unwrap_err();
-    assert!(err.to_string().contains("Invalid"));
+    assert_that!(err.to_string(), contains_substring("Invalid"));
   }
 
   /* ----------------------------- ExporterArgs ---------------------------- */

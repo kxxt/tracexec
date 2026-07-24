@@ -303,6 +303,7 @@ mod tests {
 
   use rusty_fork::rusty_fork_test;
   use tempfile::TempDir;
+  use test_that::prelude::*;
 
   use super::*;
 
@@ -319,7 +320,7 @@ mod tests {
   fn test_new_builder() {
     let b = CommandBuilder::new("echo");
     assert_eq!(b.get_argv(), &vec![OsString::from("echo")]);
-    assert!(b.get_cwd().is_none());
+    assert_that!(b.get_cwd(), none());
     assert!(b.get_controlling_tty());
   }
 
@@ -361,7 +362,7 @@ mod tests {
     assert_eq!(b.get_cwd(), Some(tmp.path()));
 
     b.clear_cwd();
-    assert!(b.get_cwd().is_none());
+    assert_that!(b.get_cwd(), none());
   }
 
   #[test]
@@ -407,8 +408,8 @@ mod tests {
     let dir = TempDir::new().unwrap();
     let b = CommandBuilder::new("does_not_exist");
 
-    let err = b.search_path(OsStr::new("does_not_exist"), dir.path());
-    assert!(err.is_err());
+    let result = b.search_path(OsStr::new("does_not_exist"), dir.path());
+    assert_that!(result, err(anything()));
   }
 
   rusty_fork_test! {
@@ -435,7 +436,7 @@ mod tests {
       let args: Vec<&str> = cmd.args.iter().map(|c| c.to_str().unwrap()).collect();
 
       assert_eq!(args, ["echo", "hello"]);
-      assert!(cmd.env.is_none());
+      assert_that!(cmd.env, none());
       dir.close().unwrap()
     }
 

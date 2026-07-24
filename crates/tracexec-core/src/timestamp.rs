@@ -52,6 +52,7 @@ mod tests {
     DateTime,
     Local,
   };
+  use test_that::prelude::*;
 
   use super::*;
 
@@ -60,19 +61,16 @@ mod tests {
   #[test]
   fn timestamp_format_accepts_valid_strftime() {
     let fmt = TimestampFormat::from_str("%Y-%m-%d %H:%M:%S");
-    assert!(fmt.is_ok());
+    assert_that!(fmt, ok(anything()));
   }
 
   #[test]
   fn timestamp_format_rejects_newline() {
     let fmt = TimestampFormat::from_str("%Y-%m-%d\n%H:%M:%S");
-    assert!(fmt.is_err());
+    assert_that!(fmt, err(anything()));
 
     let err = fmt.unwrap_err();
-    assert!(
-      err.contains("should not contain newline"),
-      "unexpected error message: {err}"
-    );
+    assert_that!(err, contains_substring("should not contain newline"));
   }
 
   #[test]
@@ -85,18 +83,14 @@ mod tests {
 
   #[test]
   fn boot_time_is_non_zero() {
-    assert!(*BOOT_TIME > 0);
+    assert_that!(*BOOT_TIME, gt(0));
   }
 
   #[test]
   fn boot_time_is_reasonable_unix_time() {
     // boot time should be after year 2000
     const YEAR_2000_NS: u64 = 946684800_u64 * 1_000_000_000;
-    assert!(
-      *BOOT_TIME > YEAR_2000_NS,
-      "BOOT_TIME too small: {}",
-      *BOOT_TIME
-    );
+    assert_that!(*BOOT_TIME, gt(YEAR_2000_NS));
   }
 
   /* ---------------- ts_from_boot_ns ---------------- */
@@ -114,7 +108,7 @@ mod tests {
     let t1 = ts_from_boot_ns(1_000);
     let t2 = ts_from_boot_ns(2_000);
 
-    assert!(t2 > t1);
+    assert_that!(t2, gt(t1));
   }
 
   #[test]

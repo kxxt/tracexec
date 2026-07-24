@@ -218,6 +218,8 @@ fn pathbuf_from_bytes(s: &str) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+  use test_that::prelude::*;
+
   use super::*;
 
   #[test]
@@ -233,17 +235,15 @@ mod tests {
 
   #[test]
   fn test_parse_passwd_line_skips_malformed_lines() {
-    assert!(parse_passwd_line("# comment").unwrap().is_none());
-    assert!(parse_passwd_line("missing:fields").unwrap().is_none());
-    assert!(
-      parse_passwd_line("alice:x:not-a-uid:100:Alice:/home/alice:/bin/bash")
-        .unwrap()
-        .is_none()
+    assert_that!(parse_passwd_line("# comment").unwrap(), none());
+    assert_that!(parse_passwd_line("missing:fields").unwrap(), none());
+    assert_that!(
+      parse_passwd_line("alice:x:not-a-uid:100:Alice:/home/alice:/bin/bash").unwrap(),
+      none()
     );
-    assert!(
-      parse_passwd_line("alice:x:1000:100:Alice:/home/alice:/bin/bash:extra")
-        .unwrap()
-        .is_none()
+    assert_that!(
+      parse_passwd_line("alice:x:1000:100:Alice:/home/alice:/bin/bash:extra").unwrap(),
+      none()
     );
   }
 

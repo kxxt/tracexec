@@ -82,6 +82,7 @@ impl From<Path> for OutputMsg {
 
 #[cfg(test)]
 mod tests {
+  use test_that::prelude::*;
   use tracexec_core::{
     event::{
       BpfError,
@@ -119,7 +120,7 @@ mod tests {
       error: None,
     };
     let out: OutputMsg = path.into();
-    assert!(out.as_ref().contains("[err: bpf error]"));
+    assert_that!(out.as_ref(), contains_substring("[err: bpf error]"));
     assert!(matches!(out, OutputMsg::PartialOk(_)));
   }
 

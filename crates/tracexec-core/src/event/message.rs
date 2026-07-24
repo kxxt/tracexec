@@ -245,6 +245,7 @@ mod tests {
   };
 
   use nix::errno::Errno;
+  use test_that::prelude::*;
 
   use super::*;
   use crate::cache::ArcStr;
@@ -345,8 +346,11 @@ mod tests {
     let partial = OutputMsg::PartialOk(ArcStr::from("partial"));
     let err = OutputMsg::Err(FriendlyError::InspectError(Errno::EINVAL));
 
-    assert!(format!("{}", ok).contains("ok"));
-    assert!(format!("{}", partial).contains("partial"));
-    assert!(format!("{}", err).contains("[err: failed to inspect]"));
+    assert_that!(format!("{}", ok), contains_substring("ok"));
+    assert_that!(format!("{}", partial), contains_substring("partial"));
+    assert_that!(
+      format!("{}", err),
+      contains_substring("[err: failed to inspect]")
+    );
   }
 }

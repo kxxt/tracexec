@@ -186,6 +186,7 @@ impl TryFrom<&str> for BreakPoint {
 #[cfg(test)]
 mod tests {
   use nix::errno::Errno;
+  use test_that::prelude::*;
 
   use super::*;
   use crate::cache::ArcStr;
@@ -217,9 +218,15 @@ mod tests {
     assert_eq!(bp3.to_editable(), "exact-filename:/bin/sh");
 
     // invalid prefix
-    assert!(BreakPointPattern::from_editable("unknown:abc").is_err());
+    assert_that!(
+      BreakPointPattern::from_editable("unknown:abc"),
+      err(anything())
+    );
     // missing colon
-    assert!(BreakPointPattern::from_editable("no-colon").is_err());
+    assert_that!(
+      BreakPointPattern::from_editable("no-colon"),
+      err(anything())
+    );
   }
 
   #[test]
@@ -283,15 +290,21 @@ mod tests {
     }
 
     // missing stop
-    assert!(BreakPoint::try_from("no-colon-here").is_err());
+    assert_that!(BreakPoint::try_from("no-colon-here"), err(anything()));
 
     // invalid stop
-    assert!(BreakPoint::try_from("badstop:argv-regex:foo").is_err());
+    assert_that!(
+      BreakPoint::try_from("badstop:argv-regex:foo"),
+      err(anything())
+    );
 
     // missing pattern kind
-    assert!(BreakPoint::try_from("sysenter:badformat").is_err());
+    assert_that!(BreakPoint::try_from("sysenter:badformat"), err(anything()));
 
     // invalid pattern kind
-    assert!(BreakPoint::try_from("sysenter:unknown-kind:xyz").is_err());
+    assert_that!(
+      BreakPoint::try_from("sysenter:unknown-kind:xyz"),
+      err(anything())
+    );
   }
 }

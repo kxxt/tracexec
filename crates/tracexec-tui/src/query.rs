@@ -324,6 +324,7 @@ mod tests {
     backend::TestBackend,
     text::Line,
   };
+  use test_that::prelude::*;
   use tracexec_core::{
     cli::keys::TuiKeyBindings,
     event::EventId,
@@ -431,8 +432,8 @@ mod tests {
 
     let line = qr.statistics(current_theme());
     let s = line.to_string();
-    assert!(s.contains("2")); // selected index
-    assert!(s.contains("3")); // total matches
+    assert_that!(s, contains_substring("2")); // selected index
+    assert_that!(s, contains_substring("3")); // total matches
   }
 
   #[test]

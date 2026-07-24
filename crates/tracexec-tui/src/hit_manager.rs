@@ -494,6 +494,7 @@ mod tests {
     layout::Rect,
   };
   use serial_test::file_serial;
+  use test_that::prelude::*;
   use tracexec_backend_ptrace::ptrace::{
     RunningTracer,
     clear_breakpoint_id_counter,
@@ -772,7 +773,7 @@ mod tests {
       keys().as_ref(),
     );
     assert!(matches!(action, Some(Action::HideHitManager)));
-    assert!(state.hits.is_empty());
+    assert_that!(state.hits, empty());
     assert_eq!(state.list_state.selected, None);
   }
 
@@ -790,7 +791,7 @@ mod tests {
       keys().as_ref(),
     );
     assert!(matches!(action, Some(Action::HideHitManager)));
-    assert!(state.hits.is_empty());
+    assert_that!(state.hits, empty());
   }
 
   #[test]
@@ -813,7 +814,7 @@ mod tests {
       keys().as_ref(),
     );
     assert!(matches!(action, Some(Action::HideHitManager)));
-    assert!(state.hits.is_empty());
+    assert_that!(state.hits, empty());
     assert!(state.pending_detach_reactions.contains_key(&hid));
   }
 
@@ -840,7 +841,7 @@ mod tests {
       keys().as_ref(),
     );
     assert!(matches!(action, Some(Action::HideHitManager)));
-    assert!(state.hits.is_empty());
+    assert_that!(state.hits, empty());
     assert!(state.pending_detach_reactions.contains_key(&hid));
   }
 }

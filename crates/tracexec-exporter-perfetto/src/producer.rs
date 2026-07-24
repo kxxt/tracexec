@@ -520,6 +520,7 @@ mod tests {
     errno::Errno,
     unistd::Pid,
   };
+  use test_that::prelude::*;
   use tracexec_core::{
     event::{
       EventId,
@@ -643,6 +644,6 @@ mod tests {
         details: TracerEventDetails::Exec(Box::new(child)),
       }))
       .unwrap();
-    assert!(!packets.is_empty());
+    assert_that!(packets, not(empty()));
   }
 }

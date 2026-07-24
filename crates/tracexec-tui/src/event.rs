@@ -357,6 +357,7 @@ mod tests {
     fcntl::OFlag,
     unistd::Pid,
   };
+  use test_that::prelude::*;
   use tracexec_core::{
     cache::ArcStr,
     event::{
@@ -522,12 +523,15 @@ mod tests {
       .collect::<Vec<_>>()
       .join("\n");
 
-    assert!(rendered.contains("[info]: info"));
-    assert!(rendered.contains("[warn]: warn"));
-    assert!(rendered.contains("error: err"));
-    assert!(rendered.contains("new child 11"));
-    assert!(rendered.contains("tracee spawned: 20"));
-    assert!(rendered.contains("tracee exit: signal: None, exit_code: 7"));
+    assert_that!(rendered, contains_substring("[info]: info"));
+    assert_that!(rendered, contains_substring("[warn]: warn"));
+    assert_that!(rendered, contains_substring("error: err"));
+    assert_that!(rendered, contains_substring("new child 11"));
+    assert_that!(rendered, contains_substring("tracee spawned: 20"));
+    assert_that!(
+      rendered,
+      contains_substring("tracee exit: signal: None, exit_code: 7")
+    );
   }
 
   #[test]
@@ -574,17 +578,17 @@ mod tests {
         theme,
       )
       .to_string();
-    assert!(commandline.contains("env -a custom-argv0"));
-    assert!(commandline.contains("-C /work"));
-    assert!(commandline.contains("-u REMOVED"));
-    assert!(commandline.contains("--"));
-    assert!(commandline.contains("-ADDED=dash"));
-    assert!(commandline.contains("MODIFIED=$'new value'"));
-    assert!(commandline.contains("/bin/echo $'hello world'"));
-    assert!(commandline.contains("</tmp/stdin"));
-    assert!(commandline.contains(">/tmp/stdout"));
-    assert!(commandline.contains("2>&-"));
-    assert!(commandline.contains("5<>/tmp/fd5"));
+    assert_that!(commandline, contains_substring("env -a custom-argv0"));
+    assert_that!(commandline, contains_substring("-C /work"));
+    assert_that!(commandline, contains_substring("-u REMOVED"));
+    assert_that!(commandline, contains_substring("--"));
+    assert_that!(commandline, contains_substring("-ADDED=dash"));
+    assert_that!(commandline, contains_substring("MODIFIED=$'new value'"));
+    assert_that!(commandline, contains_substring("/bin/echo $'hello world'"));
+    assert_that!(commandline, contains_substring("</tmp/stdin"));
+    assert_that!(commandline, contains_substring(">/tmp/stdout"));
+    assert_that!(commandline, contains_substring("2>&-"));
+    assert_that!(commandline, contains_substring("5<>/tmp/fd5"));
 
     let full_env = event
       .to_event_line(
@@ -599,8 +603,8 @@ mod tests {
         theme,
       )
       .to_string();
-    assert!(full_env.contains("-i --"));
-    assert!(full_env.contains("KEEP=same"));
+    assert_that!(full_env, contains_substring("-i --"));
+    assert_that!(full_env, contains_substring("KEEP=same"));
   }
 
   #[test]
@@ -609,75 +613,68 @@ mod tests {
     let event = exec_details();
     let modifier = ModifierArgs::default();
 
-    assert!(
-      event
-        .text_for_copy(
-          &baseline,
-          CopyTarget::Line,
-          &modifier,
-          RuntimeModifier::default()
-        )
-        .contains("/bin/echo")
+    assert_that!(
+      event.text_for_copy(
+        &baseline,
+        CopyTarget::Line,
+        &modifier,
+        RuntimeModifier::default()
+      ),
+      contains_substring("/bin/echo")
     );
-    assert!(
-      event
-        .text_for_copy(
-          &baseline,
-          CopyTarget::Commandline(SupportedShell::Bash),
-          &modifier,
-          RuntimeModifier::default()
-        )
-        .contains("custom-argv0")
+    assert_that!(
+      event.text_for_copy(
+        &baseline,
+        CopyTarget::Commandline(SupportedShell::Bash),
+        &modifier,
+        RuntimeModifier::default()
+      ),
+      contains_substring("custom-argv0")
     );
-    assert!(
-      event
-        .text_for_copy(
-          &baseline,
-          CopyTarget::CommandlineWithFullEnv(SupportedShell::Sh),
-          &modifier,
-          RuntimeModifier::default()
-        )
-        .contains("-i --")
+    assert_that!(
+      event.text_for_copy(
+        &baseline,
+        CopyTarget::CommandlineWithFullEnv(SupportedShell::Sh),
+        &modifier,
+        RuntimeModifier::default()
+      ),
+      contains_substring("-i --")
     );
-    assert!(
-      event
-        .text_for_copy(
-          &baseline,
-          CopyTarget::CommandlineWithStdio(SupportedShell::Fish),
-          &modifier,
-          RuntimeModifier::default()
-        )
-        .contains("</tmp/stdin")
+    assert_that!(
+      event.text_for_copy(
+        &baseline,
+        CopyTarget::CommandlineWithStdio(SupportedShell::Fish),
+        &modifier,
+        RuntimeModifier::default()
+      ),
+      contains_substring("</tmp/stdin")
     );
-    assert!(
-      event
-        .text_for_copy(
-          &baseline,
-          CopyTarget::CommandlineWithFds(SupportedShell::Bash),
-          &modifier,
-          RuntimeModifier::default()
-        )
-        .contains("5<>/tmp/fd5")
+    assert_that!(
+      event.text_for_copy(
+        &baseline,
+        CopyTarget::CommandlineWithFds(SupportedShell::Bash),
+        &modifier,
+        RuntimeModifier::default()
+      ),
+      contains_substring("5<>/tmp/fd5")
     );
-    assert!(
-      event
-        .text_for_copy(
-          &baseline,
-          CopyTarget::Env,
-          &modifier,
-          RuntimeModifier::default()
-        )
-        .contains("\"KEEP\"=\"same\"")
+    assert_that!(
+      event.text_for_copy(
+        &baseline,
+        CopyTarget::Env,
+        &modifier,
+        RuntimeModifier::default()
+      ),
+      contains_substring("\"KEEP\"=\"same\"")
     );
-    assert!(
-      event
-        .text_for_copy(
-          &baseline,
-          CopyTarget::EnvDiff,
-          &modifier,
-          RuntimeModifier::default()
-        )
-        .contains("# Added:")
+    assert_that!(
+      event.text_for_copy(
+        &baseline,
+        CopyTarget::EnvDiff,
+        &modifier,
+        RuntimeModifier::default()
+      ),
+      contains_substring("# Added:")
     );
     assert!(
       event
@@ -725,15 +722,14 @@ mod tests {
     failing.envp = Arc::new(Err(Errno::EPERM));
     failing.env_diff = Err(Errno::EPERM);
     let failing = TracerEventDetails::Exec(Box::new(failing));
-    assert!(
-      failing
-        .text_for_copy(
-          &baseline,
-          CopyTarget::Argv,
-          &modifier,
-          RuntimeModifier::default()
-        )
-        .contains("failed to read argv")
+    assert_that!(
+      failing.text_for_copy(
+        &baseline,
+        CopyTarget::Argv,
+        &modifier,
+        RuntimeModifier::default()
+      ),
+      contains_substring("failed to read argv")
     );
     assert_eq!(
       failing.text_for_copy(
@@ -744,15 +740,14 @@ mod tests {
       ),
       "[failed to read argv]"
     );
-    assert!(
-      failing
-        .text_for_copy(
-          &baseline,
-          CopyTarget::Env,
-          &modifier,
-          RuntimeModifier::default()
-        )
-        .contains("failed to read envp")
+    assert_that!(
+      failing.text_for_copy(
+        &baseline,
+        CopyTarget::Env,
+        &modifier,
+        RuntimeModifier::default()
+      ),
+      contains_substring("failed to read envp")
     );
     assert_eq!(
       failing.text_for_copy(

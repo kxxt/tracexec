@@ -1,4 +1,5 @@
 //! Data structures for export command
+
 use std::{
   error::Error,
   io,
@@ -309,6 +310,7 @@ mod tests {
     errno::Errno,
     unistd::Pid,
   };
+  use test_that::prelude::*;
   use tokio::sync::mpsc::unbounded_channel;
   use tracexec_core::{
     cli::args::ExporterArgs,
@@ -482,7 +484,7 @@ mod tests {
       .into_iter::<serde_json::Value>()
       .collect::<Result<_, _>>()
       .unwrap();
-    assert!(values.len() >= 2);
+    assert_that!(values.len(), ge(2));
     assert!(values[0].get("generator").is_some());
     assert!(values[1].get("id").is_some());
     assert_eq!(values[1]["cgroup"]["kind"], "v2");

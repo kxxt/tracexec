@@ -71,6 +71,7 @@ tracing-test = "0.2.4"
 serial_test = { version = "3.1.1", features = ["file_locks"] }
 rusty-fork = "0.3.1"
 tempfile = "3.24.0"
+test-that = "0.5.2"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
@@ -128,6 +129,7 @@ tracexec-backend-ebpf = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_cmd = "2.0.14"
+test-that = { workspace = true }
 serial_test = { workspace = true }
 predicates = { workspace = true }
 nix = { workspace = true }

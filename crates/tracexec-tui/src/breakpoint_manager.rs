@@ -236,6 +236,7 @@ mod tests {
     Terminal,
     backend::TestBackend,
   };
+  use test_that::prelude::*;
   use tracexec_backend_ptrace::ptrace::RunningTracer;
   use tracexec_core::{
     breakpoint::{
@@ -436,7 +437,7 @@ mod tests {
   fn test_breakpoint_manager_help() {
     let help = super::BreakPointManager::help(keys().as_ref(), current_theme());
     assert_eq!(help.title, "How to use Breakpoints");
-    assert!(!help.message.is_empty());
+    assert_that!(help.message, not(empty()));
     // Check that the help contains expected content
     let content = help
       .message
@@ -444,11 +445,11 @@ mod tests {
       .map(|line: &ratatui::text::Line| line.to_string())
       .collect::<Vec<_>>()
       .join("\n");
-    assert!(content.contains("syscall-enter"));
-    assert!(content.contains("syscall-exit"));
-    assert!(content.contains("in-filename"));
-    assert!(content.contains("exact-filename"));
-    assert!(content.contains("argv-regex"));
+    assert_that!(content, contains_substring("syscall-enter"));
+    assert_that!(content, contains_substring("syscall-exit"));
+    assert_that!(content, contains_substring("in-filename"));
+    assert_that!(content, contains_substring("exact-filename"));
+    assert_that!(content, contains_substring("argv-regex"));
   }
 
   #[test]
@@ -481,7 +482,7 @@ mod tests {
       KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
       keys().as_ref(),
     );
-    assert!(state.editor.is_none());
+    assert_that!(state.editor, none());
     assert_eq!(state.breakpoints.len(), 1);
     let (id, breakpoint) = state.breakpoints.iter().next().unwrap();
     let breakpoint = breakpoint.clone();

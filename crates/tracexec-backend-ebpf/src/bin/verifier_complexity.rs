@@ -585,6 +585,8 @@ fn prepare_compat_execveat_fentry(open_skel: &mut OpenTracexecSystemSkel<'_>) ->
 
 #[cfg(test)]
 mod tests {
+  use test_that::prelude::*;
+
   use super::*;
 
   #[test]
@@ -628,7 +630,7 @@ mod tests {
     .expect("processed metrics should still parse");
 
     assert_eq!(metrics.stack_depth, None);
-    assert!(metrics.stack_depths.is_empty());
+    assert_that!(metrics.stack_depths, empty());
     assert_eq!(metrics.insns_processed, 103);
   }
 }

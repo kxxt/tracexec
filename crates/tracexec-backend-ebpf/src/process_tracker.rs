@@ -120,6 +120,7 @@ impl ProcessTracker {
 #[cfg(test)]
 mod tests {
   use nix::unistd::Pid;
+  use test_that::prelude::*;
   use tracexec_core::event::EventId;
 
   use super::ProcessTracker;
@@ -135,7 +136,7 @@ mod tests {
     assert_eq!(events[0], EventId::new(1));
     assert_eq!(events[1], EventId::new(2));
     tracker.remove(pid);
-    assert!(tracker.maybe_associated_events(pid).is_none());
+    assert_that!(tracker.maybe_associated_events(pid), none());
   }
 
   #[test]
@@ -174,7 +175,10 @@ mod tests {
 
     tracker.add(pid);
 
-    assert_eq!(tracker.maybe_associated_events(pid), Some([].as_slice()));
+    assert_that!(
+      tracker.maybe_associated_events(pid),
+      some(points_to(empty())),
+    );
   }
 
   #[test]

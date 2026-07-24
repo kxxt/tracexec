@@ -29,6 +29,7 @@ snafu = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
+test-that = { workspace = true }
 tracing-test = { workspace = true }
 predicates = { workspace = true }
 serial_test = { workspace = true }

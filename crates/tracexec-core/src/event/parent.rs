@@ -109,6 +109,8 @@ impl ParentTracker {
 
 #[cfg(test)]
 mod tests {
+  use test_that::prelude::*;
+
   use super::*;
 
   #[test]
@@ -191,7 +193,7 @@ mod tests {
 
     // First successful exec
     let parent_event1 = tracker.update_last_exec(first_exec, true);
-    assert!(parent_event1.is_none());
+    assert_that!(parent_event1, none());
     assert_eq!(tracker.last_successful_exec.unwrap().into_inner(), 1);
 
     // Second successful exec

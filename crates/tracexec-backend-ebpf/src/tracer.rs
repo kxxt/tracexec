@@ -1092,6 +1092,7 @@ mod tests {
   use enumflags2::BitFlags;
   use rstest::rstest;
   use serial_test::file_serial;
+  use test_that::prelude::*;
   use tokio::sync::mpsc::unbounded_channel;
   use tracexec_core::printer::{
     ColorLevel,
@@ -1184,7 +1185,7 @@ mod tests {
       BitFlags::from_flag(BpfEventFlags::FDS_PROBE_FAILURE),
     );
 
-    assert!(fds.error.is_some());
+    assert_that!(fds.error, some(anything()));
   }
 
   #[test]
@@ -1198,9 +1199,9 @@ mod tests {
     );
 
     let fd = fds.fdinfo.get(&3).unwrap();
-    assert!(fd.flags.ok().is_some());
+    assert_that!(fd.flags.ok(), some(anything()));
     assert!(fd.flags.contains(OFlag::O_RDONLY));
-    assert!(fds.error.is_none());
+    assert_that!(fds.error, none());
   }
 
   #[test]
@@ -1212,7 +1213,7 @@ mod tests {
 
     let fd = fds.fdinfo.get(&3).unwrap();
     assert!(matches!(&fd.path, OutputMsg::Ok(path) if path.as_ref() == "pipe:[0]"));
-    assert!(fds.error.is_none());
+    assert_that!(fds.error, none());
   }
 
   #[test]
@@ -1271,7 +1272,7 @@ mod tests {
     )
     .unwrap();
 
-    assert!(rx.try_recv().is_err());
+    assert_that!(rx.try_recv(), err(anything()));
   }
 
   fn run_ebpf_and_collect(
@@ -1453,7 +1454,12 @@ mod tests {
 
     let meta = std::fs::metadata(&profraw_path).expect("profraw file missing");
     // Minimum: 128-byte header
-    assert!(meta.len() >= 128, "profraw too small: {} bytes", meta.len());
+    assert_that!(
+      meta.len(),
+      ge(128),
+      "profraw too small: {} bytes",
+      meta.len()
+    );
 
     // Verify magic and version
     let data = std::fs::read(&profraw_path).unwrap();
@@ -1518,8 +1524,12 @@ mod tests {
       index.display()
     );
     let html = std::fs::read_to_string(&index).unwrap();
-    assert!(
-      html.contains("<!doctype html>") || html.contains("<!DOCTYPE html>"),
+    assert_that!(
+      html,
+      any!(
+        contains_substring("<!doctype html>"),
+        contains_substring("<!DOCTYPE html>")
+      ),
       "index.html doesn't look like HTML"
     );
 
@@ -1564,8 +1574,12 @@ mod tests {
       lcov_path.display()
     );
     let lcov = std::fs::read_to_string(&lcov_path).unwrap();
-    assert!(
-      lcov.contains("SF:") && lcov.contains("end_of_record"),
+    assert_that!(
+      lcov,
+      all!(
+        contains_substring("SF:"),
+        contains_substring("end_of_record"),
+      ),
       "LCOV output doesn't look like a valid tracefile"
     );
 
