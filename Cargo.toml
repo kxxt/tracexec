@@ -75,6 +75,7 @@ tempfile = "3.24.0"
 test-that = "0.5.2"
 
 [workspace.lints.clippy]
+unwrap_used = "warn"
 all = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 style = { level = "warn", priority = -1 }
