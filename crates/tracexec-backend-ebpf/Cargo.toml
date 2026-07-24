@@ -28,6 +28,7 @@ nix = { workspace = true }
 enumflags2 = { workspace = true }
 tracexec-core = { workspace = true, features = ["ebpf"] }
 hashbrown = { workspace = true }
+parking_lot = { workspace = true }
 color-eyre = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }

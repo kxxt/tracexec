@@ -12,7 +12,6 @@ use std::{
   },
   sync::{
     Arc,
-    RwLock,
     atomic::{
       AtomicBool,
       Ordering,
@@ -40,6 +39,7 @@ use nix::{
     WatchDescriptor,
   },
 };
+use parking_lot::RwLock;
 use tracexec_core::proc::{
   CgroupInfo,
   resolve_cgroup_id,
@@ -90,7 +90,7 @@ impl CgroupCache {
         let mut wd = HashMap::new();
         let mut cache = HashMap::new();
         scan_and_watch_recursive(ino, &root, &root, &mut wd, &mut cache);
-        *inner.write().unwrap() = cache;
+        *inner.write() = cache;
         wd
       })
     } else {
@@ -121,18 +121,16 @@ impl CgroupCache {
   /// look-ups.
   pub fn resolve(&self, cgroup_id: u64) -> CgroupInfo {
     // Fast path
-    if let Some(path) = self.inner.read().unwrap().get(&cgroup_id) {
+    if let Some(path) = self.inner.read().get(&cgroup_id) {
       trace!("cgroup cache hit: {cgroup_id} -> {path}");
       return CgroupInfo::V2 { path: path.clone() };
     }
 
     // Slow path
     let info = resolve_cgroup_id(cgroup_id);
-    if let CgroupInfo::V2 { ref path } = info
-      && let Ok(mut map) = self.inner.write()
-    {
+    if let CgroupInfo::V2 { ref path } = info {
       trace!("cgroup cache miss: resolved {cgroup_id} -> {path}, inserting into cache");
-      map.insert(cgroup_id, path.clone());
+      self.inner.write().insert(cgroup_id, path.clone());
     }
     info
   }
@@ -255,7 +253,7 @@ fn handle_dir_created(
   let mut new_cache = HashMap::new();
   scan_and_watch_recursive(inotify, &abs_path, root, wd_map, &mut new_cache);
   if !new_cache.is_empty() {
-    cache.write().unwrap().extend(new_cache);
+    cache.write().extend(new_cache);
   }
   debug!("cgroup created: {child_rel}");
 }
@@ -279,7 +277,6 @@ fn handle_dir_deleted(
   let prefix = format!("{child_rel}/");
   cache
     .write()
-    .unwrap()
     .retain(|_, v| *v != child_rel && !v.starts_with(&prefix));
 
   // The kernel auto-removes the watch for the deleted directory.
@@ -394,7 +391,7 @@ mod tests {
     let ino = fs::metadata(root.join("test")).unwrap().ino();
     let cache = CgroupCache::with_root(root.to_path_buf());
 
-    let map = cache.inner.read().unwrap();
+    let map = cache.inner.read();
     assert_eq!(map.get(&ino).map(String::as_str), Some("/test"));
   }
 
@@ -412,7 +409,7 @@ mod tests {
     std::thread::sleep(Duration::from_secs(2));
 
     let ino = fs::metadata(root.join("new_cgroup")).unwrap().ino();
-    let map = cache.inner.read().unwrap();
+    let map = cache.inner.read();
     assert_eq!(map.get(&ino).map(String::as_str), Some("/new_cgroup"));
   }
 
@@ -424,13 +421,13 @@ mod tests {
 
     let cache = CgroupCache::with_root(root.clone());
     let ino = fs::metadata(root.join("doomed")).unwrap().ino();
-    assert!(cache.inner.read().unwrap().contains_key(&ino));
+    assert!(cache.inner.read().contains_key(&ino));
 
     // Remove the directory
     fs::remove_dir(root.join("doomed")).unwrap();
     std::thread::sleep(Duration::from_secs(2));
 
-    assert!(!cache.inner.read().unwrap().contains_key(&ino));
+    assert!(!cache.inner.read().contains_key(&ino));
   }
 
   #[test]
@@ -446,7 +443,7 @@ mod tests {
     std::thread::sleep(Duration::from_secs(2));
 
     let ino = fs::metadata(root.join("parent/child")).unwrap().ino();
-    let map = cache.inner.read().unwrap();
+    let map = cache.inner.read();
     assert_eq!(map.get(&ino).map(String::as_str), Some("/parent/child"));
   }
 
