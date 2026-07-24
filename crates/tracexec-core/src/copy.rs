@@ -120,7 +120,7 @@ fn output_status(msg: &OutputMsg) -> OutputStatus {
 
 fn handle_stdio_fd(
   fd: i32,
-  baseline: &BaselineInfo,
+  fdinfo_orig: &crate::proc::FileDescriptorInfo,
   curr: &FileDescriptorInfoCollection,
   commandline: &mut Commandline,
 ) {
@@ -131,7 +131,6 @@ fn handle_stdio_fd(
     _ => unreachable!(),
   };
 
-  let fdinfo_orig = baseline.fdinfo.get(fd).unwrap();
   if let Some(fdinfo) = curr.get(fd) {
     if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
       commandline.push(fdstr, CommandlinePartKind::CloexecFdInCommandline);
@@ -255,8 +254,8 @@ pub fn exec_commandline(
 
   // FD
   if modifier.stdio_in_cmdline {
-    for fd in 0..=2 {
-      handle_stdio_fd(fd, baseline, fdinfo, &mut commandline);
+    for (fd, fdinfo_orig) in baseline.fdinfo.stdio() {
+      handle_stdio_fd(fd, fdinfo_orig, fdinfo, &mut commandline);
     }
   }
 

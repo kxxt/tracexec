@@ -379,6 +379,10 @@ impl FileDescriptorInfoCollection {
     self.fdinfo.get(&fd)
   }
 
+  pub fn stdio(&self) -> impl Iterator<Item = (c_int, &FileDescriptorInfo)> {
+    self.fdinfo.range(0..=2).map(|(&fd, info)| (fd, info))
+  }
+
   pub fn new_baseline() -> color_eyre::Result<Self> {
     let mut fdinfo = BTreeMap::new();
     let pid = getpid();
