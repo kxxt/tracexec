@@ -72,37 +72,33 @@ impl SyscallInfo {
     }
   }
 
-  pub fn is_execve(&self) -> Option<bool> {
-    if let SyscallInfoData::Entry { syscall_nr, .. } | SyscallInfoData::Seccomp { syscall_nr, .. } =
-      &self.data
-    {
+  pub fn is_execve(&self) -> bool {
+    if let Some(syscall_nr) = self.syscall_number() {
       cfg_if! {
         if #[cfg(target_arch = "x86_64")] {
-          Some((self.arch == AuditArch::from_raw(crate::arch::AUDIT_ARCH_X86_64) && *syscall_nr == SYS_execve as u64) ||
-          (self.arch == AuditArch::from_raw(crate::arch::AUDIT_ARCH_I386) && *syscall_nr == crate::arch::SYS_EXECVE_32 as u64))
+          (self.arch == AuditArch::from_raw(crate::arch::AUDIT_ARCH_X86_64) && syscall_nr == SYS_execve as u64) ||
+          (self.arch == AuditArch::from_raw(crate::arch::AUDIT_ARCH_I386) && syscall_nr == crate::arch::SYS_EXECVE_32 as u64)
         } else {
-          Some(self.arch == AuditArch::from_raw(NATIVE_AUDIT_ARCH) && *syscall_nr == SYS_execve as u64)
+          self.arch == AuditArch::from_raw(NATIVE_AUDIT_ARCH) && syscall_nr == SYS_execve as u64
         }
       }
     } else {
-      None
+      false
     }
   }
 
-  pub fn is_execveat(&self) -> Option<bool> {
-    if let SyscallInfoData::Entry { syscall_nr, .. } | SyscallInfoData::Seccomp { syscall_nr, .. } =
-      &self.data
-    {
+  pub fn is_execveat(&self) -> bool {
+    if let Some(syscall_nr) = self.syscall_number() {
       cfg_if! {
         if #[cfg(target_arch = "x86_64")] {
-          Some((self.arch == AuditArch::from_raw(crate::arch::AUDIT_ARCH_X86_64) && *syscall_nr == SYS_execveat as u64) ||
-          (self.arch == AuditArch::from_raw(crate::arch::AUDIT_ARCH_I386) && *syscall_nr == crate::arch::SYS_EXECVEAT_32 as u64))
+          (self.arch == AuditArch::from_raw(crate::arch::AUDIT_ARCH_X86_64) && syscall_nr == SYS_execveat as u64) ||
+          (self.arch == AuditArch::from_raw(crate::arch::AUDIT_ARCH_I386) && syscall_nr == crate::arch::SYS_EXECVEAT_32 as u64)
         } else {
-          Some(self.arch == AuditArch::from_raw(NATIVE_AUDIT_ARCH) && *syscall_nr == SYS_execveat as u64)
+          self.arch == AuditArch::from_raw(NATIVE_AUDIT_ARCH) && syscall_nr == SYS_execveat as u64
         }
       }
     } else {
-      None
+      false
     }
   }
 }
