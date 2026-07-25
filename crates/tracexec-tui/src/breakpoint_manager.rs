@@ -310,7 +310,7 @@ impl BreakPointManagerState {
     } else if keys.prev_item.matches(key) {
       self.list_state.previous();
     } else if keys.breakpoint_delete.matches(key) {
-      if let Some(selected) = self.list_state.selected {
+      if let Some((selected, id)) = self.selected_entry() {
         if selected > 0 {
           self.list_state.select(Some(selected - 1));
         } else if selected + 1 < self.breakpoints.len() {
@@ -318,25 +318,28 @@ impl BreakPointManagerState {
         } else {
           self.list_state.select(None);
         }
-        let id = *self.breakpoints.keys().nth(selected).unwrap();
         self.tracer.remove_breakpoint(id);
         self.breakpoints.remove(&id);
       }
     } else if keys.breakpoint_toggle_active.matches(key) {
-      if let Some(selected) = self.list_state.selected {
-        let id = *self.breakpoints.keys().nth(selected).unwrap();
-        let breakpoint = self.breakpoints.get_mut(&id).unwrap();
-        self.tracer.set_breakpoint(id, !breakpoint.activated);
+      let change = if let Some((id, breakpoint)) = self.selected_breakpoint_mut() {
         breakpoint.activated = !breakpoint.activated;
+        Some((id, breakpoint.activated))
+      } else {
+        None
+      };
+      if let Some((id, activated)) = change {
+        self.tracer.set_breakpoint(id, activated);
       }
     } else if keys.breakpoint_edit.matches(key) {
-      if let Some(selected) = self.list_state.selected {
-        let id = *self.breakpoints.keys().nth(selected).unwrap();
-        let breakpoint = self.breakpoints.get(&id).unwrap();
-        self.stop = breakpoint.stop;
-        self.active = breakpoint.activated;
+      if let Some((id, stop, activated, editable_pattern)) = self
+        .selected_breakpoint()
+        .map(|(id, b)| (id, b.stop, b.activated, b.pattern.to_editable()))
+      {
+        self.stop = stop;
+        self.active = activated;
         self.editing = Some(id);
-        let mut editor_state = TextState::new().with_value(breakpoint.pattern.to_editable());
+        let mut editor_state = TextState::new().with_value(editable_pattern);
         editor_state.move_end();
         self.editor = Some(editor_state);
       }
@@ -376,6 +379,30 @@ impl BreakPointManagerState {
       }
     )
     .flatten()
+  }
+
+  fn selected_entry(&self) -> Option<(usize, u32)> {
+    #[allow(clippy::unwrap_used)]
+    self
+      .list_state
+      .selected
+      .map(|i| (i, *self.breakpoints.keys().nth(i).unwrap()))
+  }
+
+  fn selected_breakpoint_mut(&mut self) -> Option<(u32, &mut BreakPoint)> {
+    #[allow(clippy::unwrap_used)]
+    self.list_state.selected.map(|i| {
+      let id = *self.breakpoints.keys().nth(i).unwrap();
+      (id, self.breakpoints.get_mut(&id).unwrap())
+    })
+  }
+
+  fn selected_breakpoint(&self) -> Option<(u32, &BreakPoint)> {
+    #[allow(clippy::unwrap_used)]
+    self.list_state.selected.map(|i| {
+      let id = *self.breakpoints.keys().nth(i).unwrap();
+      (id, self.breakpoints.get(&id).unwrap())
+    })
   }
 }
 
@@ -459,7 +486,6 @@ impl StatefulWidgetRef for BreakPointManager {
     list.render(inner, buf, &mut state.list_state);
   }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -846,4 +872,3 @@ mod tests {
     assert_eq!(state.list_state.selected, None);
   }
 }
-
