@@ -358,6 +358,39 @@ impl Printer {
     Ok(())
   }
 
+  fn print_stdio_fds_in_cmdline(
+    &self,
+    out: &mut dyn Write,
+    curr_fds: &FileDescriptorInfoCollection,
+  ) -> io::Result<()> {
+    for (fd, orig_fd) in self.baseline.fdinfo.stdio() {
+      let (redirect, closed) = match fd {
+        0 => ("<", "0>&-"),
+        1 => (">", "1>&-"),
+        2 => ("2>", "2>&-"),
+        _ => unreachable!(),
+      };
+
+      if let Some(fdinfo) = curr_fds.get(fd) {
+        if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
+          write!(out, " {}", closed.bright_red().bold().italic())?;
+        } else if fdinfo.not_same_file_as(orig_fd) {
+          write!(
+            out,
+            " {}{}",
+            redirect.bright_yellow().bold(),
+            fdinfo.path.cli_bash_escaped_with_style(THEME.modified_fd)
+          )?;
+        }
+      } else if curr_fds.is_reliable() {
+        // If the fd collection is reliable, we can be sure that the file is closed
+        write!(out, " {}", closed.bright_red().bold())?;
+      }
+    }
+
+    Ok(())
+  }
+
   pub fn print_fd(
     &self,
     out: &mut dyn Write,
@@ -649,57 +682,7 @@ impl Printer {
         write!(out, " env")?;
 
         if self.args.stdio_in_cmdline {
-          let fdinfo_orig = self.baseline.fdinfo.stdin().unwrap();
-          if let Some(fdinfo) = exec_data.fdinfo.stdin() {
-            if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
-              // stdin will be closed
-              write!(out, " {}", "0>&-".bright_red().bold().italic())?;
-            } else if fdinfo.not_same_file_as(fdinfo_orig) {
-              write!(
-                out,
-                " {}{}",
-                "<".bright_yellow().bold(),
-                fdinfo.path.cli_bash_escaped_with_style(THEME.modified_fd)
-              )?;
-            }
-          } else if exec_data.fdinfo.is_reliable() {
-            // stdin is closed
-            write!(out, " {}", "0>&-".bright_red().bold())?;
-          }
-          let fdinfo_orig = self.baseline.fdinfo.stdout().unwrap();
-          if let Some(fdinfo) = exec_data.fdinfo.stdout() {
-            if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
-              // stdout will be closed
-              write!(out, " {}", "1>&-".bright_red().bold().italic())?;
-            } else if fdinfo.not_same_file_as(fdinfo_orig) {
-              write!(
-                out,
-                " {}{}",
-                ">".bright_yellow().bold(),
-                fdinfo.path.cli_bash_escaped_with_style(THEME.modified_fd)
-              )?;
-            }
-          } else if exec_data.fdinfo.is_reliable() {
-            // stdout is closed
-            write!(out, " {}", "1>&-".bright_red().bold())?;
-          }
-          let fdinfo_orig = self.baseline.fdinfo.stderr().unwrap();
-          if let Some(fdinfo) = exec_data.fdinfo.stderr() {
-            if fdinfo.flags.contains(OFlag::O_CLOEXEC) {
-              // stderr will be closed
-              write!(out, " {}", "2>&-".bright_red().bold().italic())?;
-            } else if fdinfo.not_same_file_as(fdinfo_orig) {
-              write!(
-                out,
-                " {}{}",
-                "2>".bright_yellow().bold(),
-                fdinfo.path.cli_bash_escaped_with_style(THEME.modified_fd)
-              )?;
-            }
-          } else if exec_data.fdinfo.is_reliable() {
-            // stderr is closed
-            write!(out, " {}", "2>&-".bright_red().bold())?;
-          }
+          self.print_stdio_fds_in_cmdline(out, &exec_data.fdinfo)?;
         }
 
         if self.args.fd_in_cmdline {
@@ -1032,6 +1015,23 @@ mod tests {
     let mut out = Vec::new();
     printer.print_fd(&mut out, &fds).unwrap();
     assert_that!(out, empty());
+  }
+
+  #[test]
+  fn print_stdio_fds_in_cmdline_handles_partial_baseline() {
+    owo_colors::control::set_should_colorize(false);
+    let mut baseline = baseline();
+    Arc::make_mut(&mut baseline).fdinfo.fdinfo.remove(&0);
+    let fds = fd_collection([
+      fd(0, "/tmp/stdin", 20, OFlag::empty()),
+      fd(1, "/tmp/stdout", 21, OFlag::empty()),
+    ]);
+    let printer = Printer::new(printer_args(), baseline);
+    let mut out = Vec::new();
+
+    printer.print_stdio_fds_in_cmdline(&mut out, &fds).unwrap();
+
+    assert_eq!(String::from_utf8(out).unwrap(), " >/tmp/stdout 2>&-");
   }
 
   #[test]
