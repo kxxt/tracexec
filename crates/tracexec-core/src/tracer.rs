@@ -122,6 +122,7 @@ pub struct TracerBuilder {
   pub tracexec_override_env: Option<EnvVars>,
 }
 
+#[allow(clippy::unwrap_used)]
 impl TracerBuilder {
   /// Initialize a new [`TracerBuilder`]
   pub fn new() -> Self {

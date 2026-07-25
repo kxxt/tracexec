@@ -4,6 +4,8 @@
 //! descriptors verifies that synthetic d_dname-backed files survive across the
 //! exec boundary and are reported in the post-open process image.
 
+#![allow(clippy::unwrap_used)]
+
 use std::{
   ffi::CString,
   os::fd::RawFd,

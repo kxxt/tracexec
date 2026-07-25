@@ -273,6 +273,7 @@ impl HitManagerState {
           }
           EditingTarget::CustomCommand { selection } => {
             self.select_near_by(selection);
+            #[allow(clippy::unwrap_used)]
             let hid = *self.hits.keys().nth(selection).unwrap();
             if let Err(e) =
               self.detach_pause_and_launch_external(hid, self.editor_state.value().to_string())
@@ -309,9 +310,8 @@ impl HitManagerState {
     } else if keys.prev_item.matches(key) {
       self.list_state.previous();
     } else if keys.hit_detach.matches(key) {
-      if let Some(selected) = self.list_state.selected {
+      if let Some((selected, hid)) = self.selected_entry() {
         self.select_near_by(selected);
-        let hid = *self.hits.keys().nth(selected).unwrap();
         if let Err(e) = self.detach(hid) {
           return Some(Action::show_error_popup(
             "Detach failed".to_string(),
@@ -328,10 +328,9 @@ impl HitManagerState {
         self.editor_state.move_end();
       }
     } else if keys.hit_run_default_command.matches(key) {
-      if let Some(selected) = self.list_state.selected {
+      if let Some((selected, hid)) = self.selected_entry() {
         let external_command = self.default_external_command.clone()?;
         self.select_near_by(selected);
-        let hid = *self.hits.keys().nth(selected).unwrap();
         // "konsole --hold -e gdb -p {{PID}}".to_owned()
         if let Err(e) = self.detach_pause_and_launch_external(hid, external_command) {
           return Some(Action::show_error_popup(
@@ -343,10 +342,9 @@ impl HitManagerState {
         return self.close_when_empty();
       }
     } else if keys.hit_resume.matches(key) {
-      if let Some(selected) = self.list_state.selected {
+      if let Some((selected, hid)) = self.selected_entry() {
         debug!("selected: {}", selected);
         self.select_near_by(selected);
-        let hid = *self.hits.keys().nth(selected).unwrap();
         if let Err(e) = self.resume(hid) {
           return Some(Action::show_error_popup(
             "Resume failed".to_string(),
@@ -463,6 +461,12 @@ impl HitManagerState {
       ".".into(),
     ]);
     Paragraph::new(vec![line1]).wrap(Wrap { trim: false })
+  }
+
+  fn selected_entry(&self) -> Option<(usize, u64)> {
+    let idx = self.list_state.selected;
+    #[allow(clippy::unwrap_used)]
+    idx.map(|i| (i, *self.hits.keys().nth(i).unwrap()))
   }
 
   pub fn cursor(&self) -> Option<(u16, u16)> {

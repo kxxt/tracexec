@@ -280,6 +280,7 @@ pub trait BuildEbpfTracer: Sealed {
   fn build_ebpf(self) -> EbpfTracer;
 }
 
+#[allow(clippy::unwrap_used)]
 impl BuildEbpfTracer for TracerBuilder {
   /// Build a [`EbpfTracer`].
   ///
