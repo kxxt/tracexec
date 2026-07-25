@@ -42,6 +42,7 @@ procfs = "0.18.0"
 bpfcov = { version = "0.3.0-alpha.1", optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+snafu = { workspace = true }
 
 
 [build-dependencies]

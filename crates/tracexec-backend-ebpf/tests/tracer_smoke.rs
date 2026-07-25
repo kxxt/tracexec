@@ -82,7 +82,7 @@ fn test_tracer_spawn_runs_to_exit() -> color_eyre::Result<()> {
   let cmd: Vec<OsString> = vec![sh.into(), "-c".into(), "true".into()];
   let mut obj = MaybeUninit::uninit();
   let running = tracer.spawn(&cmd, &mut obj, None)?;
-  running.run_until_exit();
+  running.run_until_exit()?;
   assert!(running.should_exit.load(Ordering::Relaxed));
   #[cfg(feature = "bpfcov")]
   running
@@ -104,7 +104,7 @@ fn test_tracer_spawn_emits_tracee_exit() -> color_eyre::Result<()> {
   let cmd: Vec<OsString> = vec![sh.into(), "-c".into(), "true".into()];
   let mut obj = MaybeUninit::uninit();
   let running = tracer.spawn(&cmd, &mut obj, None)?;
-  running.run_until_exit();
+  running.run_until_exit()?;
 
   let mut saw_exit = false;
   while let Ok(msg) = rx.try_recv() {
@@ -142,7 +142,7 @@ fn test_tracer_spawn_nosleep_loads() -> color_eyre::Result<()> {
   let cmd: Vec<OsString> = vec![sh.into(), "-c".into(), "true".into()];
   let mut obj = MaybeUninit::uninit();
   let running = tracer.spawn(&cmd, &mut obj, None)?;
-  running.run_until_exit();
+  running.run_until_exit()?;
   assert!(running.should_exit.load(Ordering::Relaxed));
   #[cfg(feature = "bpfcov")]
   running
