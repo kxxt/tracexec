@@ -369,7 +369,7 @@ impl TracerInner {
         match $req {
           PendingRequest::ResumeProcess(hit) => {
             let mut store = self.store.borrow_mut();
-            let state = store.get_current_mut(hit.pid).unwrap();
+            let state = store.require_current_mut(hit.pid)?;
             self.proprgate_operation_error(
               hit,
               true,
@@ -378,7 +378,7 @@ impl TracerInner {
           }
           PendingRequest::DetachProcess { hit, signal, hid } => {
             let mut store = self.store.borrow_mut();
-            let state = store.get_current_mut(hit.pid).unwrap();
+            let state = store.require_current_mut(hit.pid)?;
             if let Some(signal) = signal {
               if let Err(e) =
                 self.prepare_to_detach_with_signal(state, hit, signal, hid, &mut $pending_guards)
@@ -579,7 +579,7 @@ impl TracerInner {
           let former_tid = guard.former_tid.context(OSSnafu)?;
           let mut store = self.store.borrow_mut();
           let p = if former_tid == pid {
-            let p = store.get_current_mut(pid).unwrap();
+            let p = store.require_current_mut(pid).context(OSSnafu)?;
             assert!(!p.presyscall);
             p
           } else {
@@ -590,9 +590,9 @@ impl TracerInner {
             // observes the tgid of the process instead of the thread's tid.
             //
             // We need to transfer some state from the (now dead) tid to the tgid.
-            let [former_thread, p] = store.get_current_disjoint_mut(former_tid, pid);
-            let former_thread = former_thread.unwrap();
-            let p = p.unwrap();
+            let [former_thread, p] = store
+              .require_current_disjoint_mut(former_tid, pid)
+              .context(OSSnafu)?;
             p.exec_data = former_thread.exec_data.take();
             p.comm = former_thread.comm.clone();
             p.presyscall = former_thread.presyscall;
@@ -672,7 +672,7 @@ impl TracerInner {
           trace!("ptrace fork/clone event, pid: {pid}, child: {new_child}");
           if self.filter.intersects(TracerEventDetailsKind::NewChild) {
             let store = self.store.borrow();
-            let parent = store.get_current(pid).unwrap();
+            let parent = store.require_current(pid).context(OSSnafu)?;
             let event = TracerEvent::from(TracerEventDetails::NewChild {
               timestamp,
               ppid: parent.pid,
@@ -714,19 +714,18 @@ impl TracerInner {
               state.ppid = Some(pid);
               store.insert(state);
             }
-            let [parent_s, child_s] = store.get_current_disjoint_mut(pid, new_child);
-            let parent_s = parent_s.unwrap();
-            if let Some(state) = child_s {
-              // We need to keep track of the parent event id of the exec event of the forked child
-              // Here, we record the last exec event id of the parent process for this child.
-              state
-                .parent_tracker
-                .save_parent_last_exec(&parent_s.parent_tracker);
-              debug!(
-                "save parent last exec for {new_child}, parent = {pid}, curr = {:?}, par = {:?}",
-                state.parent_tracker, parent_s.parent_tracker
-              );
-            }
+            let [parent_s, child_s] = store
+              .require_current_disjoint_mut(pid, new_child)
+              .context(OSSnafu)?;
+            // We need to keep track of the parent event id of the exec event of the forked child
+            // Here, we record the last exec event id of the parent process for this child.
+            child_s
+              .parent_tracker
+              .save_parent_last_exec(&parent_s.parent_tracker);
+            debug!(
+              "save parent last exec for {new_child}, parent = {pid}, curr = {:?}, par = {:?}",
+              child_s.parent_tracker, parent_s.parent_tracker
+            );
             // Resume parent
             guard.seccomp_aware_cont_syscall(true).context(OSSnafu)?;
           }
@@ -853,7 +852,7 @@ impl TracerInner {
   ) -> color_eyre::Result<()> {
     let pid = guard.pid();
     let mut store = self.store.borrow_mut();
-    let p = store.get_current_mut(pid).unwrap();
+    let p = store.require_current_mut(pid)?;
     p.presyscall = false;
     // SYSCALL ENTRY
     debug_assert!(info.is_entry());
@@ -871,7 +870,9 @@ impl TracerInner {
       }
       e => e?,
     };
-    let syscallno = info.syscall_number().expect("Not a syscall entry/seccomp stop");
+    let syscallno = info
+      .syscall_number()
+      .expect("Not a syscall entry/seccomp stop");
     let is_32bit = info.arch().is_32bit();
     let (syscall, filename, argv_address, envp_address) = if info.is_execveat() {
       trace!("pre execveat {syscallno}");
@@ -1020,7 +1021,7 @@ impl TracerInner {
     // trace!("post syscall {}", p.syscall);
     let pid = guard.pid();
     let mut store = self.store.borrow_mut();
-    let p = store.get_current_mut(pid).unwrap();
+    let p = store.require_current_mut(pid)?;
     p.presyscall = true;
     debug_assert!(!info.is_entry());
     let result = info.syscall_result().expect("Not a syscall exit stop");
