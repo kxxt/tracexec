@@ -478,6 +478,129 @@ impl HitManagerState {
   }
 }
 
+pub struct HitManager;
+
+impl HitManager {}
+
+impl StatefulWidget for HitManager {
+  type State = HitManagerState;
+
+  fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+    let theme = state.theme;
+    let help_area = Rect {
+      x: buf.area.width.saturating_sub(10),
+      y: 0,
+      width: 10.min(buf.area.width),
+      height: 1,
+    };
+    Clear.render(help_area, buf);
+    Line::default()
+      .spans(help_item!(state.key_bindings.help.display(), "Help", theme))
+      .render(help_area, buf);
+    let editor_area = Rect {
+      x: 0,
+      y: 1,
+      width: buf.area.width,
+      height: 1,
+    };
+    Clear.render(editor_area, buf);
+    if let Some(editing) = state.editing {
+      let editor = TextPrompt::new(
+        match editing {
+          EditingTarget::DefaultCommand => "default command",
+          EditingTarget::CustomCommand { .. } => "command",
+        }
+        .into(),
+      );
+      editor.render(editor_area, buf, &mut state.editor_state);
+    } else if let Some(command) = state.default_external_command.as_deref() {
+      let line = Line::default().spans(vec![
+        Span::raw("🚀 default command: "),
+        Span::styled(command, theme.hit_manager_default_command),
+      ]);
+      line.render(editor_area, buf);
+    } else {
+      let line = Line::default().spans(vec![
+        Span::styled(
+          "default command not set. Press ",
+          theme.hit_manager_no_default_command,
+        ),
+        help_key(state.key_bindings.hit_edit_default_command.display(), theme),
+        Span::styled(" to set", theme.hit_manager_no_default_command),
+      ]);
+      line.render(editor_area, buf);
+    }
+
+    Clear.render(area, buf);
+    let block = Block::new()
+      .title(" Hit Manager ")
+      .borders(Borders::ALL)
+      .title_alignment(Alignment::Center);
+    let items = state.hits.values().cloned().collect_vec();
+    let builder = paragraph_list_builder(&items, theme, BreakPointHitEntry::paragraph);
+    let list = ListView::new(builder, state.hits.len());
+
+    select_first_if_unset(&mut state.list_state, state.hits.len());
+
+    if state.tracer.seccomp_bpf() {
+      let warning = state.seccomp_bpf_warning();
+      let warning_height = warning.line_count(area.width) as u16;
+      let [warning_area, list_area] =
+        Layout::vertical([Constraint::Length(warning_height), Constraint::Min(0)]).areas(area);
+      warning.render(warning_area, buf);
+      let inner = block.inner(list_area);
+      block.render(list_area, buf);
+      list.render(inner, buf, &mut state.list_state);
+    } else {
+      let inner = block.inner(area);
+      block.render(area, buf);
+      list.render(inner, buf, &mut state.list_state);
+    }
+  }
+}
+
+impl HitManager {
+  fn help(_keys: &TuiKeyBindings, theme: &Theme) -> InfoPopupState {
+    InfoPopupState::info(
+      "Help".to_string(),
+      vec![
+        Line::default().spans(vec![
+          "The Hit Manager shows the processes that hit breakpoints and become stopped by tracexec. A process can stop at "
+            .into(),
+          "syscall-enter(right before exec)".cyan().bold(),
+          " or ".into(),
+          "syscall-exit(right after exec)".cyan().bold(),
+          ". ".into(),
+        ]),
+        Line::default().spans(vec![
+          "By default, tracexec uses seccomp-bpf to speed up ptrace operations so that there is minimal overhead \
+          when running programs inside tracexec. ".into(),
+          "However, this comes with a limitation that detached tracees and their children will not be able to use \
+          execve{,at} syscall. Usually it is shown as the following error: ".red(),
+          "Function not implemented".light_red().bold(),
+          ". To workaround this problem, run tracexec with ".into(),
+          cli_flag("--seccomp-bpf=off", theme),
+          " flag. ".into(),
+        ]),
+        Line::default().spans(vec![
+          "You can detach, resume or detach and launch external commands for the stopped processes. The ".into(),
+          "{{PID}}".cyan().bold(),
+          " parameter in the external command will be replaced with the PID of the detached and stopped process. ".into(),
+          "For example, you can detach a process and launch a debugger to attach to it. \
+          Usually you would want to open a new terminal emulator like: ".into(),
+          "konsole --hold -e gdb -p {{PID}}".cyan().bold(),
+          ". ".into(),
+          "This feature is especially useful when you want to debug a subprocess that is executed from a shell script\
+          (which might use pipes as stdio) or another complex software.".into(),
+          "It is worth mentioning that even if the process is stopped at syscall-enter stop, by the time a debugger \
+          attaches to the process, the process should be already past the syscall-exit stop.".into(),
+        ]),
+      ],
+      theme
+    )
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use std::sync::{
@@ -847,128 +970,5 @@ mod tests {
     assert!(matches!(action, Some(Action::HideHitManager)));
     assert_that!(state.hits, empty());
     assert!(state.pending_detach_reactions.contains_key(&hid));
-  }
-}
-
-pub struct HitManager;
-
-impl HitManager {}
-
-impl StatefulWidget for HitManager {
-  type State = HitManagerState;
-
-  fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-    let theme = state.theme;
-    let help_area = Rect {
-      x: buf.area.width.saturating_sub(10),
-      y: 0,
-      width: 10.min(buf.area.width),
-      height: 1,
-    };
-    Clear.render(help_area, buf);
-    Line::default()
-      .spans(help_item!(state.key_bindings.help.display(), "Help", theme))
-      .render(help_area, buf);
-    let editor_area = Rect {
-      x: 0,
-      y: 1,
-      width: buf.area.width,
-      height: 1,
-    };
-    Clear.render(editor_area, buf);
-    if let Some(editing) = state.editing {
-      let editor = TextPrompt::new(
-        match editing {
-          EditingTarget::DefaultCommand => "default command",
-          EditingTarget::CustomCommand { .. } => "command",
-        }
-        .into(),
-      );
-      editor.render(editor_area, buf, &mut state.editor_state);
-    } else if let Some(command) = state.default_external_command.as_deref() {
-      let line = Line::default().spans(vec![
-        Span::raw("🚀 default command: "),
-        Span::styled(command, theme.hit_manager_default_command),
-      ]);
-      line.render(editor_area, buf);
-    } else {
-      let line = Line::default().spans(vec![
-        Span::styled(
-          "default command not set. Press ",
-          theme.hit_manager_no_default_command,
-        ),
-        help_key(state.key_bindings.hit_edit_default_command.display(), theme),
-        Span::styled(" to set", theme.hit_manager_no_default_command),
-      ]);
-      line.render(editor_area, buf);
-    }
-
-    Clear.render(area, buf);
-    let block = Block::new()
-      .title(" Hit Manager ")
-      .borders(Borders::ALL)
-      .title_alignment(Alignment::Center);
-    let items = state.hits.values().cloned().collect_vec();
-    let builder = paragraph_list_builder(&items, theme, BreakPointHitEntry::paragraph);
-    let list = ListView::new(builder, state.hits.len());
-
-    select_first_if_unset(&mut state.list_state, state.hits.len());
-
-    if state.tracer.seccomp_bpf() {
-      let warning = state.seccomp_bpf_warning();
-      let warning_height = warning.line_count(area.width) as u16;
-      let [warning_area, list_area] =
-        Layout::vertical([Constraint::Length(warning_height), Constraint::Min(0)]).areas(area);
-      warning.render(warning_area, buf);
-      let inner = block.inner(list_area);
-      block.render(list_area, buf);
-      list.render(inner, buf, &mut state.list_state);
-    } else {
-      let inner = block.inner(area);
-      block.render(area, buf);
-      list.render(inner, buf, &mut state.list_state);
-    }
-  }
-}
-
-impl HitManager {
-  fn help(_keys: &TuiKeyBindings, theme: &Theme) -> InfoPopupState {
-    InfoPopupState::info(
-      "Help".to_string(),
-      vec![
-        Line::default().spans(vec![
-          "The Hit Manager shows the processes that hit breakpoints and become stopped by tracexec. A process can stop at "
-            .into(),
-          "syscall-enter(right before exec)".cyan().bold(),
-          " or ".into(),
-          "syscall-exit(right after exec)".cyan().bold(),
-          ". ".into(),
-        ]),
-        Line::default().spans(vec![
-          "By default, tracexec uses seccomp-bpf to speed up ptrace operations so that there is minimal overhead \
-          when running programs inside tracexec. ".into(),
-          "However, this comes with a limitation that detached tracees and their children will not be able to use \
-          execve{,at} syscall. Usually it is shown as the following error: ".red(),
-          "Function not implemented".light_red().bold(),
-          ". To workaround this problem, run tracexec with ".into(),
-          cli_flag("--seccomp-bpf=off", theme),
-          " flag. ".into(),
-        ]),
-        Line::default().spans(vec![
-          "You can detach, resume or detach and launch external commands for the stopped processes. The ".into(),
-          "{{PID}}".cyan().bold(),
-          " parameter in the external command will be replaced with the PID of the detached and stopped process. ".into(),
-          "For example, you can detach a process and launch a debugger to attach to it. \
-          Usually you would want to open a new terminal emulator like: ".into(),
-          "konsole --hold -e gdb -p {{PID}}".cyan().bold(),
-          ". ".into(),
-          "This feature is especially useful when you want to debug a subprocess that is executed from a shell script\
-          (which might use pipes as stdio) or another complex software.".into(),
-          "It is worth mentioning that even if the process is stopped at syscall-enter stop, by the time a debugger \
-          attaches to the process, the process should be already past the syscall-exit stop.".into(),
-        ]),
-      ],
-      theme
-    )
   }
 }
