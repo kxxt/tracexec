@@ -44,7 +44,7 @@ use libbpf_sys::{
   BPF_F_SLEEPABLE,
 };
 use nix::{
-  errno::Errno,
+  errno::Errno as NixErrno,
   fcntl::OFlag,
   libc::{
     self,
@@ -67,6 +67,11 @@ use nix::{
     User,
     tcsetpgrp,
   },
+};
+use snafu::{
+  OptionExt,
+  ResultExt,
+  Snafu,
 };
 use tokio::sync::mpsc::UnboundedSender;
 use tracexec_core::{
@@ -256,6 +261,51 @@ fn fallible_fd_field<T>(value: T, failed: bool) -> Fallible<T> {
   }
 }
 
+#[derive(Debug, Snafu)]
+enum BpfCallbackError {
+  #[snafu(display("failed to print event"))]
+  Print { source: color_eyre::Report },
+  #[snafu(display("failed to send event"))]
+  Send {
+    source: tokio::sync::mpsc::error::SendError<TracerMessage>,
+  },
+  #[snafu(display("missing process tracker for {pid}"))]
+  MissingProcess { pid: Pid },
+}
+
+/// Error numbers reserved for failures in the userspace ring-buffer callback.
+///
+/// Linux system errno values are at most 4095, so these values cannot be
+/// confused with an error returned by the kernel or libbpf.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(i32)]
+enum Errno {
+  Print = 4096,
+  Send = 4097,
+  MissingProcess = 4098,
+}
+
+impl From<BpfCallbackError> for Errno {
+  fn from(error: BpfCallbackError) -> Self {
+    match error {
+      BpfCallbackError::Print { .. } => Self::Print,
+      BpfCallbackError::Send { .. } => Self::Send,
+      BpfCallbackError::MissingProcess { .. } => Self::MissingProcess,
+    }
+  }
+}
+
+struct BpfCallbackContext<'a> {
+  tracer: &'a EbpfTracer,
+  tracker: &'a mut ProcessTracker,
+  event_storage: &'a RefCell<HashMap<u64, EventStorage>>,
+  lost_events: &'a RefCell<HashSet<u64>>,
+  eid: &'a mut u64,
+  should_exit: &'a AtomicBool,
+  cgroup_cache: Option<&'a CgroupCache>,
+  follow_forks: bool,
+}
+
 pub struct EbpfTracer {
   user: Option<User>,
   modifier: ModifierArgs,
@@ -325,415 +375,437 @@ impl EbpfTracer {
     } else {
       None
     };
-    builder.add(&skel.maps.events, {
-      let should_exit = should_exit.clone();
-      move |data| {
-        assert!(
-          (data.as_ptr() as usize).is_multiple_of(8),
-          "data is not 8 byte aligned!"
-        );
-        assert!(
-          data.len() >= size_of::<tracexec_event_header>(),
-          "data too short: {data:?}"
-        );
-        let header: &tracexec_event_header = unsafe { &*(data.as_ptr() as *const _) };
-        match header.r#type {
-          event_type::SYSENTER_EVENT => unreachable!(),
-          event_type::SYSEXIT_EVENT => {
-            #[allow(clippy::comparison_chain)]
-            if header.eid > eid {
-              // There are some lost events
-              // In some cases the events are not really lost but sent out of order because of parallelism
-              warn!(
-                "inconsistent event id counter: local = {eid}, kernel = {}. Possible event loss!",
-                header.eid
-              );
-              lost_events.borrow_mut().extend(eid..header.eid);
-              // reset local counter
-              eid = header.eid + 1;
-            } else if header.eid < eid {
-              // This should only happen for lost events
-              if lost_events.borrow_mut().remove(&header.eid) {
-                // do nothing
-                warn!("event {} is received out of order", header.eid);
-              } else {
-                panic!(
-                  "inconsistent event id counter: local = {}, kernel = {}.",
-                  eid, header.eid
-                );
-              }
+    fn bpf_callback(context: BpfCallbackContext<'_>, data: &[u8]) -> Result<(), BpfCallbackError> {
+      let BpfCallbackContext {
+        tracer,
+        tracker,
+        event_storage,
+        lost_events,
+        eid,
+        should_exit,
+        cgroup_cache,
+        follow_forks,
+      } = context;
+      assert!(
+        (data.as_ptr() as usize).is_multiple_of(8),
+        "data is not 8 byte aligned!"
+      );
+      assert!(
+        data.len() >= size_of::<tracexec_event_header>(),
+        "data too short: {data:?}"
+      );
+      let header: &tracexec_event_header = unsafe { &*(data.as_ptr() as *const _) };
+      match header.r#type {
+        event_type::SYSENTER_EVENT => unreachable!(),
+        event_type::SYSEXIT_EVENT => {
+          #[allow(clippy::comparison_chain)]
+          if header.eid > *eid {
+            // There are some lost events
+            // In some cases the events are not really lost but sent out of order because of parallelism
+            warn!(
+              "inconsistent event id counter: local = {eid}, kernel = {}. Possible event loss!",
+              header.eid
+            );
+            lost_events.borrow_mut().extend(*eid..header.eid);
+            // reset local counter
+            *eid = header.eid + 1;
+          } else if header.eid < *eid {
+            // This should only happen for lost events
+            if lost_events.borrow_mut().remove(&header.eid) {
+              // do nothing
+              warn!("event {} is received out of order", header.eid);
             } else {
-              // increase local counter for next event
-              eid += 1;
-            }
-            assert_eq!(data.len(), size_of::<exec_event>());
-            let event: &exec_event = unsafe { &*(data.as_ptr() as *const _) };
-            let eflags = BpfEventFlags::from_bits_truncate(header.flags);
-            let mut storage = event_storage.borrow_mut();
-            let mut storage = storage.remove(&header.eid).unwrap_or_default();
-            if event.ret != 0 && self.modifier.successful_only {
-              return 0;
-            }
-            let argc = event.count[0] as usize;
-            let envc = event.count[1] as usize;
-            let expected_strings = argc.saturating_add(envc);
-            if storage.strings.len() < expected_strings {
-              warn!(
-                "missing auxiliary string events for exec event {}: received {}, expected {}",
-                header.eid,
-                storage.strings.len(),
-                expected_strings
+              panic!(
+                "inconsistent event id counter: local = {}, kernel = {}.",
+                *eid, header.eid
               );
-              pad_with_dropped(&mut storage.strings, expected_strings);
             }
-            let mut has_dash_env = false;
-            let envp = process_envp(
-              eflags,
-              storage.strings.split_off(argc),
-              &mut has_dash_env,
+          } else {
+            // increase local counter for next event
+            *eid += 1;
+          }
+          assert_eq!(data.len(), size_of::<exec_event>());
+          let event: &exec_event = unsafe { &*(data.as_ptr() as *const _) };
+          let eflags = BpfEventFlags::from_bits_truncate(header.flags);
+          let mut storage = event_storage.borrow_mut();
+          let mut storage = storage.remove(&header.eid).unwrap_or_default();
+          if event.ret != 0 && tracer.modifier.successful_only {
+            return Ok(());
+          }
+          let argc = event.count[0] as usize;
+          let envc = event.count[1] as usize;
+          let expected_strings = argc.saturating_add(envc);
+          if storage.strings.len() < expected_strings {
+            warn!(
+              "missing auxiliary string events for exec event {}: received {}, expected {}",
+              header.eid,
+              storage.strings.len(),
+              expected_strings
             );
-            let argv = process_argv(eflags, storage.strings);
-            let cwd: OutputMsg = storage
-              .paths
-              .remove(&AT_FDCWD)
-              .map(Into::into)
-              .unwrap_or_else(|| {
-                warn!("missing CWD path event for exec event {}", header.eid);
-                dropped_output()
-              });
-            // TODO: How should we handle possible truncation?
-            let base_filename = process_base_filename(eflags, event);
-            let filename = process_filename(base_filename, event, &cwd, &storage.fdinfo_map);
-            let cred = process_cred(eflags, event, storage.groups);
-            let cgroup = match &cgroup_cache {
-              Some(cache) => cache.resolve(event.cgroup_id),
-              None => CgroupInfo::NotCollected,
-            };
-            apply_aggregate_fd_flags(&mut storage.fdinfo_map, eflags);
-            let exec_data = ExecData::new(
-              Pid::from_raw(header.pid),
-              filename,
-              argv,
-              envp,
-              has_dash_env,
-              cred,
-              cwd,
-              None,
-              storage.fdinfo_map,
-              ts_from_boot_ns(event.timestamp),
-              cgroup,
-            );
-            // Pid of the thread that triggers execve syscall
-            // let pid = Pid::from_raw(header.pid);
-            let tgid = Pid::from_raw(event.tgid);
-            let comm = process_comm(eflags, event);
-            self
-              .printer
-              .print_exec_trace(
-                tgid,
-                comm.clone(),
-                event.ret,
-                &exec_data,
-                &self.baseline.env,
-                &self.baseline.cwd,
-              )
-              .unwrap();
-            if self.filter.intersects(TracerEventDetailsKind::Exec) {
-              let is_execveat = unsafe { event.is_execveat.assume_init() };
-              let syscall = if is_execveat {
-                ExecSyscall::Execveat
-              } else {
-                ExecSyscall::Execve
-              };
-              let id = TracerEvent::allocate_id();
-              debug!(
-                "Looking up parent tracker for {} (follow_forks={follow_forks})",
-                tgid
-              );
-              // When a non-main thread calls exec, the kernel will destroy all
-              // threads and replace it with a new process (using it's old tgid).
-              //
-              // When that happens, sched_process_exit happens before sched_process_exec
-              // and the parent tracker for the process is cleaned-up.
-              //
-              // Thus we need to allocate a new parent tracker for it in this case.
-              // Unfortunately I cannot find a way to tell this from normal exit in bpf.
-              // Using sched_process_free also proved to be unreliable.
-              //
-              // Example:
-              //
-              //             bash-45965   [005] ...11  6665.239304: tracexec_system: 1 bash execve target/debug/exec-in-thread UID: 1000 GID: 1000 PID: 45965
-              //
-              //             bash-45965   [005] ...11  6665.243477: tracexec_system: Reading pwd...
-              //             bash-45965   [005] ...21  6665.243673: tracexec_system: sched_process_exec: pid=45965, tgid=45965
-              //             bash-45965   [005] ...11  6665.243696: tracexec_system: execve result: 0 PID 45965
-              //
-              //             bash-45965   [005] ...11  6665.243749: tracexec_system: Ringbuf stat: avail: 40, cons: 46640, prod: 46680
-              //   exec-in-thread-45966   [002] ...11  6665.244308: tracexec_system: 2 exec-in-thread execve /home/player/repos/tracexec-trees/agent01/target/debug/exec-in-thread UID: 1000 GID: 1000 PID: 45966
-              //
-              //   exec-in-thread-45966   [002] ...11  6665.244743: tracexec_system: Reading pwd...
-              //   exec-in-thread-45965   [005] ...21  6665.244817: tracexec_system: sched_process_exit: pid=45965, tgid=45965
-              //   exec-in-thread-45965   [002] ...21  6665.245014: tracexec_system: sched_process_exec: pid=45965, tgid=45965
-              //   exec-in-thread-45965   [002] ...11  6665.245024: tracexec_system: execve result: 0 PID 45965
-              //
-              //   exec-in-thread-45965   [002] ...11  6665.245084: tracexec_system: Ringbuf stat: avail: 40, cons: 63248, prod: 63288
-              //   exec-in-thread-45965   [002] ...21  6665.245445: tracexec_system: sched_process_exit: pid=45965, tgid=45965
-              //            <...>-45967   [005] ...21  6665.246146: tracexec_system: sched_process_exit: pid=45967, tgid=45967
-              //            <...>-45969   [005] ...21  6665.247391: tracexec_system: sched_process_exit: pid=45969, tgid=45969
-              //
-              if !tracker.contains(tgid) {
-                tracker.add(tgid);
-              }
-              let parent_tracker = tracker.parent_tracker_mut(tgid).unwrap();
-              let parent = parent_tracker.update_last_exec(id, event.ret == 0);
-              let event = TracerEventDetails::Exec(Box::new(ExecEvent {
-                syscall,
-                // header.pid is the thread id that entered execve/execveat.
-                exec_pid: Pid::from_raw(header.pid),
-                timestamp: exec_data.timestamp,
-                pid: tgid,
-                cwd: exec_data.cwd.clone(),
-                comm,
-                filename: exec_data.filename.clone(),
-                argv: exec_data.argv.clone(),
-                envp: exec_data.envp.clone(),
-                has_dash_env,
-                cred: exec_data.cred,
-                interpreter: exec_data.interpreters.clone(),
-                env_diff: exec_data
-                  .envp
-                  .as_ref()
-                  .as_ref()
-                  .map(|envp| diff_env(&self.baseline.env, envp))
-                  .map_err(|e| *e),
-                result: event.ret,
-                fdinfo: exec_data.fdinfo.clone(),
-                parent,
-                cgroup: exec_data.cgroup.clone(),
-              }))
-              .into_event_with_id(id);
-              if follow_forks {
-                tracker.associate_events(tgid, [event.id])
-              } else {
-                tracker.force_associate_events(tgid, [event.id])
-              }
-              self
-                .tx
-                .as_ref()
-                .map(|tx| tx.send(event.into()))
-                .transpose()
-                .unwrap();
-            }
-            send_exec_warning_events(
-              self.tx.as_ref(),
-              self.filter,
-              eflags,
+            pad_with_dropped(&mut storage.strings, expected_strings);
+          }
+          let mut has_dash_env = false;
+          let envp = process_envp(eflags, storage.strings.split_off(argc), &mut has_dash_env);
+          let argv = process_argv(eflags, storage.strings);
+          let cwd: OutputMsg = storage
+            .paths
+            .remove(&AT_FDCWD)
+            .map(Into::into)
+            .unwrap_or_else(|| {
+              warn!("missing CWD path event for exec event {}", header.eid);
+              dropped_output()
+            });
+          // TODO: How should we handle possible truncation?
+          let base_filename = process_base_filename(eflags, event);
+          let filename = process_filename(base_filename, event, &cwd, &storage.fdinfo_map);
+          let cred = process_cred(eflags, event, storage.groups);
+          let cgroup = match cgroup_cache {
+            Some(cache) => cache.resolve(event.cgroup_id),
+            None => CgroupInfo::NotCollected,
+          };
+          apply_aggregate_fd_flags(&mut storage.fdinfo_map, eflags);
+          let exec_data = ExecData::new(
+            Pid::from_raw(header.pid),
+            filename,
+            argv,
+            envp,
+            has_dash_env,
+            cred,
+            cwd,
+            None,
+            storage.fdinfo_map,
+            ts_from_boot_ns(event.timestamp),
+            cgroup,
+          );
+          // Pid of the thread that triggers execve syscall
+          // let pid = Pid::from_raw(header.pid);
+          let tgid = Pid::from_raw(event.tgid);
+          let comm = process_comm(eflags, event);
+          tracer
+            .printer
+            .print_exec_trace(
               tgid,
-              exec_data.timestamp,
+              comm.clone(),
+              event.ret,
+              &exec_data,
+              &tracer.baseline.env,
+              &tracer.baseline.cwd,
             )
-            .unwrap();
-          }
-          event_type::STRING_EVENT => {
-            let msg = parse_string_event(header, data);
-            let mut storage = event_storage.borrow_mut();
-            let strings = &mut storage.entry(header.eid).or_default().strings;
-            let index = header.id as usize;
-            if strings.len() < index {
-              // Insert placeholders for dropped events
-              pad_with_dropped(strings, index);
-              debug_assert_eq!(strings.len(), index);
-            }
-            // TODO: check flags in header
-            if strings.len() == index {
-              strings.push(msg);
+            .context(PrintSnafu)?;
+          if tracer.filter.intersects(TracerEventDetailsKind::Exec) {
+            let is_execveat = unsafe { event.is_execveat.assume_init() };
+            let syscall = if is_execveat {
+              ExecSyscall::Execveat
             } else {
-              warn!(
-                "received out-of-order string event {} for exec event {}",
-                index, header.eid
-              );
-              strings[index] = msg;
-            }
-          }
-          event_type::FD_EVENT => {
-            assert_eq!(data.len(), size_of::<fd_event>());
-            let event: &fd_event = unsafe { &*(data.as_ptr() as *const _) };
-            let flags = BpfEventFlags::from_bits_truncate(event.header.flags);
-            let mut guard = event_storage.borrow_mut();
-            let storage = guard.entry(header.eid).or_default();
-            let fs = utf8_lossy_cow_from_bytes_with_nul(&event.fstype);
-            let path = mark_fd_path_for_errors(process_path(event, &fs, &storage.paths), flags);
-            let fdinfo = FileDescriptorInfo {
-              fd: event.fd as RawFd,
-              path,
-              pos: fallible_fd_field(
-                event.pos as usize,
-                flags.contains(BpfEventFlags::POS_READ_ERR),
-              ),
-              flags: fallible_fd_field(
-                FdFlags::from(OFlag::from_bits_retain(event.flags as c_int)),
-                flags.contains(BpfEventFlags::FLAGS_READ_FAILURE),
-              ),
-              mnt_id: fallible_fd_field(
-                event.mnt_id,
-                flags.contains(BpfEventFlags::MNTID_READ_ERR),
-              ),
-              ino: fallible_fd_field(event.ino, flags.contains(BpfEventFlags::INO_READ_ERR)),
-              mnt: cached_cow(fs),
-              extra: vec![],
+              ExecSyscall::Execve
             };
-            let fdc = &mut storage.fdinfo_map;
-            fdc.fdinfo.insert(event.fd as RawFd, fdinfo);
-          }
-          event_type::PATH_EVENT => {
-            assert_eq!(data.len(), size_of::<path_event>());
-            let event: &path_event = unsafe { &*(data.as_ptr() as *const _) };
-            let flags = BpfEventFlags::from_bits_truncate(header.flags);
-            let mut storage = event_storage.borrow_mut();
-            let paths = &mut storage.entry(header.eid).or_default().paths;
-            let path = paths.entry(header.id as i32).or_default();
-            // FIXME
-            path.is_absolute = true;
-            if !flags.is_empty() {
-              path.error = Some(BpfError::Flags.into());
-            }
-            let segment_count = event.segment_count as usize;
-            if path.segments.len() < segment_count {
-              warn!(
-                "missing path segment events for path {} of exec event {}: received {}, expected {}",
-                header.id,
-                header.eid,
-                path.segments.len(),
-                segment_count
-              );
-              pad_with_dropped(&mut path.segments, segment_count);
-            } else if path.segments.len() > segment_count {
-              warn!(
-                "too many path segment events for path {} of exec event {}: received {}, expected {}",
-                header.id,
-                header.eid,
-                path.segments.len(),
-                segment_count
-              );
-              path.segments.truncate(segment_count);
-            }
-            // eprintln!("Received path {} = {:?}", event.header.id, path);
-          }
-          event_type::PATH_SEGMENT_EVENT => {
-            assert_eq!(data.len(), size_of::<path_segment_event>());
-            let event: &path_segment_event = unsafe { &*(data.as_ptr() as *const _) };
-            let mut storage = event_storage.borrow_mut();
-            let paths = &mut storage.entry(header.eid).or_default().paths;
-            let path = paths.entry(header.id as i32).or_default();
-            let index = event.index as usize;
-            if path.segments.len() < index {
-              pad_with_dropped(&mut path.segments, index);
-            }
-            let segment = parse_path_segment(data);
-            if path.segments.len() == index {
-              path.segments.push(segment);
-            } else {
-              warn!(
-                "received out-of-order path segment {} for path {} of exec event {}",
-                index, header.id, header.eid
-              );
-              path.segments[index] = segment;
-            }
-          }
-          event_type::GROUPS_EVENT => {
-            let mut storage = event_storage.borrow_mut();
-            let groups_result = &mut storage.entry(header.eid).or_default().groups;
-            assert!(groups_result.is_err());
-            *groups_result = Ok(parse_groups_event(data));
-          }
-          event_type::EXIT_EVENT => {
-            assert_eq!(data.len(), size_of::<exit_event>());
-            let event: &exit_event = unsafe { &*(data.as_ptr() as *const _) };
+            let id = TracerEvent::allocate_id();
             debug!(
-              "{} exited with code {}, signal {}",
-              header.pid, event.code, event.sig
+              "Looking up parent tracker for {} (follow_forks={follow_forks})",
+              tgid
             );
-            let pid = Pid::from_raw(header.pid);
-            if let Some(associated) = tracker.maybe_associated_events(pid)
-              && !associated.is_empty()
-            {
-              self
-                .tx
-                .as_ref()
-                .map(|tx| {
-                  tx.send(
-                    ProcessStateUpdateEvent {
-                      update: ProcessStateUpdate::Exit {
-                        timestamp: ts_from_boot_ns(event.timestamp),
-                        status: match (event.sig, event.code) {
-                          (0, code) => ProcessExit::Code(code),
-                          (sig, _) => {
-                            // 0x80 bit indicates coredump
-                            ProcessExit::Signal(Signal::from_raw(sig as i32 & 0x7f))
-                          }
-                        },
-                      },
-                      pid,
-                      ids: associated.to_owned(),
-                    }
-                    .into(),
-                  )
-                })
-                .transpose()
-                .unwrap();
+            // When a non-main thread calls exec, the kernel will destroy all
+            // threads and replace it with a new process (using it's old tgid).
+            //
+            // When that happens, sched_process_exit happens before sched_process_exec
+            // and the parent tracker for the process is cleaned-up.
+            //
+            // Thus we need to allocate a new parent tracker for it in this case.
+            // Unfortunately I cannot find a way to tell this from normal exit in bpf.
+            // Using sched_process_free also proved to be unreliable.
+            //
+            // Example:
+            //
+            //             bash-45965   [005] ...11  6665.239304: tracexec_system: 1 bash execve target/debug/exec-in-thread UID: 1000 GID: 1000 PID: 45965
+            //
+            //             bash-45965   [005] ...11  6665.243477: tracexec_system: Reading pwd...
+            //             bash-45965   [005] ...21  6665.243673: tracexec_system: sched_process_exec: pid=45965, tgid=45965
+            //             bash-45965   [005] ...11  6665.243696: tracexec_system: execve result: 0 PID 45965
+            //
+            //             bash-45965   [005] ...11  6665.243749: tracexec_system: Ringbuf stat: avail: 40, cons: 46640, prod: 46680
+            //   exec-in-thread-45966   [002] ...11  6665.244308: tracexec_system: 2 exec-in-thread execve /home/player/repos/tracexec-trees/agent01/target/debug/exec-in-thread UID: 1000 GID: 1000 PID: 45966
+            //
+            //   exec-in-thread-45966   [002] ...11  6665.244743: tracexec_system: Reading pwd...
+            //   exec-in-thread-45965   [005] ...21  6665.244817: tracexec_system: sched_process_exit: pid=45965, tgid=45965
+            //   exec-in-thread-45965   [002] ...21  6665.245014: tracexec_system: sched_process_exec: pid=45965, tgid=45965
+            //   exec-in-thread-45965   [002] ...11  6665.245024: tracexec_system: execve result: 0 PID 45965
+            //
+            //   exec-in-thread-45965   [002] ...11  6665.245084: tracexec_system: Ringbuf stat: avail: 40, cons: 63248, prod: 63288
+            //   exec-in-thread-45965   [002] ...21  6665.245445: tracexec_system: sched_process_exit: pid=45965, tgid=45965
+            //            <...>-45967   [005] ...21  6665.246146: tracexec_system: sched_process_exit: pid=45967, tgid=45967
+            //            <...>-45969   [005] ...21  6665.247391: tracexec_system: sched_process_exit: pid=45969, tgid=45969
+            //
+            if !tracker.contains(tgid) {
+              tracker.add(tgid);
             }
-            if unsafe { event.is_root_tracee.assume_init() } {
-              self
-                .tx
+            let parent_tracker = tracker
+              .parent_tracker_mut(tgid)
+              .context(MissingProcessSnafu { pid: tgid })?;
+            let parent = parent_tracker.update_last_exec(id, event.ret == 0);
+            let event = TracerEventDetails::Exec(Box::new(ExecEvent {
+              syscall,
+              // header.pid is the thread id that entered execve/execveat.
+              exec_pid: Pid::from_raw(header.pid),
+              timestamp: exec_data.timestamp,
+              pid: tgid,
+              cwd: exec_data.cwd.clone(),
+              comm,
+              filename: exec_data.filename.clone(),
+              argv: exec_data.argv.clone(),
+              envp: exec_data.envp.clone(),
+              has_dash_env,
+              cred: exec_data.cred,
+              interpreter: exec_data.interpreters.clone(),
+              env_diff: exec_data
+                .envp
                 .as_ref()
-                .map(|tx| {
-                  FilterableTracerEventDetails::from(match (event.sig, event.code) {
-                    (0, exit_code) => TracerEventDetails::TraceeExit {
-                      timestamp: ts_from_boot_ns(event.timestamp),
-                      signal: None,
-                      exit_code,
-                    },
-                    (sig, _) => {
-                      // 0x80 bit indicates coredump
-                      TracerEventDetails::TraceeExit {
-                        timestamp: ts_from_boot_ns(event.timestamp),
-                        signal: Some(Signal::from_raw(sig as i32 & 0x7f)),
-                        exit_code: 128 + (sig as i32 & 0x7f),
-                      }
-                    }
-                  })
-                  .send_if_match(tx, self.filter)
-                })
-                .transpose()
-                .unwrap();
-              should_exit.store(true, Ordering::Relaxed);
-            }
+                .as_ref()
+                .map(|envp| diff_env(&tracer.baseline.env, envp))
+                .map_err(|e| *e),
+              result: event.ret,
+              fdinfo: exec_data.fdinfo.clone(),
+              parent,
+              cgroup: exec_data.cgroup.clone(),
+            }))
+            .into_event_with_id(id);
             if follow_forks {
-              tracker.remove(pid);
+              tracker.associate_events(tgid, [event.id])
             } else {
-              tracker.maybe_remove(pid);
+              tracker.force_associate_events(tgid, [event.id])
             }
+            tracer
+              .tx
+              .as_ref()
+              .map(|tx| tx.send(event.into()))
+              .transpose()
+              .context(SendSnafu)?;
           }
-          event_type::FORK_EVENT => {
-            assert_eq!(data.len(), size_of::<fork_event>());
-            let event: &fork_event = unsafe { &*(data.as_ptr() as *const _) };
-            let fork_parent = Pid::from_raw(event.parent_tgid);
-            let pid = Pid::from_raw(header.pid);
-            debug!(
-              "Allocating parent tracker for {} (follow_forks={follow_forks})",
-              pid
+          send_exec_warning_events(
+            tracer.tx.as_ref(),
+            tracer.filter,
+            eflags,
+            tgid,
+            exec_data.timestamp,
+          )
+          .context(SendSnafu)?;
+        }
+        event_type::STRING_EVENT => {
+          let msg = parse_string_event(header, data);
+          let mut storage = event_storage.borrow_mut();
+          let strings = &mut storage.entry(header.eid).or_default().strings;
+          let index = header.id as usize;
+          if strings.len() < index {
+            // Insert placeholders for dropped events
+            pad_with_dropped(strings, index);
+            debug_assert_eq!(strings.len(), index);
+          }
+          // TODO: check flags in header
+          if strings.len() == index {
+            strings.push(msg);
+          } else {
+            warn!(
+              "received out-of-order string event {} for exec event {}",
+              index, header.eid
             );
-            tracker.add(pid);
-            if let [Some(curr), Some(par)] = tracker.parent_tracker_disjoint_mut(pid, fork_parent) {
-              // Parent can be missing if the fork happens before tracexec start.
-              curr.save_parent_last_exec(par);
-            }
-            debug!("{} forked {}", event.parent_tgid, header.pid);
-          }
-          _ => {
-            unreachable!()
+            strings[index] = msg;
           }
         }
-        0
+        event_type::FD_EVENT => {
+          assert_eq!(data.len(), size_of::<fd_event>());
+          let event: &fd_event = unsafe { &*(data.as_ptr() as *const _) };
+          let flags = BpfEventFlags::from_bits_truncate(event.header.flags);
+          let mut guard = event_storage.borrow_mut();
+          let storage = guard.entry(header.eid).or_default();
+          let fs = utf8_lossy_cow_from_bytes_with_nul(&event.fstype);
+          let path = mark_fd_path_for_errors(process_path(event, &fs, &storage.paths), flags);
+          let fdinfo = FileDescriptorInfo {
+            fd: event.fd as RawFd,
+            path,
+            pos: fallible_fd_field(
+              event.pos as usize,
+              flags.contains(BpfEventFlags::POS_READ_ERR),
+            ),
+            flags: fallible_fd_field(
+              FdFlags::from(OFlag::from_bits_retain(event.flags as c_int)),
+              flags.contains(BpfEventFlags::FLAGS_READ_FAILURE),
+            ),
+            mnt_id: fallible_fd_field(event.mnt_id, flags.contains(BpfEventFlags::MNTID_READ_ERR)),
+            ino: fallible_fd_field(event.ino, flags.contains(BpfEventFlags::INO_READ_ERR)),
+            mnt: cached_cow(fs),
+            extra: vec![],
+          };
+          let fdc = &mut storage.fdinfo_map;
+          fdc.fdinfo.insert(event.fd as RawFd, fdinfo);
+        }
+        event_type::PATH_EVENT => {
+          assert_eq!(data.len(), size_of::<path_event>());
+          let event: &path_event = unsafe { &*(data.as_ptr() as *const _) };
+          let flags = BpfEventFlags::from_bits_truncate(header.flags);
+          let mut storage = event_storage.borrow_mut();
+          let paths = &mut storage.entry(header.eid).or_default().paths;
+          let path = paths.entry(header.id as i32).or_default();
+          // FIXME
+          path.is_absolute = true;
+          if !flags.is_empty() {
+            path.error = Some(BpfError::Flags.into());
+          }
+          let segment_count = event.segment_count as usize;
+          if path.segments.len() < segment_count {
+            warn!(
+              "missing path segment events for path {} of exec event {}: received {}, expected {}",
+              header.id,
+              header.eid,
+              path.segments.len(),
+              segment_count
+            );
+            pad_with_dropped(&mut path.segments, segment_count);
+          } else if path.segments.len() > segment_count {
+            warn!(
+              "too many path segment events for path {} of exec event {}: received {}, expected {}",
+              header.id,
+              header.eid,
+              path.segments.len(),
+              segment_count
+            );
+            path.segments.truncate(segment_count);
+          }
+          // eprintln!("Received path {} = {:?}", event.header.id, path);
+        }
+        event_type::PATH_SEGMENT_EVENT => {
+          assert_eq!(data.len(), size_of::<path_segment_event>());
+          let event: &path_segment_event = unsafe { &*(data.as_ptr() as *const _) };
+          let mut storage = event_storage.borrow_mut();
+          let paths = &mut storage.entry(header.eid).or_default().paths;
+          let path = paths.entry(header.id as i32).or_default();
+          let index = event.index as usize;
+          if path.segments.len() < index {
+            pad_with_dropped(&mut path.segments, index);
+          }
+          let segment = parse_path_segment(data);
+          if path.segments.len() == index {
+            path.segments.push(segment);
+          } else {
+            warn!(
+              "received out-of-order path segment {} for path {} of exec event {}",
+              index, header.id, header.eid
+            );
+            path.segments[index] = segment;
+          }
+        }
+        event_type::GROUPS_EVENT => {
+          let mut storage = event_storage.borrow_mut();
+          let groups_result = &mut storage.entry(header.eid).or_default().groups;
+          assert!(groups_result.is_err());
+          *groups_result = Ok(parse_groups_event(data));
+        }
+        event_type::EXIT_EVENT => {
+          assert_eq!(data.len(), size_of::<exit_event>());
+          let event: &exit_event = unsafe { &*(data.as_ptr() as *const _) };
+          debug!(
+            "{} exited with code {}, signal {}",
+            header.pid, event.code, event.sig
+          );
+          let pid = Pid::from_raw(header.pid);
+          if let Some(associated) = tracker.maybe_associated_events(pid)
+            && !associated.is_empty()
+          {
+            tracer
+              .tx
+              .as_ref()
+              .map(|tx| {
+                tx.send(
+                  ProcessStateUpdateEvent {
+                    update: ProcessStateUpdate::Exit {
+                      timestamp: ts_from_boot_ns(event.timestamp),
+                      status: match (event.sig, event.code) {
+                        (0, code) => ProcessExit::Code(code),
+                        (sig, _) => {
+                          // 0x80 bit indicates coredump
+                          ProcessExit::Signal(Signal::from_raw(sig as i32 & 0x7f))
+                        }
+                      },
+                    },
+                    pid,
+                    ids: associated.to_owned(),
+                  }
+                  .into(),
+                )
+              })
+              .transpose()
+              .context(SendSnafu)?;
+          }
+          if unsafe { event.is_root_tracee.assume_init() } {
+            tracer
+              .tx
+              .as_ref()
+              .map(|tx| {
+                FilterableTracerEventDetails::from(match (event.sig, event.code) {
+                  (0, exit_code) => TracerEventDetails::TraceeExit {
+                    timestamp: ts_from_boot_ns(event.timestamp),
+                    signal: None,
+                    exit_code,
+                  },
+                  (sig, _) => {
+                    // 0x80 bit indicates coredump
+                    TracerEventDetails::TraceeExit {
+                      timestamp: ts_from_boot_ns(event.timestamp),
+                      signal: Some(Signal::from_raw(sig as i32 & 0x7f)),
+                      exit_code: 128 + (sig as i32 & 0x7f),
+                    }
+                  }
+                })
+                .send_if_match(tx, tracer.filter)
+              })
+              .transpose()
+              .context(SendSnafu)?;
+            should_exit.store(true, Ordering::Relaxed);
+          }
+          if follow_forks {
+            tracker.remove(pid);
+          } else {
+            tracker.maybe_remove(pid);
+          }
+        }
+        event_type::FORK_EVENT => {
+          assert_eq!(data.len(), size_of::<fork_event>());
+          let event: &fork_event = unsafe { &*(data.as_ptr() as *const _) };
+          let fork_parent = Pid::from_raw(event.parent_tgid);
+          let pid = Pid::from_raw(header.pid);
+          debug!(
+            "Allocating parent tracker for {} (follow_forks={follow_forks})",
+            pid
+          );
+          tracker.add(pid);
+          if let [Some(curr), Some(par)] = tracker.parent_tracker_disjoint_mut(pid, fork_parent) {
+            // Parent can be missing if the fork happens before tracexec start.
+            curr.save_parent_last_exec(par);
+          }
+          debug!("{} forked {}", event.parent_tgid, header.pid);
+        }
+        _ => {
+          unreachable!()
+        }
+      }
+      Ok(())
+    }
+
+    builder.add(&skel.maps.events, {
+      let should_exit = should_exit.clone();
+      move |data| match bpf_callback(
+        BpfCallbackContext {
+          tracer: &self,
+          tracker: &mut tracker,
+          event_storage: &event_storage,
+          lost_events: &lost_events,
+          eid: &mut eid,
+          should_exit: &should_exit,
+          cgroup_cache: cgroup_cache.as_ref(),
+          follow_forks,
+        },
+        data,
+      ) {
+        Ok(()) => 0,
+        Err(error) => -(Errno::from(error) as c_int),
       }
     })?;
     printer_clone.init_thread_local(output);
@@ -770,6 +842,8 @@ impl EbpfTracer {
     bump_memlock_rlimit()?;
     let mut open_skel = skel_builder.open(object)?;
     let ncpu: u32 = num_possible_cpus()?.try_into().expect("Too many cores!");
+    #[expect(clippy::unwrap_used)]
+    // The BPF program uses rodata_data so it must exist.
     let rodata = open_skel.maps.rodata_data.as_deref_mut().unwrap();
     let kconfig = procfs::kernel_config()
       .inspect_err(|e| warn!("Failed to get kernel config: {e}"))
@@ -899,7 +973,7 @@ impl EbpfTracer {
       if matches!(&self.mode, TracerMode::Log { foreground: true }) {
         match tcsetpgrp(stdin(), child) {
           Ok(_) => {}
-          Err(Errno::ENOTTY) => {
+          Err(NixErrno::ENOTTY) => {
             warn!("tcsetpgrp failed: ENOTTY");
           }
           r => r?,
@@ -944,7 +1018,7 @@ pub struct RunningEbpfTracer<'obj> {
 }
 
 impl RunningEbpfTracer<'_> {
-  pub fn run_until_exit(&self) {
+  pub fn run_until_exit(&self) -> libbpf_rs::Result<()> {
     run_until_exit_impl(&self.should_exit, || {
       self.rb.poll(Duration::from_millis(100))
     })
@@ -1008,7 +1082,7 @@ impl RunningEbpfTracer<'_> {
   }
 }
 
-fn run_until_exit_impl<F>(should_exit: &AtomicBool, mut poll: F)
+fn run_until_exit_impl<F>(should_exit: &AtomicBool, mut poll: F) -> Result<(), libbpf_rs::Error>
 where
   F: FnMut() -> Result<(), libbpf_rs::Error>,
 {
@@ -1022,11 +1096,12 @@ where
         if e.kind() == libbpf_rs::ErrorKind::Interrupted {
           continue;
         } else {
-          panic!("Failed to poll ringbuf: {e}");
+          return Err(e);
         }
       }
     }
   }
+  Ok(())
 }
 
 #[enumflags2::bitflags]
@@ -1295,7 +1370,9 @@ mod tests {
     let running = tracer
       .spawn(&cmd, &mut obj, None)
       .expect("failed to spawn eBPF tracer");
-    running.run_until_exit();
+    running
+      .run_until_exit()
+      .expect("failed to poll eBPF ring buffer");
     let mut msgs = Vec::new();
     while let Ok(msg) = rx.try_recv() {
       msgs.push(msg);
@@ -1337,13 +1414,48 @@ mod tests {
   }
 
   #[test]
+  fn bpf_callback_errors_map_to_errno() {
+    let print_error = color_eyre::eyre::eyre!("printer error");
+    assert_eq!(
+      Errno::from(BpfCallbackError::Print {
+        source: print_error
+      }),
+      Errno::Print
+    );
+
+    let message = TracerEventDetails::Warning(TracerEventMessage {
+      timestamp: None,
+      pid: None,
+      msg: String::new(),
+    })
+    .into_tracer_msg();
+    assert_eq!(
+      Errno::from(BpfCallbackError::Send {
+        source: tokio::sync::mpsc::error::SendError(message)
+      }),
+      Errno::Send
+    );
+    assert_eq!(
+      Errno::from(BpfCallbackError::MissingProcess {
+        pid: Pid::from_raw(1)
+      }),
+      Errno::MissingProcess
+    );
+
+    assert_eq!(Errno::Print as c_int, 4096);
+    assert_eq!(Errno::Send as c_int, 4097);
+    assert_eq!(Errno::MissingProcess as c_int, 4098);
+  }
+
+  #[test]
   fn run_until_exit_short_circuits_when_flag_set() {
     let flag = AtomicBool::new(true);
     let mut polls = 0;
-    run_until_exit_impl(&flag, || {
+    let result = run_until_exit_impl(&flag, || {
       polls += 1;
       Ok(())
     });
+    assert_that!(result, ok(anything()));
     assert_eq!(polls, 0);
   }
 
@@ -1351,7 +1463,7 @@ mod tests {
   fn run_until_exit_ignores_interrupted() {
     let flag = AtomicBool::new(false);
     let mut polls = 0;
-    run_until_exit_impl(&flag, || {
+    let result = run_until_exit_impl(&flag, || {
       polls += 1;
       if polls == 1 {
         Err(libbpf_rs::Error::from_raw_os_error(libc::EINTR))
@@ -1360,7 +1472,24 @@ mod tests {
         Ok(())
       }
     });
+    assert_that!(result, ok(anything()));
     assert_eq!(polls, 2);
+  }
+
+  #[test]
+  fn run_until_exit_propagates_poll_error() {
+    let flag = AtomicBool::new(false);
+    let mut polls = 0;
+    let result = run_until_exit_impl(&flag, || {
+      polls += 1;
+      Err(libbpf_rs::Error::from_raw_os_error(libc::EINVAL))
+    });
+
+    let Err(error) = result else {
+      panic!("expected polling to fail");
+    };
+    assert_eq!(error.kind(), libbpf_rs::ErrorKind::InvalidInput);
+    assert_eq!(polls, 1);
   }
 
   #[rstest]
@@ -1445,7 +1574,9 @@ mod tests {
     let running = tracer
       .spawn(&[true_path.to_string_lossy().to_string()], &mut obj, None)
       .expect("failed to spawn eBPF tracer");
-    running.run_until_exit();
+    running
+      .run_until_exit()
+      .expect("failed to poll eBPF ring buffer");
 
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
     let profraw_path = tmp.path().join("tracexec.profraw");
@@ -1512,7 +1643,9 @@ mod tests {
     let running = tracer
       .spawn(&[true_path.to_string_lossy().to_string()], &mut obj, None)
       .expect("failed to spawn eBPF tracer");
-    running.run_until_exit();
+    running
+      .run_until_exit()
+      .expect("failed to poll eBPF ring buffer");
 
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
     let index = running
@@ -1562,7 +1695,9 @@ mod tests {
     let running = tracer
       .spawn(&[true_path.to_string_lossy().to_string()], &mut obj, None)
       .expect("failed to spawn eBPF tracer");
-    running.run_until_exit();
+    running
+      .run_until_exit()
+      .expect("failed to poll eBPF ring buffer");
 
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
     let lcov_path = running

@@ -74,7 +74,7 @@ pub async fn main(
         .printer_from_cli(&log_args)
         .build_ebpf();
       let running_tracer = tracer.spawn(&cmd, obj, Some(output))?;
-      running_tracer.run_until_exit();
+      running_tracer.run_until_exit()?;
       Ok(())
     }
     EbpfCommand::Tui {
@@ -123,9 +123,7 @@ pub async fn main(
         .build_ebpf();
       let running_tracer = tracer.spawn(&cmd, obj, None)?;
       let should_exit = running_tracer.should_exit.clone();
-      let tracer_thread = spawn_blocking(move || {
-        running_tracer.run_until_exit();
-      });
+      let tracer_thread = spawn_blocking(move || running_tracer.run_until_exit());
       let mut tui = tracexec_tui::Tui::new()?.frame_rate(frame_rate);
       tui.enter(tracer_rx)?;
       app.run(&mut tui).await?;
@@ -139,7 +137,7 @@ pub async fn main(
       if !follow_forks {
         should_exit.store(true, Ordering::Relaxed);
       }
-      tracer_thread.await?;
+      tracer_thread.await??;
       Ok(())
     }
     EbpfCommand::Collect {
@@ -170,9 +168,7 @@ pub async fn main(
         .build_ebpf();
       let running_tracer = tracer.spawn(&cmd, obj, None)?;
       let should_exit = running_tracer.should_exit.clone();
-      let tracer_thread = spawn_blocking(move || {
-        running_tracer.run_until_exit();
-      });
+      let tracer_thread = spawn_blocking(move || running_tracer.run_until_exit());
       let meta = ExporterMetadata {
         baseline: baseline.clone(),
         exporter_args,
@@ -181,7 +177,7 @@ pub async fn main(
         should_exit.store(true, Ordering::Relaxed);
       })?;
       let exit_code = run_mode::run_exporter(format, output, meta, rx).await?;
-      tracer_thread.await?;
+      tracer_thread.await??;
       process::exit(exit_code);
     }
   }
