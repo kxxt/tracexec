@@ -125,10 +125,7 @@ impl ExecProbe {
   }
 
   fn is_fentry(self) -> bool {
-    matches!(
-      self,
-      Self::ExecveFentryFexit | Self::ExecveatFentryFexit
-    )
+    matches!(self, Self::ExecveFentryFexit | Self::ExecveatFentryFexit)
   }
 
   fn test_suffix(self) -> &'static str {
