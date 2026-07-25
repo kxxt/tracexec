@@ -10,9 +10,9 @@ use tracexec_core::cache::{
 pub use tracexec_core::event::BpfError;
 
 #[allow(
-  clippy::use_self, // remove after https://github.com/libbpf/libbpf-rs/pull/1231 landed
   clippy::large_stack_frames, // generated Default impl for large structs
-  clippy::non_send_fields_in_send_ty
+  clippy::non_send_fields_in_send_ty,
+  clippy::unwrap_used
  )]
 pub mod skel {
   include!(concat!(env!("OUT_DIR"), "/tracexec_system.skel.rs"));
