@@ -326,7 +326,9 @@ mod tests {
     let b = FriendlyError::InspectError(Errno::EACCES);
 
     assert!(a != b);
-    assert!(a < b || a > b);
+    let gt = a > b;
+    let lt = a < b;
+    assert!(gt || lt);
 
     let mut hasher = DefaultHasher::new();
     a.hash(&mut hasher);
