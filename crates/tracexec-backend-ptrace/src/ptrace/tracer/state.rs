@@ -1,5 +1,8 @@
 use hashbrown::HashMap;
-use nix::unistd::Pid;
+use nix::{
+  errno::Errno,
+  unistd::Pid,
+};
 use tracexec_core::{
   breakpoint::BreakPointHit,
   cache::ArcStr,
@@ -74,18 +77,26 @@ impl ProcessStateStore {
   }
 
   pub fn get_current_mut(&mut self, pid: Pid) -> Option<&mut ProcessState> {
-    // The last process in the vector is the current process
-    // println!("Getting {pid}");
     self.processes.get_mut(&pid)
   }
 
-  pub fn get_current(&self, pid: Pid) -> Option<&ProcessState> {
-    // The last process in the vector is the current process
-    self.processes.get(&pid)
+  pub fn require_current(&self, pid: Pid) -> Result<&ProcessState, Errno> {
+    self.processes.get(&pid).ok_or(Errno::ESRCH)
   }
 
-  pub fn get_current_disjoint_mut(&mut self, p1: Pid, p2: Pid) -> [Option<&mut ProcessState>; 2] {
-    self.processes.get_disjoint_mut([&p1, &p2])
+  pub fn require_current_mut(&mut self, pid: Pid) -> Result<&mut ProcessState, Errno> {
+    self.processes.get_mut(&pid).ok_or(Errno::ESRCH)
+  }
+
+  pub fn require_current_disjoint_mut(
+    &mut self,
+    p1: Pid,
+    p2: Pid,
+  ) -> Result<[&mut ProcessState; 2], Errno> {
+    let [Some(p1), Some(p2)] = self.processes.get_disjoint_mut([&p1, &p2]) else {
+      return Err(Errno::ESRCH);
+    };
+    Ok([p1, p2])
   }
 }
 
@@ -108,5 +119,24 @@ impl ProcessState {
 
   pub fn associate_event(&mut self, id: impl IntoIterator<Item = EventId>) {
     self.associated_events.extend(id);
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn required_lookups_report_esrch_when_state_is_missing() {
+    let pid = Pid::from_raw(1);
+    let other_pid = Pid::from_raw(2);
+    let mut store = ProcessStateStore::new();
+
+    assert!(matches!(store.require_current(pid), Err(Errno::ESRCH)));
+    assert!(matches!(store.require_current_mut(pid), Err(Errno::ESRCH)));
+    assert!(matches!(
+      store.require_current_disjoint_mut(pid, other_pid),
+      Err(Errno::ESRCH)
+    ));
   }
 }
