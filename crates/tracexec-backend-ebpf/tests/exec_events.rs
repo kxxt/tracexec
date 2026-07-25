@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use std::{
   ffi::CString,
   os::unix::ffi::OsStrExt,
@@ -108,33 +110,33 @@ enum ExecProbe {
 impl ExecProbe {
   fn prepare(self) -> PrepareSkel {
     match self {
-      ExecProbe::ExecveKprobeKretprobe => prepare_execve_kprobe_kretprobe,
-      ExecProbe::ExecveFentryFexit => prepare_execve_fentry_fexit,
-      ExecProbe::ExecveatKprobeKretprobe => prepare_execveat_kprobe_kretprobe,
-      ExecProbe::ExecveatFentryFexit => prepare_execveat_fentry_fexit,
+      Self::ExecveKprobeKretprobe => prepare_execve_kprobe_kretprobe,
+      Self::ExecveFentryFexit => prepare_execve_fentry_fexit,
+      Self::ExecveatKprobeKretprobe => prepare_execveat_kprobe_kretprobe,
+      Self::ExecveatFentryFexit => prepare_execveat_fentry_fexit,
     }
   }
 
   fn is_execveat(self) -> bool {
     matches!(
       self,
-      ExecProbe::ExecveatKprobeKretprobe | ExecProbe::ExecveatFentryFexit
+      Self::ExecveatKprobeKretprobe | Self::ExecveatFentryFexit
     )
   }
 
   fn is_fentry(self) -> bool {
     matches!(
       self,
-      ExecProbe::ExecveFentryFexit | ExecProbe::ExecveatFentryFexit
+      Self::ExecveFentryFexit | Self::ExecveatFentryFexit
     )
   }
 
   fn test_suffix(self) -> &'static str {
     match self {
-      ExecProbe::ExecveKprobeKretprobe => "execve_kprobe_kretprobe",
-      ExecProbe::ExecveFentryFexit => "execve_fentry_fexit",
-      ExecProbe::ExecveatKprobeKretprobe => "execveat_kprobe_kretprobe",
-      ExecProbe::ExecveatFentryFexit => "execveat_fentry_fexit",
+      Self::ExecveKprobeKretprobe => "execve_kprobe_kretprobe",
+      Self::ExecveFentryFexit => "execve_fentry_fexit",
+      Self::ExecveatKprobeKretprobe => "execveat_kprobe_kretprobe",
+      Self::ExecveatFentryFexit => "execveat_fentry_fexit",
     }
   }
 }
@@ -155,22 +157,22 @@ impl CompatExecProbe {
     };
 
     match self {
-      CompatExecProbe::Execve => prepare_compat_execve,
-      CompatExecProbe::Execveat => prepare_compat_execveat,
+      Self::Execve => prepare_compat_execve,
+      Self::Execveat => prepare_compat_execveat,
     }
   }
 
   fn args(self) -> &'static [&'static str] {
     match self {
-      CompatExecProbe::Execve => &[],
-      CompatExecProbe::Execveat => &["execveat"],
+      Self::Execve => &[],
+      Self::Execveat => &["execveat"],
     }
   }
 
   fn test_suffix(self) -> &'static str {
     match self {
-      CompatExecProbe::Execve => "execve",
-      CompatExecProbe::Execveat => "execveat",
+      Self::Execve => "execve",
+      Self::Execveat => "execveat",
     }
   }
 }

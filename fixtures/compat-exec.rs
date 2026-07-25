@@ -1,6 +1,8 @@
 //! 64-bit helper that issues 32-bit execve/execveat syscalls via int 0x80.
 //! Used by tests to trigger compat_sys_execve* paths.
 
+#![allow(clippy::unwrap_used)]
+
 #[cfg(target_arch = "x86_64")]
 use std::{
   ffi::CString,

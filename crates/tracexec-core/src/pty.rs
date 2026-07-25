@@ -655,6 +655,8 @@ fn spawn_command_from_pty_fd(
         _ = unsafe { libc::umask(mask) };
       }
 
+      #[allow(clippy::unwrap_used)]
+      // Linux OSString is valid CString
       let program = CString::new(cmd.program.into_os_string().into_vec()).unwrap();
       let result = if let Some(env) = &cmd.env {
         execve(&program, &cmd.args, env)

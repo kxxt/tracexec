@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 fn main() {
   use std::{
     env,

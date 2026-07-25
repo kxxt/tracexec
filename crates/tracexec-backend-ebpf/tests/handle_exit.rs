@@ -155,6 +155,9 @@ fn run_configured_tracee_exit_without_exec(timeout: Duration) -> color_eyre::Res
   // attaches BPF programs.
   let child_pid = match unsafe { fork()? } {
     ForkResult::Child => {
+      #[allow(clippy::unwrap_used)]
+      // Directly panic the forked process if raise failed.
+      // It is incorrect to propagate the error in child.
       raise(Signal::SIGSTOP).unwrap();
       std::process::exit(23);
     }

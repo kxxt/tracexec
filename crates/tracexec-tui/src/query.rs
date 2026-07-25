@@ -212,8 +212,9 @@ impl QueryBuilder {
               .syntax(syntax::Config::new().case_insensitive(!self.case_sensitive))
               .build(text)
               .map_err(|e| {
+                #[allow(clippy::unwrap_used)]
                 e.source()
-                  .unwrap() // We are directly building it from pattern text, the source syntax error is present
+                  .unwrap() // We are directly building it from pattern text, the source syntax error is always present
                   .to_string()
                   .lines()
                   .map(|line| Line::raw(line.to_owned()))
