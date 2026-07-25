@@ -460,7 +460,7 @@ mod tests {
       BreakPointStop::SyscallEnter,
       true,
     ));
-    let state = BreakPointManagerState::new(tracer.clone(), keys().clone(), current_theme());
+    let state = BreakPointManagerState::new(tracer, keys().clone(), current_theme());
     assert_eq!(state.breakpoints.len(), 1);
     let breakpoint = state.breakpoints.get(&id).unwrap().clone();
     assert_eq!(breakpoint.pattern.to_editable(), "in-filename:/bin/echo");
@@ -570,7 +570,7 @@ mod tests {
       BreakPointStop::SyscallEnter,
       true,
     ));
-    let mut state = BreakPointManagerState::new(tracer.clone(), keys().clone(), current_theme());
+    let mut state = BreakPointManagerState::new(tracer, keys().clone(), current_theme());
     // Select the first item (index 0) and delete it
     state.list_state.select(Some(0));
     state.handle_key_event(
@@ -592,7 +592,7 @@ mod tests {
       BreakPointStop::SyscallExit,
       true,
     ));
-    let mut state = BreakPointManagerState::new(tracer.clone(), keys().clone(), current_theme());
+    let mut state = BreakPointManagerState::new(tracer, keys().clone(), current_theme());
     state.list_state.select(Some(0));
     state.handle_key_event(
       KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE),

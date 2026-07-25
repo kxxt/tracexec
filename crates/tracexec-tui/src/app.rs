@@ -861,7 +861,7 @@ mod tests {
       &LogModeArgs::default(),
       &ModifierArgs::default(),
       TuiModeArgs::default(),
-      baseline.clone(),
+      baseline,
       None,
       current_theme(),
     )?;
@@ -1108,7 +1108,7 @@ mod tests {
     app
       .popup
       .push(ActivePopup::CopyTargetSelection(CopyPopupState::new(
-        event.clone(),
+        event,
         app.key_bindings.clone(),
         app.theme,
       )));
