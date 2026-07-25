@@ -104,6 +104,7 @@ impl TracePacketCreator {
       clocks: vec![],
       primary_trace_clock: Some(BuiltinClocks::RealtimeCoarse as i32),
     }));
+    #[expect(clippy::unwrap_used)]
     (
       Self {
         modifier_args: ModifierArgs::default(),

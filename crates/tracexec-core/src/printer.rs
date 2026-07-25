@@ -149,9 +149,12 @@ impl PrinterArgs {
       stdio_in_cmdline: modifier_args.stdio_in_cmdline,
       fd_in_cmdline: modifier_args.fd_in_cmdline,
       hide_cloexec_fds: modifier_args.hide_cloexec_fds,
-      inline_timestamp_format: modifier_args.timestamp.then(||
+      inline_timestamp_format: modifier_args.timestamp.then(|| {
         // We ensure a default is set in modifier_args
-        modifier_args.inline_timestamp_format.clone().unwrap()),
+        #[expect(clippy::unwrap_used)]
+        let value = modifier_args.inline_timestamp_format.clone().unwrap();
+        value
+      }),
     }
   }
 }
@@ -171,6 +174,7 @@ struct DeferredWarnings {
 }
 
 impl Drop for DeferredWarnings {
+  #[expect(clippy::unwrap_used)]
   fn drop(&mut self) {
     Printer::OUT.with_borrow_mut(|out| {
       if let Some(out) = out {
@@ -369,8 +373,7 @@ impl Printer {
           list_printer.comma(out)?;
         }
         // Stdio
-        for fd in 0..=2 {
-          let fdinfo_orig = self.baseline.fdinfo.get(fd).unwrap();
+        for (fd, fdinfo_orig) in self.baseline.fdinfo.stdio() {
           self.print_stdio_fd(
             out,
             fd,

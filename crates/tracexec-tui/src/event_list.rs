@@ -483,7 +483,11 @@ impl EventList {
         }
         e.status = pstate_update_to_status(&update.update);
         if let Some(ts) = update.update.termination_timestamp() {
-          e.elapsed = Some(ts - e.details.timestamp().unwrap())
+          #[expect(clippy::unwrap_used)]
+          {
+            // In TUI mode, the timestamp data is always collected
+            e.elapsed = Some(ts - e.details.timestamp().unwrap())
+          }
         }
         // FIXME: currently we do not handle event status updates in secondary event lists.
         storage.line = e.to_event_line(

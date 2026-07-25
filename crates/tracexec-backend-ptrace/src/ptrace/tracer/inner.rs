@@ -866,7 +866,7 @@ impl TracerInner {
       }
       e => e?,
     };
-    let syscallno = info.syscall_number().unwrap();
+    let syscallno = info.syscall_number().expect("Not a syscall entry/seccomp stop");
     let is_32bit = info.arch().is_32bit();
     let (syscall, filename, argv_address, envp_address) = if info.is_execveat() {
       trace!("pre execveat {syscallno}");
@@ -1018,7 +1018,7 @@ impl TracerInner {
     let p = store.get_current_mut(pid).unwrap();
     p.presyscall = true;
     debug_assert!(!info.is_entry());
-    let result = info.syscall_result().unwrap();
+    let result = info.syscall_result().expect("Not a syscall exit stop");
     // If exec is successful, the register value might be clobbered.
     // TODO: would the value in ptrace_syscall_info be clobbered?
     let exec_result = if p.is_exec_successful { 0 } else { result };

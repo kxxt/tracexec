@@ -171,6 +171,8 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
 
     let ts_formatter = |ts: Timestamp| {
       if modifier.timestamp {
+        #[expect(clippy::unwrap_used)]
+        // In TUI mode, the timestamp data is always collected
         let fmt = modifier.inline_timestamp_format.as_deref().unwrap();
         Some(Span::styled(
           format!("{} ", ts.format(fmt)),

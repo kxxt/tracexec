@@ -116,6 +116,7 @@ pub fn restore_tui() -> Result<()> {
   Ok(())
 }
 
+#[expect(clippy::unwrap_used)]
 impl Tui {
   pub fn new() -> Result<Self> {
     let frame_rate = 30.0;
@@ -264,7 +265,9 @@ impl DerefMut for Tui {
 
 impl Drop for Tui {
   fn drop(&mut self) {
-    self.exit().unwrap();
+    self
+      .exit()
+      .expect("failed to stop TUI or restore prev terminal state");
   }
 }
 

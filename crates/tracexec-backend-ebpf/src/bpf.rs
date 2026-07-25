@@ -23,6 +23,9 @@ pub mod interface {
 }
 
 pub fn utf8_lossy_cow_from_bytes_with_nul(data: &[u8]) -> Cow<'_, str> {
+  // SAFETY: We use this function to read c-string from BPF ringbuf memory.
+  //         We manually ensure the presence of nul at BPF side.
+  #[expect(clippy::unwrap_used)]
   String::from_utf8_lossy(CStr::from_bytes_until_nul(data).unwrap().to_bytes())
 }
 

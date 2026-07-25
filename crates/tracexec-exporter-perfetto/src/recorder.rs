@@ -34,6 +34,7 @@ impl<W: std::io::Write> PerfettoTraceRecorder<W> {
       if let Err(e) = trace.encode_length_delimited(&mut self.buf) {
         self.buf.reserve(e.required_capacity() - e.remaining());
         // SAFETY: we reserved enough capacity
+        #[expect(clippy::unwrap_used)]
         trace.encode_length_delimited(&mut self.buf).unwrap();
       }
     };
