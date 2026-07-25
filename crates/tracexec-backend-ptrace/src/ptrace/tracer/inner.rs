@@ -202,6 +202,14 @@ enum WaitpidHandlerError {
 
 const SENTINEL_SIGNAL: Signal = Signal::Standard(nix::sys::signal::SIGSTOP);
 
+#[inline]
+fn take_pending_guard<'a>(
+  pending_guards: &mut HashMap<Pid, PtraceStopGuard<'a>>,
+  pid: Pid,
+) -> Result<PtraceStopGuard<'a>, Errno> {
+  pending_guards.remove(&pid).ok_or(Errno::ESRCH)
+}
+
 // Constructor
 impl TracerInner {
   pub fn new(
@@ -684,13 +692,10 @@ impl TracerInner {
             if let Some(state) = store.get_current_mut(new_child) {
               if state.status == ProcessStatus::SigstopReceived {
                 trace!("ptrace fork event received after sigstop, pid: {pid}, child: {new_child}");
+                let guard = take_pending_guard(pending_guards, new_child).context(OSSnafu)?;
                 state.status = ProcessStatus::Running;
                 state.ppid = Some(pid);
-                pending_guards
-                  .remove(&new_child)
-                  .unwrap()
-                  .seccomp_aware_cont_syscall(true)
-                  .context(OSSnafu)?;
+                guard.seccomp_aware_cont_syscall(true).context(OSSnafu)?;
                 handled = true;
               } else if state.status == ProcessStatus::Initialized {
                 // Manually inserted process state. (root child)
@@ -1190,8 +1195,8 @@ impl TracerInner {
     stop: BreakPointStop,
     pending_guards: &mut HashMap<Pid, PtraceStopGuard<'_>>,
   ) -> Result<(), Either<Errno, SendError<TracerMessage>>> {
+    let guard = take_pending_guard(pending_guards, state.pid).map_err(Either::Left)?;
     state.status = ProcessStatus::Running;
-    let guard = pending_guards.remove(&state.pid).unwrap();
     if stop == BreakPointStop::SyscallEnter {
       guard.cont_syscall(false)
     } else {
@@ -1221,14 +1226,20 @@ impl TracerInner {
     hid: u64,
     pending_guards: &mut HashMap<Pid, PtraceStopGuard<'_>>,
   ) -> Result<(), Errno> {
+    let guard = take_pending_guard(pending_guards, state.pid)?;
     state.pending_detach = Some(PendingDetach { signal, hid, hit });
     // Don't use *cont_with_signal because that causes
     // the loss of signal when we do it on syscall-enter.
     // Is this a kernel bug?
     if 0 != unsafe { libc::kill(state.pid.as_raw(), SENTINEL_SIGNAL.as_raw()) } {
-      return Err(Errno::last());
+      let error = Errno::last();
+      state.pending_detach = None;
+      if error != Errno::ESRCH {
+        // The tracee still exists, so preserve the guard for a later resume or detach request.
+        pending_guards.insert(state.pid, guard);
+      }
+      return Err(error);
     }
-    let guard = pending_guards.remove(&state.pid).unwrap();
     if hit.stop == BreakPointStop::SyscallEnter {
       guard.cont_syscall(false)?;
     } else {
@@ -1247,12 +1258,13 @@ impl TracerInner {
   ) -> Result<(), Either<Errno, SendError<TracerMessage>>> {
     let pid = state.pid;
     trace!("detaching: {pid}, signal: {:?}", signal);
-    state.status = ProcessStatus::Detached;
 
     if let Some((sig, guard)) = signal {
+      state.status = ProcessStatus::Detached;
       guard.injected_detach(sig)
     } else {
-      let guard = pending_guards.remove(&state.pid).unwrap();
+      let guard = take_pending_guard(pending_guards, state.pid).map_err(Either::Left)?;
+      state.status = ProcessStatus::Detached;
       guard.detach()
     }
     .inspect_err(|e| warn!("Failed to detach from {pid}: {e}"))
@@ -1408,8 +1420,12 @@ impl TracerInner {
 
 #[cfg(test)]
 mod tests {
-  use std::sync::Arc;
+  use std::{
+    collections::HashMap,
+    sync::Arc,
+  };
 
+  use either::Either;
   use enumflags2::BitFlags;
   use nix::{
     errno::Errno,
@@ -1421,6 +1437,10 @@ mod tests {
   use test_that::prelude::*;
   use tokio::sync::mpsc::UnboundedReceiver;
   use tracexec_core::{
+    breakpoint::{
+      BreakPointHit,
+      BreakPointStop,
+    },
     cli::{
       args::{
         LogModeArgs,
@@ -1441,12 +1461,17 @@ mod tests {
     },
     timestamp::TimestampFormat,
     tracer::{
+      Signal,
       TracerBuilder,
       TracerMode,
     },
   };
 
-  use super::TracerInner;
+  use super::{
+    ProcessState,
+    ProcessStatus,
+    TracerInner,
+  };
   use crate::ptrace::{
     BuildPtraceTracer,
     tracer::Breakpoints,
@@ -1578,5 +1603,43 @@ mod tests {
     let (inner, _rx) = build_inner(ModifierArgs::default(), BitFlags::empty(), SeccompBpf::Off);
     assert_that!(inner.timestamp_now(), none());
     assert!(!inner.seccomp_bpf());
+  }
+
+  #[test]
+  fn missing_pending_guards_report_esrch_without_changing_state() {
+    let (inner, _rx) = build_inner(ModifierArgs::default(), BitFlags::empty(), SeccompBpf::Off);
+    let pid = getpid();
+    let mut state = ProcessState::new(pid).unwrap();
+    state.status = ProcessStatus::BreakPointHit;
+    let hit = BreakPointHit {
+      bid: 1,
+      pid,
+      stop: BreakPointStop::SyscallEnter,
+    };
+    let mut pending_guards = HashMap::new();
+
+    assert!(matches!(
+      inner.resume_process(&mut state, hit.stop, &mut pending_guards),
+      Err(Either::Left(Errno::ESRCH))
+    ));
+    assert_eq!(state.status, ProcessStatus::BreakPointHit);
+
+    assert!(matches!(
+      inner.prepare_to_detach_with_signal(
+        &mut state,
+        hit,
+        Signal::Standard(nix::sys::signal::SIGTERM),
+        1,
+        &mut pending_guards,
+      ),
+      Err(Errno::ESRCH)
+    ));
+    assert_that!(state.pending_detach, none());
+
+    assert!(matches!(
+      inner.detach_process_internal(&mut state, None, 1, &mut pending_guards),
+      Err(Either::Left(Errno::ESRCH))
+    ));
+    assert_eq!(state.status, ProcessStatus::BreakPointHit);
   }
 }
