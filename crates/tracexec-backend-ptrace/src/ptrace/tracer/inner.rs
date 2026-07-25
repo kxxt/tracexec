@@ -924,42 +924,42 @@ impl TracerInner {
     };
     p.syscall = syscall;
 
-      let filename = self.get_filename_for_display(pid, filename)?;
-      self.warn_for_filename(&filename, pid)?;
+    let filename = self.get_filename_for_display(pid, filename)?;
+    self.warn_for_filename(&filename, pid)?;
     let argv = read_output_msg_array(pid, argv_address, is_32bit);
-      self.warn_for_argv(&argv, pid)?;
+    self.warn_for_argv(&argv, pid)?;
     let envp = read_env(pid, envp_address, is_32bit);
-      self.warn_for_envp(&envp, pid)?;
+    self.warn_for_envp(&envp, pid)?;
     let interpreters = if self.printer.args.trace_interpreter {
       filename
         .as_deref()
         .map_or_else(|_| Vec::new(), read_interpreter_recursive)
-      } else {
-        vec![]
-      };
-      let filename = match filename {
+    } else {
+      vec![]
+    };
+    let filename = match filename {
       Ok(filename) => OutputMsg::Ok(filename),
       Err(error) => OutputMsg::Err(tracexec_core::event::FriendlyError::InspectError(error)),
-      };
-      let has_dash_env = envp.as_ref().map(|v| v.0).unwrap_or_default();
-      let cgroup = if self.modifier_args.collect_cgroup {
-        read_cgroup(pid)
-      } else {
-        CgroupInfo::NotCollected
-      };
-      p.exec_data = Some(ExecData::new(
-        pid,
-        filename,
-        argv,
-        envp.map(|v| v.1),
-        has_dash_env,
-        Err(CredInspectError::Inspect),
-        OutputMsg::Ok(read_cwd(pid)?),
-        Some(interpreters),
-        read_fds(pid)?,
-        timestamp,
-        cgroup,
-      ));
+    };
+    let has_dash_env = envp.as_ref().map(|v| v.0).unwrap_or_default();
+    let cgroup = if self.modifier_args.collect_cgroup {
+      read_cgroup(pid)
+    } else {
+      CgroupInfo::NotCollected
+    };
+    p.exec_data = Some(ExecData::new(
+      pid,
+      filename,
+      argv,
+      envp.map(|v| v.1),
+      has_dash_env,
+      Err(CredInspectError::Inspect),
+      OutputMsg::Ok(read_cwd(pid)?),
+      Some(interpreters),
+      read_fds(pid)?,
+      timestamp,
+      cgroup,
+    ));
 
     if let Some(exec_data) = &p.exec_data {
       let mut hit = None;
@@ -1033,8 +1033,15 @@ impl TracerInner {
 
         p.is_exec_successful = false;
 
+        let Some(mut exec_data) = p.exec_data.take() else {
+          return Err(color_eyre::eyre::eyre!(
+            "missing exec data for exec syscall exit of {}",
+            p.pid
+          ));
+        };
+
         // Read creds during syscall exit
-        p.exec_data.as_mut().unwrap().cred = read_status(p.pid)
+        exec_data.cred = read_status(p.pid)
           .map(|s| s.cred)
           .map_err(|e| CredInspectError::Io { kind: e.kind() });
 
@@ -1044,6 +1051,7 @@ impl TracerInner {
           let event = TracerEventDetails::Exec(Self::collect_exec_event(
             &self.baseline.env,
             p,
+            &exec_data,
             exec_result,
             timestamp,
             parent,
@@ -1055,47 +1063,45 @@ impl TracerInner {
             p.pid,
             p.comm.clone(),
             exec_result,
-            p.exec_data.as_ref().unwrap(),
+            &exec_data,
             &self.baseline.env,
             &self.baseline.cwd,
           )?;
         }
 
-        if let Some(exec_data) = &p.exec_data {
-          let mut hit = None;
-          for (&idx, brk) in self
-            .breakpoints
-            .read()
-            .iter()
-            .filter(|(_, brk)| brk.activated && brk.stop == BreakPointStop::SyscallExit)
+        let mut hit = None;
+        for (&idx, brk) in self
+          .breakpoints
+          .read()
+          .iter()
+          .filter(|(_, brk)| brk.activated && brk.stop == BreakPointStop::SyscallExit)
+        {
+          if brk
+            .pattern
+            .matches(exec_data.argv.as_deref().ok(), &exec_data.filename)
           {
-            if brk
-              .pattern
-              .matches(exec_data.argv.as_deref().ok(), &exec_data.filename)
-            {
-              hit = Some(idx);
-              break;
-            }
-          }
-          if let Some(bid) = hit {
-            let associated_events = p.associated_events.clone();
-            let event = ProcessStateUpdateEvent {
-              update: ProcessStateUpdate::BreakPointHit(BreakPointHit {
-                bid,
-                pid,
-                stop: BreakPointStop::SyscallExit,
-              }),
-              pid,
-              ids: associated_events,
-            };
-            p.status = ProcessStatus::BreakPointHit;
-            self.msg_tx.send(event.into())?;
-            pending_guards.insert(pid, guard.into());
-            return Ok(()); // Do not continue the syscall
+            hit = Some(idx);
+            break;
           }
         }
+        if let Some(bid) = hit {
+          p.exec_data = Some(exec_data);
+          let associated_events = p.associated_events.clone();
+          let event = ProcessStateUpdateEvent {
+            update: ProcessStateUpdate::BreakPointHit(BreakPointHit {
+              bid,
+              pid,
+              stop: BreakPointStop::SyscallExit,
+            }),
+            pid,
+            ids: associated_events,
+          };
+          p.status = ProcessStatus::BreakPointHit;
+          self.msg_tx.send(event.into())?;
+          pending_guards.insert(pid, guard.into());
+          return Ok(()); // Do not continue the syscall
+        }
 
-        p.exec_data = None;
         // update comm
         p.comm = read_comm(pid)?;
       }
@@ -1112,11 +1118,11 @@ impl TracerInner {
   fn collect_exec_event(
     env: &BTreeMap<OutputMsg, OutputMsg>,
     state: &ProcessState,
+    exec_data: &ExecData,
     result: i64,
     timestamp: Timestamp,
     parent: Option<ParentEventId>,
   ) -> Box<ExecEvent> {
-    let exec_data = state.exec_data.as_ref().unwrap();
     let syscall = match state.syscall {
       Syscall::Execve => ExecSyscall::Execve,
       Syscall::Execveat => ExecSyscall::Execveat,
