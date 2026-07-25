@@ -73,7 +73,7 @@ impl ProcessStateStore {
   }
 
   pub fn insert(&mut self, state: ProcessState) {
-    self.processes.entry(state.pid).or_insert(state);
+    self.processes.entry(state.pid).insert(state);
   }
 
   pub fn get_current_mut(&mut self, pid: Pid) -> Option<&mut ProcessState> {
