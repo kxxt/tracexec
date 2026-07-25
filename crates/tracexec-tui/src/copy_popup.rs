@@ -154,16 +154,22 @@ impl CopyPopupState {
     }
   }
 
+  fn selected_index(&self) -> usize {
+    #[expect(clippy::unwrap_used)]
+    // Copy popup must have a selected entry
+    self.state.selected().unwrap()
+  }
+
   pub fn next(&mut self) {
     self.state.select(Some(
-      (self.state.selected().unwrap() + 1).min(self.available_targets.len() - 1),
+      (self.selected_index() + 1).min(self.available_targets.len() - 1),
     ))
   }
 
   pub fn prev(&mut self) {
     self
       .state
-      .select(Some(self.state.selected().unwrap().saturating_sub(1)))
+      .select(Some(self.selected_index().saturating_sub(1)))
   }
 
   pub fn selected(&self) -> CopyTarget {

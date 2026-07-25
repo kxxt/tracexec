@@ -866,11 +866,15 @@ impl DetailsPopup {
   }
 
   fn env_paragraph(&self, state: &DetailsPopupState) -> Paragraph<'_> {
+    #[expect(clippy::unwrap_used)]
+    // Exec events must contain env info
     let text = state.env.clone().unwrap();
     Paragraph::new(text).wrap(Wrap { trim: false })
   }
 
   fn fd_paragraph(&self, state: &DetailsPopupState) -> Paragraph<'_> {
+    #[expect(clippy::unwrap_used)]
+    // Exec events must contain fd info
     let text = state.fdinfo.clone().unwrap();
     Paragraph::new(text).wrap(Wrap { trim: false })
   }

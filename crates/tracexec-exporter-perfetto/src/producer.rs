@@ -182,6 +182,7 @@ impl TrackInner {
     };
     let our_parent = parent.borrow_mut();
     let mut our_container = our_parent.tracks.borrow_mut();
+    #[allow(clippy::unwrap_used)]
     let mut selfp = *our_container.get_priority(&self.uuid).unwrap(); // SAFETY: The parent track must contain its child track
     if selfp.status != Status::Free {
       panic!("Attempting to occupy a non-free track ({:?})", selfp.status);
@@ -198,6 +199,7 @@ impl TrackInner {
     };
     let our_parent = parent.borrow_mut();
     let mut our_container = our_parent.tracks.borrow_mut();
+    #[allow(clippy::unwrap_used)]
     let mut selfp = *our_container.get_priority(&self.uuid).unwrap(); // SAFETY: The parent track must contain its child track
     if selfp.status == Status::Free {
       return;
@@ -359,6 +361,7 @@ impl TracePacketProducer {
             // Attach exec failure to parent slice.
             let parent: EventId = parent.into();
             // SAFETY: the parent slice hasn't ended yet.
+            #[allow(clippy::unwrap_used)]
             let track_uuid = *self.inflight.get(&parent).unwrap();
             debug!(
               "Add exec failure of {} to parent {:?}'s track {:?}",
@@ -391,7 +394,9 @@ impl TracePacketProducer {
               );
 
               // Move the track to new id in track_map
+              #[allow(clippy::unwrap_used)]
               let track = self.track_map.remove(&parent_event_id).unwrap(); // SAFETY: we have not removed it yet.
+              #[allow(clippy::unwrap_used)]
               let (_, track_uuid) = self.inflight.remove_entry(&parent_event_id).unwrap();
               self.track_map.insert(id, track);
               self.inflight.insert(id, track_uuid);
@@ -475,6 +480,7 @@ impl TracePacketProducer {
                 .creator
                 .end_exec_slice(SliceEndInfo::Exited(status), timestamp, track_uuid)?;
             // Try to release track
+            #[allow(clippy::unwrap_used)]
             let track = self.track_map.remove(&matching_event).unwrap();
             debug!(
               "Process for event {ids:?} exited, freeing track {:?} at {}",
@@ -494,6 +500,7 @@ impl TracePacketProducer {
                 .creator
                 .end_exec_slice(SliceEndInfo::Detached, timestamp, track_uuid)?;
             // Try to release track
+            #[allow(clippy::unwrap_used)]
             let track = self.track_map.remove(&matching_event).unwrap();
             track.borrow_mut().free();
             vec![packet]
