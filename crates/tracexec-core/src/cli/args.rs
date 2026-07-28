@@ -463,10 +463,9 @@ impl LogModeArgs {
 pub struct TuiModeArgs {
   #[clap(
     long,
-    short,
-    help = "Allocate a pseudo terminal and show it alongside the TUI"
+    help = "Do not allocate a pseudo terminal; redirect stdin/out/err to /dev/null"
   )]
-  pub tty: bool,
+  pub no_tty: bool,
   #[clap(long, short, help = "Keep the event list scrolled to the bottom")]
   pub follow: bool,
   #[clap(
@@ -484,14 +483,14 @@ pub struct TuiModeArgs {
     long,
     short = 'A',
     help = "Set the default active pane to use when TUI launches",
-    requires = "tty"
+    conflicts_with = "no_tty"
   )]
   pub active_pane: Option<ActivePane>,
   #[clap(
     long,
     short = 'L',
     help = "Set the layout of the TUI when it launches",
-    requires = "tty"
+    conflicts_with = "no_tty"
   )]
   pub layout: Option<AppLayout>,
   #[clap(
@@ -510,7 +509,7 @@ pub struct TuiModeArgs {
   #[clap(
     long,
     help = "Number of scrollback lines to keep in the pseudo terminal (1000 by default)",
-    requires = "tty"
+    conflicts_with = "no_tty"
   )]
   pub scrollback_lines: Option<usize>,
   #[clap(
@@ -570,6 +569,33 @@ pub struct DebuggerArgs {
 }
 
 impl TuiModeArgs {
+  pub const fn tty(&self) -> bool {
+    !self.no_tty
+  }
+
+  /// Reject options that only make sense when a pseudo terminal is allocated.
+  ///
+  /// The explicit `--no-tty` flag is already rejected by clap's
+  /// `conflicts_with`, but the effective mode can lack a pseudo terminal
+  /// without that flag, e.g. in eBPF TUI mode when no command is given and
+  /// the TUI traces all execs on the system. `--active-pane events` and
+  /// `--layout` are not checked here: they are valid (and the former is
+  /// what the TUI falls back to) without a pseudo terminal.
+  pub fn validate_pty_options(&self, pty_allocated: bool) -> color_eyre::Result<()> {
+    if pty_allocated {
+      return Ok(());
+    }
+    if self.active_pane == Some(ActivePane::Terminal) {
+      bail!(
+        "--active-pane terminal requires a pseudo terminal, which is not allocated in this mode"
+      );
+    }
+    if self.scrollback_lines.is_some() {
+      bail!("--scrollback-lines requires a pseudo terminal, which is not allocated in this mode");
+    }
+    Ok(())
+  }
+
   pub fn merge_config(&mut self, config: TuiModeConfig) {
     self.active_pane = self.active_pane.or(config.active_pane);
     self.layout = self.layout.or(config.layout);
@@ -1024,13 +1050,71 @@ mod tests {
   }
 
   #[test]
-  fn test_tui_cli_parse() {
-    let cli =
-      TestCli::<TuiModeArgs>::parse_from(["test", "--tty", "--follow", "--frame-rate", "30"]);
+  fn test_tui_validate_pty_options() {
+    // Options that require a pseudo terminal are accepted when one is allocated.
+    let args = TuiModeArgs {
+      active_pane: Some(crate::cli::options::ActivePane::Terminal),
+      layout: Some(crate::cli::options::AppLayout::Vertical),
+      scrollback_lines: Some(2000),
+      ..Default::default()
+    };
+    assert!(args.validate_pty_options(true).is_ok());
 
-    assert!(cli.args.tty);
+    // `--active-pane terminal` is rejected when the effective mode allocates none.
+    assert_that!(args.validate_pty_options(false), err(anything()));
+    assert_that!(
+      TuiModeArgs {
+        scrollback_lines: Some(1000),
+        ..Default::default()
+      }
+      .validate_pty_options(false),
+      err(anything())
+    );
+    // `--active-pane events`, `--layout`, and defaults stay valid without a
+    // pseudo terminal.
+    assert!(
+      TuiModeArgs {
+        active_pane: Some(crate::cli::options::ActivePane::Events),
+        ..Default::default()
+      }
+      .validate_pty_options(false)
+      .is_ok()
+    );
+    assert!(
+      TuiModeArgs {
+        layout: Some(crate::cli::options::AppLayout::Vertical),
+        ..Default::default()
+      }
+      .validate_pty_options(false)
+      .is_ok()
+    );
+    assert!(TuiModeArgs::default().validate_pty_options(false).is_ok());
+  }
+
+  #[test]
+  fn test_tui_cli_parse() {
+    let cli = TestCli::<TuiModeArgs>::parse_from(["test", "--follow", "--frame-rate", "30"]);
+
+    assert!(cli.args.tty());
+    assert!(!cli.args.no_tty);
     assert!(cli.args.follow);
     assert_eq!(cli.args.frame_rate, Some(30.0));
+  }
+
+  #[test]
+  fn test_tui_cli_parse_no_tty() {
+    let cli = TestCli::<TuiModeArgs>::parse_from(["test", "--no-tty"]);
+
+    assert!(!cli.args.tty());
+    assert!(cli.args.no_tty);
+  }
+
+  #[test]
+  fn test_tui_cli_no_tty_conflicts_with_terminal_options() {
+    let result =
+      TestCli::<TuiModeArgs>::try_parse_from(["test", "--no-tty", "--active-pane", "terminal"]);
+
+    assert_that!(result, err(anything()));
   }
 
   #[test]

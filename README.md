@@ -34,8 +34,9 @@ tracexec collect --format=perfetto -o out.pftrace -- cmd
 
 ### TUI mode with pseudo terminal
 
-In TUI mode with a pseudo terminal, you can view the details of exec events and interact with the processes
-within the pseudo terminal at ease.
+TUI mode allocates a pseudo terminal by default, allowing you to view the details of exec events and interact
+with the processes within the pseudo terminal. Use `--no-tty` when a pseudo terminal is not wanted; the tracee's
+stdin, stdout, and stderr will be redirected to `/dev/null`.
 
 ![TUI demo](https://github.com/kxxt/tracexec/blob/v0.15.1/screenshots/tui-demo.gif?raw=true)
 
@@ -46,7 +47,7 @@ But do note that this is not compatible with seccomp-bpf optimization so it is m
 You can use eBPF mode which is more performant in such scenarios.
 
 ```
-sudo tracexec --user $(whoami) tui -t -- sudo ls
+sudo tracexec --user $(whoami) tui -- sudo ls
 ```
 
 ![Tracing sudo ls](https://github.com/kxxt/tracexec/blob/v0.15.1/screenshots/tracing-sudo.png?raw=true)
@@ -76,6 +77,8 @@ The `eBPF` command also supports regular `log` and `collect` subcommands.
 
 #### System-wide Exec Tracing
 
+System-wide tracing has no command to attach to a pseudo terminal, so it runs without one automatically:
+
 ```bash
 sudo -E tracexec ebpf tui
 ```
@@ -84,7 +87,7 @@ sudo -E tracexec ebpf tui
 #### Follow Fork mode with eBPF
 
 ```bash
-sudo -E tracexec --user $(whoami) ebpf tui -t -- bash
+sudo -E tracexec --user $(whoami) ebpf tui -- bash
 ```
 
 [ebpf-follow-forks.webm](https://github.com/user-attachments/assets/997e1992-df85-4d45-ae68-faf693c6b99b)
@@ -142,7 +145,7 @@ Usage: tracexec [OPTIONS] <COMMAND>
 
 Commands:
   log                   Run tracexec in logging mode
-  tui                   Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default
+  tui                   Run tracexec in TUI mode with a pseudo terminal by default
   generate-completions  Generate shell completions for tracexec
   collect               Collect exec events and export them
   ebpf                  Experimental ebpf mode
@@ -163,7 +166,7 @@ Options:
 TUI Mode:
 
 ```bash
-Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default
+Run tracexec in TUI mode with a pseudo terminal by default
 
 Usage: tracexec tui [OPTIONS] -- <CMD>...
 
@@ -207,8 +210,8 @@ Options:
           Aside from the default filter, also include the events specified here. [default: <empty>]
       --filter-exclude <FILTER_EXCLUDE>
           Exclude the events specified here from the default filter. [default: <empty>]
-  -t, --tty
-          Allocate a pseudo terminal and show it alongside the TUI
+      --no-tty
+          Do not allocate a pseudo terminal; redirect stdin/out/err to /dev/null
   -f, --follow
           Keep the event list scrolled to the bottom
       --terminate-on-exit
@@ -405,7 +408,7 @@ Usage: tracexec ebpf <COMMAND>
 
 Commands:
   log      Run tracexec in logging mode
-  tui      Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default
+  tui      Run tracexec in TUI mode, with a pseudo terminal when following a command
   collect  Collect exec events and export them
   help     Print this message or the help of the given subcommand(s)
 

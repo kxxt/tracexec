@@ -219,7 +219,7 @@ async fn async_main(
         owo_colors::control::should_colorize()
       );
       let (baseline, tracer_mode, pty_master) =
-        run_mode::setup_tui_io(tui_args.tty, tracee_env.as_deref())?;
+        run_mode::setup_tui_io(tui_args.tty(), tracee_env.as_deref())?;
       let tracing_args = run_mode::tui_log_args();
       let baseline = Arc::new(baseline);
       let (tracer_tx, tracer_rx) = mpsc::unbounded_channel();

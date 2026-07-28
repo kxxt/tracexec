@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Breaking Changes
+
+- TUI mode now allocates a pseudo terminal by default.
+  Use `--no-tty` to run without one and redirect the tracee's stdin, stdout, and
+  stderr to `/dev/null`. eBPF system-wide tracing continues to run without a
+  pseudo terminal automatically.
+
 ## v0.17.0
 
 ### Bug Fixes

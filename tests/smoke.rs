@@ -41,22 +41,6 @@ fn generate_completions_runs_from_binary() -> Result<(), Box<dyn std::error::Err
 }
 
 #[test]
-#[file_serial]
-fn ebpf_tui_tty_without_command_errors_before_tracing() -> Result<(), Box<dyn std::error::Error>> {
-  let mut cmd = Command::new(cargo::cargo_bin!());
-  cmd
-    .arg("--color")
-    .arg("never")
-    .arg("ebpf")
-    .arg("tui")
-    .arg("--tty");
-  cmd.assert().failure().stderr(predicate::str::contains(
-    "not supported for eBPF system-wide tracing",
-  ));
-  Ok(())
-}
-
-#[test]
 #[file_serial(ignored)]
 #[ignore = "root"]
 fn elevate_fails_when_already_root() -> Result<(), Box<dyn std::error::Error>> {
