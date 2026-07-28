@@ -402,7 +402,7 @@ impl App {
                       .hit_manager_state
                       .access_some_mut(|h| _ = h.add_hit(*hit));
                     // Warn: This grants CAP_SYS_ADMIN to not only the tracer but also the tracees
-                    // sudo -E env RUST_LOG=debug setpriv --reuid=$(id -u) --regid=$(id -g) --init-groups --inh-caps=+sys_admin --ambient-caps +sys_admin -- target/debug/tracexec tui -t --
+                    // sudo -E env RUST_LOG=debug setpriv --reuid=$(id -u) --regid=$(id -g) --init-groups --inh-caps=+sys_admin --ambient-caps +sys_admin -- target/debug/tracexec tui --
                   }
                   ProcessStateUpdateEvent {
                     update: ProcessStateUpdate::Detached { hid, .. },

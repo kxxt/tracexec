@@ -7,10 +7,6 @@ use std::{
   },
 };
 
-use color_eyre::{
-  Section,
-  eyre::eyre,
-};
 use enumflags2::BitFlag;
 use nix::unistd::User;
 use signal_hook::consts::signal::*;
@@ -25,6 +21,7 @@ use tracexec_core::{
   cli::{
     Cli,
     EbpfCommand,
+    args::TuiModeArgs,
     options::Color,
   },
   event::TracerEventDetailsKind,
@@ -42,6 +39,10 @@ use tracexec_tui::{
 };
 
 use crate::run_mode;
+
+fn should_allocate_tui_pty(follow_forks: bool, tui_args: &TuiModeArgs) -> bool {
+  follow_forks && tui_args.tty()
+}
 
 pub async fn main(
   command: EbpfCommand,
@@ -86,16 +87,10 @@ pub async fn main(
       let executable_path = std::env::current_exe()?;
       run_mode::initialize_tui(&tui_args, &executable_path)?;
       let follow_forks = !cmd.is_empty();
-      if tui_args.tty && !follow_forks {
-        return Err(
-          eyre!("--tty is not supported for eBPF system-wide tracing.").with_suggestion(
-            || "Did you mean to use follow-fork mode? e.g. tracexec ebpf tui -t -- bash",
-          ),
-        );
-      }
+      let tty = should_allocate_tui_pty(follow_forks, &tui_args);
+      tui_args.validate_pty_options(tty)?;
       let modifier_args = modifier_args.processed();
-      let (baseline, tracer_mode, pty_master) =
-        run_mode::setup_tui_io(tui_args.tty, tracee_env.as_deref())?;
+      let (baseline, tracer_mode, pty_master) = run_mode::setup_tui_io(tty, tracee_env.as_deref())?;
       let baseline = Arc::new(baseline);
       let frame_rate = tui_args.frame_rate.unwrap_or(60.);
       let log_args = run_mode::tui_log_args();
@@ -180,5 +175,97 @@ pub async fn main(
       tracer_thread.await??;
       process::exit(exit_code);
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use clap::Parser;
+  use test_that::prelude::*;
+  use tracexec_core::cli::CliCommand;
+
+  use super::*;
+
+  #[test]
+  fn tui_pty_is_only_allocated_when_following_a_command() {
+    let default_args = TuiModeArgs::default();
+    let no_tty_args = TuiModeArgs {
+      no_tty: true,
+      ..Default::default()
+    };
+
+    assert!(!should_allocate_tui_pty(false, &default_args));
+    assert!(should_allocate_tui_pty(true, &default_args));
+    assert!(!should_allocate_tui_pty(true, &no_tty_args));
+  }
+
+  #[test]
+  fn tui_rejects_pty_options_when_command_is_empty() {
+    // eBPF TUI with an empty command traces all execs and does not allocate
+    // a pseudo terminal, even without `--no-tty`. Options that require one
+    // must be rejected instead of being silently ignored by the TUI setup.
+    for args in [
+      vec!["tracexec", "ebpf", "tui", "--active-pane", "terminal"],
+      vec!["tracexec", "ebpf", "tui", "--scrollback-lines", "2000"],
+    ] {
+      let cli = Cli::try_parse_from(&args).unwrap();
+      let CliCommand::Ebpf {
+        command: EbpfCommand::Tui { cmd, tui_args, .. },
+      } = cli.cmd
+      else {
+        panic!("expected ebpf tui command");
+      };
+      assert!(cmd.is_empty());
+      let tty = should_allocate_tui_pty(!cmd.is_empty(), &tui_args);
+      assert!(!tty);
+      assert_that!(tui_args.validate_pty_options(tty), err(anything()));
+    }
+  }
+
+  #[test]
+  fn tui_accepts_non_pty_options_with_empty_command() {
+    // `--active-pane events` matches the pane the TUI falls back to without
+    // a pseudo terminal, and `--layout` is applied regardless, so both stay
+    // valid when the eBPF command is empty.
+    for args in [
+      vec!["tracexec", "ebpf", "tui", "--active-pane", "events"],
+      vec!["tracexec", "ebpf", "tui", "--layout", "vertical"],
+    ] {
+      let cli = Cli::try_parse_from(&args).unwrap();
+      let CliCommand::Ebpf {
+        command: EbpfCommand::Tui { cmd, tui_args, .. },
+      } = cli.cmd
+      else {
+        panic!("expected ebpf tui command");
+      };
+      assert!(cmd.is_empty());
+      let tty = should_allocate_tui_pty(!cmd.is_empty(), &tui_args);
+      assert!(!tty);
+      tui_args.validate_pty_options(tty).unwrap();
+    }
+  }
+
+  #[test]
+  fn tui_accepts_pty_options_when_following_a_command() {
+    let cli = Cli::try_parse_from([
+      "tracexec",
+      "ebpf",
+      "tui",
+      "--active-pane",
+      "terminal",
+      "--",
+      "sh",
+    ])
+    .unwrap();
+    let CliCommand::Ebpf {
+      command: EbpfCommand::Tui { cmd, tui_args, .. },
+    } = cli.cmd
+    else {
+      panic!("expected ebpf tui command");
+    };
+    assert_eq!(cmd, vec!["sh"]);
+    let tty = should_allocate_tui_pty(!cmd.is_empty(), &tui_args);
+    assert!(tty);
+    tui_args.validate_pty_options(tty).unwrap();
   }
 }

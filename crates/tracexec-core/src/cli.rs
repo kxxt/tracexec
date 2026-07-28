@@ -132,7 +132,7 @@ pub enum CliCommand {
     )]
     output: Option<PathBuf>,
   },
-  #[clap(about = "Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default")]
+  #[clap(about = "Run tracexec in TUI mode with a pseudo terminal by default")]
   Tui {
     #[arg(last = true, required = true, help = "command to be executed")]
     cmd: Vec<String>,
@@ -212,7 +212,7 @@ pub enum EbpfCommand {
     #[clap(flatten)]
     log_args: LogModeArgs,
   },
-  #[clap(about = "Run tracexec in TUI mode, stdin/out/err are redirected to /dev/null by default")]
+  #[clap(about = "Run tracexec in TUI mode, with a pseudo terminal when following a command")]
   Tui {
     #[arg(
       last = true,
@@ -415,12 +415,12 @@ mod tests {
 
   #[test]
   fn test_cli_parse_tui() {
-    let args = vec!["tracexec", "tui", "--tty", "--follow", "--", "bash"];
+    let args = vec!["tracexec", "tui", "--follow", "--", "bash"];
     let cli = Cli::parse_from(args);
 
     if let CliCommand::Tui { cmd, tui_args, .. } = cli.cmd {
       assert_eq!(cmd, vec!["bash"]);
-      assert!(tui_args.tty);
+      assert!(tui_args.tty());
       assert!(tui_args.follow);
     } else {
       panic!("Expected Tui command");
@@ -429,7 +429,7 @@ mod tests {
 
   #[test]
   fn test_cli_parse_elevate_tui() {
-    let args = vec!["tracexec", "--elevate", "tui", "-t", "--", "sudo", "ls"];
+    let args = vec!["tracexec", "--elevate", "tui", "--", "sudo", "ls"];
     let cli = Cli::parse_from(args);
     assert!(cli.elevate);
     assert_that!(cli.user, none());

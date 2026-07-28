@@ -227,9 +227,9 @@ pub fn help<'a>(area: Rect, keys: &TuiKeyBindings, theme: &Theme) -> SizedParagr
   let jump_keys = format_jump_keys(keys);
   let line1 = Line::default().spans(vec![
       "W".bold().black(),
-      "elcome to tracexec! The TUI consists of at most two panes: the event list and optionally the pseudo terminal if ".into(),
-      cli_flag("--tty/-t", theme),
-      " is enabled. The event list displays the events emitted by the tracer. \
+      "elcome to tracexec! The TUI consists of the event list and a pseudo terminal by default. The pseudo terminal can be disabled with ".into(),
+      cli_flag("--no-tty", theme),
+      ". The event list displays the events emitted by the tracer. \
        The active pane's border is highlighted in cyan. \
        To switch active pane, press ".into(),
       help_key(keys.switch_pane.display(), theme),

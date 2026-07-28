@@ -34,7 +34,7 @@ echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
 On a machine with Wayland/X11 display, assuming you have konsole installed(if not, please change the default-external-command), run
 
 ```bash
-tracexec tui -t \
+tracexec tui \
     -b sysexit:in-filename:/a \
     -b sysexit:in-filename:/b \
     --default-external-command "konsole -e gdb -ex cont -ex cont -p {{PID}}" \
@@ -44,7 +44,7 @@ tracexec tui -t \
 or on a headless server, inside a tmux session, run:
 
 ```bash
-tracexec tui -t \
+tracexec tui \
     -b sysexit:in-filename:/a \
     -b sysexit:in-filename:/b \
     --default-external-command "tmux split-window 'gdb -ex cont -ex cont -p {{PID}}'" \
