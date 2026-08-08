@@ -5,7 +5,7 @@ expression: rendered
 Buffer {
     area: Rect { x: 0, y: 0, width: 80, height: 24 },
     content: [
-        " tracexec 0.17.0                                                                ",
+        " tracexec 0.0.0-fake                                                                ",
         "                                                                                ",
         "┌Events───────────────────────────────────────────────────────────────────1/1──┐",
         "│  123[info]: Test event                                                       │",
