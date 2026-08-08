@@ -853,6 +853,19 @@ mod tests {
     Event::Key(KeyEvent::new(binding.code, binding.modifiers))
   }
 
+  /// Fake version substituted into rendered output so snapshots stay stable
+  /// across version bumps.
+  const FAKE_VERSION: &str = "0.0.0-fake";
+
+  /// Replace the real crate version in the rendered output with a fake one to
+  /// keep snapshot tests consistent regardless of the current crate version.
+  fn with_fake_version(rendered: String) -> String {
+    rendered.replace(
+      &format!(" tracexec {}", env!("CARGO_PKG_VERSION")),
+      &format!(" tracexec {}", FAKE_VERSION),
+    )
+  }
+
   #[test]
   fn app_no_pty_shrink_grow_noop_and_inspect_event_list() -> color_eyre::Result<()> {
     let baseline = std::sync::Arc::new(BaselineInfo::new()?);
@@ -1272,7 +1285,7 @@ mod tests {
         app.render(f.area(), f.buffer_mut());
       })
       .unwrap();
-    let rendered = format!("{:?}", terminal.backend().buffer());
+    let rendered = with_fake_version(format!("{:?}", terminal.backend().buffer()));
     assert_snapshot!(rendered);
   }
 
@@ -1314,7 +1327,7 @@ mod tests {
         app.render(f.area(), f.buffer_mut());
       })
       .unwrap();
-    let rendered = format!("{:?}", terminal.backend().buffer());
+    let rendered = with_fake_version(format!("{:?}", terminal.backend().buffer()));
     assert_snapshot!(rendered);
   }
 }
