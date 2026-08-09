@@ -30,7 +30,7 @@ To control whether or not to dynamically link to libbpf, libelf and zlib, consul
 ## Feature Flags
 
 - `recommended`: This enables the recommended functionalities of tracexec
-    - `ebpf`(experimental): eBPF backend that doesn't use ptrace and could be used for system wide tracing
+    - `ebpf`: eBPF backend that doesn't use ptrace and can be used for system-wide tracing
 - `ebpf-debug`: Not meant for end users. This flag enables debug logging to `/sys/kernel/debug/tracing/trace_pipe` and some debug checks.
 - `static`: Statically link libelf, zlib and libbpf.
 - `vendored`: Vendoring libelf, zlib and libbpf, implies `static`.
@@ -43,4 +43,3 @@ To dynamically link to libbpf, turn off default features and enable `recommended
 ```bash
 cargo build --release --no-default-features -F recommended
 ```
-

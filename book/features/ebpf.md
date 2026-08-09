@@ -1,7 +1,5 @@
 # eBPF Backend
 
-eBPF is an advanced backend and currently considered [experimental](https://github.com/kxxt/tracexec/issues/49).
-
 To use this backend, run tracexec with `ebpf` as subcommand and the desired frontend as sub-subcommand
 (`tracexec ebpf log` or `tracexec ebpf tui` for example).
 
