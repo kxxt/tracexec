@@ -20,7 +20,7 @@ The following command almost achieves it, with the caveat that `sudo -E` still m
 sudo -E tracexec --user $(whoami) ebpf log -- make -j$(nproc)
 ```
 
-Starting at tracexec 0.18.0, we offer a new CLI flag that conveniently runs tracexec as root but
+Starting at tracexec 1.0, we offer a new CLI flag that conveniently runs tracexec as root but
 runs tracee with the original user and environment variables.
 
 For example, the following command runs tracexec as root but runs `make -j$(nproc)` as the original user:
