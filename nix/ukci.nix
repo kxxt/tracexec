@@ -162,16 +162,6 @@ localFlake:
                 extraMakeFlags = [ ];
               }
 
-              {
-                name = "7.2";
-                tag = "v7.2-rc7";
-                version = "7.2.0-rc7";
-                source = "torvalds";
-                test_exe = "tracexec";
-                sha256 = "sha256-qiF4Zu6madqNhCEhYRMacxW7lNr81zmp6eKU1l50jBA=";
-                kernelPatches = [ ];
-                extraMakeFlags = [ ];
-              }
             ])
             ++ (lib.optionals (!isTargetRiscv64) [
               # {
