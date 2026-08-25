@@ -108,6 +108,8 @@ impl Exporter for JsonStreamExporter {
       &JsonMetaData::new(self.0.meta.baseline),
       self.0.meta.exporter_args.pretty,
     )?;
+    self.0.output.write_all(b"\n")?;
+    self.0.output.flush()?;
     loop {
       match self.0.stream.recv().await {
         Some(TracerMessage::Event(TracerEvent {
