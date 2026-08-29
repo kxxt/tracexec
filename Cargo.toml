@@ -57,7 +57,7 @@ chrono = "0.4.40"
 tokio = { version = "1.37.0", features = ["full"] }
 clap = { version = "4.4.6", features = ["derive"] }
 itertools = "0.14.0"
-hashbrown = "0.16"
+hashbrown = "0.17"
 parking_lot = "0.12"
 bytes = "1.11.1"
 prost = "0.14.1"

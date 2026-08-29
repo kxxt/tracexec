@@ -1611,15 +1611,6 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "lru"
-version = "0.16.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f66e8d5d03f609abc3a39e6f08e4164ebf1447a732906d39eb9b99b7919ef39"
-dependencies = [
- "hashbrown 0.16.1",
-]
-
-[[package]]
-name = "lru"
 version = "0.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d317b4b9eb398e6acce275758ec6125535505e7a146fb1a9b8bda2451b0ff4c"
@@ -2408,7 +2399,7 @@ dependencies = [
  "hashbrown 0.17.1",
  "itertools 0.14.0",
  "kasuari",
- "lru 0.18.3",
+ "lru",
  "palette",
  "serde",
  "strum 0.28.0",
@@ -3271,7 +3262,7 @@ dependencies = [
  "enumflags2",
  "filedescriptor",
  "futures",
- "hashbrown 0.16.1",
+ "hashbrown 0.17.1",
  "itertools 0.14.0",
  "kxxt-owo-colors",
  "nix 0.31.3",
@@ -3306,7 +3297,7 @@ dependencies = [
  "chrono",
  "color-eyre",
  "enumflags2",
- "hashbrown 0.16.1",
+ "hashbrown 0.17.1",
  "libbpf-cargo",
  "libbpf-rs",
  "libbpf-sys",
@@ -3336,7 +3327,7 @@ dependencies = [
  "color-eyre",
  "either",
  "enumflags2",
- "hashbrown 0.16.1",
+ "hashbrown 0.17.1",
  "libseccomp",
  "nix 0.31.3",
  "parking_lot",
@@ -3411,9 +3402,9 @@ dependencies = [
  "bytes",
  "chrono",
  "color-eyre",
- "hashbrown 0.16.1",
+ "hashbrown 0.17.1",
  "itoa",
- "lru 0.16.4",
+ "lru",
  "nix 0.31.3",
  "nutype",
  "perfetto-trace-proto",
@@ -3439,7 +3430,7 @@ dependencies = [
  "crossterm",
  "either",
  "futures",
- "hashbrown 0.16.1",
+ "hashbrown 0.17.1",
  "humantime",
  "indexset",
  "insta",
