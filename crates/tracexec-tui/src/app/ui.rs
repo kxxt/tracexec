@@ -48,6 +48,11 @@ use crate::{
   backtrace_popup::BacktracePopup,
 };
 
+#[cfg(test)]
+const TRACEXEC_VERSION: &str = "0.0.0-fake";
+#[cfg(not(test))]
+const TRACEXEC_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 impl Widget for &mut App {
   fn render(self, area: Rect, buf: &mut Buffer) {
     // Create a space for header, todo list and the footer.
@@ -68,7 +73,7 @@ impl Widget for &mut App {
       Layout::vertical
     })(horizontal_constraints)
     .areas(rest_area);
-    let mut title = vec![Span::from(" tracexec "), env!("CARGO_PKG_VERSION").into()];
+    let mut title = vec![Span::from(" tracexec "), TRACEXEC_VERSION.into()];
     if !self.active_experiments.is_empty() {
       title.push(Span::from(" with "));
       title.push(Span::from("experimental ").yellow());
