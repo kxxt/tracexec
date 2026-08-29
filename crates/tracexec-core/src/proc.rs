@@ -860,8 +860,12 @@ impl EnvDiff {
   }
 
   /// Whether we need to use `--` to prevent argument injection
-  pub fn need_env_argument_separator(&self) -> bool {
+  pub fn need_env_argument_separator(&self, filename: &OutputMsg) -> bool {
+    // When env keys contain dash, we need the separator.
+    // When env is empty (No diff or using raw env and there's none),
+    // we need the separator only when the filename starts with dash
     self.has_added_or_modified_keys_starting_with_dash
+      || (self.added.is_empty() && self.modified.is_empty() && filename.as_ref().starts_with('-'))
   }
 }
 
@@ -1154,7 +1158,20 @@ mod env_diff_tests {
 
     let diff = diff_env(&orig, &new);
 
-    assert!(diff.need_env_argument_separator());
+    assert!(diff.need_env_argument_separator(&OutputMsg::Ok("program".into())));
+  }
+
+  #[test]
+  fn test_env_diff_without_added_or_modified_vars_requires_separator() {
+    let unchanged = BTreeMap::from([(
+      OutputMsg::Ok("UNCHANGED".into()),
+      OutputMsg::Ok("value".into()),
+    )]);
+
+    let diff = diff_env(&unchanged, &unchanged);
+
+    assert!(diff.need_env_argument_separator(&OutputMsg::Ok("--ignore-signal".into())));
+    assert!(!diff.need_env_argument_separator(&OutputMsg::Ok("program".into())));
   }
 }
 
