@@ -2,12 +2,59 @@
 
 ## Unreleased
 
+## v1.0.0-alpha.1
+
 ### Breaking Changes
 
 - TUI mode now allocates a pseudo terminal by default.
   Use `--no-tty` to run without one and redirect the tracee's stdin, stdout, and
   stderr to `/dev/null`. eBPF system-wide tracing continues to run without a
   pseudo terminal automatically.
+
+### Enhancement
+
+- The eBPF backend is now stabilized.
+- The eBPF backend now uses `sleepable` eBPF programs when the kernel supports it.
+- A new `--elevate` parameter is now available for convenient tracer privilege elevation while keeping the tracee unprivileged. 
+- Both backends now supports collecting `cgroup` info with `--collect-cgroup`.
+- The pseudo terminal in TUI mode now supports [scrollback](https://tracexec.kxxt.dev/features/tui/basic.html#terminal-pane).
+- The TUI now supports [custom key-bindings](https://tracexec.kxxt.dev/features/tui/keys.html).
+- The TUI now supports [custom themes](https://tracexec.kxxt.dev/features/tui/theme.html).
+- Documentation of tracexec is now available at <https://tracexec.kxxt.dev>.
+- Test coverage is improved.
+- A new feature `bpfcov` is added for collecting coverage data of eBPF programs.
+- Use `BPF_F_NO_PREALLOC` for BPF maps when supported.
+- Add option to copy space-joined argv in the TUI.
+
+### Bug Fixes
+
+- Fix BPF attachment for kernels that do not use syscall wrappers (riscv64).
+- Improved error handling of eBPF backend.
+- Fix handling of exec from non-main thread for eBPF backend.
+- Expose whether exec is from non-main thread to the exporters and TUI.
+- Fix wrong labels for `Saved/FS GID` in details popup of TUI.
+- Avoid dynamic NSS calls in static glibc build that leads to segfaults.
+- Fix application cursor mode escape sequence for the TUI (#11). 
+- Fix exit handling for a root processes that never forks/execs for the eBPF backend.
+- Improve robustness of eBPF backend against event loss.
+- Handle duplicated syscall exit stops with restarted syscalls for the ptrace backend.
+- Skip legacy x86_32 syscall BPF hooks when `IA32_EMULATION` is disabled in kernel config.
+- Avoid consuming pending guard on kill failure with `EPERM` for ptrace backend.
+- Fix missing newline in NDJSON (`json-stream`) exporter after printing baseline.
+- Fix argument injection in reconstructed env cmdline when filename starts with dash and there are no environment variables or changed environment variables ([GHSA-w87c-4v5g-m5wc](https://github.com/kxxt/tracexec/security/advisories/GHSA-w87c-4v5g-m5wc)).
+
+### Misc
+
+- Internal refactor.
+- Add verifier complexity test CI.
+- Update UKCI kernels
+- Use `qemu-kvm` from nix for UKCI
+- Add arm64 and riscv64 to UKCI
+- UKCI now supports testing different LLVM versions.
+- Add auto updater for UKCI. 
+- Pin 3rdparty actions in GitHub Actions workflows to improve security.
+- Configure dependabot with 7-day cooldown.
+- Use `test-that` for declarative assertion in tests.
 
 ## v0.17.0
 

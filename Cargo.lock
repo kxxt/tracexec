@@ -3253,7 +3253,7 @@ checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
 
 [[package]]
 name = "tracexec"
-version = "0.17.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "assert_cmd",
  "better-panic",
@@ -3289,7 +3289,7 @@ dependencies = [
 
 [[package]]
 name = "tracexec-backend-ebpf"
-version = "0.17.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "bpfcov",
  "bytemuck",
@@ -3320,7 +3320,7 @@ dependencies = [
 
 [[package]]
 name = "tracexec-backend-ptrace"
-version = "0.17.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "cfg-if",
  "chrono",
@@ -3345,7 +3345,7 @@ dependencies = [
 
 [[package]]
 name = "tracexec-core"
-version = "0.17.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "atoi",
  "bitflags 2.13.1",
@@ -3382,7 +3382,7 @@ dependencies = [
 
 [[package]]
 name = "tracexec-exporter-json"
-version = "0.17.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "color-eyre",
  "nix 0.31.3",
@@ -3396,7 +3396,7 @@ dependencies = [
 
 [[package]]
 name = "tracexec-exporter-perfetto"
-version = "0.17.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "bitflags 2.13.1",
  "bytes",
@@ -3420,7 +3420,7 @@ dependencies = [
 
 [[package]]
 name = "tracexec-tui"
-version = "0.17.0"
+version = "1.0.0-alpha.1"
 dependencies = [
  "arboard",
  "bitflags 2.13.1",
