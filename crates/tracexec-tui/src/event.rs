@@ -454,7 +454,7 @@ mod tests {
       filename: msg("/bin/echo"),
       argv: Arc::new(Ok(vec![msg("custom-argv0"), msg("hello world")])),
       envp: Arc::new(Ok(envp)),
-      has_dash_env: false,
+      has_dash_env: true,
       cred: Ok(Cred::default()),
       interpreter: None,
       env_diff: Ok(env_diff),

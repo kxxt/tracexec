@@ -168,6 +168,7 @@ pub fn exec_commandline(
     env_diff,
     fdinfo,
     envp,
+    has_dash_env,
     ..
   } = event;
 
@@ -201,7 +202,7 @@ pub fn exec_commandline(
           commandline.push("-u ", CommandlinePartKind::DeletedEnvVar);
           commandline.push_bash_escaped(k, CommandlinePartKind::DeletedEnvVar);
         }
-        if env_diff.need_env_argument_separator() {
+        if env_diff.need_env_argument_separator(filename) {
           commandline.push(" ", CommandlinePartKind::Plain);
           commandline.push("--", CommandlinePartKind::Plain);
         }
@@ -220,7 +221,10 @@ pub fn exec_commandline(
       }
     } else if let Ok(envp) = &**envp {
       commandline.push(" ", CommandlinePartKind::Plain);
-      commandline.push("-i --", CommandlinePartKind::Plain);
+      commandline.push("-i", CommandlinePartKind::Plain);
+      if *has_dash_env || (envp.is_empty() && filename.as_ref().starts_with('-')) {
+        commandline.push(" --", CommandlinePartKind::Plain);
+      }
       for (k, v) in envp.iter() {
         commandline.push(" ", CommandlinePartKind::Plain);
         commandline.push_bash_escaped(k, CommandlinePartKind::UnchangedEnvKey);
@@ -372,5 +376,126 @@ pub fn text_for_copy<'a>(
     CopyTarget::Filename => Cow::Borrowed(event.filename.as_ref()),
     CopyTarget::SyscallResult => event.result.to_string().into(),
     CopyTarget::Line => panic!("CopyTarget::Line requires a presentation formatter"),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::{
+    collections::BTreeMap,
+    sync::Arc,
+  };
+
+  use nix::unistd::Pid;
+
+  use super::*;
+  use crate::{
+    event::ExecSyscall,
+    proc::{
+      CgroupInfo,
+      Cred,
+      diff_env,
+    },
+  };
+
+  fn msg(value: &str) -> OutputMsg {
+    OutputMsg::Ok(value.into())
+  }
+
+  fn filename_event(
+    baseline: &BaselineInfo,
+    envp: BTreeMap<OutputMsg, OutputMsg>,
+    filename: &str,
+  ) -> ExecEvent {
+    let has_dash_env = envp.keys().any(|key| key.as_ref().starts_with('-'));
+    let filename = msg(filename);
+    ExecEvent {
+      syscall: ExecSyscall::Execve,
+      exec_pid: Pid::from_raw(1),
+      pid: Pid::from_raw(1),
+      cwd: baseline.cwd.clone(),
+      comm: "false".into(),
+      filename: filename.clone(),
+      argv: Arc::new(Ok(vec![filename])),
+      env_diff: Ok(diff_env(&baseline.env, &envp)),
+      envp: Arc::new(Ok(envp)),
+      has_dash_env,
+      cred: Ok(Cred::default()),
+      interpreter: None,
+      fdinfo: Arc::new(FileDescriptorInfoCollection::default()),
+      result: 0,
+      timestamp: chrono::Local::now(),
+      parent: None,
+      cgroup: CgroupInfo::NotCollected,
+    }
+  }
+
+  fn baseline(env: BTreeMap<OutputMsg, OutputMsg>) -> BaselineInfo {
+    BaselineInfo {
+      cwd: msg("/work"),
+      env,
+      fdinfo: FileDescriptorInfoCollection::default(),
+    }
+  }
+
+  #[test]
+  fn diff_env_commandline_separates_dash_filename_when_env_is_unchanged() {
+    let env = BTreeMap::from([(msg("UNCHANGED"), msg("value"))]);
+    let baseline = baseline(env.clone());
+    let event = filename_event(&baseline, env, "--ignore-signal");
+
+    let commandline = exec_commandline(
+      &event,
+      &baseline,
+      &ModifierArgs::default(),
+      RuntimeModifier::default(),
+      false,
+      SupportedShell::Bash,
+    );
+
+    assert_eq!(commandline.to_string(), "env -- --ignore-signal");
+  }
+
+  #[test]
+  fn full_env_commandline_separates_dash_filename_when_env_is_empty() {
+    let baseline = baseline(BTreeMap::new());
+    let event = filename_event(&baseline, BTreeMap::new(), "--ignore-signal");
+
+    let commandline = exec_commandline(
+      &event,
+      &baseline,
+      &ModifierArgs::default(),
+      RuntimeModifier::default(),
+      true,
+      SupportedShell::Bash,
+    );
+
+    assert_eq!(commandline.to_string(), "env -i -- --ignore-signal");
+  }
+
+  #[test]
+  fn empty_env_commandlines_do_not_separate_non_dash_filename() {
+    let baseline = baseline(BTreeMap::new());
+    let event = filename_event(&baseline, BTreeMap::new(), "/bin/false");
+
+    let diff_env = exec_commandline(
+      &event,
+      &baseline,
+      &ModifierArgs::default(),
+      RuntimeModifier::default(),
+      false,
+      SupportedShell::Bash,
+    );
+    let full_env = exec_commandline(
+      &event,
+      &baseline,
+      &ModifierArgs::default(),
+      RuntimeModifier::default(),
+      true,
+      SupportedShell::Bash,
+    );
+
+    assert_eq!(diff_env.to_string(), "env /bin/false");
+    assert_eq!(full_env.to_string(), "env -i /bin/false");
   }
 }

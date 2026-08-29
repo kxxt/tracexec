@@ -736,7 +736,8 @@ impl Printer {
             // envp warning is already handled
             if let Ok(envp) = exec_data.envp.as_ref() {
               let diff = diff_env(env, envp);
-              let need_env_argument_separator = diff.need_env_argument_separator();
+              let need_env_argument_separator =
+                diff.need_env_argument_separator(&exec_data.filename);
               // Now we have the tracee removed entries in env
               for k in diff.removed.into_iter() {
                 if self.args.color >= ColorLevel::Normal {
@@ -1164,6 +1165,45 @@ mod tests {
     assert_that!(rendered, contains_substring("ADDED=value"));
     assert_that!(rendered, contains_substring("MODIFIED=$'new value'"));
     assert_that!(rendered, contains_substring("/bin/echo $'hello world'"));
+  }
+
+  #[test]
+  fn reconstructed_cmdline_separates_dash_filename_when_env_is_unchanged() {
+    owo_colors::control::set_should_colorize(false);
+    let baseline = baseline();
+    let filename = msg("--ignore-signal");
+    let mut exec = exec_data(
+      Ok(vec![filename.clone()]),
+      Ok(baseline.env.clone()),
+      FileDescriptorInfoCollection::default(),
+    );
+    exec.filename = filename;
+    exec.cwd = baseline.cwd.clone();
+    let mut args = printer_args();
+    args.trace_argv = false;
+    args.trace_env = EnvPrintFormat::None;
+    args.trace_fd = FdPrintFormat::None;
+    args.trace_cwd = false;
+    args.trace_filename = false;
+    args.trace_interpreter = false;
+    args.print_cmdline = true;
+    let printer = Printer::new(args, baseline.clone());
+
+    let rendered = run_with_output(&printer, || {
+      printer.print_exec_trace(
+        Pid::from_raw(456),
+        ArcStr::from("false"),
+        0,
+        &exec,
+        &baseline.env,
+        &baseline.cwd,
+      )
+    });
+
+    assert_that!(
+      rendered,
+      contains_substring("cmdline env -- --ignore-signal")
+    );
   }
 
   #[test]
