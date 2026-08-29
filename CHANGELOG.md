@@ -389,7 +389,7 @@ the directory containing `libseccomp.a`.
 
 - Docs: document dependencies for building in INSTALL.md.
 - CI: Bump ubuntu to 24.04, with clang 18 as default clang.
-- Previously, when building tracexec, even if `--no-default-feaures` is specified,
+- Previously, when building tracexec, even if `--no-default-features` is specified,
 libbpf still gets vendored once because it is also depended in `libbpf-cargo` build dependency.
 This release fixes it.
 - Fix the help entry of breakpoint manager.
