@@ -13,7 +13,7 @@ jobs:
   publish-crates:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@fb523f40495206854c36b250850817ae0f83e3d1 # v1.99.0
         with:
