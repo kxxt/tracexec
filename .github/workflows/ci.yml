@@ -81,7 +81,7 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y libelf-dev zlib1g-dev build-essential protobuf-compiler
       - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           add-job-id-key: false
           save-if: false
@@ -131,7 +131,7 @@ jobs:
           sudo update-alternatives --install /usr/bin/llc llc /usr/bin/llc-22 100
 
       - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           add-job-id-key: false
           key: coverage
@@ -269,7 +269,7 @@ jobs:
             sudo apt-get install -y libseccomp2:${{ matrix.os-arch }}
           fi
       - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           add-job-id-key: false
           key: ${{ matrix.target }}
