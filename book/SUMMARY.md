@@ -15,7 +15,7 @@
     - [Basics](./features/tui/basic.md)
     - [Built-in Terminal and External Terminal](./features/tui/term.md)
     - [Backtrace](./features/tui/backtrace.md)
-    - [Breakpoints](./features/tui/debugger.md)
+    - [Breakpoints](./features/tui/breakpoints.md)
     - [Copy to Clipboard](./features/tui/copy.md)
     - [Theme](./features/tui/theme.md)
     - [Key Bindings](./features/tui/keys.md)
