@@ -14,6 +14,8 @@ The following video demonstrates the whole process:
 
 <video src="https://github.com/kxxt/tracexec/assets/18085551/72c755a5-0f2f-4bf9-beb9-98c8d6b5e5fd" controls preload="none" loading="lazy" poster="../assets/gdb-launcher-cover.jpg" width="100%"></video>
 
+(Note: in the video the `-t` parameter is used, which has been removed in 1.0 release and no longer needed for this tutorial)
+
 To run this example, first ensure that tracexec and rust is installed on your system.
 
 Clone the tracexec repository and enter the directory for this example:
