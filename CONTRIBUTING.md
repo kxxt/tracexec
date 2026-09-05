@@ -3,6 +3,13 @@
 Thank you for considering contributing to tracexec!
 You can contribute to tracexec by submitting bug reports or pull requests.
 
+## Generative AI Usage
+
+Responsible usage of generative AI is allowed. The contributor should check all AI generated content
+and validate them. Pull requests should be created by humans instead of AI agents.
+Do not add trailers like `Co-Authored-By: Claude`, which are considered as advertisement.
+The contributor can choose to ignore AI review comments unless explicitly asked by the maintainers.
+
 ## Bug Reports
 
 Before opening a bug report, please search for similar issues first to avoid creating duplicates.
