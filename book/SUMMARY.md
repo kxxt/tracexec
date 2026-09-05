@@ -13,6 +13,7 @@
   - [Log Frontend](./features/log.md)
   - [TUI Frontend](./features/tui.md)
     - [Basics](./features/tui/basic.md)
+    - [Event Details](./features/tui/details.md)
     - [Built-in Terminal and External Terminal](./features/tui/term.md)
     - [Backtrace](./features/tui/backtrace.md)
     - [Breakpoints](./features/tui/breakpoints.md)
