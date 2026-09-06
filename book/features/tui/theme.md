@@ -2,7 +2,7 @@
 
 The TUI supports custom themes.
 A theme is defined in a theme file
-and specified in the config file as follows.
+and specified in the [config file](../configuration.md) as follows.
 
 ```toml
 [tui]

@@ -8,7 +8,7 @@ By default, the TUI comes with two panes: the `Events` pane and the `Terminal` p
 
 {{ #asciinema ../../casts/tui-ls.cast opts=casts/autoplay-loop.json }}
 
-The `Terminal` pane is focused upon launch but you can configure tracexec to focus the `Events` pane with a configuration file.
+The `Terminal` pane is focused upon launch but you can configure tracexec to focus the `Events` pane with a [configuration file](../configuration.md).
 
 ### Terminal Pane
 
