@@ -21,3 +21,5 @@ Choose a frontend based on the job:
 
 [Filtering](./features/filter.md), privilege elevation, and most data-collection
 options are shared across frontends.
+
+To save your preferred settings, see [Configuration](./features/configuration.md).

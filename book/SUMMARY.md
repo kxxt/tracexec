@@ -6,6 +6,7 @@
   - [Platform Support](./support.md)
   - [Build from source](./build-from-src.md)
 - [Features](./features.md)
+  - [Configuration](./features/configuration.md)
   - [Ptrace Backend](./features/ptrace.md)
   - [eBPF Backend](./features/ebpf.md)
     - [Required Kernel Configs](./features/bpf/kconfig.md)

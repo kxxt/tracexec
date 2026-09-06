@@ -1,6 +1,6 @@
 # Key Bindings
 
-You can customize the key bindings in the config file.
+You can customize the key bindings in the [config file](../configuration.md).
 
 The key bindings of the TUI are defined in the `tui.keys` section, as shown in the following example:
 
