@@ -42,7 +42,12 @@ pub mod theme;
 pub mod tui_theme;
 
 #[derive(Parser, Debug)]
-#[clap(name = "tracexec", author, version, about)]
+#[clap(
+  name = "tracexec",
+  author,
+  version,
+  about = "A small utility for tracing execve{,at} and pre-exec behavior."
+)]
 pub struct Cli {
   #[arg(long, default_value_t = Color::Auto, help = "Control whether colored output is enabled. This flag has no effect on TUI mode.")]
   pub color: Color,

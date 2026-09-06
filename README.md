@@ -18,7 +18,7 @@ does a proprietary software run, etc.
 General CLI help:
 
 ```bash
-Tracer for execve{,at} and pre-exec behavior, launcher for debuggers.
+A small utility for tracing execve{,at} and pre-exec behavior.
 
 Usage: tracexec [OPTIONS] <COMMAND>
 
