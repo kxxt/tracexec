@@ -39,6 +39,9 @@ Switch to the `Events` pane by shortcut <kbd>Ctrl</kbd>+<kbd>S</kbd>.
 
 {{ #asciinema ../../casts/tui-events-nav.cast opts=casts/autoplay-loop.json }}
 
+To locate events by their text, use <kbd>Ctrl</kbd>+<kbd>F</kbd>.
+See [Search](./search.md) for matching rules and result navigation.
+
 
 ### How to Exit ~~Vim~~ Tracexec
 
