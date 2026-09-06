@@ -5,8 +5,8 @@ To build tracexec from source, the following dependencies are needed:
 - A working rust compiler and `cargo`.
   - Refer to `package.rust-version` in `Cargo.toml` for MSRV.
 - `libbpf`: if not using `vendored-libbpf`
-- `zlib`: if not using `vendored-zlib`
-- `libelf`: if not using `vendored-libbpf`
+- `zlib`: if not using `vendored`
+- `libelf`: if not using `vendored`
 - `libseccomp`: For `seccomp-bpf`.
 - If any library vendoring feature is enabled:
   - `build-essential` `autopoint` `gettext` for Debian based distros
