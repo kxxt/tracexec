@@ -4,7 +4,7 @@ We support two formats for JSON export.
 
 - The `json` format exports the whole trace as a complete JSON.
 - The `json-stream` format exports the trace as JSON messages separated by
-  newlines. This format is also known as NDJSON.
+  newlines. This format is also known as NDJSON when `--pretty` is not used.
 
 Use `--output <OUTPUT_FILE_PATH>` to keep exporter data separate from output written by the traced
 command.
