@@ -42,7 +42,7 @@ pub mod theme;
 pub mod tui_theme;
 
 #[derive(Parser, Debug)]
-#[clap(author, version, about)]
+#[clap(name = "tracexec", author, version, about)]
 pub struct Cli {
   #[arg(long, default_value_t = Color::Auto, help = "Control whether colored output is enabled. This flag has no effect on TUI mode.")]
   pub color: Color,
@@ -345,7 +345,52 @@ impl Cli {
           }
         }
       }
-      _ => (),
+      #[cfg(feature = "ebpf")]
+      CliCommand::Ebpf { command } => command.merge_config(config),
+      CliCommand::GenerateCompletions { .. } => (),
+    }
+  }
+}
+
+#[cfg(feature = "ebpf")]
+impl EbpfCommand {
+  fn merge_config(&mut self, config: Config) {
+    let modifier_args = match self {
+      Self::Log { modifier_args, .. }
+      | Self::Tui { modifier_args, .. }
+      | Self::Collect { modifier_args, .. } => modifier_args,
+    };
+    if let Some(c) = config.modifier {
+      modifier_args.merge_config(c);
+    }
+    match self {
+      Self::Log { log_args, .. } => {
+        if let Some(c) = config.log {
+          log_args.merge_config(c);
+        }
+      }
+      Self::Tui { tui_args, .. } => {
+        if let Some(c) = config.tui {
+          tui_args.merge_config(c);
+        }
+      }
+      Self::Collect {
+        foreground,
+        no_foreground,
+        ..
+      } => {
+        if let Some(c) = config.log
+          && (!*foreground)
+          && (!*no_foreground)
+          && let Some(x) = c.foreground
+        {
+          if x {
+            *foreground = true;
+          } else {
+            *no_foreground = true;
+          }
+        }
+      }
     }
   }
 }
@@ -698,5 +743,166 @@ mod tests {
   fn test_generate_completions_smoke() {
     // smoke test: just run without panicking
     Cli::generate_completions(clap_complete::Shell::Bash);
+  }
+
+  #[cfg(feature = "ebpf")]
+  mod ebpf {
+    use super::*;
+    use crate::cli::args::ThemeFileValue;
+
+    fn load_profile(args: &[&str], profile: &str) -> color_eyre::Result<Cli> {
+      let mut file = tempfile::NamedTempFile::new()?;
+      file.write_all(profile.as_bytes())?;
+      let mut cli = Cli::try_parse_from(args)?;
+      cli.merge_config(Config::load(Some(file.path().to_path_buf()))?);
+      Ok(cli)
+    }
+
+    #[test]
+    fn test_merge_config_ebpf_log() -> color_eyre::Result<()> {
+      for with_command in [false, true] {
+        for override_config in [false, true] {
+          let mut args = vec!["tracexec", "ebpf", "log"];
+          if override_config {
+            args.extend(["--no-show-interpreter", "--foreground", "--no-timestamp"]);
+          }
+          if with_command {
+            args.extend(["--", "true"]);
+          }
+          let cli = load_profile(
+            &args,
+            r#"
+              [log]
+              show_interpreter = true
+              foreground = false
+              [modifier]
+              successful_only = true
+              timestamp = { enable = true }
+            "#,
+          )?;
+          let CliCommand::Ebpf {
+            command:
+              EbpfCommand::Log {
+                log_args,
+                modifier_args,
+                ..
+              },
+          } = cli.cmd
+          else {
+            panic!("Expected eBPF Log command");
+          };
+          assert_eq!(log_args.show_interpreter, !override_config);
+          assert_eq!(log_args.foreground(), override_config);
+          let modifier_args = modifier_args.processed();
+          assert!(modifier_args.successful_only);
+          assert_eq!(modifier_args.timestamp, !override_config);
+        }
+      }
+      Ok(())
+    }
+
+    #[test]
+    fn test_merge_config_ebpf_tui() -> color_eyre::Result<()> {
+      for with_command in [false, true] {
+        for override_config in [false, true] {
+          let mut args = vec!["tracexec", "ebpf", "tui"];
+          if override_config {
+            args.extend([
+              "--frame-rate",
+              "45",
+              "--theme",
+              "cli.toml",
+              "--no-timestamp",
+            ]);
+          }
+          if with_command {
+            args.extend(["--", "true"]);
+          }
+          let cli = load_profile(
+            &args,
+            r#"
+              [tui]
+              follow = true
+              frame_rate = 30.0
+              theme-file = "profile.toml"
+              [tui.keys]
+              quit = "q"
+              [modifier]
+              timestamp = { enable = true }
+            "#,
+          )?;
+          let CliCommand::Ebpf {
+            command:
+              EbpfCommand::Tui {
+                tui_args,
+                modifier_args,
+                ..
+              },
+          } = cli.cmd
+          else {
+            panic!("Expected eBPF Tui command");
+          };
+          assert!(tui_args.follow);
+          assert_eq!(
+            tui_args.frame_rate,
+            Some(if override_config { 45.0 } else { 30.0 })
+          );
+          assert_eq!(
+            tui_args.theme_file,
+            Some(if override_config {
+              ThemeFileValue::Cli("cli.toml".into())
+            } else {
+              ThemeFileValue::Config("profile.toml".into())
+            })
+          );
+          assert!(tui_args.keys.is_some_and(|keys| keys.quit.is_some()));
+          assert_eq!(modifier_args.processed().timestamp, !override_config);
+        }
+      }
+      Ok(())
+    }
+
+    #[test]
+    fn test_merge_config_ebpf_collect() -> color_eyre::Result<()> {
+      for with_command in [false, true] {
+        for configured_foreground in [false, true] {
+          for cli_foreground in [None, Some(false), Some(true)] {
+            let mut args = vec!["tracexec", "ebpf", "collect", "--format", "json"];
+            if let Some(foreground) = cli_foreground {
+              args.push(if foreground {
+                "--foreground"
+              } else {
+                "--no-foreground"
+              });
+            }
+            if with_command {
+              args.extend(["--", "true"]);
+            }
+            let cli = load_profile(
+              &args,
+              &format!(
+                "[log]\nforeground = {configured_foreground}\n[modifier]\ncollect_cgroup = true"
+              ),
+            )?;
+            let CliCommand::Ebpf {
+              command:
+                EbpfCommand::Collect {
+                  foreground,
+                  no_foreground,
+                  modifier_args,
+                  ..
+                },
+            } = cli.cmd
+            else {
+              panic!("Expected eBPF Collect command");
+            };
+            let expected = cli_foreground.unwrap_or(configured_foreground);
+            assert_eq!((foreground, no_foreground), (expected, !expected));
+            assert!(modifier_args.processed().collect_cgroup);
+          }
+        }
+      }
+      Ok(())
+    }
   }
 }
