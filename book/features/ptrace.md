@@ -29,7 +29,7 @@ In case you want to learn more about this optimization, read the
 - Works out of the box.
 - Low overhead when combined with [`seccomp(2)`]. (default in tracexec)
 - The minimum required Linux kernel version is 5.3.
-- [Makes it possible to conveniently attach a debugger to a newly spawned process](./tui/debugger.md).
+- [Makes it possible to conveniently attach a debugger to a newly spawned process](../tutorials/debugger-launcher.md).
 
 ## Weaknesses
 
