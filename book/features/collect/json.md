@@ -9,6 +9,11 @@ We support two formats for JSON export.
 Use `--output <OUTPUT_FILE_PATH>` to keep exporter data separate from output written by the traced
 command.
 
+
+> [!WARNING]
+> The output JSON may contain sensitive credentials that are passed in commandline arguments
+> or environment variables. Sharing it may leak such credentials.
+
 ## JSON Format
 
 ```bash

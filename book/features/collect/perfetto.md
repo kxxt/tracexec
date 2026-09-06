@@ -34,6 +34,11 @@ The exporter also works with the [eBPF backend](../ebpf.md):
 tracexec --elevate ebpf collect --format perfetto -o build.pftrace -- make -j4
 ```
 
+> [!WARNING]
+> The trace file may contain sensitive credentials that are passed in commandline arguments
+> or environment variables. Sharing the trace file may leak such credentials. 
+
+
 ## Opening the Trace
 
 Open [ui.perfetto.dev](https://ui.perfetto.dev/) and choose `Open trace file`,
