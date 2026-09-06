@@ -2,14 +2,34 @@
 
 ## Unreleased
 
-## v1.0.0-alpha.1
+## v1.0.0-rc.1
+
+It has been a long time since the last 0.17.0 release.
+Today I am excited to anonounce the 1.0.0 release of tracexec.
+
+This release marks the stabilization of the eBPF backend, ships major bug fixes
+and brings brand new features.
+
+First, as shown in the next picture, the TUI now supports [custom themes](https://tracexec.kxxt.dev/features/tui/theme.html).
+
+![TUI themes](book/assets/tui-themes.png)
+
+And the [key bindings](https://tracexec.kxxt.dev/features/tui/keys.html) can be customized now as well!
+
+A lot of work was put into the stabilization of the eBPF backend, which now
+defaults to sleepable eBPF programs with a graceful fallback to non-sleepable variant. [`--elevate`](https://tracexec.kxxt.dev/features/elevation.html)
+parameter is added to make the usage of eBPF backend easier by making tracexec run as root but tracee as the original user.
+
+We now have a dedicated website hosting the documentation of tracexec: <https://tracexec.kxxt.dev/>.
+
+Continue to read for the breaking changes and detailed changelog.
 
 ### Breaking Changes
 
 - TUI mode now allocates a pseudo terminal by default.
   Use `--no-tty` to run without one and redirect the tracee's stdin, stdout, and
   stderr to `/dev/null`. eBPF system-wide tracing continues to run without a
-  pseudo terminal automatically.
+  pseudo terminal automatically. The old `-t/--tty` parameter is removed.
 
 ### Enhancement
 
@@ -20,6 +40,7 @@
 - The pseudo terminal in TUI mode now supports [scrollback](https://tracexec.kxxt.dev/features/tui/basic.html#terminal-pane).
 - The TUI now supports [custom key-bindings](https://tracexec.kxxt.dev/features/tui/keys.html).
 - The TUI now supports [custom themes](https://tracexec.kxxt.dev/features/tui/theme.html).
+  Three themes are provided in the `themes` directory of this repository.
 - Documentation of tracexec is now available at <https://tracexec.kxxt.dev>.
 - Test coverage is improved.
 - A new feature `bpfcov` is added for collecting coverage data of eBPF programs.
@@ -28,9 +49,10 @@
 
 ### Bug Fixes
 
+- The eBPF sub-commands now correctly respects the configuration file.
 - Fix BPF attachment for kernels that do not use syscall wrappers (riscv64).
 - Improved error handling of eBPF backend.
-- Fix handling of exec from non-main thread for eBPF backend.
+- Fix handling of exec from non-main thread for eBPF backend and ptrace backend.
 - Expose whether exec is from non-main thread to the exporters and TUI.
 - Fix wrong labels for `Saved/FS GID` in details popup of TUI.
 - Avoid dynamic NSS calls in static glibc build that leads to segfaults.
@@ -42,6 +64,8 @@
 - Avoid consuming pending guard on kill failure with `EPERM` for ptrace backend.
 - Fix missing newline in NDJSON (`json-stream`) exporter after printing baseline.
 - Fix argument injection in reconstructed env cmdline when filename starts with dash and there are no environment variables or changed environment variables ([GHSA-w87c-4v5g-m5wc](https://github.com/kxxt/tracexec/security/advisories/GHSA-w87c-4v5g-m5wc)).
+- Fix clock related errors in the exported perfetto traces by the perfetto exporter.
+
 
 ### Misc
 
