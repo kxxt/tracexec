@@ -9,6 +9,7 @@ does a proprietary software run, etc.
 
 ![One tracexec TUI view split diagonally between the built-in (A), Amber (B), and Nord (C) themes.](book/assets/tui-themes.png)
 
+- [Documentation](https://tracexec.kxxt.dev/)
 - [Installation Guide](INSTALL.md)
 - [Showcases](https://tracexec.kxxt.dev/introduction/showcases.html)
 
@@ -17,7 +18,7 @@ does a proprietary software run, etc.
 General CLI help:
 
 ```bash
-Core crate of tracexec [Internal implementation! DO NOT DEPEND ON!]
+Tracer for execve{,at} and pre-exec behavior, launcher for debuggers.
 
 Usage: tracexec [OPTIONS] <COMMAND>
 

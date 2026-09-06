@@ -9,6 +9,7 @@ does a proprietary software run, etc.
 
 ![One tracexec TUI view split diagonally between the built-in (A), Amber (B), and Nord (C) themes.](book/assets/tui-themes.png)
 
+- [Documentation](https://tracexec.kxxt.dev/)
 - [Installation Guide](INSTALL.md)
 - [Showcases](https://tracexec.kxxt.dev/introduction/showcases.html)
 
