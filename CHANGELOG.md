@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## v1.0.0-rc.1
+## v1.0.0
 
 It has been a long time since the last 0.17.0 release.
 Today I am excited to anonounce the 1.0.0 release of tracexec.
