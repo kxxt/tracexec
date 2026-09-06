@@ -9,6 +9,7 @@ extend-ignore-re = ["\\(L\\)ine", "\\(E\\)nvironment"]
 "ommand" = "ommand" # (C)ommand
 "nd" = "nd"
 "fo" = "fo"
+"Iinclude" = "Iinclude"
 
 [files]
 extend-exclude = [
