@@ -22,8 +22,7 @@ a new thread or a new process.
 ## Weaknesses
 
 - Requires root privilege. (or a bunch of capabilities like `CAP_SYS_ADMIN` and `CAP_BPF`)
-- Sometimes reading userspace memory will fail due to page fault, causing the trace to miss some information.
+- When sleepable eBPF is not available, sometimes reading userspace memory will fail due to page fault, causing the trace to miss some information.
   - See also <https://mozillazg.com/2024/03/ebpf-tracepoint-syscalls-sys-enter-execve-can-not-get-filename-argv-values-case-en.html>
-  - This could be solved once tracexec is migrated to use sleepable eBPF programs.
 - Requires loading eBPF code into Linux kernel, which might be forbidden in kernel lockdown mode.
 - Sometimes there are kernel eBPF bugs that could reject the eBPF program.
