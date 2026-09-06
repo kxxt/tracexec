@@ -266,10 +266,10 @@ fn allocate_track_id() -> TrackUuid {
 }
 
 impl TracePacketProducer {
-  pub fn new(baseline: Arc<BaselineInfo>) -> (Self, TracePacket) {
+  pub fn new(baseline: Arc<BaselineInfo>) -> color_eyre::Result<(Self, TracePacket)> {
     let uuid = allocate_track_id();
-    let (creator, packet) = TracePacketCreator::new(baseline);
-    (
+    let (creator, packet) = TracePacketCreator::new(baseline)?;
+    Ok((
       Self {
         tracks: Track {
           uuid,
@@ -284,7 +284,7 @@ impl TracePacketProducer {
         creator,
       },
       packet,
-    )
+    ))
   }
 
   pub fn ensure_failure_track(&self) -> (TrackUuid, Option<TrackDescriptor>) {
@@ -585,7 +585,7 @@ mod tests {
   #[test]
   fn test_trace_packet_producer_exec_success_and_exit() {
     let baseline = Arc::new(BaselineInfo::new().unwrap());
-    let (mut producer, _initial) = TracePacketProducer::new(baseline);
+    let (mut producer, _initial) = TracePacketProducer::new(baseline).unwrap();
     let id = EventId::new(1);
     let exec = make_exec_event(1234, "/bin/echo", 0, None);
     let exec_event = TracerMessage::Event(TracerEvent {
@@ -611,7 +611,7 @@ mod tests {
   #[test]
   fn test_trace_packet_producer_exec_failure_parentless_track_reuse() {
     let baseline = Arc::new(BaselineInfo::new().unwrap());
-    let (mut producer, _initial) = TracePacketProducer::new(baseline);
+    let (mut producer, _initial) = TracePacketProducer::new(baseline).unwrap();
     let exec_fail = make_exec_event(1234, "/bin/echo", -1, None);
     let packets = producer
       .process(TracerMessage::Event(TracerEvent {
@@ -634,7 +634,7 @@ mod tests {
   #[test]
   fn test_trace_packet_producer_spawn_child_allocates_track() {
     let baseline = Arc::new(BaselineInfo::new().unwrap());
-    let (mut producer, _initial) = TracePacketProducer::new(baseline);
+    let (mut producer, _initial) = TracePacketProducer::new(baseline).unwrap();
     let parent_id = EventId::new(1);
     let parent = make_exec_event(2000, "/bin/parent", 0, None);
     let parent_event = TracerMessage::Event(TracerEvent {

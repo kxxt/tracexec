@@ -9,6 +9,10 @@ use chrono::{
   DateTime,
   Local,
 };
+use nix::time::{
+  ClockId,
+  clock_gettime,
+};
 use tracexec_core::{
   cli::args::ModifierArgs,
   copy::{
@@ -36,6 +40,7 @@ use crate::{
   },
   producer::TrackUuid,
   proto::{
+    BuiltinClock,
     ClockSnapshot,
     DebugAnnotation,
     DebugAnnotationName,
@@ -46,7 +51,7 @@ use crate::{
     TracePacketDefaults,
     TrackDescriptor,
     TrackEvent,
-    clock_snapshot::clock::BuiltinClocks,
+    clock_snapshot::Clock,
     debug_annotation,
     trace_packet::{
       Data,
@@ -82,7 +87,7 @@ pub struct TracePacketCreator {
 
 impl TracePacketCreator {
   /// Create a creator and the initial packet that needs to be sent first
-  pub fn new(baseline: Arc<BaselineInfo>) -> (Self, TracePacket) {
+  pub fn new(baseline: Arc<BaselineInfo>) -> color_eyre::Result<(Self, TracePacket)> {
     let mut packet = Self::boilerplate();
     // sequence id related
     packet.sequence_flags = Some(SequenceFlags::SeqIncrementalStateCleared as u32);
@@ -90,7 +95,7 @@ impl TracePacketCreator {
     packet.first_packet_on_sequence = Some(true);
     packet.optional_trusted_packet_sequence_id = Some(TRUSTED_PKT_SEQ_ID);
     packet.trace_packet_defaults = Some(TracePacketDefaults {
-      timestamp_clock_id: Some(BuiltinClocks::RealtimeCoarse as u32),
+      timestamp_clock_id: Some(BuiltinClock::Realtime as u32),
       ..Default::default()
     });
     packet.interned_data = Some(InternedData {
@@ -100,12 +105,27 @@ impl TracePacketCreator {
       debug_annotation_string_values: vec![],
       ..Default::default()
     });
+    // Event timestamps are Unix time. Relate that clock to Perfetto's default
+    // BOOTTIME domain using adjacent readings, rather than assuming alignment.
+    let boottime = clock_gettime(ClockId::CLOCK_BOOTTIME)?;
+    let realtime = clock_gettime(ClockId::CLOCK_REALTIME)?;
     packet.data = Some(Data::ClockSnapshot(ClockSnapshot {
-      clocks: vec![],
-      primary_trace_clock: Some(BuiltinClocks::RealtimeCoarse as i32),
+      clocks: vec![
+        Clock {
+          clock_id: Some(BuiltinClock::Boottime as u32),
+          timestamp: Some(boottime.tv_sec() as u64 * 1_000_000_000 + boottime.tv_nsec() as u64),
+          ..Default::default()
+        },
+        Clock {
+          clock_id: Some(BuiltinClock::Realtime as u32),
+          timestamp: Some(realtime.tv_sec() as u64 * 1_000_000_000 + realtime.tv_nsec() as u64),
+          ..Default::default()
+        },
+      ],
+      primary_trace_clock: Some(BuiltinClock::Realtime as i32),
     }));
     #[expect(clippy::unwrap_used)]
-    (
+    Ok((
       Self {
         modifier_args: ModifierArgs::default(),
         da_string_interner: ValueInterner::new(NonZeroUsize::new(114_514).unwrap(), 1),
@@ -117,7 +137,7 @@ impl TracePacketCreator {
         baseline,
       },
       packet,
-    )
+    ))
   }
 
   fn boilerplate() -> TracePacket {
@@ -468,6 +488,11 @@ mod tests {
 
   use nix::{
     errno::Errno,
+    sys::time::TimeValLike,
+    time::{
+      ClockId,
+      clock_gettime,
+    },
     unistd::Pid,
   };
   use test_that::prelude::*;
@@ -497,6 +522,7 @@ mod tests {
     intern::DebugAnnotationInternId,
     producer::TrackUuid,
     proto::{
+      BuiltinClock,
       debug_annotation::{
         NameField as DebugNameField,
         Value,
@@ -504,6 +530,45 @@ mod tests {
       trace_packet::Data,
     },
   };
+
+  #[test]
+  fn test_initial_packet_relates_boottime_to_event_clock() {
+    let baseline = Arc::new(BaselineInfo::new().unwrap());
+    let boottime_before = clock_gettime(ClockId::CLOCK_BOOTTIME).unwrap();
+    let realtime_before = clock_gettime(ClockId::CLOCK_REALTIME).unwrap();
+    let (_, initial) = TracePacketCreator::new(baseline).unwrap();
+    let boottime_after = clock_gettime(ClockId::CLOCK_BOOTTIME).unwrap();
+    let realtime_after = clock_gettime(ClockId::CLOCK_REALTIME).unwrap();
+
+    let event_clock = initial.trace_packet_defaults.unwrap().timestamp_clock_id;
+    assert_eq!(event_clock, Some(BuiltinClock::Realtime as u32));
+    let Some(Data::ClockSnapshot(snapshot)) = initial.data else {
+      panic!("expected initial clock snapshot");
+    };
+    assert_eq!(
+      snapshot.primary_trace_clock,
+      Some(BuiltinClock::Realtime as i32)
+    );
+
+    // Both clock domains must have real nanosecond readings in the same
+    // snapshot. Selecting a primary clock alone does not connect them.
+    for (clock_id, before, after) in [
+      (BuiltinClock::Boottime, boottime_before, boottime_after),
+      (BuiltinClock::Realtime, realtime_before, realtime_after),
+    ] {
+      let clock = snapshot
+        .clocks
+        .iter()
+        .find(|clock| clock.clock_id == Some(clock_id as u32))
+        .expect("missing clock relationship");
+      let timestamp = clock.timestamp.expect("missing clock reading");
+      assert!(
+        (before.num_nanoseconds() as u64..=after.num_nanoseconds() as u64).contains(&timestamp)
+      );
+      assert!(!clock.is_incremental.unwrap_or(false));
+      assert_eq!(clock.unit_multiplier_ns.unwrap_or(1), 1);
+    }
+  }
 
   fn make_exec_event(cgroup: CgroupInfo) -> TracerEventDetails {
     TracerEventDetails::Exec(Box::new(ExecEvent {
@@ -548,7 +613,7 @@ mod tests {
   #[test]
   fn test_process_exec_event_includes_cgroup_debug_annotation() {
     let baseline = Arc::new(BaselineInfo::new().unwrap());
-    let (mut creator, _initial) = TracePacketCreator::new(baseline);
+    let (mut creator, _initial) = TracePacketCreator::new(baseline).unwrap();
     let packet = creator
       .process_exec_event(
         &make_exec_event(CgroupInfo::V2 {

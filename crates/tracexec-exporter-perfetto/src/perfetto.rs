@@ -39,7 +39,7 @@ impl Exporter for PerfettoExporter {
 
   #[allow(clippy::future_not_send)]
   async fn run(mut self) -> Result<i32, Self::Error> {
-    let (mut producer, initial_packet) = TracePacketProducer::new(self.meta.baseline);
+    let (mut producer, initial_packet) = TracePacketProducer::new(self.meta.baseline)?;
     self.recorder.record(initial_packet)?;
     while let Some(message) = self.stream.recv().await {
       match message {

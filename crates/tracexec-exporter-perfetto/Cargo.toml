@@ -34,7 +34,7 @@ serde = { workspace = true }
 prost = { workspace = true }
 bytes = { workspace = true }
 tokio = { workspace = true }
-nix = { workspace = true }
+nix = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 test-that = { workspace = true }
