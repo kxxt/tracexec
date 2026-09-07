@@ -115,37 +115,37 @@ localFlake:
               {
                 # MSKV for riscv64 (theoretical MSKV is 5.19 but kernel crashed after loading eBPF prog)
                 name = "6.1lts";
-                tag = "6.1.186";
+                tag = "6.1.187";
                 source = "mirror";
                 test_exe = "tracexec";
-                sha256 = "sha256-7u3DK78kSCBa/1DuJ2Ck2HFyz4+CecHlkwBprTb2I24=";
+                sha256 = "sha256-G255iuqnCMpnCkJq1abIbcIje45Z6IIodpdsODhzZCs=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
               {
                 name = "6.6lts";
-                tag = "6.6.155";
+                tag = "6.6.156";
                 source = "mirror";
                 test_exe = "tracexec";
-                sha256 = "sha256-TmepJj8sGbBwESEJyaKC7o6OpJ8WQeQfqlzKLEFlSYI=";
+                sha256 = "sha256-ruImSk6vShQ0S0egRpvULotIhbJPEQtyQmKz2pVvQR0=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
               {
                 name = "6.12lts";
-                tag = "6.12.107";
+                tag = "6.12.108";
                 source = "mirror";
                 test_exe = "tracexec";
-                sha256 = "sha256-pfjFvj/eLW2coU6WMWQs8fREhxQ/EQWdpzDc1YkuMHo=";
+                sha256 = "sha256-4dHqIA0i1VyfXV+uWeabs7SUUVcF/DOQzVQjHuT0uq8=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
               {
                 name = "6.18lts";
-                tag = "6.18.48";
+                tag = "6.18.49";
                 source = "mirror";
                 test_exe = "tracexec";
-                sha256 = "sha256-Xr2tsQpLVwj8axxFd2ShELxJ+BUMw1AsWbkh6tjG/Iw=";
+                sha256 = "sha256-roJvMxEf6m8dJ53ecpnXRjyN/SBK63Wo+1QyvGCigZE=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
@@ -153,11 +153,11 @@ localFlake:
             ++ (lib.optionals (!isTargetRiscv64) [
               {
                 name = "7.2";
-                tag = "7.2.2";
-                version = "7.2.2";
+                tag = "7.2.3";
+                version = "7.2.3";
                 source = "kernel-org";
                 test_exe = "tracexec";
-                sha256 = "sha256-fQ584U+YxD7+iAz/vzVKWb5Fko/fcXDXMzw3SukcDYM=";
+                sha256 = "sha256-i6JZ6OexPsbvCUHIo5rZCyS9Sk1sABC6a6+3lFUOzQM=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
@@ -165,11 +165,11 @@ localFlake:
             
               {
                 name = "7.3";
-                tag = "v7.3-rc1";
-                version = "7.3.0-rc1";
+                tag = "v7.3-rc2";
+                version = "7.3.0-rc2";
                 source = "torvalds";
                 test_exe = "tracexec";
-                sha256 = "sha256-jTb7/HyJBsz6HrrMMPhJmEBlBMPxNzOgQLs6P76KwnA=";
+                sha256 = "sha256-a5f7k5cXLpXtlbVqeFJKGEvxhoWL6nonG56+gaDldBc=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
