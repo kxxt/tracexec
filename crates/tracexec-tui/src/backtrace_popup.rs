@@ -22,7 +22,11 @@ use ratatui::{
   },
 };
 use tracexec_core::{
-  cli::keys::TuiKeyBindings,
+  cli::keys::{
+    KeyAction,
+    KeyRouter,
+    TuiKeyBindings,
+  },
   event::{
     ParentEventId,
     TracerEventDetails,
@@ -158,7 +162,7 @@ impl BacktracePopupState {
     keys: &TuiKeyBindings,
     action_tx: &LocalUnboundedSender<Action>,
   ) -> color_eyre::Result<()> {
-    if keys.close_popup.matches(ke) {
+    if KeyRouter::new(keys, ke).matches(KeyAction::ClosePopup) {
       action_tx.send(Action::CancelCurrentPopup)
     } else {
       self.list.handle_key_event(ke, keys, action_tx).await?

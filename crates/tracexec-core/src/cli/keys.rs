@@ -180,6 +180,23 @@ impl<'de> Deserialize<'de> for KeyList {
   }
 }
 
+macro_rules! key_actions {
+  ($($variant:ident => $field:ident),+ $(,)?) => {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum KeyAction {
+      $($variant),+
+    }
+
+    impl TuiKeyBindings {
+      pub fn bindings(&self, action: KeyAction) -> &KeyList {
+        match action {
+          $(KeyAction::$variant => &self.$field),+
+        }
+      }
+    }
+  };
+}
+
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct TuiKeyBindingsConfig {
   pub quit: Option<KeyList>,
@@ -352,6 +369,116 @@ pub struct TuiKeyBindings {
   pub terminal_page_down: KeyList,
   pub terminal_scroll_top: KeyList,
   pub terminal_scroll_bottom: KeyList,
+}
+
+key_actions! {
+  Quit => quit,
+  SwitchPane => switch_pane,
+  SwitchLayout => switch_layout,
+  ClosePopup => close_popup,
+  Help => help,
+  PageDown => page_down,
+  PageUp => page_up,
+  PageLeft => page_left,
+  PageRight => page_right,
+  ScrollLeft => scroll_left,
+  ScrollRight => scroll_right,
+  ScrollTop => scroll_top,
+  ScrollBottom => scroll_bottom,
+  ScrollStart => scroll_start,
+  ScrollEnd => scroll_end,
+  EventGrowPane => event_grow_pane,
+  EventShrinkPane => event_shrink_pane,
+  EventSendCtrlS => event_send_ctrl_s,
+  EventToggleFollow => event_toggle_follow,
+  EventSearch => event_search,
+  EventToggleEnv => event_toggle_env,
+  EventToggleCwd => event_toggle_cwd,
+  EventViewDetails => event_view_details,
+  EventGoToParent => event_go_to_parent,
+  EventBacktrace => event_backtrace,
+  EventCopy => event_copy,
+  EventBreakpoints => event_breakpoints,
+  EventHits => event_hits,
+  QueryExecute => query_execute,
+  QueryCancel => query_cancel,
+  QueryToggleCase => query_toggle_case,
+  QueryToggleRegex => query_toggle_regex,
+  QueryNextMatch => query_next_match,
+  QueryPrevMatch => query_prev_match,
+  QueryClear => query_clear,
+  DetailsScrollDown => details_scroll_down,
+  DetailsScrollUp => details_scroll_up,
+  DetailsNextTab => details_next_tab,
+  DetailsPrevTab => details_prev_tab,
+  DetailsCycleTab => details_cycle_tab,
+  DetailsPrevField => details_prev_field,
+  DetailsNextField => details_next_field,
+  DetailsCopy => details_copy,
+  DetailsViewParent => details_view_parent,
+  NextItem => next_item,
+  PrevItem => prev_item,
+  CopyChoose => copy_choose,
+  CopyTargetCmdline => copy_target_cmdline,
+  CopyTargetCmdlineFullEnv => copy_target_cmdline_full_env,
+  CopyTargetCmdlineStdio => copy_target_cmdline_stdio,
+  CopyTargetCmdlineFds => copy_target_cmdline_fds,
+  CopyTargetEnv => copy_target_env,
+  CopyTargetEnvDiff => copy_target_env_diff,
+  CopyTargetArgv => copy_target_argv,
+  CopyTargetArgvJoined => copy_target_argv_joined,
+  CopyTargetFilename => copy_target_filename,
+  CopyTargetSyscallResult => copy_target_syscall_result,
+  CopyTargetLine => copy_target_line,
+  GoBack => go_back,
+  BreakpointDelete => breakpoint_delete,
+  BreakpointToggleActive => breakpoint_toggle_active,
+  BreakpointEdit => breakpoint_edit,
+  BreakpointNew => breakpoint_new,
+  BreakpointEditorSave => breakpoint_editor_save,
+  BreakpointEditorCancel => breakpoint_editor_cancel,
+  BreakpointEditorToggleStop => breakpoint_editor_toggle_stop,
+  BreakpointEditorToggleActive => breakpoint_editor_toggle_active,
+  HitClose => hit_close,
+  HitDetach => hit_detach,
+  HitResume => hit_resume,
+  HitEditDefaultCommand => hit_edit_default_command,
+  HitRunDefaultCommand => hit_run_default_command,
+  HitRunCustomCommand => hit_run_custom_command,
+  HitEditorSave => hit_editor_save,
+  HitEditorCancel => hit_editor_cancel,
+  HitEditorClear => hit_editor_clear,
+  TerminalToggleScrollback => terminal_toggle_scrollback,
+  TerminalScrollUp => terminal_scroll_up,
+  TerminalScrollDown => terminal_scroll_down,
+  TerminalPageUp => terminal_page_up,
+  TerminalPageDown => terminal_page_down,
+  TerminalScrollTop => terminal_scroll_top,
+  TerminalScrollBottom => terminal_scroll_bottom,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct KeyRouter<'a> {
+  bindings: &'a TuiKeyBindings,
+  event: KeyEvent,
+}
+
+impl<'a> KeyRouter<'a> {
+  pub const fn new(bindings: &'a TuiKeyBindings, event: KeyEvent) -> Self {
+    Self { bindings, event }
+  }
+
+  pub const fn event(self) -> KeyEvent {
+    self.event
+  }
+
+  pub fn matches(self, action: KeyAction) -> bool {
+    self.bindings.bindings(action).matches(self.event)
+  }
+
+  pub fn resolve(self, actions: &[KeyAction]) -> Option<KeyAction> {
+    actions.iter().copied().find(|action| self.matches(*action))
+  }
 }
 
 impl Default for TuiKeyBindings {
@@ -811,5 +938,33 @@ mod tests {
     let keys = TuiKeyBindings::from_config(Some(Box::new(config)));
 
     assert_eq!(keys.copy_target_argv_joined.0, vec![KeyBinding::char('x')]);
+  }
+
+  #[test]
+  #[allow(clippy::field_reassign_with_default)]
+  fn key_router_resolves_actions_in_component_priority_order() {
+    let mut keys = TuiKeyBindings::default();
+    keys.quit = KeyList(vec![KeyBinding::char('x')]);
+    keys.close_popup = KeyList(vec![KeyBinding::char('x')]);
+    let router = KeyRouter::new(&keys, KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+
+    assert_eq!(
+      router.resolve(&[KeyAction::ClosePopup, KeyAction::Quit]),
+      Some(KeyAction::ClosePopup)
+    );
+  }
+
+  #[test]
+  fn key_router_uses_customized_bindings() {
+    let config: TuiKeyBindingsConfig = toml::from_str(r#"event_search = "Ctrl+F""#).unwrap();
+    let keys = TuiKeyBindings::from_config(Some(Box::new(config)));
+    let custom = KeyRouter::new(
+      &keys,
+      KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
+    );
+    let default = KeyRouter::new(&keys, KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+
+    assert!(custom.matches(KeyAction::EventSearch));
+    assert!(!default.matches(KeyAction::EventSearch));
   }
 }

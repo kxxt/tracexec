@@ -41,7 +41,11 @@ use ratatui::{
 };
 use tracexec_core::{
   account,
-  cli::keys::TuiKeyBindings,
+  cli::keys::{
+    KeyAction,
+    KeyRouter,
+    TuiKeyBindings,
+  },
   event::{
     EventId,
     EventStatus,
@@ -704,39 +708,40 @@ impl DetailsPopupState {
     list: &EventList,
     action_tx: &LocalUnboundedSender<Action>,
   ) -> color_eyre::Result<()> {
-    if keys.details_scroll_down.matches(ke) {
+    let key = KeyRouter::new(keys, ke);
+    if key.matches(KeyAction::DetailsScrollDown) {
       self.scroll_down();
-    } else if keys.details_scroll_up.matches(ke) {
+    } else if key.matches(KeyAction::DetailsScrollUp) {
       self.scroll_up();
-    } else if keys.page_down.matches(ke) {
+    } else if key.matches(KeyAction::PageDown) {
       self.scroll_page_down();
-    } else if keys.page_up.matches(ke) {
+    } else if key.matches(KeyAction::PageUp) {
       self.scroll_page_up();
-    } else if keys.scroll_top.matches(ke) {
+    } else if key.matches(KeyAction::ScrollTop) {
       self.scroll_to_top();
-    } else if keys.scroll_bottom.matches(ke) {
+    } else if key.matches(KeyAction::ScrollBottom) {
       self.scroll_to_bottom();
-    } else if keys.details_next_tab.matches(ke) {
+    } else if key.matches(KeyAction::DetailsNextTab) {
       self.next_tab();
-    } else if keys.details_prev_tab.matches(ke) {
+    } else if key.matches(KeyAction::DetailsPrevTab) {
       self.prev_tab();
-    } else if keys.details_prev_field.matches(ke) {
+    } else if key.matches(KeyAction::DetailsPrevField) {
       if self.active_tab() == "Info" {
         self.prev();
       }
-    } else if keys.details_next_field.matches(ke) {
+    } else if key.matches(KeyAction::DetailsNextField) {
       if self.active_tab() == "Info" {
         self.next();
       }
-    } else if keys.close_popup.matches(ke) {
+    } else if key.matches(KeyAction::ClosePopup) {
       action_tx.send(Action::CancelCurrentPopup);
-    } else if keys.details_copy.matches(ke) {
+    } else if key.matches(KeyAction::DetailsCopy) {
       if self.active_tab() == "Info"
         && let Some(clipboard) = clipboard
       {
         clipboard.set_text(self.selected())?;
       }
-    } else if keys.details_view_parent.matches(ke) {
+    } else if key.matches(KeyAction::DetailsViewParent) {
       if self.env.is_none() {
         // Do not handle non-exec events
       } else if let Some(id) = self.parent_id {
@@ -757,7 +762,7 @@ impl DetailsPopupState {
           self.theme,
         )));
       }
-    } else if keys.details_cycle_tab.matches(ke) {
+    } else if key.matches(KeyAction::DetailsCycleTab) {
       self.circle_tab();
     }
     Ok(())
