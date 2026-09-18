@@ -42,7 +42,11 @@ use tracexec_core::{
     BreakPointStop,
     BreakPointType,
   },
-  cli::keys::TuiKeyBindings,
+  cli::keys::{
+    KeyAction,
+    KeyRouter,
+    TuiKeyBindings,
+  },
 };
 use tui_prompts::{
   State,
@@ -251,8 +255,9 @@ impl BreakPointManagerState {
   }
 
   pub fn handle_key_event(&mut self, key: KeyEvent, keys: &TuiKeyBindings) -> Option<Action> {
+    let routed_key = KeyRouter::new(keys, key);
     if let Some(editor) = self.editor.as_mut() {
-      if keys.breakpoint_editor_save.matches(key) {
+      if routed_key.matches(KeyAction::BreakpointEditorSave) {
         if editor.is_empty() {
           self.clear_editor();
           return None;
@@ -286,30 +291,30 @@ impl BreakPointManagerState {
           self.breakpoints.insert(id, new);
         }
         self.clear_editor();
-      } else if keys.breakpoint_editor_toggle_stop.matches(key) {
+      } else if routed_key.matches(KeyAction::BreakpointEditorToggleStop) {
         self.stop.toggle();
-      } else if keys.breakpoint_editor_toggle_active.matches(key) {
+      } else if routed_key.matches(KeyAction::BreakpointEditorToggleActive) {
         self.active = !self.active;
-      } else if keys.breakpoint_editor_cancel.matches(key) {
+      } else if routed_key.matches(KeyAction::BreakpointEditorCancel) {
         self.clear_editor();
       } else {
         editor.handle_key_event(key);
       }
       return None;
     }
-    if keys.help.matches(key) {
+    if routed_key.matches(KeyAction::Help) {
       return Some(Action::SetActivePopup(ActivePopup::InfoPopup(
         BreakPointManager::help(keys, self.theme),
       )));
     }
-    if keys.go_back.matches(key) {
+    if routed_key.matches(KeyAction::GoBack) {
       return Some(Action::CloseBreakpointManager);
     }
-    if keys.next_item.matches(key) {
+    if routed_key.matches(KeyAction::NextItem) {
       self.list_state.next();
-    } else if keys.prev_item.matches(key) {
+    } else if routed_key.matches(KeyAction::PrevItem) {
       self.list_state.previous();
-    } else if keys.breakpoint_delete.matches(key) {
+    } else if routed_key.matches(KeyAction::BreakpointDelete) {
       if let Some((selected, id)) = self.selected_entry() {
         if selected > 0 {
           self.list_state.select(Some(selected - 1));
@@ -321,7 +326,7 @@ impl BreakPointManagerState {
         self.tracer.remove_breakpoint(id);
         self.breakpoints.remove(&id);
       }
-    } else if keys.breakpoint_toggle_active.matches(key) {
+    } else if routed_key.matches(KeyAction::BreakpointToggleActive) {
       let change = if let Some((id, breakpoint)) = self.selected_breakpoint_mut() {
         breakpoint.activated = !breakpoint.activated;
         Some((id, breakpoint.activated))
@@ -331,7 +336,7 @@ impl BreakPointManagerState {
       if let Some((id, activated)) = change {
         self.tracer.set_breakpoint(id, activated);
       }
-    } else if keys.breakpoint_edit.matches(key) {
+    } else if routed_key.matches(KeyAction::BreakpointEdit) {
       if let Some((id, stop, activated, editable_pattern)) = self
         .selected_breakpoint()
         .map(|(id, b)| (id, b.stop, b.activated, b.pattern.to_editable()))
@@ -343,7 +348,7 @@ impl BreakPointManagerState {
         editor_state.move_end();
         self.editor = Some(editor_state);
       }
-    } else if keys.breakpoint_new.matches(key) {
+    } else if routed_key.matches(KeyAction::BreakpointNew) {
       self.editor = Some(TextState::new());
       self.stop = BreakPointStop::SyscallExit;
       self.active = true;

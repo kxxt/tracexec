@@ -95,6 +95,7 @@ use crate::{
   query::QueryKind,
 };
 
+mod keyboard;
 mod ui;
 
 pub const DEFAULT_MAX_EVENTS: u64 = 1_000_000;
@@ -249,136 +250,7 @@ impl App {
             action_tx.send(Action::Quit);
           }
           Event::Key(ke) => {
-            if self.key_bindings.switch_pane.matches(ke) {
-              action_tx.send(Action::SwitchActivePane);
-              // Cancel all popups
-              self.popup.clear();
-              // Cancel non-finished query
-              if self.query_builder.as_ref().is_some_and(|b| b.editing()) {
-                self.query_builder = None;
-                self.event_list.set_query(None).await;
-              }
-              // Cancel breakpoint manager
-              if self.breakpoint_manager.is_some() {
-                self.breakpoint_manager = None;
-              }
-              // Cancel hit manager
-              if let Some(h) = self.hit_manager_state.as_mut()
-                && h.visible
-              {
-                h.hide();
-              }
-              // action_tx.send(Action::Render)?;
-            } else {
-              trace!("TUI: Active pane: {}", self.active_pane);
-              if self.active_pane == ActivePane::Events {
-                // Handle popups
-                // TODO: do this in a separate function
-                if let Some(popup) = &mut self.popup.last_mut() {
-                  match popup {
-                    ActivePopup::Backtrace(state) => {
-                      state
-                        .handle_key_event(ke, &self.key_bindings, &action_tx)
-                        .await?
-                    }
-                    ActivePopup::Help => {
-                      self.popup.pop();
-                    }
-                    ActivePopup::ViewDetails(state) => {
-                      state.handle_key_event(
-                        ke,
-                        &self.key_bindings,
-                        self.clipboard.as_mut(),
-                        &self.event_list,
-                        &action_tx,
-                      )?;
-                    }
-                    ActivePopup::CopyTargetSelection(state) => {
-                      if let Some(action) = state.handle_key_event(ke)? {
-                        action_tx.send(action);
-                      }
-                    }
-                    ActivePopup::InfoPopup(state) => {
-                      if let Some(action) = state.handle_key_event(ke) {
-                        action_tx.send(action);
-                      }
-                    }
-                  }
-                  continue;
-                }
-
-                // Handle hit manager
-                if let Some(h) = self.hit_manager_state.as_mut()
-                  && h.visible
-                {
-                  if let Some(action) = h.handle_key_event(ke, &self.key_bindings) {
-                    action_tx.send(action);
-                  }
-                  continue;
-                }
-
-                // Handle breakpoint manager
-                if let Some(breakpoint_manager) = self.breakpoint_manager.as_mut() {
-                  if let Some(action) = breakpoint_manager.handle_key_event(ke, &self.key_bindings)
-                  {
-                    action_tx.send(action);
-                  }
-                  continue;
-                }
-
-                // Handle query builder
-                if let Some(query_builder) = self.query_builder.as_mut() {
-                  if query_builder.editing() {
-                    match query_builder.handle_key_events(ke, &self.key_bindings) {
-                      Ok(Some(action)) => {
-                        action_tx.send(action);
-                      }
-                      Ok(None) => {}
-                      Err(e) => {
-                        // Regex error
-                        self
-                          .popup
-                          .push(ActivePopup::InfoPopup(InfoPopupState::error(
-                            "Regex Error".to_owned(),
-                            e,
-                            self.theme,
-                          )));
-                      }
-                    }
-                    continue;
-                  } else {
-                    if self.key_bindings.query_next_match.matches(ke) {
-                      trace!("Query: Next match");
-                      action_tx.send(Action::NextMatch);
-                      continue;
-                    }
-                    if self.key_bindings.query_prev_match.matches(ke) {
-                      trace!("Query: Prev match");
-                      action_tx.send(Action::PrevMatch);
-                      continue;
-                    }
-                  }
-                }
-
-                if self.key_bindings.quit.matches(ke) {
-                  if !self.popup.is_empty() {
-                    self.popup.pop();
-                  } else {
-                    action_tx.send(Action::Quit);
-                  }
-                } else if self.key_bindings.switch_layout.matches(ke) {
-                  action_tx.send(Action::SwitchLayout);
-                } else {
-                  self
-                    .event_list
-                    .handle_key_event(ke, &self.key_bindings, &action_tx)
-                    .await?;
-                }
-              } else {
-                action_tx.send(Action::HandleTerminalKeyPress(ke));
-                // action_tx.send(Action::Render)?;
-              }
-            }
+            self.route_key_event(ke, &action_tx).await?;
           }
           Event::Tracer(msg) => {
             match msg {

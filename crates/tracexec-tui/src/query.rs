@@ -18,7 +18,11 @@ use ratatui::{
   },
 };
 use tracexec_core::{
-  cli::keys::TuiKeyBindings,
+  cli::keys::{
+    KeyAction,
+    KeyRouter,
+    TuiKeyBindings,
+  },
   event::EventId,
   primitives::regex::{
     IntoCursor,
@@ -199,7 +203,8 @@ impl QueryBuilder {
     key: KeyEvent,
     keys: &TuiKeyBindings,
   ) -> Result<Option<Action>, Vec<Line<'static>>> {
-    if keys.query_execute.matches(key) {
+    let key = KeyRouter::new(keys, key);
+    if key.matches(KeyAction::QueryExecute) {
       let text = self.state.value();
       if text.is_empty() {
         return Ok(Some(Action::EndSearch));
@@ -229,24 +234,24 @@ impl QueryBuilder {
       self.editing = false;
       return Ok(Some(Action::ExecuteSearch(query)));
     }
-    if keys.query_cancel.matches(key) {
+    if key.matches(KeyAction::QueryCancel) {
       return Ok(Some(Action::EndSearch));
     }
-    if keys.query_toggle_case.matches(key) {
+    if key.matches(KeyAction::QueryToggleCase) {
       self.case_sensitive = !self.case_sensitive;
       return Ok(None);
     }
-    if keys.query_toggle_regex.matches(key) {
+    if key.matches(KeyAction::QueryToggleRegex) {
       self.is_regex = !self.is_regex;
       return Ok(None);
     }
-    if keys.query_clear.matches(key) {
+    if key.matches(KeyAction::QueryClear) {
       self
         .state
         .handle_key_event(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
       return Ok(None);
     }
-    self.state.handle_key_event(key);
+    self.state.handle_key_event(key.event());
     Ok(None)
   }
 }

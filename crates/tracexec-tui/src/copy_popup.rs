@@ -29,7 +29,11 @@ use ratatui::{
   },
 };
 use tracexec_core::{
-  cli::keys::TuiKeyBindings,
+  cli::keys::{
+    KeyAction,
+    KeyRouter,
+    TuiKeyBindings,
+  },
   event::TracerEventDetails,
 };
 
@@ -178,8 +182,9 @@ impl CopyPopupState {
   }
 
   pub fn select_by_key(&mut self, key: KeyEvent) -> Option<CopyTarget> {
+    let key = KeyRouter::new(&self.key_bindings, key);
     for (idx, target) in self.available_targets.iter().enumerate() {
-      if copy_target_binding(&self.key_bindings, *target).matches(key) {
+      if key.matches(copy_target_action(*target)) {
         self.state.select(Some(idx));
         return Some(*target);
       }
@@ -190,14 +195,17 @@ impl CopyPopupState {
   pub fn help_items(&self) -> impl Iterator<Item = Span<'_>> {
     self.available_targets.iter().flat_map(|&target| {
       let config = copy_target_config(target);
-      let key_label = copy_target_binding(&self.key_bindings, target).display();
+      let key_label = self
+        .key_bindings
+        .bindings(copy_target_action(target))
+        .display();
       help_item!(key_label, config.help_label, self.theme)
     })
   }
 
   fn list_label(&self, target: CopyTarget) -> String {
     let config = copy_target_config(target);
-    let binding = copy_target_binding(&self.key_bindings, target);
+    let binding = self.key_bindings.bindings(copy_target_action(target));
     let uses_default_key = binding.0.len() == 1
       && binding
         .first()
@@ -211,18 +219,19 @@ impl CopyPopupState {
   }
 
   pub fn handle_key_event(&mut self, ke: KeyEvent) -> color_eyre::Result<Option<Action>> {
-    if self.key_bindings.close_popup.matches(ke) {
+    let key = KeyRouter::new(&self.key_bindings, ke);
+    if key.matches(KeyAction::ClosePopup) {
       return Ok(Some(Action::CancelCurrentPopup));
     }
-    if self.key_bindings.next_item.matches(ke) {
+    if key.matches(KeyAction::NextItem) {
       self.next();
       return Ok(None);
     }
-    if self.key_bindings.prev_item.matches(ke) {
+    if key.matches(KeyAction::PrevItem) {
       self.prev();
       return Ok(None);
     }
-    if self.key_bindings.copy_choose.matches(ke) {
+    if key.matches(KeyAction::CopyChoose) {
       return Ok(Some(Action::CopyToClipboard {
         event: self.event.clone(),
         target: self.selected(),
@@ -245,22 +254,19 @@ fn copy_target_config(target: CopyTarget) -> CopyTargetConfig {
     .expect("Missing copy target config")
 }
 
-fn copy_target_binding(
-  keys: &TuiKeyBindings,
-  target: CopyTarget,
-) -> &tracexec_core::cli::keys::KeyList {
+fn copy_target_action(target: CopyTarget) -> KeyAction {
   match target {
-    CopyTarget::Commandline(_) => &keys.copy_target_cmdline,
-    CopyTarget::CommandlineWithFullEnv(_) => &keys.copy_target_cmdline_full_env,
-    CopyTarget::CommandlineWithStdio(_) => &keys.copy_target_cmdline_stdio,
-    CopyTarget::CommandlineWithFds(_) => &keys.copy_target_cmdline_fds,
-    CopyTarget::Env => &keys.copy_target_env,
-    CopyTarget::EnvDiff => &keys.copy_target_env_diff,
-    CopyTarget::Argv => &keys.copy_target_argv,
-    CopyTarget::ArgvJoined => &keys.copy_target_argv_joined,
-    CopyTarget::Filename => &keys.copy_target_filename,
-    CopyTarget::SyscallResult => &keys.copy_target_syscall_result,
-    CopyTarget::Line => &keys.copy_target_line,
+    CopyTarget::Commandline(_) => KeyAction::CopyTargetCmdline,
+    CopyTarget::CommandlineWithFullEnv(_) => KeyAction::CopyTargetCmdlineFullEnv,
+    CopyTarget::CommandlineWithStdio(_) => KeyAction::CopyTargetCmdlineStdio,
+    CopyTarget::CommandlineWithFds(_) => KeyAction::CopyTargetCmdlineFds,
+    CopyTarget::Env => KeyAction::CopyTargetEnv,
+    CopyTarget::EnvDiff => KeyAction::CopyTargetEnvDiff,
+    CopyTarget::Argv => KeyAction::CopyTargetArgv,
+    CopyTarget::ArgvJoined => KeyAction::CopyTargetArgvJoined,
+    CopyTarget::Filename => KeyAction::CopyTargetFilename,
+    CopyTarget::SyscallResult => KeyAction::CopyTargetSyscallResult,
+    CopyTarget::Line => KeyAction::CopyTargetLine,
   }
 }
 
@@ -335,9 +341,18 @@ fn centered_popup_rect(width: u16, height: u16, area: Rect) -> Rect {
 mod tests {
   use std::sync::Arc;
 
+  use crossterm::event::{
+    KeyCode,
+    KeyEvent,
+    KeyModifiers,
+  };
   use insta::assert_snapshot;
   use tracexec_core::{
-    cli::keys::TuiKeyBindings,
+    cli::keys::{
+      KeyBinding,
+      KeyList,
+      TuiKeyBindings,
+    },
     event::{
       TracerEventDetails,
       TracerEventMessage,
@@ -345,10 +360,15 @@ mod tests {
   };
 
   use super::{
+    COPY_TARGETS,
     CopyPopup,
     CopyPopupState,
   };
   use crate::{
+    action::{
+      Action,
+      CopyTarget,
+    },
     test_utils::{
       test_area_full,
       test_render_stateful_widget_area,
@@ -356,15 +376,90 @@ mod tests {
     theme::current_theme,
   };
 
+  fn info_popup(keys: TuiKeyBindings) -> CopyPopupState {
+    CopyPopupState::new(
+      Arc::new(TracerEventDetails::Info(TracerEventMessage {
+        pid: None,
+        timestamp: None,
+        msg: "hello".to_string(),
+      })),
+      Arc::new(keys),
+      current_theme(),
+    )
+  }
+
+  #[test]
+  fn copy_target_shortcuts_select_and_copy() -> color_eyre::Result<()> {
+    let mut state = info_popup(TuiKeyBindings::default());
+    state.available_targets = COPY_TARGETS.iter().map(|config| config.target).collect();
+    for config in COPY_TARGETS {
+      let action = state.handle_key_event(KeyEvent::new(
+        KeyCode::Char(config.default_key),
+        KeyModifiers::NONE,
+      ))?;
+      assert!(
+        matches!(action, Some(Action::CopyToClipboard { target, .. }) if target == config.target)
+      );
+      assert_eq!(state.selected(), config.target);
+    }
+    Ok(())
+  }
+
+  #[test]
+  fn copy_target_shortcuts_respect_remapping_and_availability() -> color_eyre::Result<()> {
+    let keys = TuiKeyBindings {
+      copy_target_line: KeyList(vec![KeyBinding::ctrl('x')]),
+      copy_target_cmdline: KeyList(vec![KeyBinding::ctrl('x')]),
+      ..Default::default()
+    };
+    let mut state = info_popup(keys);
+    assert!(
+      state
+        .handle_key_event(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))?
+        .is_none()
+    );
+    assert_eq!(state.list_label(CopyTarget::Line), "Line (Ctrl+X)");
+    assert!(matches!(
+      state.handle_key_event(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL))?,
+      Some(Action::CopyToClipboard {
+        target: CopyTarget::Line,
+        ..
+      })
+    ));
+
+    state.key_bindings = Arc::new(TuiKeyBindings {
+      copy_target_line: KeyList(vec![]),
+      ..Default::default()
+    });
+    assert!(
+      state
+        .handle_key_event(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))?
+        .is_none()
+    );
+    assert!(
+      state
+        .handle_key_event(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE))?
+        .is_none()
+    );
+    Ok(())
+  }
+
+  #[test]
+  fn popup_controls_take_priority_over_copy_shortcuts() -> color_eyre::Result<()> {
+    let mut state = info_popup(TuiKeyBindings {
+      copy_target_line: KeyList(vec![KeyBinding::char('q')]),
+      ..Default::default()
+    });
+    assert!(matches!(
+      state.handle_key_event(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE))?,
+      Some(Action::CancelCurrentPopup)
+    ));
+    Ok(())
+  }
+
   #[test]
   fn snapshot_copy_popup_info_event() {
-    let event = Arc::new(TracerEventDetails::Info(TracerEventMessage {
-      pid: None,
-      timestamp: None,
-      msg: "hello".to_string(),
-    }));
-    let mut state =
-      CopyPopupState::new(event, Arc::new(TuiKeyBindings::default()), current_theme());
+    let mut state = info_popup(TuiKeyBindings::default());
     let area = test_area_full(40, 40);
     let rendered = test_render_stateful_widget_area(CopyPopup, area, &mut state);
     assert_snapshot!(rendered);

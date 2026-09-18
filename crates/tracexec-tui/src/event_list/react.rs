@@ -5,7 +5,11 @@ use crossterm::event::{
 };
 use ratatui::text::Line;
 use tracexec_core::{
-  cli::keys::TuiKeyBindings,
+  cli::keys::{
+    KeyAction,
+    KeyRouter,
+    TuiKeyBindings,
+  },
   event::TracerEventDetails,
   primitives::local_chan::LocalUnboundedSender,
 };
@@ -33,63 +37,64 @@ impl EventList {
     keys: &TuiKeyBindings,
     action_tx: &LocalUnboundedSender<Action>,
   ) -> color_eyre::Result<()> {
-    if keys.page_down.matches(ke) {
+    let key = KeyRouter::new(keys, ke);
+    if key.matches(KeyAction::PageDown) {
       action_tx.send(Action::PageDown);
-    } else if keys.next_item.matches(ke) {
+    } else if key.matches(KeyAction::NextItem) {
       action_tx.send(Action::NextItem);
-    } else if keys.page_up.matches(ke) {
+    } else if key.matches(KeyAction::PageUp) {
       action_tx.send(Action::StopFollow);
       action_tx.send(Action::PageUp);
-    } else if keys.prev_item.matches(ke) {
+    } else if key.matches(KeyAction::PrevItem) {
       action_tx.send(Action::StopFollow);
       action_tx.send(Action::PrevItem);
-    } else if keys.page_left.matches(ke) {
+    } else if key.matches(KeyAction::PageLeft) {
       action_tx.send(Action::PageLeft);
-    } else if keys.scroll_left.matches(ke) {
+    } else if key.matches(KeyAction::ScrollLeft) {
       action_tx.send(Action::ScrollLeft);
-    } else if keys.page_right.matches(ke) {
+    } else if key.matches(KeyAction::PageRight) {
       action_tx.send(Action::PageRight);
-    } else if keys.scroll_right.matches(ke) {
+    } else if key.matches(KeyAction::ScrollRight) {
       action_tx.send(Action::ScrollRight);
-    } else if keys.scroll_top.matches(ke) {
+    } else if key.matches(KeyAction::ScrollTop) {
       action_tx.send(Action::StopFollow);
       action_tx.send(Action::ScrollToTop);
-    } else if keys.scroll_start.matches(ke) {
+    } else if key.matches(KeyAction::ScrollStart) {
       action_tx.send(Action::ScrollToStart);
-    } else if keys.scroll_bottom.matches(ke) {
+    } else if key.matches(KeyAction::ScrollBottom) {
       action_tx.send(Action::ScrollToBottom);
-    } else if keys.scroll_end.matches(ke) {
+    } else if key.matches(KeyAction::ScrollEnd) {
       action_tx.send(Action::ScrollToEnd);
-    } else if keys.event_grow_pane.matches(ke) {
+    } else if key.matches(KeyAction::EventGrowPane) {
       action_tx.send(Action::GrowPane);
-    } else if keys.event_shrink_pane.matches(ke) {
+    } else if key.matches(KeyAction::EventShrinkPane) {
       action_tx.send(Action::ShrinkPane);
-    } else if keys.event_send_ctrl_s.matches(ke) {
+    } else if key.matches(KeyAction::EventSendCtrlS) {
       action_tx.send(Action::HandleTerminalKeyPress(KeyEvent::new(
         KeyCode::Char('s'),
         KeyModifiers::CONTROL,
       )));
-    } else if keys.event_copy.matches(ke) && self.has_clipboard {
+    } else if key.matches(KeyAction::EventCopy) && self.has_clipboard {
       if let Some(details) = self.selection_map(|e| e.details.clone()) {
         action_tx.send(Action::ShowCopyDialog(details));
       }
-    } else if self.is_primary && keys.event_toggle_follow.matches(ke) {
+    } else if self.is_primary && key.matches(KeyAction::EventToggleFollow) {
       action_tx.send(Action::ToggleFollow);
-    } else if self.is_primary && keys.event_search.matches(ke) {
+    } else if self.is_primary && key.matches(KeyAction::EventSearch) {
       action_tx.send(Action::BeginSearch);
-    } else if keys.event_toggle_env.matches(ke) {
+    } else if key.matches(KeyAction::EventToggleEnv) {
       action_tx.send(Action::ToggleEnvDisplay);
-    } else if keys.event_toggle_cwd.matches(ke) {
+    } else if key.matches(KeyAction::EventToggleCwd) {
       action_tx.send(Action::ToggleCwdDisplay);
-    } else if keys.help.matches(ke) {
+    } else if key.matches(KeyAction::Help) {
       action_tx.send(Action::SetActivePopup(ActivePopup::Help));
-    } else if keys.event_view_details.matches(ke) {
+    } else if key.matches(KeyAction::EventViewDetails) {
       if let Some(event) = self.selection() {
         action_tx.send(Action::SetActivePopup(ActivePopup::ViewDetails(
           DetailsPopupState::new(&event.borrow(), self),
         )));
       }
-    } else if self.is_primary && keys.event_go_to_parent.matches(ke) {
+    } else if self.is_primary && key.matches(KeyAction::EventGoToParent) {
       // TODO: implement this for secondary event list
       // Currently we only use secondary event list for displaying backtrace,
       // goto parent is not actually useful in such case.
@@ -121,12 +126,12 @@ impl EventList {
           )));
         }
       }
-    } else if self.is_ptrace && keys.event_breakpoints.matches(ke) {
+    } else if self.is_ptrace && key.matches(KeyAction::EventBreakpoints) {
       action_tx.send(Action::ShowBreakpointManager);
-    } else if self.is_ptrace && keys.event_hits.matches(ke) {
+    } else if self.is_ptrace && key.matches(KeyAction::EventHits) {
       action_tx.send(Action::ShowHitManager);
     } else if self.is_primary
-      && keys.event_backtrace.matches(ke)
+      && key.matches(KeyAction::EventBacktrace)
       && let Some(e) = self.selection()
     {
       let event = e.borrow();

@@ -60,7 +60,11 @@ use tracexec_core::{
     BreakPointHit,
     BreakPointStop,
   },
-  cli::keys::TuiKeyBindings,
+  cli::keys::{
+    KeyAction,
+    KeyRouter,
+    TuiKeyBindings,
+  },
 };
 use tracing::{
   debug,
@@ -252,13 +256,14 @@ impl HitManagerState {
   }
 
   pub fn handle_key_event(&mut self, key: KeyEvent, keys: &TuiKeyBindings) -> Option<Action> {
-    if keys.help.matches(key) {
+    let routed_key = KeyRouter::new(keys, key);
+    if routed_key.matches(KeyAction::Help) {
       return Some(Action::SetActivePopup(
         crate::action::ActivePopup::InfoPopup(HitManager::help(keys, self.theme)),
       ));
     }
     if let Some(editing) = self.editing {
-      if keys.hit_editor_save.matches(key) {
+      if routed_key.matches(KeyAction::HitEditorSave) {
         if self.editor_state.value().trim().is_empty() {
           return Some(Action::show_error_popup(
             "Error".to_string(),
@@ -289,11 +294,11 @@ impl HitManagerState {
         }
         return None;
       }
-      if keys.hit_editor_cancel.matches(key) {
+      if routed_key.matches(KeyAction::HitEditorCancel) {
         self.editing = None;
         return None;
       }
-      if keys.hit_editor_clear.matches(key) {
+      if routed_key.matches(KeyAction::HitEditorClear) {
         self
           .editor_state
           .handle_key_event(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
@@ -302,14 +307,14 @@ impl HitManagerState {
       self.editor_state.handle_key_event(key);
       return None;
     }
-    if keys.hit_close.matches(key) {
+    if routed_key.matches(KeyAction::HitClose) {
       return Some(Action::HideHitManager);
     }
-    if keys.next_item.matches(key) {
+    if routed_key.matches(KeyAction::NextItem) {
       self.list_state.next();
-    } else if keys.prev_item.matches(key) {
+    } else if routed_key.matches(KeyAction::PrevItem) {
       self.list_state.previous();
-    } else if keys.hit_detach.matches(key) {
+    } else if routed_key.matches(KeyAction::HitDetach) {
       if let Some((selected, hid)) = self.selected_entry() {
         self.select_near_by(selected);
         if let Err(e) = self.detach(hid) {
@@ -321,13 +326,13 @@ impl HitManagerState {
         };
         return self.close_when_empty();
       }
-    } else if keys.hit_edit_default_command.matches(key) {
+    } else if routed_key.matches(KeyAction::HitEditDefaultCommand) {
       self.editing = Some(EditingTarget::DefaultCommand);
       if let Some(command) = self.default_external_command.clone() {
         self.editor_state = TextState::new().with_value(command);
         self.editor_state.move_end();
       }
-    } else if keys.hit_run_default_command.matches(key) {
+    } else if routed_key.matches(KeyAction::HitRunDefaultCommand) {
       if let Some((selected, hid)) = self.selected_entry() {
         let external_command = self.default_external_command.clone()?;
         self.select_near_by(selected);
@@ -341,7 +346,7 @@ impl HitManagerState {
         }
         return self.close_when_empty();
       }
-    } else if keys.hit_resume.matches(key) {
+    } else if routed_key.matches(KeyAction::HitResume) {
       if let Some((selected, hid)) = self.selected_entry() {
         debug!("selected: {}", selected);
         self.select_near_by(selected);
@@ -354,7 +359,7 @@ impl HitManagerState {
         }
         return self.close_when_empty();
       }
-    } else if keys.hit_run_custom_command.matches(key)
+    } else if routed_key.matches(KeyAction::HitRunCustomCommand)
       && let Some(selected) = self.list_state.selected
     {
       self.editing = Some(EditingTarget::CustomCommand {

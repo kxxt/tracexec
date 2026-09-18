@@ -48,7 +48,11 @@ use ratatui::{
 use tokio::sync::mpsc::channel;
 use tokio_util::sync::CancellationToken;
 use tracexec_core::{
-  cli::keys::TuiKeyBindings,
+  cli::keys::{
+    KeyAction,
+    KeyRouter,
+    TuiKeyBindings,
+  },
   pty::{
     MasterPty,
     PtySize,
@@ -242,7 +246,8 @@ impl PseudoTerminalPane {
   }
 
   pub async fn handle_key_event(&self, key: &KeyEvent, keys: &TuiKeyBindings) -> bool {
-    if keys.terminal_toggle_scrollback.matches(*key) {
+    let routed_key = KeyRouter::new(keys, *key);
+    if routed_key.matches(KeyAction::TerminalToggleScrollback) {
       self.scrollback_mode.set(!self.scrollback_mode.get());
       let mut parser = self.parser.write();
       let screen = parser.screen_mut();
@@ -258,7 +263,7 @@ impl PseudoTerminalPane {
       let max_offset = self.scrollback_lines;
       // .min(screen.scrollback_len()) Waiting for https://github.com/doy/vt100-rust/pull/27
 
-      if keys.terminal_scroll_up.matches(*key) {
+      if routed_key.matches(KeyAction::TerminalScrollUp) {
         let current = screen.scrollback();
         if current < max_offset {
           trace!(
@@ -270,31 +275,31 @@ impl PseudoTerminalPane {
         }
         return true;
       }
-      if keys.terminal_scroll_down.matches(*key) {
+      if routed_key.matches(KeyAction::TerminalScrollDown) {
         let current = screen.scrollback();
         if current > 0 {
           screen.set_scrollback(current - 1);
         }
         return true;
       }
-      if keys.terminal_page_up.matches(*key) {
+      if routed_key.matches(KeyAction::TerminalPageUp) {
         let current = screen.scrollback();
         let available_above = max_offset.saturating_sub(current);
         let step = viewport_height.min(available_above);
         screen.set_scrollback(current + step);
         return true;
       }
-      if keys.terminal_page_down.matches(*key) {
+      if routed_key.matches(KeyAction::TerminalPageDown) {
         let current = screen.scrollback();
         let step = viewport_height.min(current);
         screen.set_scrollback(current - step);
         return true;
       }
-      if keys.terminal_scroll_top.matches(*key) {
+      if routed_key.matches(KeyAction::TerminalScrollTop) {
         screen.set_scrollback(max_offset);
         return true;
       }
-      if keys.terminal_scroll_bottom.matches(*key) {
+      if routed_key.matches(KeyAction::TerminalScrollBottom) {
         screen.set_scrollback(0);
         return true;
       }
