@@ -43,7 +43,8 @@ color-eyre = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }
 crossterm = { workspace = true }
-internment = { version = "0.8.6", default-features = false, features = ["arc", "serde"] }
+hashbrown = { workspace = true }
+parking_lot = { workspace = true }
 tempfile = { workspace = true }
 rand = "0.10"
 
