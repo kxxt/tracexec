@@ -358,8 +358,7 @@ mod tests {
   fn make_event_line(text: &str) -> EventLine {
     EventLine {
       line: Line::from(text.to_string()),
-      cwd_mask: None,
-      env_mask: None,
+      ..Default::default()
     }
   }
 

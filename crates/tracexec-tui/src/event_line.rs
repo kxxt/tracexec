@@ -9,12 +9,15 @@ use ratatui::text::{
   Line,
   Span,
 };
-use tracexec_core::primitives::regex::{
-  BidirectionalIter,
-  BidirectionalIterator,
-  Cursor,
-  IntoBidirectionalIterator,
-  IntoCursor,
+use tracexec_core::{
+  event::EventStatus,
+  primitives::regex::{
+    BidirectionalIter,
+    BidirectionalIterator,
+    Cursor,
+    IntoBidirectionalIterator,
+    IntoCursor,
+  },
 };
 
 #[derive(Debug, Clone)]
@@ -48,6 +51,8 @@ pub struct EventLine {
   pub line: Line<'static>,
   pub cwd_mask: Option<Mask>,
   pub env_mask: Option<Mask>,
+  /// Reserved even when the status is absent, so updates never shift mask ranges.
+  pub(crate) status_span: Option<usize>,
 }
 
 impl From<Line<'static>> for EventLine {
@@ -56,6 +61,7 @@ impl From<Line<'static>> for EventLine {
       line,
       cwd_mask: None,
       env_mask: None,
+      status_span: None,
     }
   }
 }
@@ -67,6 +73,12 @@ impl Display for EventLine {
 }
 
 impl EventLine {
+  pub(crate) fn update_status(&mut self, status: Option<EventStatus>) {
+    if let Some(index) = self.status_span {
+      self.line.spans[index].content = status.map(<&'static str>::from).unwrap_or_default().into();
+    }
+  }
+
   pub fn toggle_cwd_mask(&mut self) {
     if let Some(mask) = &mut self.cwd_mask {
       mask.toggle(&mut self.line);

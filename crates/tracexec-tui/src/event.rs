@@ -161,6 +161,7 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
   ) -> EventLine {
     let mut env_range = None;
     let mut cwd_range = None;
+    let mut status_span = None;
 
     let rt_modifier_effective = if enable_mask {
       // Enable all modifiers so that the mask can be toggled later
@@ -210,19 +211,26 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
         pcomm,
         pid,
         timestamp,
-      } => [
-        extra_prefix,
-        ts_formatter(*timestamp),
-        Some(ppid.to_string().set_style(theme.pid_success)),
-        event_status.map(|s| <&'static str>::from(s).into()),
-        Some(format!("<{pcomm}>").set_style(theme.comm)),
-        Some(": ".into()),
-        Some("new child ".set_style(theme.tracer_event)),
-        Some(pid.to_string().set_style(theme.new_child_pid)),
-      ]
-      .into_iter()
-      .flatten()
-      .collect(),
+      } => {
+        let mut spans = chain!(
+          extra_prefix,
+          ts_formatter(*timestamp),
+          [ppid.to_string().set_style(theme.pid_success)],
+        )
+        .collect_vec();
+        status_span = Some(spans.len());
+        spans.extend([
+          event_status
+            .map(<&'static str>::from)
+            .unwrap_or_default()
+            .into(),
+          format!("<{pcomm}>").set_style(theme.comm),
+          ": ".into(),
+          "new child ".set_style(theme.tracer_event),
+          pid.to_string().set_style(theme.new_child_pid),
+        ]);
+        Line::from(spans)
+      }
       Self::Exec(exec) => {
         let ExecEvent {
           pid,
@@ -236,6 +244,7 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
           .chain(ts_formatter(exec.timestamp))
           .collect_vec();
         if !cmdline_only {
+          status_span = Some(spans.len() + 1);
           spans.extend(
             [
               Some(pid.to_string().set_style(if *result == 0 {
@@ -245,7 +254,12 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
               } else {
                 theme.pid_failure
               })),
-              event_status.map(|s| <&'static str>::from(s).into()),
+              Some(
+                event_status
+                  .map(<&'static str>::from)
+                  .unwrap_or_default()
+                  .into(),
+              ),
               Some(format!("<{comm}>").set_style(theme.comm)),
               Some(": ".into()),
             ]
@@ -317,6 +331,7 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
       line,
       cwd_mask,
       env_mask,
+      status_span,
     }
   }
 
@@ -348,7 +363,7 @@ impl TracerEventDetailsTuiExt for TracerEventDetails {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
   use std::{
     collections::BTreeMap,
     sync::Arc,
@@ -412,7 +427,7 @@ mod tests {
     }
   }
 
-  fn baseline() -> BaselineInfo {
+  pub fn baseline() -> BaselineInfo {
     let mut env = BTreeMap::new();
     env.insert(msg("KEEP"), msg("same"));
     env.insert(msg("MODIFIED"), msg("old"));
@@ -429,7 +444,7 @@ mod tests {
     }
   }
 
-  fn exec_details() -> TracerEventDetails {
+  pub fn exec_details() -> TracerEventDetails {
     let baseline = baseline();
     let mut envp = BTreeMap::new();
     envp.insert(msg("KEEP"), msg("same"));
