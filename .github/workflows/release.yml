@@ -77,7 +77,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@aad518f59d88bae90133242f9ddac7f8bbc5dddf # v1.94.1
+        uses: dtolnay/rust-toolchain@fb523f40495206854c36b250850817ae0f83e3d1 # v1.99.0
         with:
           components: rustfmt
       - uses: taiki-e/install-action@6887963ccf37a9ddcd8c5fa4baeb3e1e5fd61fa1 # v2.81.2
