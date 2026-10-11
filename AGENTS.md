@@ -3,7 +3,7 @@
 ## Requirement
 
 - If the user asks you to create a pull request, please include a file named `.agent-created-pr` in it.
-- Make sure `cargo clippy --workspace` and `cargo +nightly fmt --all --check` check pass.
+- Make sure `cargo clippy --workspace --all-targets` and `cargo +nightly fmt --all --check` check pass.
 - `README.md` should be updated through `README.template.md` and `just update-readme`. 
 
 ## Development Guideline
