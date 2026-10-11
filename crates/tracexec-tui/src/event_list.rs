@@ -59,6 +59,9 @@ mod react;
 mod scroll;
 mod ui;
 
+#[cfg(test)]
+mod status_tests;
+
 #[derive(Debug, Clone)]
 pub struct Event {
   pub details: Arc<TracerEventDetails>,
@@ -471,7 +474,6 @@ impl EventList {
   }
 
   pub fn update(&mut self, update: ProcessStateUpdateEvent) {
-    let modifier = self.event_modifier();
     for i in update.ids {
       if let Some((storage, e)) = self.event_map.get_mut(&i) {
         let mut e = e.borrow_mut();
@@ -490,12 +492,7 @@ impl EventList {
           }
         }
         // FIXME: currently we do not handle event status updates in secondary event lists.
-        storage.line = e.to_event_line(
-          &self.baseline,
-          &modifier,
-          storage.extra_prefix.clone(),
-          self.theme,
-        );
+        storage.line.update_status(e.status);
       }
       let i = i.into_inner() as usize;
       if self.window.0 <= i && i < self.window.1 {
