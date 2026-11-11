@@ -14,7 +14,10 @@ use chrono::{
 use clap::ValueEnum;
 use crossterm::event::KeyEvent;
 use enumflags2::BitFlags;
-use filterable_enum::FilterableEnum;
+use filterable_enum::{
+  FilterableEnum,
+  filterable_enum,
+};
 use itertools::Itertools;
 use nix::{
   errno::Errno,
@@ -107,8 +110,8 @@ impl From<TracerEventDetails> for TracerEvent {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, FilterableEnum)]
 #[filterable_enum(kind_extra_derive=ValueEnum, kind_extra_derive=Display, kind_extra_attrs="strum(serialize_all = \"kebab-case\")")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TracerEventDetails {
   Info(TracerEventMessage),
   Warning(TracerEventMessage),
@@ -221,7 +224,7 @@ impl TracerEventDetails {
   }
 }
 
-impl FilterableTracerEventDetails {
+impl TracerEventDetails {
   pub fn send_if_match(
     self,
     tx: &mpsc::UnboundedSender<TracerMessage>,
@@ -237,7 +240,7 @@ impl FilterableTracerEventDetails {
 #[macro_export]
 macro_rules! filterable_event {
     ($($t:tt)*) => {
-      tracexec_core::event::FilterableTracerEventDetails::from(tracexec_core::event::TracerEventDetails::$($t)*)
+      $crate::event::TracerEventDetails::$($t)*
     };
 }
 
@@ -370,6 +373,37 @@ mod tests {
     cache::ArcStr,
     timestamp::ts_from_boot_ns,
   };
+
+  #[test]
+  fn test_send_if_match() {
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let event = crate::filterable_event!(TraceeExit {
+      timestamp: Local::now(),
+      signal: None,
+      exit_code: 42,
+    });
+
+    assert!(
+      event
+        .clone()
+        .send_if_match(&tx, TracerEventDetailsKind::Exec.into())
+        .is_ok()
+    );
+    assert!(matches!(
+      rx.try_recv(),
+      Err(mpsc::error::TryRecvError::Empty)
+    ));
+
+    let filter = TracerEventDetailsKind::Exec | TracerEventDetailsKind::TraceeExit;
+    assert!(event.clone().send_if_match(&tx, filter).is_ok());
+    assert!(
+      matches!(rx.try_recv(), Ok(TracerMessage::Event(received)) if received.details == event)
+    );
+
+    drop(rx);
+    assert!(event.clone().send_if_match(&tx, BitFlags::empty()).is_ok());
+    assert!(event.send_if_match(&tx, filter).is_err());
+  }
 
   #[test]
   fn test_event_tracer_message_conversion() {

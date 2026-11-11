@@ -251,7 +251,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0f119432819416441bf1eed097b19fe12737936bd2e1d112c6078ba19f9242a7"
 dependencies = [
- "libbpf-rs 0.27.2",
+ "libbpf-rs",
 ]
 
 [[package]]
@@ -935,9 +935,9 @@ dependencies = [
 
 [[package]]
 name = "filterable-enum"
-version = "0.1.2"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7772de4f86808d6f16ebfc8519c87af77eefede523f348a05095995a55cdac9f"
+checksum = "fc7a356e9b330d20bef7e934b7888bb60fb80846c7248fe6a9f503f4f018aadf"
 dependencies = [
  "enumflags2",
  "filterable-enum-derive",
@@ -945,9 +945,9 @@ dependencies = [
 
 [[package]]
 name = "filterable-enum-derive"
-version = "0.1.2"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a62127d011727b085c741b3daed9178dc1aab8d8722e1c71b4f15cd50280fd0d"
+checksum = "07a35926307d62bbd47f8b5ce19f621ba5419664d73e310a6910d21d4ebca111"
 dependencies = [
  "darling 0.20.11",
  "proc-macro-crate",
@@ -1435,32 +1435,20 @@ checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 
 [[package]]
 name = "libbpf-cargo"
-version = "0.26.2"
+version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67e63283df9689af55b85f91e99dc8b213ae89fc3e1d9bb29ab7f75eb8a8a783"
+checksum = "78da1f54d4070442b5911ea2ace04f0b102ef162a5f2aaaa51ba59b6dc3863fe"
 dependencies = [
  "anyhow",
  "cargo_metadata",
  "clap",
- "libbpf-rs 0.26.2",
+ "libbpf-rs",
  "memmap2",
  "serde",
  "serde_json",
  "tempfile",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "libbpf-rs"
-version = "0.26.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd8e8db46a2d5967b5b3dba7aba32a875dc38f222395040607045635ec1f9b63"
-dependencies = [
- "bitflags 2.13.2",
- "libbpf-sys",
- "libc",
- "vsprintf",
 ]
 
 [[package]]
@@ -3283,7 +3271,7 @@ dependencies = [
  "enumflags2",
  "hashbrown 0.17.1",
  "libbpf-cargo",
- "libbpf-rs 0.26.2",
+ "libbpf-rs",
  "libbpf-sys",
  "nix 0.31.3",
  "parking_lot",

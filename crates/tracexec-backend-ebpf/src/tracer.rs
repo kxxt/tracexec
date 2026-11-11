@@ -81,7 +81,6 @@ use tracexec_core::{
   event::{
     ExecEvent,
     ExecSyscall,
-    FilterableTracerEventDetails,
     OutputMsg,
     ProcessStateUpdate,
     ProcessStateUpdateEvent,
@@ -739,7 +738,7 @@ impl EbpfTracer {
               .tx
               .as_ref()
               .map(|tx| {
-                FilterableTracerEventDetails::from(match (event.sig, event.code) {
+                (match (event.sig, event.code) {
                   (0, exit_code) => TracerEventDetails::TraceeExit {
                     timestamp: ts_from_boot_ns(event.timestamp),
                     signal: None,
