@@ -133,19 +133,19 @@ localFlake:
               }
               {
                 name = "6.12lts";
-                tag = "6.12.116";
+                tag = "6.12.117";
                 source = "mirror";
                 test_exe = "tracexec";
-                sha256 = "sha256-yz7T391H5q3knckz2zNP2G4kyt7pINphLCYrDptqURs=";
+                sha256 = "sha256-dOmapeYOJC4KFl/tjLLqDQVL96QB8Bhh1APXVzNFZhM=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
               {
                 name = "6.18lts";
-                tag = "6.18.62";
+                tag = "6.18.63";
                 source = "mirror";
                 test_exe = "tracexec";
-                sha256 = "sha256-SQp67fGzVcVl06bAUzPMzLXaggZOyka1kESKcJnX1lE=";
+                sha256 = "sha256-gXZKVFBy0WB0i+/02d4ufZWqnxboJhEQKI8GeizGHXE=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
@@ -153,11 +153,11 @@ localFlake:
             ++ (lib.optionals (!isTargetRiscv64) [
               {
                 name = "7.3";
-                tag = "7.3.3";
-                version = "7.3.3";
+                tag = "7.3.4";
+                version = "7.3.4";
                 source = "kernel-org";
                 test_exe = "tracexec";
-                sha256 = "sha256-ecZt3mbNlod/zej302rslGsfQj0rl7WnsXUbdcdk89E=";
+                sha256 = "sha256-sRtt+Clejpkf8EC3GqpJlKi1XKojtrCSkH8ZW1hA/R8=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
@@ -166,11 +166,11 @@ localFlake:
             
               {
                 name = "7.4";
-                tag = "v7.4-rc2";
-                version = "7.4.0-rc2";
+                tag = "v7.4-rc3";
+                version = "7.4.0-rc3";
                 source = "torvalds";
                 test_exe = "tracexec";
-                sha256 = "sha256-AQBj1fx7s6Xx+xFs/0Wr5Jd+ioIFt4QXc1BWgMegFLs=";
+                sha256 = "sha256-lcDrSgUd0JmD1reIe92dMjVZ/M2hY8Yn05jAVHuJ+WE=";
                 kernelPatches = [ ];
                 extraMakeFlags = [ ];
               }
